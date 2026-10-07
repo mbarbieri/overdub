@@ -120,6 +120,46 @@ core::Fields LiveEngine::deviceFields()
     return engine::deviceSettingsFields (engine::deviceSettingsFrom (deviceManager.getCurrentAudioDeviceType(), deviceManager.getAudioDeviceSetup()));
 }
 
+ui::AudioBinding LiveEngine::audioBinding()
+{
+    ui::AudioBinding audio { audioEngine.get(), latency, {} };
+    auto* device = deviceManager.getCurrentAudioDevice();
+    if (device == nullptr)
+        return audio;
+
+    // process() receives the active channels packed in order, so the names follow that order.
+    const auto names = device->getInputChannelNames();
+    const auto active = device->getActiveInputChannels();
+    for (int channel = 0; channel < names.size(); ++channel)
+        if (active[channel])
+            audio.inputChannelNames.push_back (names[channel].toStdString());
+    return audio;
+}
+
+ui::DeviceChoices LiveEngine::deviceChoices()
+{
+    ui::DeviceChoices choices;
+    auto* type = deviceManager.getCurrentDeviceTypeObject();
+    if (type == nullptr)
+        return choices;
+
+    choices.deviceType = type->getTypeName().toStdString();
+    for (const auto& name : type->getDeviceNames (true))
+        choices.inputDevices.push_back (name.toStdString());
+    for (const auto& name : type->getDeviceNames (false))
+        choices.outputDevices.push_back (name.toStdString());
+    choices.current = engine::deviceSettingsFrom (deviceManager.getCurrentAudioDeviceType(), deviceManager.getAudioDeviceSetup());
+
+    if (auto* device = deviceManager.getCurrentAudioDevice())
+    {
+        for (const auto rate : device->getAvailableSampleRates())
+            choices.sampleRates.push_back (juce::roundToInt (rate));
+        for (const auto size : device->getAvailableBufferSizes())
+            choices.bufferSizes.push_back (size);
+    }
+    return choices;
+}
+
 void LiveEngine::timerCallback()
 {
     if (audioEngine != nullptr)

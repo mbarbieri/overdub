@@ -27,15 +27,29 @@ target_sources(overdub_tests PRIVATE
     song/PeaksTest.cpp
     song/SongPackageTest.cpp
     support/RealtimeGuardTest.cpp
-    support/RealtimeGuardCatchTest.cpp)
+    support/RealtimeGuardCatchTest.cpp
+    ui/CommandsTest.cpp
+    ui/DeviceSettingsPanelTest.cpp
+    ui/LayoutTest.cpp
+    ui/MainComponentTest.cpp
+    ui/OpenSongTest.cpp
+    ui/SnapshotTest.cpp
+    ui/SongFilesTest.cpp
+    ui/TrackRowEditsTest.cpp
+    ui/TransportTextTest.cpp
+    ui/UserMessagesTest.cpp)
 
-# overdub_capture links overdub_engine, which links overdub_song and overdub_core publicly; listing those too makes ld warn
-# about duplicate libraries.
+# overdub_ui links overdub_capture, which links overdub_engine, overdub_song and overdub_core publicly; listing those too
+# makes ld warn about duplicate libraries.
 target_link_libraries(overdub_tests PRIVATE
-    overdub_capture
+    overdub_ui
     overdub_rt_guard
     Catch2::Catch2WithMain
     juce::juce_recommended_warning_flags)
+
+# [snapshot] tests write PNGs here, one folder per slice, for a session to look at (ADR 0005).
+target_compile_definitions(overdub_tests PRIVATE
+    OVERDUB_UI_SNAPSHOT_DIR="${PROJECT_SOURCE_DIR}/build/ui-snapshots")
 
 include("${PROJECT_SOURCE_DIR}/external/Catch2/extras/Catch.cmake")
 

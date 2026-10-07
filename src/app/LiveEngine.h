@@ -4,6 +4,8 @@
 #include "core/RtEventRing.h"
 #include "engine/DeviceBinding.h"
 #include "engine/Engine.h"
+#include "ui/DeviceSettingsPanel.h"
+#include "ui/OpenSong.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_events/juce_events.h>
@@ -14,7 +16,8 @@
 // The app's live audio: opens the audio device chosen on this machine (engine/DeviceSettings.h),
 // builds the Engine for that device's shape, and binds the two (engine/DeviceBinding.h). It also
 // runs what the engine itself does not: the RT event drain thread and the housekeeping timer.
-// Message thread only. Device-change handling and device choice UI are slice 20.
+// Message thread only. A new device choice is applied by saving it and building a new LiveEngine;
+// handling devices that change on their own is slice 20.
 namespace overdub::app
 {
 class LiveEngine final : private juce::Timer
@@ -43,6 +46,14 @@ public:
     // The open device as report fields: device_type, input_device, output_device, sample_rate,
     // buffer_size. Empty without a device.
     core::Fields deviceFields();
+
+    // What a OpenSong plays and records through: the engine (null without a device), the
+    // record latency and the active input channel names, in process() order.
+    ui::AudioBinding audioBinding();
+
+    // The settings window's offer: this device type's input and output devices, the open
+    // device's sample rates and buffer sizes, and the current choice.
+    ui::DeviceChoices deviceChoices();
 
 private:
     void timerCallback() override;
