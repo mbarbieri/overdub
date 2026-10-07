@@ -19,4 +19,4 @@ The spike (issue #7, branch `spike/av-sync`) measured this on the built-in FaceT
 - The camera calibration also absorbs any error in reported output latency. It is therefore a per-machine setting keyed by camera *and* output device, like ADR 0002's offset. It is never part of a Song. The built-in camera with the built-in devices measured 0 ms.
 - Cameras can stall for over a second without a drop callback, so nothing may rebuild timestamps from frame counts. Playback holds the last frame across a gap.
 - The full-song export re-times frames onto its output frame grid. That costs up to ±½ frame per frame, but adds no offset.
-- Untested, and needed before the spec is final: a USB or Continuity Camera's calibration, a real interface's drift, and the arm64 build.
+- Untested, and needed before the spec is final: a USB or Continuity Camera's calibration and a real interface's drift.

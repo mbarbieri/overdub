@@ -11,7 +11,7 @@ Overdub is written in C++20 on JUCE 9.0.3, built with CMake + Ninja, not in Swif
 ## Consequences
 
 - JUCE is a git submodule at tag 9.0.3 in `external/JUCE`, so sessions grep the real headers instead of recalling JUCE 7/8 APIs. Catch2 v3 is a submodule too.
-- `CMakePresets.json`: `debug` builds the native architecture, `release` builds `arm64;x86_64`. Full Xcode is optional.
+- `CMakePresets.json`: `debug` and `release` both build `x86_64` only. v1 ships Intel-only because the only test machine is an Intel Mac and there is no CI (issue #11). Code stays arm64-clean: no SSE/AVX intrinsics, inline asm or `x86_64` assumptions; vector math goes through `FloatVectorOperations` or plain C++. Full Xcode is optional.
 - `[[clang::nonblocking]]` with `-Werror=function-effects` applies only to our own leaf DSP functions, the ones that call no JUCE APIs. JUCE isn't annotated, so every JUCE call in an annotated callback (the `AudioBuffer` constructor, `AudioProcessorGraph::processBlock`, `FloatVectorOperations`) trips the check. The AU spike (issue #6) hit 15 warnings in a few hundred lines. Callbacks that call into JUCE stay unannotated.
 - One `AudioProcessorGraph` per Song: Track nodes → Insert Chain plugin nodes → Master chain.
 - The UI is JUCE `Component`s. Plugin editors open in their own `DocumentWindow`. The video preview is an `AVSampleBufferDisplayLayer` in an `NSViewComponent`, timed by the interface's `CMAudioDeviceClock`.
