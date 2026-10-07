@@ -6,7 +6,8 @@ add_library(overdub_song STATIC)
 
 target_sources(overdub_song PRIVATE
     Song.cpp
-    SongJson.cpp)
+    SongJson.cpp
+    SongMigration.cpp)
 
 target_link_libraries(overdub_song
     PUBLIC

@@ -13,6 +13,7 @@ target_sources(overdub_tests PRIVATE
     core/LogTest.cpp
     core/RtEventRingTest.cpp
     song/SongJsonTest.cpp
+    song/SongMigrationTest.cpp
     support/RealtimeGuardTest.cpp
     support/RealtimeGuardCatchTest.cpp)
 
