@@ -38,3 +38,15 @@ TEST_CASE ("command-Z undoes and shift-command-Z redoes; modified digits and let
     CHECK (commandForKey (KeyChord { ' ', false, true }) == std::nullopt);
     CHECK (commandForKey (KeyChord { 'R', false, true }) == std::nullopt);
 }
+
+TEST_CASE ("S splits a Clip and backspace or forward delete deletes one", "[ui][commands]")
+{
+    CHECK (commandForKey (KeyChord { 's' }) == Command::splitClip);
+    CHECK (commandForKey (KeyChord { 'S' }) == Command::splitClip);
+    CHECK (commandForKey (KeyChord { overdub::ui::backspaceCharacter }) == Command::deleteClip);
+    CHECK (commandForKey (KeyChord { overdub::ui::forwardDeleteCharacter }) == Command::deleteClip);
+    CHECK (commandForKey (KeyChord { 's', true, false }) == std::nullopt);
+    CHECK (commandForKey (KeyChord { overdub::ui::backspaceCharacter, true, false }) == std::nullopt);
+    CHECK (modeFor (Command::splitClip) == std::nullopt);
+    CHECK (modeFor (Command::deleteClip) == std::nullopt);
+}

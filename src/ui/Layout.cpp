@@ -1,5 +1,7 @@
 #include "ui/Layout.h"
 
+#include <algorithm>
+
 namespace overdub::ui
 {
 namespace
@@ -79,6 +81,79 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row)
     area.removeFromRight (gap);
     layout.input = area.removeFromRight (170);
     area.removeFromRight (gap);
+    layout.name = area;
+    return layout;
+}
+
+int clampMixerHeight (int requested, int pageHeight)
+{
+    const auto largest = pageHeight - clipToolbarHeight - mixerDividerHeight - minimumTimelineHeight;
+    return std::max (minimumMixerHeight, std::min (requested, largest));
+}
+
+EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int mixerHeight)
+{
+    EditPageLayout layout;
+    auto area = page;
+    layout.clipToolbar = area.removeFromTop (clipToolbarHeight);
+    if (mixerVisible)
+    {
+        layout.mixer = area.removeFromBottom (clampMixerHeight (mixerHeight, page.getHeight()));
+        layout.mixerDivider = area.removeFromBottom (mixerDividerHeight);
+    }
+    layout.timeline = area;
+    return layout;
+}
+
+ClipToolbarLayout clipToolbarLayout (juce::Rectangle<int> bar)
+{
+    ClipToolbarLayout layout;
+    auto area = bar.reduced (margin, 5);
+    layout.mixerToggle = area.removeFromRight (76);
+    area.removeFromRight (gap);
+    layout.zoomIn = area.removeFromRight (32);
+    area.removeFromRight (2);
+    layout.zoomOut = area.removeFromRight (32);
+    area.removeFromRight (gap * 2);
+    layout.details = area.removeFromLeft (std::max (0, area.getWidth() - 2 * 90 - 2 * gap));
+    area.removeFromLeft (gap);
+    layout.split = area.removeFromLeft (90);
+    area.removeFromLeft (gap);
+    layout.deleteClip = area.removeFromLeft (90);
+    return layout;
+}
+
+TimelineLayout timelineLayout (juce::Rectangle<int> area, int numTracks)
+{
+    TimelineLayout layout;
+    auto rest = area;
+    auto scrollRow = rest.removeFromBottom (timelineScrollBarHeight);
+    scrollRow.removeFromLeft (laneHeaderWidth);
+    layout.scrollBar = scrollRow;
+
+    auto rulerRow = rest.removeFromTop (rulerHeight);
+    layout.rulerCorner = rulerRow.removeFromLeft (laneHeaderWidth);
+    layout.ruler = rulerRow;
+
+    auto cameraRow = rest.removeFromTop (cameraLaneHeight);
+    layout.cameraHeader = cameraRow.removeFromLeft (laneHeaderWidth);
+    layout.cameraLane = cameraRow;
+
+    for (int i = 0; i < numTracks; ++i)
+    {
+        auto row = juce::Rectangle<int> (rest.getX(), rest.getY() + i * trackLaneHeight, rest.getWidth(), trackLaneHeight);
+        layout.trackHeaders.push_back (row.removeFromLeft (laneHeaderWidth));
+        layout.trackLanes.push_back (row);
+    }
+    return layout;
+}
+
+TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header)
+{
+    TrackHeaderLayout layout;
+    auto area = header.reduced (6, 6);
+    layout.arm = area.removeFromLeft (40).withSizeKeepingCentre (40, 24);
+    area.removeFromLeft (gap);
     layout.name = area;
     return layout;
 }

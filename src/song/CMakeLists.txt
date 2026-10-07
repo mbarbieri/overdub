@@ -8,6 +8,7 @@ add_library(overdub_song STATIC)
 target_sources(overdub_song PRIVATE
     AudioFileDecode.cpp
     BackingTrackImport.cpp
+    ClipEdits.cpp
     Peaks.cpp
     Song.cpp
     SongJson.cpp

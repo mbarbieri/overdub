@@ -16,12 +16,14 @@ target_sources(overdub_tests PRIVATE
     core/RtEventRingTest.cpp
     engine/DeviceBindingTest.cpp
     engine/DeviceSettingsTest.cpp
+    engine/EngineClipEditTest.cpp
     engine/EngineEventsTest.cpp
     engine/EngineRealtimeTest.cpp
     engine/EngineRecordTest.cpp
     engine/LatencyCalibrationTest.cpp
     engine/EngineTest.cpp
     song/BackingTrackImportTest.cpp
+    song/ClipEditsTest.cpp
     song/SongJsonTest.cpp
     song/SongMigrationTest.cpp
     song/PeaksTest.cpp
@@ -30,11 +32,13 @@ target_sources(overdub_tests PRIVATE
     support/RealtimeGuardCatchTest.cpp
     ui/CommandsTest.cpp
     ui/DeviceSettingsPanelTest.cpp
+    ui/EditPageTest.cpp
     ui/LayoutTest.cpp
     ui/MainComponentTest.cpp
     ui/OpenSongTest.cpp
     ui/SnapshotTest.cpp
     ui/SongFilesTest.cpp
+    ui/TimelineGeometryTest.cpp
     ui/TrackRowEditsTest.cpp
     ui/TransportTextTest.cpp
     ui/UserMessagesTest.cpp)

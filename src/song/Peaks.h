@@ -28,6 +28,9 @@ namespace overdub::song
 {
 inline constexpr int samplesPerPeak = 256;
 
+// Exact equality compares stored values (round trips), never computed ones.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wfloat-equal"
 struct PeakRange
 {
     float minimum = 0.0f;
@@ -35,6 +38,7 @@ struct PeakRange
 
     bool operator== (const PeakRange&) const = default;
 };
+#pragma clang diagnostic pop
 
 struct Peaks
 {

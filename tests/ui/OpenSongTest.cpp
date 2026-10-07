@@ -244,3 +244,77 @@ TEST_CASE ("rewinding during a Pass ends it where it stopped and plays on from t
     CHECK (f.openSong->isPlaying());
     CHECK (f.openSong->position() == blockSize); // one block played from sample 0
 }
+
+TEST_CASE ("an edit is one labelled undo step, and the engine plays the edited Song", "[ui][open_song][edit]")
+{
+    OpenSongFixture f;
+    const auto before = f.song();
+    auto changed = before;
+    changed.tracks[0].clips.clear();
+
+    REQUIRE (f.openSong->edit (changed, "Delete Clip").has_value());
+    CHECK (f.song() == changed);
+    CHECK (f.openSong->package().undoLabel() == "Delete Clip");
+
+    // The Band Mix Clip is gone, so the engine renders silence.
+    f.openSong->playOrStop();
+    f.device.run (f.engine, 8);
+    CHECK (nonZeroSamples (f.device.outputHistory[0]).empty());
+
+    REQUIRE (f.openSong->undo().has_value());
+    CHECK (f.song() == before);
+}
+
+TEST_CASE ("edits and seeks are ignored while a Pass runs", "[ui][open_song][edit]")
+{
+    OpenSongFixture f;
+    REQUIRE (f.openSong->record().has_value());
+    f.device.run (f.engine, 4);
+    const auto before = f.song();
+    auto changed = before;
+    changed.tracks[0].clips.clear();
+
+    CHECK (f.openSong->edit (changed, "Delete Clip").has_value());
+    CHECK (f.song() == before);
+    const auto position = f.openSong->position();
+    f.openSong->seek (100000);
+    CHECK (f.openSong->position() == position);
+
+    f.openSong->stop();
+    f.device.run (f.engine, 1);
+    CHECK (f.openSong->poll().empty());
+}
+
+TEST_CASE ("seeking moves the playhead, which is saved once the transport is stopped", "[ui][open_song]")
+{
+    OpenSongFixture f;
+    f.openSong->seek (12345);
+    CHECK (f.openSong->position() == 12345);
+    f.device.run (f.engine, 1);
+    CHECK (f.openSong->poll().empty());
+    CHECK (f.song().playhead == 12345);
+
+    f.openSong->seek (-10);
+    CHECK (f.openSong->position() == 0);
+}
+
+TEST_CASE ("a Clip source's peaks come from the package's cache, and a missing source has none", "[ui][open_song]")
+{
+    OpenSongFixture f;
+    const auto& source = f.trackNamed ("Band Mix").clips.at (0).source;
+    const auto expected = f.openSong->package().peaks (source);
+    REQUIRE (expected.has_value());
+
+    CHECK (f.openSong->peaks (source) == *expected);
+    CHECK (f.openSong->peaks (source).lengthSamples == 96000);
+
+    ScopedLogCapture capture;
+    const overdub::song::ClipSource unknown { overdub::song::ClipSourceKind::take, "no-such-take" };
+    CHECK (f.openSong->peaks (unknown).channels.empty());
+    CHECK (f.openSong->peaks (unknown).channels.empty());
+    // Logged once, where the failure is handled; the second lookup uses the cached result.
+    std::vector<std::string> events;
+    for (const auto& event : capture.events())
+        events.push_back (event.at ("event"));
+    CHECK (events == std::vector<std::string> { "song.media_unknown" });
+}

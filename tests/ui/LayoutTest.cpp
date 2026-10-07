@@ -73,3 +73,82 @@ TEST_CASE ("a Track row puts arm, name, input picker and Monitoring left to righ
     CHECK (layout.name.getX() < layout.input.getX());
     CHECK (layout.input.getX() < layout.monitoring.getX());
 }
+
+TEST_CASE ("Edit mode stacks the Clip toolbar, the timeline, the divider and the Mixer region", "[ui][layout][edit]")
+{
+    const Rectangle<int> page { 0, topBarHeight, 1200, 700 };
+    const auto layout = editPageLayout (page, true, 220);
+
+    checkInsideAndApart (page, { layout.clipToolbar, layout.timeline, layout.mixerDivider, layout.mixer });
+    CHECK (layout.clipToolbar.getHeight() == clipToolbarHeight);
+    CHECK (layout.timeline.getY() == layout.clipToolbar.getBottom());
+    CHECK (layout.mixerDivider.getY() == layout.timeline.getBottom());
+    CHECK (layout.mixer.getY() == layout.mixerDivider.getBottom());
+    CHECK (layout.mixer.getHeight() == 220);
+    CHECK (layout.mixer.getBottom() == page.getBottom());
+    CHECK (layout.mixer.getWidth() == page.getWidth());
+}
+
+TEST_CASE ("a hidden Mixer region gives the whole page below the toolbar to the timeline", "[ui][layout][edit]")
+{
+    const Rectangle<int> page { 0, topBarHeight, 1200, 700 };
+    const auto layout = editPageLayout (page, false, 220);
+
+    CHECK (layout.mixer.isEmpty());
+    CHECK (layout.mixerDivider.isEmpty());
+    CHECK (layout.timeline.getBottom() == page.getBottom());
+}
+
+TEST_CASE ("the Mixer region's height stays between its minimum and what leaves the timeline room", "[ui][layout][edit]")
+{
+    const int pageHeight = 700;
+    CHECK (clampMixerHeight (10, pageHeight) == minimumMixerHeight);
+    CHECK (clampMixerHeight (300, pageHeight) == 300);
+    CHECK (clampMixerHeight (5000, pageHeight) == pageHeight - clipToolbarHeight - mixerDividerHeight - minimumTimelineHeight);
+
+    const Rectangle<int> page { 0, 0, 1200, pageHeight };
+    CHECK (editPageLayout (page, true, 5000).timeline.getHeight() == minimumTimelineHeight);
+}
+
+TEST_CASE ("the timeline has a ruler, the Camera lane, then one lane per Track, each with its header", "[ui][layout][edit]")
+{
+    const Rectangle<int> area { 0, 88, 1200, 500 };
+    const auto layout = timelineLayout (area, 2);
+
+    REQUIRE (layout.trackHeaders.size() == 2);
+    REQUIRE (layout.trackLanes.size() == 2);
+    checkInsideAndApart (area, { layout.rulerCorner, layout.ruler, layout.cameraHeader, layout.cameraLane, layout.trackHeaders[0], layout.trackLanes[0], layout.trackHeaders[1], layout.trackLanes[1], layout.scrollBar });
+    CHECK (layout.ruler.getX() == area.getX() + laneHeaderWidth);
+    CHECK (layout.ruler.getHeight() == rulerHeight);
+    CHECK (layout.cameraLane.getY() == layout.ruler.getBottom());
+    CHECK (layout.cameraLane.getHeight() == cameraLaneHeight);
+    CHECK (layout.trackLanes[0].getY() == layout.cameraLane.getBottom());
+    CHECK (layout.trackLanes[0].getHeight() == trackLaneHeight);
+    CHECK (layout.trackLanes[1].getY() == layout.trackLanes[0].getBottom());
+    CHECK (layout.trackHeaders[1].getY() == layout.trackLanes[1].getY());
+    CHECK (layout.trackHeaders[0].getWidth() == laneHeaderWidth);
+    CHECK (layout.trackLanes[0].getX() == layout.ruler.getX());
+    CHECK (layout.trackLanes[0].getRight() == area.getRight());
+    CHECK (layout.scrollBar.getBottom() == area.getBottom());
+    CHECK (layout.scrollBar.getX() == layout.ruler.getX());
+}
+
+TEST_CASE ("a Track header puts the arm button left of the name", "[ui][layout][edit]")
+{
+    const Rectangle<int> header { 0, 100, laneHeaderWidth, trackLaneHeight };
+    const auto layout = trackHeaderLayout (header);
+    checkInsideAndApart (header, { layout.arm, layout.name });
+    CHECK (layout.arm.getX() < layout.name.getX());
+}
+
+TEST_CASE ("the Clip toolbar puts the Clip's details, Split and Delete left, zoom and Mixer right", "[ui][layout][edit]")
+{
+    const Rectangle<int> bar { 0, 52, minimumWindowWidth, clipToolbarHeight };
+    const auto layout = clipToolbarLayout (bar);
+    checkInsideAndApart (bar, { layout.details, layout.split, layout.deleteClip, layout.zoomOut, layout.zoomIn, layout.mixerToggle });
+    CHECK (layout.details.getRight() <= layout.split.getX());
+    CHECK (layout.split.getRight() <= layout.deleteClip.getX());
+    CHECK (layout.deleteClip.getRight() <= layout.zoomOut.getX());
+    CHECK (layout.zoomOut.getRight() <= layout.zoomIn.getX());
+    CHECK (layout.zoomIn.getRight() <= layout.mixerToggle.getX());
+}

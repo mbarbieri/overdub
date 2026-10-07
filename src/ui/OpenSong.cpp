@@ -2,6 +2,8 @@
 
 #include "ui/TrackRowEdits.h"
 
+#include <algorithm>
+
 namespace overdub::ui
 {
 OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio)
@@ -99,6 +101,41 @@ void OpenSong::rewind()
     if (recorder != nullptr)
         recorder->requestStop();
     binding.engine->seek (0);
+}
+
+void OpenSong::seek (song::SampleCount sample)
+{
+    if (recorder != nullptr)
+        return;
+    const auto position = std::max<song::SampleCount> (0, sample);
+    if (binding.engine != nullptr)
+    {
+        binding.engine->seek (position);
+        return;
+    }
+    auto changed = song();
+    changed.playhead = position;
+    package_->changeWithoutHistory (std::move (changed));
+}
+
+core::Expected<void> OpenSong::edit (song::Song changed, std::string label)
+{
+    if (recorder != nullptr)
+        return {};
+    auto result = package_->edit (std::move (changed), std::move (label));
+    reloadEngine();
+    return result;
+}
+
+const song::Peaks& OpenSong::peaks (const song::ClipSource& source)
+{
+    if (const auto cached = peaksByMediaId.find (source.id); cached != peaksByMediaId.end())
+        return cached->second;
+
+    auto loaded = package_->peaks (source);
+    if (! loaded.has_value())
+        core::logError (loaded.error(), core::Level::warn);
+    return peaksByMediaId[source.id] = loaded.value_or (song::Peaks {});
 }
 
 core::Expected<void> OpenSong::undo()

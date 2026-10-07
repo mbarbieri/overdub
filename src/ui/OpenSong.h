@@ -7,6 +7,7 @@
 
 #include <juce_core/juce_core.h>
 
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -20,8 +21,8 @@
 // end the Pass; poll() (from the window's timer) finishes it once the audio thread has; detaching
 // the audio or destroying it waits for the audio thread and finishes it there.
 //
-// While a Pass runs, only stop, play/stop and rewind act: undo, redo, import, arm, input and
-// Monitoring are ignored, so the Song and the engine's plan stay as the Pass started.
+// While a Pass runs, only stop, play/stop and rewind act: undo, redo, edits, seeks, import, arm,
+// input and Monitoring are ignored, so the Song and the engine's plan stay as the Pass started.
 //
 // Message thread only.
 namespace overdub::ui
@@ -73,10 +74,22 @@ public:
     void playOrStop();
     // To the start of the Song; ends a running Pass (as stop()).
     void rewind();
+    // Moves the playhead to this Song sample (0 or later). Ignored while a Pass runs.
+    void seek (song::SampleCount sample);
 
     // Errors: SongPackage::undo / redo's (song.history_empty when there is no step).
     core::Expected<void> undo();
     core::Expected<void> redo();
+
+    // An undoable change (Edit mode's Clip operations): one history step named `label`, then the
+    // engine plays the changed Song. Ignored (returns success) while a Pass runs.
+    // Errors: SongPackage::edit's.
+    core::Expected<void> edit (song::Song changed, std::string label);
+
+    // The peaks of a Clip's source from the package's cache (rebuilt there when missing), kept
+    // here once read. When they cannot be had, the Error is logged once (warn) and the result has
+    // no channels: the Clip is drawn without a waveform.
+    const song::Peaks& peaks (const song::ClipSource& source);
 
     void setArmed (const song::Id& trackId, bool armed);
     void setInputChannels (const song::Id& trackId, std::vector<int> inputChannels);
@@ -99,6 +112,7 @@ private:
     std::unique_ptr<song::SongPackage> package_;
     AudioBinding binding;
     std::set<song::Id> monitored;
+    std::map<song::Id, song::Peaks> peaksByMediaId; // media is immutable, so entries never go stale
     std::unique_ptr<capture::PassRecorder> recorder;
     int recordingPass = 0;
 };
