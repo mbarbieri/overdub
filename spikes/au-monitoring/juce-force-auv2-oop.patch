@@ -1,0 +1,14 @@
+diff --git a/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatImpl.h b/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatImpl.h
+index 1c947e748d..61cebbaf1a 100644
+--- a/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatImpl.h
++++ b/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatImpl.h
+@@ -538,7 +538,8 @@ using AudioUnitCreationCallback = std::function<void (AudioUnit, OSStatus)>;
+ 
+ static void createAudioUnit (VersionedAudioComponent versionedComponent, AudioUnitCreationCallback callback)
+ {
+-    if (versionedComponent.isAUv3)
++    // OVERDUB SPIKE PATCH: OVERDUB_SPIKE_AU_OOP=1 forces AUv2 out-of-process via AUHostingService.
++    if (versionedComponent.isAUv3 || std::getenv ("OVERDUB_SPIKE_AU_OOP") != nullptr)
+     {
+         AudioComponentInstantiate (versionedComponent.audioComponent,
+                                    kAudioComponentInstantiation_LoadOutOfProcess,

@@ -1,0 +1,7 @@
+# auto run args: --auto --plugin1 NeuralAmpModeler --plugin2 AUDistortion --buffers 128 --cpu-seconds 3 --editors --quit
+PLUGIN track=0 track=0 input=0 monitoring=off plugin=NeuralAmpModeler out_of_process=no ins=2 outs=2 latency_samples=0 tail_s=2.000 has_editor=yes load_ms=179.3
+PLUGIN track=1 track=1 input=0 monitoring=off plugin=AUDistortion out_of_process=no ins=2 outs=2 latency_samples=0 tail_s=0.005 has_editor=yes load_ms=22.1
+RESULT buffer_req=128 buffer=128 sr=44100 in_lat=2492 out_lat=673 graph_lat=0 reported_rt=3165 (71.769ms) measured_rt=2344 (53.152ms) align_error=-821 (-18.617ms) spread=3 signal=yes peak_corr=0.509 cpu_avg=1.5% cpu_max=1.9% max_callback_ms=0.102 budget_ms=2.902 xruns=0 dropped=0
+EDITOR track=0 kind=native w=600 h=400
+EDITOR track=1 kind=native w=581 h=490
+# hosting_processes=0

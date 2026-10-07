@@ -1,0 +1,72 @@
+2026-10-07T11:46:46.857+02:00 event=app_start args="--auto --oop --plugin1 NeuralAmpModeler --plugin2 AUDistortion --buffers 32,64,128 --cpu-seconds 5 --editors --quit" arch="Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz" os="Mac OSX 26.6"
+2026-10-07T11:46:46.857+02:00 event=mic_permission granted=yes
+2026-10-07T11:46:49.950+02:00 event=device_open type=CoreAudio name="MacBook Pro Speakers" inputs="Input 1" active_in=1 active_out=2 sr=44100 buffer=512 available_buffers=16..4096 preprocessing_disabled=unsupported
+2026-10-07T11:46:49.951+02:00 event=graph_built nodes=6 connections=11
+2026-10-07T11:46:50.113+02:00 event=result line="# auto run args: --auto --oop --plugin1 NeuralAmpModeler --plugin2 AUDistortion --buffers 32,64,128 --cpu-seconds 5 --editors --quit"
+2026-10-07T11:46:50.113+02:00 event=plugin_load_begin track=0 name=NeuralAmpModeler id=AudioUnit:Effects/aufx,1YEo,SDAa out_of_process=yes
+2026-10-07T11:46:50.662+02:00 event=plugin_loaded track=0 input=0 monitoring=off plugin=NeuralAmpModeler out_of_process=requested ins=2 outs=2 latency_samples=0 tail_s=0.000 has_editor=yes load_ms=488.4 layout_set=yes hosting_processes=2
+2026-10-07T11:46:50.663+02:00 event=result line="PLUGIN track=0 track=0 input=0 monitoring=off plugin=NeuralAmpModeler out_of_process=requested ins=2 outs=2 latency_samples=0 tail_s=2.000 has_editor=yes load_ms=488.4"
+2026-10-07T11:46:50.664+02:00 event=plugin_load_begin track=1 name=AUDistortion id=AudioUnit:Effects/aufx,dist,appl out_of_process=yes
+2026-10-07T11:46:50.743+02:00 event=plugin_loaded track=1 input=0 monitoring=off plugin=AUDistortion out_of_process=requested ins=2 outs=2 latency_samples=0 tail_s=0.005 has_editor=yes load_ms=21.2 layout_set=yes hosting_processes=2
+2026-10-07T11:46:50.744+02:00 event=result line="PLUGIN track=1 track=1 input=0 monitoring=off plugin=AUDistortion out_of_process=requested ins=2 outs=2 latency_samples=0 tail_s=0.005 has_editor=yes load_ms=21.2"
+2026-10-07T11:46:50.977+02:00 event=buffer_set requested=32 actual=32 error=
+2026-10-07T11:46:52.255+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=input device_latency=8 safety_offset=146 buffer_frames=32 stream_latencies=2210 sr=44100
+2026-10-07T11:46:52.256+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=output device_latency=11 safety_offset=144 buffer_frames=32 stream_latencies=390 sr=44100
+2026-10-07T11:46:52.256+02:00 event=hal_latency device="MacBook Pro Microphone" id=100 class=61646576 scope=input device_latency=40 safety_offset=114 buffer_frames=512 stream_latencies=2210 sr=44100
+2026-10-07T11:46:52.257+02:00 event=hal_latency device="MacBook Pro Speakers" id=93 class=61646576 scope=output device_latency=11 safety_offset=71 buffer_frames=512 stream_latencies=390 sr=44100
+2026-10-07T11:46:52.257+02:00 event=transport_start armed0=yes armed1=yes in_lat=2396 out_lat=577 graph_lat=0
+2026-10-07T11:46:52.257+02:00 event=loopback_begin sr=44100 bursts=7
+2026-10-07T11:46:58.856+02:00 event=take_recorded track=0 file=take-20261007-114652-track0.wav first_block_start=0 compensation=2973 placed_start=-2973 written=290944 dropped=0
+2026-10-07T11:46:58.856+02:00 event=take_recorded track=1 file=take-20261007-114652-track1.wav first_block_start=0 compensation=2973 placed_start=-2973 written=290944 dropped=0
+2026-10-07T11:46:58.936+02:00 event=loopback_result signal_found=yes peak_corr=0.555 expected=2973 measured=2154 measured_ms=48.844 error=-819 error_ms=-18.571 spread=3 lags=2151,2152,2151,2154,2154,2154,2154 dropped=0 buffer=32 in_lat=2396 out_lat=577 graph_lat=0
+2026-10-07T11:46:58.940+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=input device_latency=8 safety_offset=146 buffer_frames=32 stream_latencies=2210 sr=44100
+2026-10-07T11:46:58.941+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=output device_latency=11 safety_offset=144 buffer_frames=32 stream_latencies=390 sr=44100
+2026-10-07T11:46:58.941+02:00 event=hal_latency device="MacBook Pro Microphone" id=100 class=61646576 scope=input device_latency=40 safety_offset=114 buffer_frames=512 stream_latencies=2210 sr=44100
+2026-10-07T11:46:58.942+02:00 event=hal_latency device="MacBook Pro Speakers" id=93 class=61646576 scope=output device_latency=11 safety_offset=71 buffer_frames=512 stream_latencies=390 sr=44100
+2026-10-07T11:46:58.942+02:00 event=transport_start armed0=yes armed1=yes in_lat=2396 out_lat=577 graph_lat=0
+2026-10-07T11:47:03.941+02:00 event=take_recorded track=0 file=take-20261007-114658-track0.wav first_block_start=0 compensation=2973 placed_start=-2973 written=220448 dropped=0
+2026-10-07T11:47:03.942+02:00 event=take_recorded track=1 file=take-20261007-114658-track1.wav first_block_start=0 compensation=2973 placed_start=-2973 written=220448 dropped=0
+2026-10-07T11:47:03.943+02:00 event=result line="RESULT buffer_req=32 buffer=32 sr=44100 in_lat=2396 out_lat=577 graph_lat=0 reported_rt=2973 (67.415ms) measured_rt=2154 (48.844ms) align_error=-819 (-18.571ms) spread=3 signal=yes peak_corr=0.555 cpu_avg=4.8% cpu_max=8.7% max_callback_ms=0.138 budget_ms=0.726 xruns=0 dropped=0"
+2026-10-07T11:47:04.172+02:00 event=buffer_set requested=64 actual=64 error=
+2026-10-07T11:47:05.494+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=input device_latency=8 safety_offset=146 buffer_frames=64 stream_latencies=2210 sr=44100
+2026-10-07T11:47:05.495+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=output device_latency=11 safety_offset=144 buffer_frames=64 stream_latencies=390 sr=44100
+2026-10-07T11:47:05.496+02:00 event=hal_latency device="MacBook Pro Microphone" id=100 class=61646576 scope=input device_latency=40 safety_offset=114 buffer_frames=512 stream_latencies=2210 sr=44100
+2026-10-07T11:47:05.497+02:00 event=hal_latency device="MacBook Pro Speakers" id=93 class=61646576 scope=output device_latency=11 safety_offset=71 buffer_frames=512 stream_latencies=390 sr=44100
+2026-10-07T11:47:05.497+02:00 event=transport_start armed0=yes armed1=yes in_lat=2428 out_lat=609 graph_lat=0
+2026-10-07T11:47:05.497+02:00 event=loopback_begin sr=44100 bursts=7
+2026-10-07T11:47:12.093+02:00 event=take_recorded track=0 file=take-20261007-114705-track0.wav first_block_start=0 compensation=3037 placed_start=-3037 written=290944 dropped=0
+2026-10-07T11:47:12.094+02:00 event=take_recorded track=1 file=take-20261007-114705-track1.wav first_block_start=0 compensation=3037 placed_start=-3037 written=290944 dropped=0
+2026-10-07T11:47:12.175+02:00 event=loopback_result signal_found=yes peak_corr=0.541 expected=3037 measured=2216 measured_ms=50.249 error=-821 error_ms=-18.617 spread=2 lags=2216,2216,2214,2216,2216,2216,2216 dropped=0 buffer=64 in_lat=2428 out_lat=609 graph_lat=0
+2026-10-07T11:47:12.183+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=input device_latency=8 safety_offset=146 buffer_frames=64 stream_latencies=2210 sr=44100
+2026-10-07T11:47:12.184+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=output device_latency=11 safety_offset=144 buffer_frames=64 stream_latencies=390 sr=44100
+2026-10-07T11:47:12.185+02:00 event=hal_latency device="MacBook Pro Microphone" id=100 class=61646576 scope=input device_latency=40 safety_offset=114 buffer_frames=512 stream_latencies=2210 sr=44100
+2026-10-07T11:47:12.185+02:00 event=hal_latency device="MacBook Pro Speakers" id=93 class=61646576 scope=output device_latency=11 safety_offset=71 buffer_frames=512 stream_latencies=390 sr=44100
+2026-10-07T11:47:12.185+02:00 event=transport_start armed0=yes armed1=yes in_lat=2428 out_lat=609 graph_lat=0
+2026-10-07T11:47:17.184+02:00 event=take_recorded track=0 file=take-20261007-114712-track0.wav first_block_start=0 compensation=3037 placed_start=-3037 written=220480 dropped=0
+2026-10-07T11:47:17.185+02:00 event=take_recorded track=1 file=take-20261007-114712-track1.wav first_block_start=0 compensation=3037 placed_start=-3037 written=220480 dropped=0
+2026-10-07T11:47:17.186+02:00 event=result line="RESULT buffer_req=64 buffer=64 sr=44100 in_lat=2428 out_lat=609 graph_lat=0 reported_rt=3037 (68.866ms) measured_rt=2216 (50.249ms) align_error=-821 (-18.617ms) spread=2 signal=yes peak_corr=0.541 cpu_avg=4.0% cpu_max=5.2% max_callback_ms=0.160 budget_ms=1.451 xruns=0 dropped=0"
+2026-10-07T11:47:17.411+02:00 event=buffer_set requested=128 actual=128 error=
+2026-10-07T11:47:18.715+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=input device_latency=8 safety_offset=146 buffer_frames=128 stream_latencies=2210 sr=44100
+2026-10-07T11:47:18.716+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=output device_latency=11 safety_offset=144 buffer_frames=128 stream_latencies=390 sr=44100
+2026-10-07T11:47:18.717+02:00 event=hal_latency device="MacBook Pro Microphone" id=100 class=61646576 scope=input device_latency=40 safety_offset=114 buffer_frames=512 stream_latencies=2210 sr=44100
+2026-10-07T11:47:18.718+02:00 event=hal_latency device="MacBook Pro Speakers" id=93 class=61646576 scope=output device_latency=11 safety_offset=71 buffer_frames=512 stream_latencies=390 sr=44100
+2026-10-07T11:47:18.718+02:00 event=transport_start armed0=yes armed1=yes in_lat=2492 out_lat=673 graph_lat=0
+2026-10-07T11:47:18.718+02:00 event=loopback_begin sr=44100 bursts=7
+2026-10-07T11:47:25.326+02:00 event=take_recorded track=0 file=take-20261007-114718-track0.wav first_block_start=0 compensation=3165 placed_start=-3165 written=291200 dropped=0
+2026-10-07T11:47:25.326+02:00 event=take_recorded track=1 file=take-20261007-114718-track1.wav first_block_start=0 compensation=3165 placed_start=-3165 written=291200 dropped=0
+2026-10-07T11:47:25.414+02:00 event=loopback_result signal_found=yes peak_corr=0.532 expected=3165 measured=2344 measured_ms=53.152 error=-821 error_ms=-18.617 spread=3 lags=2344,2344,2341,2343,2344,2344,2344 dropped=0 buffer=128 in_lat=2492 out_lat=673 graph_lat=0
+2026-10-07T11:47:25.421+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=input device_latency=8 safety_offset=146 buffer_frames=128 stream_latencies=2210 sr=44100
+2026-10-07T11:47:25.421+02:00 event=hal_latency device=_JucePrivateAggregateDevice_98207 id=136 class=61616767 scope=output device_latency=11 safety_offset=144 buffer_frames=128 stream_latencies=390 sr=44100
+2026-10-07T11:47:25.422+02:00 event=hal_latency device="MacBook Pro Microphone" id=100 class=61646576 scope=input device_latency=40 safety_offset=114 buffer_frames=512 stream_latencies=2210 sr=44100
+2026-10-07T11:47:25.423+02:00 event=hal_latency device="MacBook Pro Speakers" id=93 class=61646576 scope=output device_latency=11 safety_offset=71 buffer_frames=512 stream_latencies=390 sr=44100
+2026-10-07T11:47:25.423+02:00 event=transport_start armed0=yes armed1=yes in_lat=2492 out_lat=673 graph_lat=0
+2026-10-07T11:47:30.421+02:00 event=take_recorded track=0 file=take-20261007-114725-track0.wav first_block_start=0 compensation=3165 placed_start=-3165 written=220288 dropped=0
+2026-10-07T11:47:30.421+02:00 event=take_recorded track=1 file=take-20261007-114725-track1.wav first_block_start=0 compensation=3165 placed_start=-3165 written=220288 dropped=0
+2026-10-07T11:47:30.423+02:00 event=result line="RESULT buffer_req=128 buffer=128 sr=44100 in_lat=2492 out_lat=673 graph_lat=0 reported_rt=3165 (71.769ms) measured_rt=2344 (53.152ms) align_error=-821 (-18.617ms) spread=3 signal=yes peak_corr=0.532 cpu_avg=2.6% cpu_max=3.0% max_callback_ms=0.147 budget_ms=2.902 xruns=0 dropped=0"
+2026-10-07T11:47:30.475+02:00 event=editor_opened plugin=NeuralAmpModeler kind=native w=200 h=100
+2026-10-07T11:47:33.423+02:00 event=result line="EDITOR track=0 kind=native w=600 h=400"
+2026-10-07T11:47:33.850+02:00 event=editor_opened plugin=AUDistortion kind=native w=200 h=100
+2026-10-07T11:47:36.735+02:00 event=result line="EDITOR track=1 kind=native w=581 h=490"
+2026-10-07T11:47:36.806+02:00 event=result line="# hosting_processes=2"
+2026-10-07T11:47:36.807+02:00 event=auto_done results=/Users/matteo/Library/Logs/OverdubAuSpike/results-20261007-114650.txt
+2026-10-07T11:47:37.924+02:00 event=app_shutdown

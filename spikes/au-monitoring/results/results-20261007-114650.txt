@@ -1,0 +1,9 @@
+# auto run args: --auto --oop --plugin1 NeuralAmpModeler --plugin2 AUDistortion --buffers 32,64,128 --cpu-seconds 5 --editors --quit
+PLUGIN track=0 track=0 input=0 monitoring=off plugin=NeuralAmpModeler out_of_process=requested ins=2 outs=2 latency_samples=0 tail_s=2.000 has_editor=yes load_ms=488.4
+PLUGIN track=1 track=1 input=0 monitoring=off plugin=AUDistortion out_of_process=requested ins=2 outs=2 latency_samples=0 tail_s=0.005 has_editor=yes load_ms=21.2
+RESULT buffer_req=32 buffer=32 sr=44100 in_lat=2396 out_lat=577 graph_lat=0 reported_rt=2973 (67.415ms) measured_rt=2154 (48.844ms) align_error=-819 (-18.571ms) spread=3 signal=yes peak_corr=0.555 cpu_avg=4.8% cpu_max=8.7% max_callback_ms=0.138 budget_ms=0.726 xruns=0 dropped=0
+RESULT buffer_req=64 buffer=64 sr=44100 in_lat=2428 out_lat=609 graph_lat=0 reported_rt=3037 (68.866ms) measured_rt=2216 (50.249ms) align_error=-821 (-18.617ms) spread=2 signal=yes peak_corr=0.541 cpu_avg=4.0% cpu_max=5.2% max_callback_ms=0.160 budget_ms=1.451 xruns=0 dropped=0
+RESULT buffer_req=128 buffer=128 sr=44100 in_lat=2492 out_lat=673 graph_lat=0 reported_rt=3165 (71.769ms) measured_rt=2344 (53.152ms) align_error=-821 (-18.617ms) spread=3 signal=yes peak_corr=0.532 cpu_avg=2.6% cpu_max=3.0% max_callback_ms=0.147 budget_ms=2.902 xruns=0 dropped=0
+EDITOR track=0 kind=native w=600 h=400
+EDITOR track=1 kind=native w=581 h=490
+# hosting_processes=2

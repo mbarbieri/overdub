@@ -1,0 +1,7 @@
+# auto run args: --auto --plugin1 NeuralAmpModeler --plugin2 AUDistortion --buffers 32,64,128,256 --cpu-seconds 5 --editors --quit
+PLUGIN track=0 track=0 input=0 monitoring=off plugin=NeuralAmpModeler out_of_process=no ins=2 outs=2 latency_samples=0 tail_s=2.000 has_editor=yes load_ms=1802676.6
+PLUGIN track=1 track=1 input=0 monitoring=off plugin=AUDistortion out_of_process=no ins=2 outs=2 latency_samples=0 tail_s=0.005 has_editor=yes load_ms=41.9
+RESULT buffer_req=32 buffer=32 sr=44100 in_lat=2396 out_lat=577 graph_lat=0 reported_rt=2973 (67.415ms) measured_rt=2184 (49.524ms) align_error=-789 (-17.891ms) spread=3 signal=yes peak_corr=0.529 cpu_avg=2.5% cpu_max=4.3% max_callback_ms=0.074 budget_ms=0.726 xruns=0 dropped=0
+RESULT buffer_req=64 buffer=64 sr=44100 in_lat=2428 out_lat=609 graph_lat=0 reported_rt=3037 (68.866ms) measured_rt=2216 (50.249ms) align_error=-821 (-18.617ms) spread=3 signal=yes peak_corr=0.535 cpu_avg=1.9% cpu_max=3.0% max_callback_ms=0.100 budget_ms=1.451 xruns=0 dropped=0
+RESULT buffer_req=128 buffer=128 sr=44100 in_lat=2492 out_lat=673 graph_lat=0 reported_rt=3165 (71.769ms) measured_rt=2344 (53.152ms) align_error=-821 (-18.617ms) spread=2 signal=yes peak_corr=0.490 cpu_avg=1.5% cpu_max=1.8% max_callback_ms=0.128 budget_ms=2.902 xruns=0 dropped=0
+RESULT buffer_req=256 buffer=256 sr=44100 in_lat=2620 out_lat=801 graph_lat=0 reported_rt=3421 (77.574ms) measured_rt=2601 (58.980ms) align_error=-820 (-18.594ms) spread=3 signal=yes peak_corr=0.503 cpu_avg=2.0% cpu_max=2.8% max_callback_ms=0.199 budget_ms=5.805 xruns=0 dropped=0
