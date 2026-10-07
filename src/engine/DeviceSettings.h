@@ -27,6 +27,10 @@ struct DeviceSettings
 // ~/Library/Application Support/Overdub/audio-device.json
 juce::File defaultDeviceSettingsFile();
 
+// The settings as a flat JSON object: the settings file's keys (without `version`), and the
+// fields any log event uses to describe a device choice.
+core::Fields deviceSettingsFields (const DeviceSettings& settings);
+
 // Returns nullopt when the file does not exist (first launch on this machine).
 // Errors: engine.device_settings_unreadable (path, reason).
 core::Expected<std::optional<DeviceSettings>> readDeviceSettings (const juce::File& file);

@@ -29,6 +29,17 @@ juce::File defaultDeviceSettingsFile()
         .getChildFile ("audio-device.json");
 }
 
+core::Fields deviceSettingsFields (const DeviceSettings& settings)
+{
+    return {
+        { "device_type", settings.deviceType },
+        { "input_device", settings.inputDevice },
+        { "output_device", settings.outputDevice },
+        { "sample_rate", settings.sampleRate },
+        { "buffer_size", settings.bufferSize },
+    };
+}
+
 core::Expected<std::optional<DeviceSettings>> readDeviceSettings (const juce::File& file)
 {
     if (! file.existsAsFile())
@@ -60,14 +71,8 @@ core::Expected<std::optional<DeviceSettings>> readDeviceSettings (const juce::Fi
 
 core::Expected<void> writeDeviceSettings (const juce::File& file, const DeviceSettings& settings)
 {
-    const nlohmann::json document {
-        { "version", settingsVersion },
-        { "device_type", settings.deviceType },
-        { "input_device", settings.inputDevice },
-        { "output_device", settings.outputDevice },
-        { "sample_rate", settings.sampleRate },
-        { "buffer_size", settings.bufferSize },
-    };
+    auto document = deviceSettingsFields (settings);
+    document["version"] = settingsVersion;
 
     // Device names come from the OS; replace invalid UTF-8 rather than throw.
     const auto text = document.dump (1, ' ', false, nlohmann::json::error_handler_t::replace);

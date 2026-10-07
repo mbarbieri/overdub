@@ -126,3 +126,30 @@ TEST_CASE ("an open device's setup becomes the device settings to save", "[engin
                                         .sampleRate = 48000,
                                         .bufferSize = 256 });
 }
+
+TEST_CASE ("device settings log as the same fields the settings file stores", "[engine][device][settings]")
+{
+    TempFolder folder;
+    const auto file = folder.root.getChildFile ("audio-device.json");
+    const DeviceSettings settings {
+        .deviceType = "CoreAudio",
+        .inputDevice = "Scarlett 2i2 USB",
+        .outputDevice = "MacBook Pro Speakers",
+        .sampleRate = 44100,
+        .bufferSize = 128,
+    };
+    REQUIRE (writeDeviceSettings (file, settings).has_value());
+
+    const auto fields = overdub::engine::deviceSettingsFields (settings);
+
+    CHECK (fields == nlohmann::json {
+                         { "device_type", "CoreAudio" },
+                         { "input_device", "Scarlett 2i2 USB" },
+                         { "output_device", "MacBook Pro Speakers" },
+                         { "sample_rate", 44100 },
+                         { "buffer_size", 128 },
+                     });
+    auto stored = nlohmann::json::parse (file.loadFileAsString().toStdString());
+    stored.erase ("version");
+    CHECK (stored == fields);
+}
