@@ -82,4 +82,27 @@ core::Expected<void> writeDeviceSettings (const juce::File& file, const DeviceSe
     core::logEvent (core::Level::info, "engine.device_settings_saved", { { "path", pathOf (file) } });
     return {};
 }
+
+juce::AudioDeviceManager::AudioDeviceSetup toAudioDeviceSetup (const DeviceSettings& settings)
+{
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = juce::String::fromUTF8 (settings.inputDevice.c_str());
+    setup.outputDeviceName = juce::String::fromUTF8 (settings.outputDevice.c_str());
+    setup.sampleRate = settings.sampleRate;
+    setup.bufferSize = settings.bufferSize;
+    setup.useDefaultInputChannels = true;
+    setup.useDefaultOutputChannels = true;
+    return setup;
+}
+
+DeviceSettings deviceSettingsFrom (const juce::String& deviceType, const juce::AudioDeviceManager::AudioDeviceSetup& setup)
+{
+    return DeviceSettings {
+        .deviceType = deviceType.toStdString(),
+        .inputDevice = setup.inputDeviceName.toStdString(),
+        .outputDevice = setup.outputDeviceName.toStdString(),
+        .sampleRate = juce::roundToInt (setup.sampleRate),
+        .bufferSize = setup.bufferSize,
+    };
+}
 } // namespace overdub::engine

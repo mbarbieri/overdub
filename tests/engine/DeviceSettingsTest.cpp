@@ -89,3 +89,40 @@ TEST_CASE ("writing device settings to an unwritable place is an explicit error"
     REQUIRE_FALSE (written.has_value());
     CHECK (written.error().code == "engine.device_settings_write_failed");
 }
+
+TEST_CASE ("device settings become the JUCE device setup the device manager opens", "[engine][device][settings]")
+{
+    const DeviceSettings settings {
+        .deviceType = "CoreAudio",
+        .inputDevice = "Scarlett 2i2 USB",
+        .outputDevice = "MacBook Pro Speakers",
+        .sampleRate = 44100,
+        .bufferSize = 128,
+    };
+
+    const auto setup = overdub::engine::toAudioDeviceSetup (settings);
+
+    CHECK (setup.inputDeviceName == "Scarlett 2i2 USB");
+    CHECK (setup.outputDeviceName == "MacBook Pro Speakers");
+    CHECK (juce::exactlyEqual (setup.sampleRate, 44100.0));
+    CHECK (setup.bufferSize == 128);
+    CHECK (setup.useDefaultInputChannels);
+    CHECK (setup.useDefaultOutputChannels);
+}
+
+TEST_CASE ("an open device's setup becomes the device settings to save", "[engine][device][settings]")
+{
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = "Scarlett 2i2 USB";
+    setup.outputDeviceName = "MacBook Pro Speakers";
+    setup.sampleRate = 48000.0;
+    setup.bufferSize = 256;
+
+    const auto settings = overdub::engine::deviceSettingsFrom ("CoreAudio", setup);
+
+    CHECK (settings == DeviceSettings { .deviceType = "CoreAudio",
+                                        .inputDevice = "Scarlett 2i2 USB",
+                                        .outputDevice = "MacBook Pro Speakers",
+                                        .sampleRate = 48000,
+                                        .bufferSize = 256 });
+}

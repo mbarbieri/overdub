@@ -34,4 +34,11 @@ core::Expected<std::optional<DeviceSettings>> readDeviceSettings (const juce::Fi
 // Creates the parent folder if needed and replaces the file atomically.
 // Errors: engine.device_settings_write_failed (path).
 core::Expected<void> writeDeviceSettings (const juce::File& file, const DeviceSettings& settings);
+
+// The setup to pass to AudioDeviceManager::setAudioDeviceSetup (after selecting deviceType).
+// Uses each device's default channels.
+juce::AudioDeviceManager::AudioDeviceSetup toAudioDeviceSetup (const DeviceSettings& settings);
+
+// The settings that reopen the device described by this type name and setup.
+DeviceSettings deviceSettingsFrom (const juce::String& deviceType, const juce::AudioDeviceManager::AudioDeviceSetup& setup);
 } // namespace overdub::engine
