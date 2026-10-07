@@ -22,10 +22,11 @@ Use `release` in place of `debug` for an optimised build. The first build compil
 ## Layout
 
 - `src/<area>/`: one folder per feature area from ADR 0006 (`engine`, `plugin`, `song`, `capture`, `video`, `export`, `ui`, `app`), created when a slice needs it. Includes are rooted at `src/`: `#include "core/BuildInfo.h"`.
-- `src/core/` → `overdub_core`: shared infrastructure every area links (logging, errors, RT event ring, test guards). It is not an event area.
+- `src/core/` → `overdub_core`: shared infrastructure every area links (logging, errors, RT event ring). It is not an event area.
 - `src/app/` → `Overdub` (`Overdub.app`): entry point and main window.
 - `external/` → `overdub_juce`: the JUCE modules, compiled once. Our targets get JUCE through `overdub_core`, never by linking `juce::juce_*` modules directly (that would compile JUCE again and duplicate symbols).
 - `tests/<area>/` → `overdub_tests`: one Catch2 executable. Each `TEST_CASE` becomes one ctest test.
+- `tests/support/` → `overdub_rt_guard` (test-only dylib, never linked into `Overdub.app`): the allocation and lock guard from ADR 0005. Wrap real-time code in `REQUIRE_REALTIME_SAFE (...)` from `support/RealtimeGuardCatch.h`; it fails the test if the code allocates, frees or takes a blocking lock on this thread, including inside JUCE and libc++. It is a dylib because it interposes `malloc`-family and lock functions through dyld's `__interpose` section, which dyld ignores in the main executable. `RealtimeGuard.h` lists what it catches and what it does not.
 
 ## The JUCE patch
 

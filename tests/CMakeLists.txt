@@ -1,13 +1,19 @@
 # overdub_tests: one Catch2 executable for every test, registered with ctest per test case.
 # Add test files to target_sources below, in a folder mirroring src/ (tests/core/, tests/engine/, ...).
 
+# Test-support libraries linked only by overdub_tests (never by Overdub.app).
+add_subdirectory(support)
+
 add_executable(overdub_tests)
 
 target_sources(overdub_tests PRIVATE
-    core/BuildInfoTest.cpp)
+    core/BuildInfoTest.cpp
+    support/RealtimeGuardTest.cpp
+    support/RealtimeGuardCatchTest.cpp)
 
 target_link_libraries(overdub_tests PRIVATE
     overdub_core
+    overdub_rt_guard
     Catch2::Catch2WithMain
     juce::juce_recommended_warning_flags)
 
