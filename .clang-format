@@ -1,0 +1,71 @@
+# JUCE house style, matching the existing code in src/ and tests/.
+# Run: xcrun clang-format -i <files>   (Apple clang-format 21, Command Line Tools)
+---
+Language: Cpp
+Standard: Latest
+ColumnLimit: 0
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+AccessModifierOffset: -4
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: true
+  AfterClass: true
+  AfterControlStatement: Always
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: true
+  AfterStruct: true
+  AfterUnion: true
+  AfterExternBlock: true
+  BeforeCatch: true
+  BeforeElse: true
+  BeforeLambdaBody: false
+  BeforeWhile: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+LambdaBodyIndentation: OuterScope
+SpaceBeforeParens: NonEmptyParentheses
+SpaceAfterLogicalNot: true
+SpaceBeforeCpp11BracedList: true
+SpaceAfterCStyleCast: true
+SpaceAfterTemplateKeyword: true
+SpacesInAngles: Never
+Cpp11BracedListStyle: false
+PointerAlignment: Left
+ReferenceAlignment: Left
+NamespaceIndentation: None
+FixNamespaceComments: true
+CompactNamespaces: false
+IndentCaseLabels: true
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortLambdasOnASingleLine: All
+PackConstructorInitializers: CurrentLine
+AllowShortCaseLabelsOnASingleLine: true
+AlwaysBreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+BreakInheritanceList: BeforeColon
+AlignAfterOpenBracket: Align
+AlignOperands: AlignAfterOperator
+BreakBeforeBinaryOperators: NonAssignment
+AlignTrailingComments:
+  Kind: Leave
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignEscapedNewlines: Right
+IndentPPDirectives: BeforeHash
+BinPackArguments: true
+BinPackParameters: true
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+SortUsingDeclarations: true
+ReflowComments: false
+...
