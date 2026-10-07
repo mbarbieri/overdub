@@ -50,8 +50,9 @@ void DeviceBinding::audioDeviceIOCallbackWithContext (const float* const* inputs
                                                       int numSamples,
                                                       const juce::AudioIODeviceCallbackContext& context)
 {
-    // A plain thread_local store: cheap enough for every callback, and it follows the device
-    // onto a new thread when it restarts. The logger drops JUCE messages on `audio` threads.
+    // Set on every callback so it follows the device onto a new thread when it restarts. The
+    // role lives in a pthread TSD slot, which never allocates, even on a thread's first callback
+    // (core/Log.cpp). The logger drops JUCE messages on `audio` threads.
     core::setCurrentThreadRole (core::ThreadRole::audio);
     const auto hostTimeNs = context.hostTimeNs != nullptr ? *context.hostTimeNs : core::hostTimeNowNs();
     engine.process (inputs, numInputChannels, outputs, numOutputChannels, numSamples, hostTimeNs);

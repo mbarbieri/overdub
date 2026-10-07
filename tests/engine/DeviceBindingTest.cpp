@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
+#include <thread>
 #include <vector>
 
 using overdub::core::ScopedLogCapture;
@@ -133,6 +134,26 @@ TEST_CASE ("the device callback neither allocates nor locks, with or without a h
     engine.play();
     REQUIRE_REALTIME_SAFE (device.callback (binding, withHostTime));
     REQUIRE_REALTIME_SAFE (for (int block = 0; block < 4; ++block) device.callback (binding, withoutHostTime));
+}
+
+TEST_CASE ("the first device callback on a fresh thread neither allocates nor locks", "[engine][device][binding][rt]")
+{
+    TempPackage package;
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    engine.loadSong (impulseSong (package, 300), package.root);
+    engine.play();
+    DeviceBinding binding { engine };
+    FakeDeviceBuffers device { 2, 2, 256 };
+    const std::uint64_t hostNs = 1'000'000'000;
+    const juce::AudioIODeviceCallbackContext context { &hostNs };
+
+    // A device may move its callback onto a new thread when it restarts; that thread's first
+    // callback is guarded from its very first instruction. Catch2 asserts stay on this thread.
+    overdub::testing::RealtimeViolations firstCallback;
+    std::thread deviceThread { [&] { firstCallback = overdub::testing::runRealtimeGuarded ([&] { device.callback (binding, context); }); } };
+    deviceThread.join();
+
+    CHECK_THAT (firstCallback, overdub::testing::isRealtimeSafe());
 }
 
 TEST_CASE ("starting the device logs engine.device_opened with the device's shape and latencies", "[engine][device][binding]")

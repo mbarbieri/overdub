@@ -2,7 +2,10 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdint>
+#include <cstdlib>
 #include <ctime>
+#include <pthread.h>
 #include <string>
 #include <time.h>
 
@@ -10,7 +13,29 @@ namespace overdub::core
 {
 namespace
 {
-thread_local ThreadRole threadRoleOfThisThread = ThreadRole::worker;
+// Invariant: the role lives in a pthread TSD slot, not a C++ thread_local. macOS allocates a
+// thread's thread_local storage with malloc on its first access, and the audio thread sets its
+// role on every callback (engine/DeviceBinding.cpp), including the first one on a new thread.
+// pthread_getspecific / pthread_setspecific on a created key never allocate or lock.
+// The slot stores role + 1, so a thread that never set it (null) reads as `worker`.
+pthread_key_t threadRoleKey()
+{
+    static const pthread_key_t key = []
+    {
+        pthread_key_t created {};
+        const auto result = pthread_key_create (&created, nullptr);
+        if (result != 0)
+        {
+            std::fprintf (stderr, "overdub: pthread_key_create for the thread role failed (%d)\n", result);
+            std::abort();
+        }
+        return created;
+    }();
+    return key;
+}
+
+// Creates the key at static initialisation, before any audio thread can run.
+[[maybe_unused]] const pthread_key_t threadRoleKeyAtStartup = threadRoleKey();
 
 constexpr std::array<std::string_view, 5> reservedKeys { "t", "host_ns", "lvl", "thread", "event" };
 
@@ -112,12 +137,13 @@ std::uint64_t hostTimeNowNs()
 
 ThreadRole currentThreadRole()
 {
-    return threadRoleOfThisThread;
+    const auto stored = reinterpret_cast<std::uintptr_t> (pthread_getspecific (threadRoleKey()));
+    return stored == 0 ? ThreadRole::worker : static_cast<ThreadRole> (stored - 1);
 }
 
 void setCurrentThreadRole (ThreadRole role)
 {
-    threadRoleOfThisThread = role;
+    pthread_setspecific (threadRoleKey(), reinterpret_cast<void*> (static_cast<std::uintptr_t> (role) + 1));
 }
 
 ScopedThreadRole::ScopedThreadRole (ThreadRole role)
