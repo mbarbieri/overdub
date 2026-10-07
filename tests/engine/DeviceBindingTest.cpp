@@ -186,3 +186,31 @@ TEST_CASE ("stopping the device logs engine.device_closed with the device's xrun
     CHECK (closed[0]["type"] == "CoreAudio");
     CHECK (closed[0]["xruns"] == 3);
 }
+
+TEST_CASE ("an engine for a device has the device's output channels and buffer size", "[engine][device][binding]")
+{
+    FakeAudioIODevice device { FakeDeviceShape { .numInputChannels = 2, .numOutputChannels = 4, .bufferSize = 128 } };
+
+    const auto config = overdub::engine::engineConfigFor (device);
+
+    CHECK (config.numOutputChannels == 4);
+    CHECK (config.maxBlockSize == 128);
+}
+
+TEST_CASE ("a device that starts with a shape the engine was not built for is reported", "[engine][device][binding]")
+{
+    ScopedLogCapture capture;
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    DeviceBinding binding { engine };
+    FakeAudioIODevice device { FakeDeviceShape { .numOutputChannels = 6, .bufferSize = 512 } };
+
+    binding.audioDeviceAboutToStart (&device);
+
+    const auto mismatch = eventsNamed (capture, "engine.device_engine_mismatch");
+    REQUIRE (mismatch.size() == 1);
+    CHECK (mismatch[0]["lvl"] == "warn");
+    CHECK (mismatch[0]["output_channels"] == 6);
+    CHECK (mismatch[0]["buffer_size"] == 512);
+    CHECK (mismatch[0]["engine_output_channels"] == 2);
+    CHECK (mismatch[0]["engine_max_block_size"] == 256);
+}

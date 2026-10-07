@@ -10,6 +10,10 @@
 // RtEventDrainThread and calls Engine::housekeeping.
 namespace overdub::engine
 {
+// The engine shape for an open device: its active output channels and current buffer size.
+// Build the Engine after opening the device, with this config.
+EngineConfig engineConfigFor (juce::AudioIODevice& device);
+
 class DeviceBinding final : public juce::AudioIODeviceCallback
 {
 public:
@@ -26,7 +30,9 @@ public:
                                            const juce::AudioIODeviceCallbackContext& context) override;
 
     // Non-audio thread (the thread starting or stopping the device). Log engine.device_opened /
-    // engine.device_closed (ADR 0006).
+    // engine.device_closed (ADR 0006). A device whose shape differs from the engine's config is
+    // logged as engine.device_engine_mismatch (warn); the engine then renders silence and
+    // reports engine.block_rejected. Handling device changes is slice 20.
     void audioDeviceAboutToStart (juce::AudioIODevice* device) override;
     void audioDeviceStopped() override;
 

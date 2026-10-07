@@ -56,6 +56,10 @@ public:
     void stop();
     void seek (SampleCount songSample);
 
+    // The device shape every plan is prepared for, fixed at construction. A device that starts
+    // with a different shape needs a new Engine.
+    const EngineConfig& configuration() const { return config; }
+
     bool isPlaying() const;
     // The Song position of the next block's first sample (a pending seek counts as done).
     SampleCount position() const;
