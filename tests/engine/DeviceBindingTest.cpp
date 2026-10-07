@@ -2,6 +2,7 @@
 #include "engine/Engine.h"
 
 #include "EngineFixture.h"
+#include "support/RealtimeGuardCatch.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -73,4 +74,51 @@ TEST_CASE ("the device callback plays the engine into the device's outputs at th
     CHECK (nonZeroSamples (device.outputStorage[1]) == std::vector<std::int64_t> { 300 - 256 });
     REQUIRE (engine.latestAnchor().has_value());
     CHECK (*engine.latestAnchor() == overdub::engine::Anchor { 256, secondHostNs });
+}
+
+TEST_CASE ("a device callback without a host time is anchored at the time it ran", "[engine][device][binding]")
+{
+    TempPackage package;
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    engine.loadSong (impulseSong (package, 10), package.root);
+    DeviceBinding binding { engine };
+    FakeDeviceBuffers device { 0, 2, 256 };
+
+    const auto beforeNs = overdub::core::hostTimeNowNs();
+    device.callback (binding, juce::AudioIODeviceCallbackContext {});
+    const auto afterNs = overdub::core::hostTimeNowNs();
+
+    REQUIRE (engine.latestAnchor().has_value());
+    CHECK (engine.latestAnchor()->hostTimeNs >= beforeNs);
+    CHECK (engine.latestAnchor()->hostTimeNs <= afterNs);
+}
+
+TEST_CASE ("the device callback marks its thread as the audio thread", "[engine][device][binding]")
+{
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    DeviceBinding binding { engine };
+    FakeDeviceBuffers device { 0, 2, 256 };
+    const overdub::core::ScopedThreadRole restoreRole { overdub::core::ThreadRole::worker };
+
+    device.callback (binding, juce::AudioIODeviceCallbackContext {});
+
+    CHECK (overdub::core::currentThreadRole() == overdub::core::ThreadRole::audio);
+}
+
+TEST_CASE ("the device callback neither allocates nor locks, with or without a host time", "[engine][device][binding][rt]")
+{
+    TempPackage package;
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    engine.loadSong (impulseSong (package, 300), package.root);
+    DeviceBinding binding { engine };
+    FakeDeviceBuffers device { 2, 2, 256 };
+    const overdub::core::ScopedThreadRole restoreRole { overdub::core::ThreadRole::worker };
+    const std::uint64_t hostNs = 1'000'000'000;
+    const juce::AudioIODeviceCallbackContext withHostTime { &hostNs };
+    const juce::AudioIODeviceCallbackContext withoutHostTime {};
+
+    // The first callback takes the plan and starts playing, so it is guarded too.
+    engine.play();
+    REQUIRE_REALTIME_SAFE (device.callback (binding, withHostTime));
+    REQUIRE_REALTIME_SAFE (for (int block = 0; block < 4; ++block) device.callback (binding, withoutHostTime));
 }
