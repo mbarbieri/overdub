@@ -14,11 +14,6 @@ namespace
 {
 constexpr const char* mediaFolders[] = { "audio", "backing", "video", "plugins" };
 
-std::string pathOf (const juce::File& file)
-{
-    return file.getFullPathName().toStdString();
-}
-
 // Reads, migrates and converts song.json. Logs song.migrated when the document was older.
 core::Expected<Song> readSongJson (const juce::File& root)
 {
@@ -81,7 +76,7 @@ core::Expected<std::unique_ptr<SongPackage>> SongPackage::create (const juce::Fi
                 { { "path", pathOf (location) }, { "reason", created.getErrorMessage().toStdString() } },
             });
 
-    if (auto written = writeFileAtomically (location.getChildFile ("song.json"), songToJson (song).dump (1), options.beforeRename); ! written.has_value())
+    if (auto written = writeJsonAtomically (location.getChildFile ("song.json"), songToJson (song), options.beforeRename); ! written.has_value())
         return std::unexpected (written.error());
     auto history = SongHistory::startFresh (location.getChildFile ("history"), song, options.beforeRename);
     if (! history.has_value())
@@ -218,12 +213,12 @@ void SongPackage::scheduleWrite (Clock::time_point now)
 core::Expected<void> SongPackage::writeSongJson()
 {
     const auto file = root.getChildFile ("song.json");
-    const auto text = songToJson (currentSong).dump (1);
-    if (auto written = writeFileAtomically (file, text, options.beforeRename); ! written.has_value())
-        return written;
+    const auto written = writeJsonAtomically (file, songToJson (currentSong), options.beforeRename);
+    if (! written.has_value())
+        return std::unexpected (written.error());
 
     writeDeadline.reset();
-    core::logEvent (core::Level::debug, "song.saved", { { "path", pathOf (file) }, { "bytes", text.size() } });
+    core::logEvent (core::Level::debug, "song.saved", { { "path", pathOf (file) }, { "bytes", *written } });
     return {};
 }
 } // namespace overdub::song

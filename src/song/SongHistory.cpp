@@ -195,13 +195,17 @@ juce::File SongHistory::snapshotFile (std::int64_t number) const
 core::Expected<void> SongHistory::writeSnapshot (std::int64_t number, const Snapshot& snapshot) const
 {
     const nlohmann::json document { { "label", snapshot.label }, { "song", songToJson (snapshot.song) } };
-    return writeFileAtomically (snapshotFile (number), document.dump (1), beforeRename);
+    if (auto written = writeJsonAtomically (snapshotFile (number), document, beforeRename); ! written.has_value())
+        return std::unexpected (written.error());
+    return {};
 }
 
 core::Expected<void> SongHistory::writeIndex() const
 {
     const nlohmann::json index { { "oldest", oldest }, { "newest", newest }, { "current", current } };
-    return writeFileAtomically (directory.getChildFile ("index.json"), index.dump (1), beforeRename);
+    if (auto written = writeJsonAtomically (directory.getChildFile ("index.json"), index, beforeRename); ! written.has_value())
+        return std::unexpected (written.error());
+    return {};
 }
 
 void SongHistory::deleteSnapshotFilesOutsideRange() const

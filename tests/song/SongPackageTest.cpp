@@ -482,3 +482,41 @@ TEST_CASE ("Duplicate Song copies the whole package, history and ids included", 
 
     CHECK (package->duplicateTo (temp.package ("Copy.overdub")).error().code == "song.duplicate_failed");
 }
+
+TEST_CASE ("a track name that is not valid UTF-8 is an Error, never an exception", "[song][package]")
+{
+    TempDirectory temp;
+    const auto song = overdub::song::testing::fullyPopulatedSong();
+    const auto invalidName = renamedFirstTrack (song, "Gu\xff\xfeitar");
+
+    SECTION ("creating the Song")
+    {
+        const auto created = SongPackage::create (temp.package(), invalidName);
+        REQUIRE_FALSE (created.has_value());
+        CHECK (created.error().code == "song.json_unserializable");
+    }
+
+    SECTION ("an edit")
+    {
+        auto package = createPackage (temp.package(), song);
+        const auto edited = package->edit (invalidName, "Rename Track");
+        REQUIRE_FALSE (edited.has_value());
+        CHECK (edited.error().code == "song.json_unserializable");
+        CHECK (package->song() == song);
+        CHECK_FALSE (package->canUndo());
+    }
+
+    SECTION ("a change without history, flushed and then closed")
+    {
+        auto package = createPackage (temp.package(), song);
+        package->changeWithoutHistory (invalidName);
+        const auto flushed = package->flush();
+        REQUIRE_FALSE (flushed.has_value());
+        CHECK (flushed.error().code == "song.json_unserializable");
+
+        ScopedLogCapture capture;
+        CHECK_NOTHROW (package.reset());
+        CHECK (firstEvent (capture, "song.json_unserializable").at ("lvl") == "error");
+        CHECK (songOnDisk (temp.package()) == song);
+    }
+}

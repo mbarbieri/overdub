@@ -7,6 +7,11 @@
 
 namespace overdub::song
 {
+std::string pathOf (const juce::File& file)
+{
+    return file.getFullPathName().toStdString();
+}
+
 namespace
 {
 core::Error writeError (const juce::File& file, const char* step, int savedErrno)
@@ -14,11 +19,11 @@ core::Error writeError (const juce::File& file, const char* step, int savedErrno
     return core::Error {
         "song.write_failed",
         std::string ("could not write a package file (") + step + ")",
-        { { "path", file.getFullPathName().toStdString() }, { "step", step }, { "errno", savedErrno } },
+        { { "path", pathOf (file) }, { "step", step }, { "errno", savedErrno } },
     };
 }
 
-// Writes all of `bytes` to a new file at `path` and fsyncs it.
+// Writes all of `bytes` to a new file at `file` and fsyncs it.
 core::Expected<void> writeAndSync (const juce::File& file, std::string_view bytes)
 {
     const int descriptor = ::open (file.getFullPathName().toRawUTF8(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -63,6 +68,27 @@ core::Expected<void> writeFileAtomically (const juce::File& destination, std::st
     if (std::rename (tempFile.getFullPathName().toRawUTF8(), destination.getFullPathName().toRawUTF8()) != 0)
         return std::unexpected (writeError (destination, "rename", errno));
     return {};
+}
+
+core::Expected<std::size_t> writeJsonAtomically (const juce::File& destination, const nlohmann::json& document, const BeforeRenameHook& beforeRename)
+{
+    std::string text;
+    try
+    {
+        text = document.dump (1);
+    }
+    catch (const nlohmann::json::exception& exception)
+    {
+        return std::unexpected (core::Error {
+            "song.json_unserializable",
+            "could not serialize a package file",
+            { { "path", pathOf (destination) }, { "reason", exception.what() } },
+        });
+    }
+
+    if (auto written = writeFileAtomically (destination, text, beforeRename); ! written.has_value())
+        return std::unexpected (written.error());
+    return text.size();
 }
 
 core::Expected<std::string> readTextFile (const juce::File& file)
