@@ -4,6 +4,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <map>
+#include <string>
+#include <vector>
+
 using overdub::song::Song;
 using overdub::song::songFromJson;
 using overdub::song::songToJson;
@@ -19,18 +24,87 @@ TEST_CASE ("a fully populated Song round-trips through song.json equal", "[song]
 
     const auto restored = songFromJson (*parsed);
     REQUIRE (restored.has_value());
-    CHECK (*restored == original);
+    CHECK (*restored == original); // every field of every element, in order
+    CHECK (songToJson (*restored) == songToJson (original));
+
+    const auto clipIds = [] (const overdub::song::Track& track)
+    {
+        std::vector<std::string> ids;
+        for (const auto& clip : track.clips)
+            ids.push_back (clip.id);
+        return ids;
+    };
+    CHECK (clipIds (restored->tracks.at (0)) == std::vector<std::string> { "clip-b", "clip-a" });
+    CHECK (clipIds (restored->tracks.at (1)) == std::vector<std::string> { "clip-d", "clip-c" });
 }
+
+namespace
+{
+using nlohmann::json;
+using Leaves = std::map<std::string, std::vector<json>>;
+
+// Collects every leaf value by its path, with list indices written as "[]": the values of one
+// field across every element of a list share a path. Lists of numbers count as leaves.
+void collectLeaves (const json& node, const std::string& path, Leaves& leaves)
+{
+    if (node.is_object())
+        for (const auto& [key, value] : node.items())
+            collectLeaves (value, path + "." + key, leaves);
+    else if (node.is_array() && ! node.empty() && node.front().is_object())
+        for (const auto& element : node)
+            collectLeaves (element, path + "[]", leaves);
+    else
+        leaves[path].push_back (node);
+}
+
+// Every list of entities (not a list of numbers such as inputChannels) holds two or more.
+void checkListsHoldTwoOrMore (const json& node, const std::string& path)
+{
+    if (node.is_object())
+        for (const auto& [key, value] : node.items())
+            checkListsHoldTwoOrMore (value, path + "." + key);
+    if (! node.is_array() || (! node.empty() && ! node.front().is_object()))
+        return;
+
+    INFO ("list " << path);
+    CHECK (node.size() >= 2);
+    for (const auto& element : node)
+        checkListsHoldTwoOrMore (element, path + "[]");
+}
+
+// One default-constructed element in every list, so every field has a default to compare with.
+Song songOfDefaults()
+{
+    using namespace overdub::song;
+    Song song;
+    song.tracks = { Track { .insertChain = { InsertSlot {} }, .clips = { Clip {} } } };
+    song.master.insertChain = { InsertSlot {} };
+    song.passes = { Pass {} };
+    song.takes = { Take {} };
+    song.backingTracks = { BackingTrack {} };
+    song.videoTakes = { VideoTake {} };
+    return song;
+}
+} // namespace
 
 TEST_CASE ("the fully populated test Song sets every field away from its default", "[song][json]")
 {
     // Guards the round-trip test: a field left at its default would round-trip trivially.
     const auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
-    const auto defaults = songToJson (overdub::song::makeEmptySong (48000));
+    Leaves populated, defaults;
+    collectLeaves (document, "$", populated);
+    collectLeaves (songToJson (songOfDefaults()), "$", defaults);
 
-    for (const auto& [key, value] : defaults.items())
-        if (key != "formatVersion")
-            CHECK (document.at (key) != value);
+    for (const auto& [path, defaultValues] : defaults)
+    {
+        if (path == "$.formatVersion")
+            continue;
+        INFO ("field " << path);
+        REQUIRE (populated.contains (path));
+        const auto& values = populated.at (path);
+        CHECK (std::ranges::any_of (values, [&] (const json& value) { return value != defaultValues.front(); }));
+    }
+    checkListsHoldTwoOrMore (document, "$");
 }
 
 TEST_CASE ("song.json carries formatVersion 1 and the key names fixed by issues #8 and #14", "[song][json]")

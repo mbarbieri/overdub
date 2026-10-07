@@ -1,3 +1,4 @@
+#include "song/PluginBlobStore.h"
 #include "song/SongJson.h"
 #include "song/SongPackage.h"
 
@@ -445,21 +446,21 @@ TEST_CASE ("undo and redo keep the current plugin state of every Insert Chain sl
 
     auto tweaked = package->song(); // parameters changed in the plugins' own editors
     tweaked.tracks.at (0).insertChain.at (0).stateHash = "cccc";
-    tweaked.tracks.at (0).insertChain.at (1).stateHash = "ffff";
+    tweaked.tracks.at (0).insertChain.back().stateHash = "ffff";
     tweaked.master.insertChain.at (0).stateHash = "eeee";
     package->changeWithoutHistory (tweaked);
 
     REQUIRE (package->undo().has_value());
     const auto& undone = package->song();
-    REQUIRE (undone.tracks.at (0).insertChain.size() == 1);
+    REQUIRE (undone.tracks.at (0).insertChain.size() == 2);
     CHECK (undone.tracks.at (0).insertChain.at (0).stateHash == "cccc");
     CHECK (undone.master.insertChain.at (0).stateHash == "eeee");
 
     REQUIRE (package->redo().has_value());
     const auto& redone = package->song();
-    REQUIRE (redone.tracks.at (0).insertChain.size() == 2);
+    REQUIRE (redone.tracks.at (0).insertChain.size() == 3);
     CHECK (redone.tracks.at (0).insertChain.at (0).stateHash == "cccc");
-    CHECK (redone.tracks.at (0).insertChain.at (1).stateHash == "dddd"); // not in the Song undo left: the snapshot's state
+    CHECK (redone.tracks.at (0).insertChain.back().stateHash == "dddd"); // not in the Song undo left: the snapshot's state
     CHECK (redone.master.insertChain.at (0).stateHash == "eeee");
 }
 
@@ -606,32 +607,44 @@ TEST_CASE ("plugin state is stored once under its SHA-256 and loads back", "[son
 TEST_CASE ("on open, unreferenced plugin blobs are deleted and referenced ones survive", "[song][package][plugins]")
 {
     TempDirectory temp;
+    using overdub::song::InsertSlot;
+    const juce::MemoryBlock baselineState ("baseline", 8);
+    const auto onlyInBaseline = overdub::song::sha256Hex (baselineState);
+
     auto song = overdub::song::makeEmptySong (48000);
     song.tracks.push_back (overdub::song::Track { .id = "track-1", .name = "Guitar" });
-    std::string onlyInHistory, inSongJson, onlyInRedoStep, unreferenced;
+    song.tracks.at (0).insertChain.push_back (InsertSlot { .id = "slot-baseline", .stateHash = onlyInBaseline });
+
+    std::string inUndoSteps, onlyInRedoStep, onlyInSongJson, unreferenced;
     {
-        auto package = createPackage (temp.package(), song);
-        onlyInHistory = *package->storePluginState (juce::MemoryBlock ("first", 5));
-        inSongJson = *package->storePluginState (juce::MemoryBlock ("second", 6));
-        onlyInRedoStep = *package->storePluginState (juce::MemoryBlock ("third", 5));
+        auto package = createPackage (temp.package(), song); // snapshot 0, the baseline
+        REQUIRE (package->storePluginState (baselineState).value() == onlyInBaseline);
+        inUndoSteps = *package->storePluginState (juce::MemoryBlock ("steps", 5));
+        onlyInRedoStep = *package->storePluginState (juce::MemoryBlock ("redo", 4));
+        onlyInSongJson = *package->storePluginState (juce::MemoryBlock ("tweaked", 7));
         unreferenced = *package->storePluginState (juce::MemoryBlock ("never used", 10));
 
-        auto withPlugin = song;
-        withPlugin.tracks.at (0).insertChain.push_back (overdub::song::InsertSlot { .id = "slot-1", .stateHash = onlyInHistory });
-        REQUIRE (package->edit (withPlugin, "Add Plugin").has_value());
-        withPlugin.tracks.at (0).insertChain.at (0).stateHash = inSongJson;
-        REQUIRE (package->edit (withPlugin, "Change Plugin").has_value());
-        withPlugin.tracks.at (0).insertChain.at (0).stateHash = onlyInRedoStep;
-        REQUIRE (package->edit (withPlugin, "Change Plugin").has_value());
-        REQUIRE (package->undo().has_value()); // the third step stays as redo: still referenced
-    }
+        auto replaced = song;
+        replaced.tracks.at (0).insertChain = { InsertSlot { .id = "slot-1", .stateHash = inUndoSteps } };
+        REQUIRE (package->edit (replaced, "Replace Plugin").has_value()); // snapshot 1
+
+        auto added = replaced;
+        added.tracks.at (0).insertChain.push_back (InsertSlot { .id = "slot-2", .stateHash = onlyInRedoStep });
+        REQUIRE (package->edit (added, "Add Plugin").has_value()); // snapshot 2
+        REQUIRE (package->undo().has_value());                     // snapshot 2 stays as redo
+
+        auto tweaked = package->song(); // a parameter change: song.json only
+        tweaked.tracks.at (0).insertChain.at (0).stateHash = onlyInSongJson;
+        package->changeWithoutHistory (tweaked);
+    } // closing flushes song.json
     const auto blob = [&] (const std::string& hash) { return temp.package().getChildFile ("plugins/" + hash + ".state"); };
 
     openPackage (temp.package());
 
-    CHECK (blob (onlyInHistory).existsAsFile());
-    CHECK (blob (inSongJson).existsAsFile());
+    CHECK (blob (onlyInBaseline).existsAsFile());
+    CHECK (blob (inUndoSteps).existsAsFile());
     CHECK (blob (onlyInRedoStep).existsAsFile());
+    CHECK (blob (onlyInSongJson).existsAsFile());
     CHECK_FALSE (blob (unreferenced).exists());
 }
 

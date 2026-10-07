@@ -2,8 +2,10 @@
 
 #include "song/Song.h"
 
-// A Song with every entity present and every field away from its default, built in code
-// (ADR 0005 amendment: no committed .overdub fixtures). Ids are fixed so failures read clearly.
+// A Song with every entity present at least twice and every field away from its default in at
+// least one element, built in code (ADR 0005 amendment: no committed .overdub fixtures). Ids are
+// fixed so failures read clearly. Clip ids are deliberately out of alphabetical order, so a
+// reordering of layers shows up.
 namespace overdub::song::testing
 {
 inline InsertSlot insertSlot (const char* id, const char* hash)
@@ -25,6 +27,7 @@ inline Song fullyPopulatedSong()
 
     song.passes = {
         Pass { .id = "pass-1", .startSample = 88200, .recordedAt = "2026-10-07T18:30:00Z" },
+        Pass { .id = "pass-2", .startSample = 176400, .recordedAt = "2026-10-07T18:35:12Z" },
     };
     song.takes = {
         Take {
@@ -37,6 +40,16 @@ inline Song fullyPopulatedSong()
             .origin = 88150,
             .compensation = { .reportedLatencySamples = 128, .calibrationOffsetSamples = -50 },
         },
+        Take {
+            .id = "take-2",
+            .trackId = "track-guitar",
+            .passId = "pass-2",
+            .file = "audio/take-2.wav",
+            .channels = 1,
+            .lengthSamples = 220500,
+            .origin = 176350,
+            .compensation = { .reportedLatencySamples = 256, .calibrationOffsetSamples = 12 },
+        },
     };
     song.backingTracks = {
         BackingTrack {
@@ -48,6 +61,15 @@ inline Song fullyPopulatedSong()
             .formatName = "MPEG Layer 3",
             .lengthSamples = 7938000,
         },
+        BackingTrack {
+            .id = "backing-2",
+            .originalFilename = "Click.wav",
+            .originalExtension = "wav",
+            .originalSampleRate = 44100,
+            .channels = 1,
+            .formatName = "WAV",
+            .lengthSamples = 4410000,
+        },
     };
     song.videoTakes = {
         VideoTake {
@@ -58,6 +80,15 @@ inline Song fullyPopulatedSong()
             .songSamplesPerMovieSecond = 44100.25,
             .cameraId = "camera-facetime",
             .calibrationOffsetSamples = 1764,
+        },
+        VideoTake {
+            .id = "video-2",
+            .passId = "pass-2",
+            .file = "video/video-2.mov",
+            .startSample = 176400,
+            .songSamplesPerMovieSecond = 44099.875,
+            .cameraId = "camera-usb",
+            .calibrationOffsetSamples = -441,
         },
     };
 
@@ -71,10 +102,11 @@ inline Song fullyPopulatedSong()
             .solo = true,
             .armed = true,
             .inputChannels = { 2, 3 },
-            .insertChain = { insertSlot ("slot-1", "aaaa") },
+            .insertChain = { insertSlot ("slot-1", "aaaa"), insertSlot ("slot-2", "abab") },
             .clips = {
+                // Layer order: clip-b is below clip-a.
                 Clip {
-                    .id = "clip-1",
+                    .id = "clip-b",
                     .source = { .kind = ClipSourceKind::take, .id = "take-1" },
                     .timelineStart = 88200,
                     .sourceOffset = 50,
@@ -83,21 +115,44 @@ inline Song fullyPopulatedSong()
                     .fadeInLength = 441,
                     .fadeOutLength = 882,
                 },
+                Clip {
+                    .id = "clip-a",
+                    .source = { .kind = ClipSourceKind::take, .id = "take-2" },
+                    .timelineStart = 176400,
+                    .sourceOffset = 50,
+                    .length = 220000,
+                    .gainDb = -2.0,
+                    .fadeInLength = 100,
+                    .fadeOutLength = 200,
+                },
             },
         },
         Track {
             .id = "track-backing",
             .name = "Band Mix",
+            .volumeDb = -6.0,
+            .pan = 0.5,
+            .mute = false,
+            .solo = false,
+            .armed = false,
+            .inputChannels = { 0 },
+            .insertChain = { insertSlot ("slot-3", "acac"), insertSlot ("slot-4", "adad") },
             .clips = {
                 Clip {
-                    .id = "clip-2",
+                    .id = "clip-d",
                     .source = { .kind = ClipSourceKind::backing, .id = "backing-1" },
                     .length = 7938000,
+                },
+                Clip {
+                    .id = "clip-c",
+                    .source = { .kind = ClipSourceKind::backing, .id = "backing-2" },
+                    .timelineStart = 44100,
+                    .length = 4410000,
                 },
             },
         },
     };
-    song.master = Master { .volumeDb = -1.0, .insertChain = { insertSlot ("slot-master", "bbbb") } };
+    song.master = Master { .volumeDb = -1.0, .insertChain = { insertSlot ("slot-master", "bbbb"), insertSlot ("slot-master-2", "bcbc") } };
 
     song.preRoll = PreRoll::twoSeconds;
     song.cameraArmed = true;
