@@ -58,4 +58,14 @@ RealtimeViolations runRealtimeGuarded (Fn&& fn)
     fn();
     return guard.violations();
 }
+
+// Lets a pointer escape to the optimizer, and returns it. Release builds may elide a matched
+// new/delete or malloc/free pair whose pointer never escapes, so a test that measures a
+// deliberate allocation passes it through here: `delete keepAllocation (new int (1));`.
+template <typename T>
+T* keepAllocation (T* pointer)
+{
+    asm volatile ("" : : "r"(pointer) : "memory");
+    return pointer;
+}
 } // namespace overdub::testing

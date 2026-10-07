@@ -12,12 +12,13 @@
 #include <thread>
 #include <vector>
 
+using overdub::testing::keepAllocation;
 using overdub::testing::runRealtimeGuarded;
 
 TEST_CASE ("the realtime guard counts a heap allocation made inside the guarded scope", "[support][rtguard]")
 {
     const auto violations = runRealtimeGuarded ([] {
-        auto* value = new int (7);
+        auto* value = keepAllocation (new int (7));
         delete value;
     });
 
@@ -60,12 +61,12 @@ TEST_CASE ("the realtime guard counts allocations and locks made inside JUCE", "
 TEST_CASE ("the realtime guard counts C allocation functions called directly", "[support][rtguard]")
 {
     const auto violations = runRealtimeGuarded ([] {
-        void* block = std::calloc (4, 16);
-        block = std::realloc (block, 128);
+        void* block = keepAllocation (std::calloc (4, 16));
+        block = keepAllocation (std::realloc (block, 128));
         std::free (block);
         void* aligned = nullptr;
         if (posix_memalign (&aligned, 64, 256) == 0)
-            std::free (aligned);
+            std::free (keepAllocation (aligned));
         std::free (nullptr);
     });
 
@@ -126,9 +127,9 @@ TEST_CASE ("a nested realtime guard records into its own record and restores the
     overdub::testing::RealtimeViolations inner;
 
     const auto outer = runRealtimeGuarded ([&] {
-        inner = runRealtimeGuarded ([] { delete new int (1); });
-        delete new int (2);
-        delete new int (3);
+        inner = runRealtimeGuarded ([] { delete keepAllocation (new int (1)); });
+        delete keepAllocation (new int (2));
+        delete keepAllocation (new int (3));
     });
 
     CHECK (inner.allocations == 1);

@@ -35,7 +35,7 @@ TEST_CASE ("the realtime-safe matcher rejects any allocation, deallocation or lo
 
 TEST_CASE ("CHECK_REALTIME_SAFE fails a test that allocates inside the guarded scope", "[support][rtguard][!shouldfail]")
 {
-    CHECK_REALTIME_SAFE (delete new int (42));
+    CHECK_REALTIME_SAFE (delete overdub::testing::keepAllocation (new int (42)));
 }
 
 TEST_CASE ("CHECK_REALTIME_SAFE fails a test that locks inside the guarded scope", "[support][rtguard][!shouldfail]")
