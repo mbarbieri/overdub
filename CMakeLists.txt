@@ -24,6 +24,9 @@ add_subdirectory(external)
 # Shared infrastructure every feature links (logger, errors, RT ring, test guard).
 add_subdirectory(src/core)
 
+# The Song model, its JSON form and the .overdub package (ADR 0004).
+add_subdirectory(src/song)
+
 # Overdub.app
 add_subdirectory(src/app)
 
