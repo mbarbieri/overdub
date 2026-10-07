@@ -14,17 +14,6 @@ namespace
     constexpr int outputChannelsNeeded = 2;
     constexpr int housekeepingIntervalMs = 100;
 
-    core::Fields settingsFields (const engine::DeviceSettings& settings)
-    {
-        return {
-            { "type", settings.deviceType },
-            { "input_device", settings.inputDevice },
-            { "output_device", settings.outputDevice },
-            { "sample_rate", settings.sampleRate },
-            { "buffer_size", settings.bufferSize },
-        };
-    }
-
     // Applies a saved choice to an initialised manager. Returns JUCE's error text ("" on success).
     juce::String applySavedChoice (juce::AudioDeviceManager& deviceManager, const engine::DeviceSettings& settings)
     {
@@ -55,13 +44,10 @@ LiveEngine::LiveEngine()
 LiveEngine::~LiveEngine()
 {
     stopTimer();
+    // The device stops calling the binding before any member is destroyed.
     if (binding != nullptr)
         deviceManager.removeAudioCallback (binding.get());
     deviceManager.closeAudioDevice();
-    // The drain thread drains once more when destroyed; then the engine and binding go.
-    drainThread.reset();
-    binding.reset();
-    liveEngine.reset();
 }
 
 void LiveEngine::openDevice()
@@ -82,7 +68,7 @@ void LiveEngine::openDevice()
         if (error.isEmpty())
             return;
 
-        auto fields = settingsFields (*savedChoice);
+        auto fields = engine::deviceSettingsFields (*savedChoice);
         fields["choice"] = "saved";
         fields["reason"] = error.toStdString();
         core::logEvent (core::Level::warn, "app.device_open_failed", fields);
@@ -101,9 +87,9 @@ void LiveEngine::openDevice()
 
 void LiveEngine::startEngine (juce::AudioIODevice& device)
 {
-    liveEngine = std::make_unique<engine::Engine> (engine::engineConfigFor (device));
-    binding = std::make_unique<engine::DeviceBinding> (*liveEngine);
-    drainThread.emplace (liveEngine->rtEvents(), engine::engineRtCatalog);
+    audioEngine = std::make_unique<engine::Engine> (engine::engineConfigFor (device));
+    binding = std::make_unique<engine::DeviceBinding> (*audioEngine);
+    drainThread.emplace (audioEngine->rtEvents(), engine::engineRtCatalog);
 
     // Calls binding->audioDeviceAboutToStart (logs engine.device_opened), then the callbacks begin.
     deviceManager.addAudioCallback (binding.get());
@@ -112,7 +98,7 @@ void LiveEngine::startEngine (juce::AudioIODevice& device)
 
 void LiveEngine::timerCallback()
 {
-    if (liveEngine != nullptr)
-        liveEngine->housekeeping (core::hostTimeNowNs());
+    if (audioEngine != nullptr)
+        audioEngine->housekeeping (core::hostTimeNowNs());
 }
 } // namespace overdub::app
