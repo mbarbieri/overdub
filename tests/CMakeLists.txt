@@ -4,7 +4,10 @@
 add_executable(overdub_tests)
 
 target_sources(overdub_tests PRIVATE
-    core/BuildInfoTest.cpp)
+    core/BuildInfoTest.cpp
+    core/ErrorTest.cpp
+    core/LogTest.cpp
+    core/RtEventRingTest.cpp)
 
 target_link_libraries(overdub_tests PRIVATE
     overdub_core

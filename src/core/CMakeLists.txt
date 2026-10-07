@@ -5,7 +5,10 @@
 add_library(overdub_core STATIC)
 
 target_sources(overdub_core PRIVATE
-    BuildInfo.cpp)
+    BuildInfo.cpp
+    Error.cpp
+    Log.cpp
+    RtEventRing.cpp)
 
 target_include_directories(overdub_core PUBLIC "${PROJECT_SOURCE_DIR}/src")
 
