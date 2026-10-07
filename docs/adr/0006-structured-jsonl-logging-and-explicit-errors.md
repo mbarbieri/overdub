@@ -25,7 +25,7 @@ Overdub logs to its own JSON Lines file, one per app launch, in `~/Library/Logs/
   - `export.started` / `export.finished`.
   - `song.opened`, `song.saved` (`debug`), `song.migrated`, `song.history_dropped`.
 - **Errors.** `Error` is `{code, message, fields}` and turns straight into a log event. Third-party exceptions (nlohmann/json, file I/O) are caught at the call that can throw and converted to an `Error`. No exception crosses a feature boundary, and no exception or `expected` is used in RT code. An `Error` is logged once, where it is handled, not again at each layer it passes through.
-- **Invariants.** `OVERDUB_CHECK(cond, "area.event", fields…)` logs an `error` with `file:line` in every build, asserts in debug, and lets the caller recover in release. On the audio thread an RT event code replaces it.
+- **Invariants.** `OVERDUB_CHECK(cond, "area.event", fields…)` logs an `error` with `file:line` in every build and lets the caller recover. In debug it also calls `jassertfalse`, which stops only when a debugger is attached, so a failed check never aborts a debug run or `ctest`. On the audio thread an RT event code replaces it.
 - **What the user sees.** There are three tiers:
   - *Log only*: recovered or invisible.
   - *Notice*: a non-modal one-liner that disappears on its own, for degraded but undecided situations such as a crashed plugin slot now bypassed, or dropped camera frames.
