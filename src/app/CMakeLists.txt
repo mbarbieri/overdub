@@ -12,11 +12,13 @@ juce_add_gui_app(Overdub
     CAMERA_PERMISSION_TEXT "Overdub can record video of your performance alongside the audio.")
 
 target_sources(Overdub PRIVATE
+    LiveEngine.cpp
     Main.cpp
     MainWindow.cpp)
 
+# overdub_engine links overdub_song and overdub_core publicly.
 target_link_libraries(Overdub PRIVATE
-    overdub_core
+    overdub_engine
     juce::juce_recommended_warning_flags)
 
 # ADR 0001: sign with one stable local identity (no hardened runtime) so camera and microphone

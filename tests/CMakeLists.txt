@@ -12,15 +12,21 @@ target_sources(overdub_tests PRIVATE
     core/LogFilesTest.cpp
     core/LogTest.cpp
     core/RtEventRingTest.cpp
+    engine/DeviceBindingTest.cpp
+    engine/DeviceSettingsTest.cpp
+    engine/EngineEventsTest.cpp
+    engine/EngineRealtimeTest.cpp
+    engine/EngineTest.cpp
     song/SongJsonTest.cpp
     song/SongMigrationTest.cpp
     song/SongPackageTest.cpp
     support/RealtimeGuardTest.cpp
     support/RealtimeGuardCatchTest.cpp)
 
-# overdub_song links overdub_core publicly; listing both makes ld warn about duplicate libraries.
+# overdub_engine links overdub_song and overdub_core publicly; listing those too makes ld warn
+# about duplicate libraries.
 target_link_libraries(overdub_tests PRIVATE
-    overdub_song
+    overdub_engine
     overdub_rt_guard
     Catch2::Catch2WithMain
     juce::juce_recommended_warning_flags)

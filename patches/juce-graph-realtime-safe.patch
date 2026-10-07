@@ -1,0 +1,65 @@
+diff --git a/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.cpp b/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.cpp
+index 854fc9f109..0ff852ac1a 100644
+--- a/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.cpp
++++ b/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.cpp
+@@ -507,6 +507,14 @@ private:
+     std::optional<PrepareSettings> current, next;
+ };
+ 
++// OVERDUB PATCH (ADR 0001): see getAudioProcessorGraphBusyNodeBlockCount().
++static std::atomic<uint64> audioProcessorGraphBusyNodeBlocks { 0 };
++
++uint64 getAudioProcessorGraphBusyNodeBlockCount() noexcept
++{
++    return audioProcessorGraphBusyNodeBlocks.load (std::memory_order_relaxed);
++}
++
+ //==============================================================================
+ template <typename FloatType>
+ struct GraphRenderSequence
+@@ -555,7 +563,9 @@ struct GraphRenderSequence
+             return;
+         }
+ 
+-        currentAudioOutputBuffer.setSize (jmax (1, buffer.getNumChannels()), numSamples);
++        // OVERDUB PATCH (ADR 0001): reuse the buffer prepared in prepareBuffers, so a block no larger
++        // than the prepared size never allocates on the audio thread.
++        currentAudioOutputBuffer.setSize (jmax (1, buffer.getNumChannels()), numSamples, false, false, true);
+         currentAudioOutputBuffer.clear();
+         currentMidiOutputBuffer.clear();
+ 
+@@ -919,7 +929,19 @@ private:
+ 
+         void processWithBuffer (const GlobalIO&, bool bypass, AudioBuffer<FloatType>& audio, MidiBuffer& midi) final
+         {
+-            const ScopedLock lock { this->processor.getCallbackLock() };
++            // OVERDUB PATCH (ADR 0001): never block on the node's callback lock on the audio thread.
++            // While another thread holds it (e.g. suspendProcessing), the node outputs silence for
++            // this block, counted in getAudioProcessorGraphBusyNodeBlockCount().
++            const ScopedTryLock lock { this->processor.getCallbackLock() };
++
++            if (! lock.isLocked())
++            {
++                audioProcessorGraphBusyNodeBlocks.fetch_add (1, std::memory_order_relaxed);
++                audio.clear();
++                midi.clear();
++                return;
++            }
++
+             callProcess (bypass, audio, midi);
+         }
+ 
+diff --git a/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.h b/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.h
+index c79d5107bc..4b7f645c9d 100644
+--- a/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.h
++++ b/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.h
+@@ -469,4 +469,9 @@ private:
+     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioProcessorGraph)
+ };
+ 
++// OVERDUB PATCH (ADR 0001): the number of node blocks every AudioProcessorGraph in this process
++// has rendered as silence because another thread held the node's callback lock. Only grows.
++// Lock-free and allocation-free; callable from any thread, including the audio thread.
++JUCE_API uint64 getAudioProcessorGraphBusyNodeBlockCount() noexcept;
++
+ } // namespace juce

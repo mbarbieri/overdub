@@ -1,7 +1,14 @@
 # Third-party code. Every dependency is a git submodule; see docs/building.md.
 
 set(OVERDUB_JUCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/JUCE")
-set(OVERDUB_JUCE_PATCH "${PROJECT_SOURCE_DIR}/patches/juce-force-auv2-oop.patch")
+# Every patch applied to JUCE, each with the ADR that requires it:
+#   juce-force-auv2-oop.patch       ADR 0002: AUv2 loads out-of-process.
+#   juce-graph-realtime-safe.patch  ADR 0001/0005: AudioProcessorGraph neither locks nor allocates
+#                                   on the audio thread (try-lock per node, busy nodes silenced and
+#                                   counted, no output-buffer realloc).
+set(OVERDUB_JUCE_PATCHES
+    "${PROJECT_SOURCE_DIR}/patches/juce-force-auv2-oop.patch"
+    "${PROJECT_SOURCE_DIR}/patches/juce-graph-realtime-safe.patch")
 
 foreach(submodule JUCE Catch2 json)
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${submodule}/CMakeLists.txt")
@@ -9,9 +16,9 @@ foreach(submodule JUCE Catch2 json)
     endif()
 endforeach()
 
-# ADR 0002: JUCE must load AUv2 out-of-process. Apply the patch idempotently at every configure:
+# Apply each patch idempotently at every configure:
 # already applied -> nothing; applies cleanly -> apply; neither -> stop (JUCE was bumped or edited).
-function(overdub_apply_juce_patch)
+function(overdub_apply_juce_patch OVERDUB_JUCE_PATCH)
     execute_process(
         COMMAND git apply --reverse --check "${OVERDUB_JUCE_PATCH}"
         WORKING_DIRECTORY "${OVERDUB_JUCE_DIR}"
@@ -33,7 +40,9 @@ function(overdub_apply_juce_patch)
     message(STATUS "overdub: applied JUCE patch: ${OVERDUB_JUCE_PATCH}")
 endfunction()
 
-overdub_apply_juce_patch()
+foreach(patch IN LISTS OVERDUB_JUCE_PATCHES)
+    overdub_apply_juce_patch("${patch}")
+endforeach()
 
 add_subdirectory(JUCE EXCLUDE_FROM_ALL)
 add_subdirectory(Catch2 EXCLUDE_FROM_ALL)

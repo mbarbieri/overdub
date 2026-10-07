@@ -1,3 +1,4 @@
+#include "app/LiveEngine.h"
 #include "app/MainWindow.h"
 #include "core/BuildInfo.h"
 #include "core/Log.h"
@@ -35,12 +36,14 @@ public:
                             { "pid", static_cast<int> (getpid()) },
                         });
 
+        liveEngine = std::make_unique<LiveEngine>();
         mainWindow = std::make_unique<MainWindow> (getApplicationName());
     }
 
     void shutdown() override
     {
         mainWindow.reset();
+        liveEngine.reset();
 
         core::logEvent (core::Level::info, "app.stopped");
         juce::Logger::setCurrentLogger (nullptr);
@@ -82,6 +85,7 @@ private:
     }
 
     core::JuceLoggerBridge juceLoggerBridge;
+    std::unique_ptr<LiveEngine> liveEngine;
     std::unique_ptr<MainWindow> mainWindow;
 };
 } // namespace overdub::app
