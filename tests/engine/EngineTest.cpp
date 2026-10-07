@@ -67,7 +67,39 @@ TEST_CASE ("after a seek the impulse comes out where the new position puts it", 
     const auto afterSeek = device.render (engine, 4);
 
     CHECK (nonZeroSamples (afterSeek.channels[0]) == std::vector<std::int64_t> { 100 });
+    CHECK (nonZeroSamples (afterSeek.channels[1]) == std::vector<std::int64_t> { 100 });
     CHECK (engine.position() == 1100 + 4 * 256);
+}
+
+TEST_CASE ("after a seek under PDC the impulse comes out at its Song position and only silence precedes it", "[engine][transport][pdc]")
+{
+    TempPackage package;
+    auto song = overdub::song::makeEmptySong (testSampleRate);
+    // The dry Track holds a constant level over Song samples 0..999, so the delay lines are full
+    // of audio when the seek happens. The delayed Track has an impulse at Song sample 1600.
+    const auto takeLevel = addTake (song, package, "take-level", std::vector<float> (1000, 0.25f));
+    const auto takeImpulse = addTake (song, package, "take-impulse", impulse (4000, 1600));
+    song.tracks.push_back (trackWith ("track-dry", { clipOf ("clip-level", takeLevel, 0, 0, 1000) }));
+    song.tracks.push_back (trackWith ("track-delayed", { clipOf ("clip-impulse", takeImpulse, 0, 0, 4000) }));
+
+    static constexpr int delaySamples = 128;
+    Engine engine { stereoConfig() };
+    engine.loadSong (song, package.root, insertOnTrack ("track-delayed", [] { return std::make_unique<DelayProcessor> (delaySamples); }));
+    engine.play();
+
+    DeviceDriver device { 2, 256 };
+    const auto beforeSeek = device.render (engine, 2);
+    REQUIRE_FALSE (nonZeroSamples (beforeSeek.channels[0]).empty());
+
+    // Seek to 1400: Song sample 1600 is output sample 200 after the seek. The first 128 output
+    // samples would hold pre-seek audio from the delay lines; the engine silences them.
+    engine.seek (1400);
+    const auto afterSeek = device.render (engine, 4);
+
+    CHECK (engine.latencySamples() == delaySamples);
+    CHECK (nonZeroSamples (afterSeek.channels[0]) == std::vector<std::int64_t> { 200 });
+    CHECK (nonZeroSamples (afterSeek.channels[1]) == std::vector<std::int64_t> { 200 });
+    CHECK_THAT (afterSeek.channels[0][200], Catch::Matchers::WithinULP (1.0f, 0));
 }
 
 TEST_CASE ("a stopped transport outputs silence and holds its position", "[engine][transport]")

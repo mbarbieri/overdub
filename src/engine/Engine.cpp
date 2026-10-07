@@ -144,7 +144,11 @@ void Engine::process (const float* const*,
 
     if (fitsPlan)
     {
+        // Render-ahead (ADR 0003 amendment): the graph delays every path by its latency L, so the
+        // Track nodes read L samples ahead and output sample n of the block is Song sample
+        // playPosition + n. Song samples 0..L-1 after a start are never heard.
         currentPlan->render (outputs, numSamples, playPosition + currentPlan->latencySamples(), playing);
+        silenceStaleOutput (outputs, numOutputChannels, numSamples);
         rejectedShape = {};
     }
     else
@@ -175,6 +179,7 @@ void Engine::takePendingPlan (std::uint64_t hostTimeNs) noexcept
 
     retiredPlan.store (currentPlan, std::memory_order_release);
     currentPlan = next;
+    staleOutputSamples = next->latencySamples();
     currentLatency.store (next->latencySamples());
     currentSampleRate.store (next->sampleRate());
     pushEvent (planSwapped, hostTimeNs, next->latencySamples(), next->numTracks());
@@ -187,6 +192,7 @@ void Engine::applyTransportCommands (std::uint64_t hostTimeNs) noexcept
     {
         const auto from = playPosition;
         playPosition = seekTarget;
+        restartStaleOutput();
         pushEvent (seeked, hostTimeNs, (double) from);
     }
 
@@ -194,9 +200,26 @@ void Engine::applyTransportCommands (std::uint64_t hostTimeNs) noexcept
     if (wantPlaying != playing)
     {
         playing = wantPlaying;
+        restartStaleOutput();
         pushEvent (playing ? transportStarted : transportStopped, hostTimeNs);
         publishedPlaying.store (playing);
     }
+}
+
+void Engine::restartStaleOutput() noexcept
+{
+    staleOutputSamples = currentPlan != nullptr ? currentPlan->latencySamples() : 0;
+}
+
+void Engine::silenceStaleOutput (float* const* outputs, int numOutputChannels, int numSamples) noexcept
+{
+    const auto count = (int) std::min<SampleCount> (staleOutputSamples, numSamples);
+    if (count <= 0)
+        return;
+
+    for (int channel = 0; channel < numOutputChannels; ++channel)
+        std::memset (outputs[channel], 0, sizeof (float) * (std::size_t) count);
+    staleOutputSamples -= count;
 }
 
 void Engine::reportRejectedBlock (int numSamples, int numOutputChannels, std::uint64_t hostTimeNs) noexcept

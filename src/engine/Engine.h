@@ -51,7 +51,9 @@ public:
     void loadSong (const song::Song& song, const juce::File& packageRoot, const TrackInsertFactory& makeInserts = {});
 
     // Transport commands, any non-audio thread. Each takes effect at the start of the next block;
-    // within one block a seek applies before play/stop.
+    // within one block a seek applies before play/stop. After each of them, and after a plan
+    // swap, the first latencySamples() output samples are silence: the graph's delay lines still
+    // hold audio rendered before the change.
     void play();
     void stop();
     void seek (SampleCount songSample);
@@ -90,6 +92,8 @@ private:
     // Audio thread.
     void takePendingPlan (std::uint64_t hostTimeNs) noexcept;
     void applyTransportCommands (std::uint64_t hostTimeNs) noexcept;
+    void restartStaleOutput() noexcept;
+    void silenceStaleOutput (float* const* outputs, int numOutputChannels, int numSamples) noexcept;
     void reportRejectedBlock (int numSamples, int numOutputChannels, std::uint64_t hostTimeNs) noexcept;
     void publishAnchor (std::uint64_t hostTimeNs) noexcept;
     void recordLoad (std::uint64_t callbackNs, int numSamples) noexcept;
@@ -126,6 +130,10 @@ private:
     std::atomic<SampleCount> seekRequest { noSeek };
     bool playing = false;        // audio thread only
     SampleCount playPosition = 0; // audio thread only: Song sample of the next block start
+    // Audio thread only. Output samples still to silence because the graph's delay lines hold
+    // audio rendered before the last seek, play, stop or plan swap: set to the plan's latency
+    // at each of those, counted down as blocks render.
+    SampleCount staleOutputSamples = 0;
     std::atomic<bool> publishedPlaying { false };
     std::atomic<SampleCount> publishedPosition { 0 };
 
