@@ -32,6 +32,9 @@ std::optional<Command> commandForKey (KeyChord key)
         case U'3': return Command::showExport;
         case U'r': return Command::record;
         case U' ': return Command::playOrStop;
+        case U's': return Command::splitClip;
+        case backspaceCharacter:
+        case forwardDeleteCharacter: return Command::deleteClip;
         default: return std::nullopt;
     }
 }
@@ -48,6 +51,8 @@ std::optional<Mode> modeFor (Command command)
         case Command::rewind:
         case Command::undo:
         case Command::redo:
+        case Command::splitClip:
+        case Command::deleteClip:
             return std::nullopt;
     }
     return std::nullopt;

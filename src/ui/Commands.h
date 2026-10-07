@@ -4,6 +4,8 @@
 
 // The main window's keyboard commands (issue #9 resolution, issue #27): keys 1-3 pick a mode,
 // R records a Pass in any mode, Space plays or stops, command-Z / shift-command-Z undo and redo.
+// In Edit mode (issue #28) S splits the selected Clip at the playhead and backspace (or forward
+// delete) deletes it; the window ignores both in the other modes.
 // Pure: no JUCE, so the mapping is unit-tested on its own.
 namespace overdub::ui
 {
@@ -23,8 +25,15 @@ enum class Command
     playOrStop,
     rewind,
     undo,
-    redo
+    redo,
+    splitClip,
+    deleteClip
 };
+
+// The characters macOS delivers for the backspace key (labelled delete) and the forward delete
+// key, as JUCE's KeyPress::backspaceKey and KeyPress::deleteKey report them.
+inline constexpr char32_t backspaceCharacter = 0x7f;
+inline constexpr char32_t forwardDeleteCharacter = 0xf728;
 
 // A key press as the window sees it: the character typed (letters in either case) and the
 // modifiers held. `command` is the macOS command key.

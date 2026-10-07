@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <optional>
 #include <string>
 
 // The UI test harness (ADR 0005 UI amendment, issue #27). Components are built for real under
@@ -28,7 +29,7 @@ inline void layOut (juce::Component& component, int width, int height)
     component.setVisible (true);
 }
 
-inline juce::MouseEvent mouseEventAt (juce::Component& target, juce::Point<float> position, juce::ModifierKeys modifiers)
+inline juce::MouseEvent mouseEventAt (juce::Component& target, juce::Point<float> position, juce::ModifierKeys modifiers, std::optional<juce::Point<float>> mouseDownPosition = std::nullopt)
 {
     const auto now = juce::Time::getCurrentTime();
     return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(),
@@ -42,7 +43,7 @@ inline juce::MouseEvent mouseEventAt (juce::Component& target, juce::Point<float
                              &target,
                              &target,
                              now,
-                             position,
+                             mouseDownPosition.value_or (position),
                              now,
                              1,
                              false);
@@ -55,6 +56,24 @@ inline void click (juce::Component& target)
     const auto centre = target.getLocalBounds().getCentre().toFloat();
     target.mouseDown (mouseEventAt (target, centre, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier)));
     target.mouseUp (mouseEventAt (target, centre, juce::ModifierKeys()));
+}
+
+// A left-button drag in the Component's coordinates: mouseDown at `from`, one mouseDrag and the
+// mouseUp at `to`.
+inline void drag (juce::Component& target, juce::Point<int> from, juce::Point<int> to)
+{
+    const auto down = from.toFloat();
+    const auto up = to.toFloat();
+    const juce::ModifierKeys leftButton (juce::ModifierKeys::leftButtonModifier);
+    target.mouseDown (mouseEventAt (target, down, leftButton));
+    target.mouseDrag (mouseEventAt (target, up, leftButton, down));
+    target.mouseUp (mouseEventAt (target, up, juce::ModifierKeys(), down));
+}
+
+// A left click at a point in the Component's coordinates.
+inline void clickAt (juce::Component& target, juce::Point<int> position)
+{
+    drag (target, position, position);
 }
 
 // Delivers a key press; returns whether the Component used it.

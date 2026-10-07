@@ -2,6 +2,7 @@
 
 #include "core/Error.h"
 #include "ui/Commands.h"
+#include "ui/EditPage.h"
 #include "ui/OpenSong.h"
 #include "ui/Pages.h"
 #include "ui/RecordPage.h"
@@ -15,7 +16,9 @@
 #include <vector>
 
 // The main window's content (issue #27, issue #9 resolution): the top bar over the current mode's
-// page (Record, or the Edit and Export placeholders), the Notice line, and Alerts. It translates
+// page (Record, Edit (issue #28), or the Export placeholder), the Notice line, and Alerts.
+// In Edit mode S splits the selected Clip at the playhead and backspace deletes it, each one
+// undo step through OpenSong::edit; in the other modes both keys do nothing. It translates
 // keys and clicks into Commands and OpenSong calls; the logic lives in the pure functions and
 // in OpenSong.
 //
@@ -68,7 +71,7 @@ public:
     // Children are public so tests can click them and check what shows.
     TopBar topBar;
     RecordPage recordPage;
-    PlaceholderPage editPage { "Edit mode: the timeline and mixer arrive in a later version." };
+    EditPage editPage;
     PlaceholderPage exportPage { "Export mode arrives in a later version." };
     NoSongPage noSongPage;
     NoticeLine noticeLine;
@@ -77,6 +80,9 @@ private:
     void timerCallback() override { tick(); }
 
     void showMode (Mode mode);
+    void splitSelectedClip();
+    void deleteSelectedClip();
+    void applyEdit (core::Expected<song::Song> changed, const std::string& label);
     void importFiles (const std::vector<juce::File>& files);
     void post (UserMessage message);
     void presentMessages();

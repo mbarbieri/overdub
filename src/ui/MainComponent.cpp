@@ -1,5 +1,7 @@
 #include "ui/MainComponent.h"
 
+#include "song/ClipEdits.h"
+
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 #include "ui/TransportText.h"
@@ -66,6 +68,25 @@ MainComponent::MainComponent()
                 safeThis->importFiles (files);
         });
     };
+    editPage.onEdit = [this] (song::Song changed, std::string label) {
+        applyEdit (std::move (changed), label);
+    };
+    editPage.onSeek = [this] (song::SampleCount sample) {
+        if (openSong != nullptr)
+            openSong->seek (sample);
+        refresh();
+    };
+    editPage.onArm = [this] (const song::Id& trackId, bool armed) {
+        if (openSong != nullptr)
+            openSong->setArmed (trackId, armed);
+        refresh();
+    };
+    editPage.onSplit = [this] { perform (Command::splitClip); };
+    editPage.onDelete = [this] { perform (Command::deleteClip); };
+    editPage.timeline.peaksFor = [this] (const song::ClipSource& source) -> const song::Peaks& {
+        static const song::Peaks none;
+        return openSong != nullptr ? openSong->peaks (source) : none;
+    };
     noSongPage.onNewSong = [this] {
         if (onNewSong)
             onNewSong();
@@ -127,11 +148,54 @@ void MainComponent::perform (Command command)
                 if (auto redone = openSong->redo(); ! redone.has_value())
                     handleError (redone.error());
             break;
+        case Command::splitClip:
+            if (currentMode == Mode::edit)
+                splitSelectedClip();
+            break;
+        case Command::deleteClip:
+            if (currentMode == Mode::edit)
+                deleteSelectedClip();
+            break;
         case Command::showRecord:
         case Command::showEdit:
         case Command::showExport:
             break;
     }
+    refresh();
+}
+
+void MainComponent::splitSelectedClip()
+{
+    const auto selected = editPage.timeline.selectedClip();
+    if (! selected.has_value() || passRunning())
+        return;
+    const auto rightHalf = song::makeId();
+    auto split = song::splitClip (openSong->song(), *selected, openSong->position(), rightHalf);
+    const auto wasSplit = split.has_value();
+    applyEdit (std::move (split), song::splitClipLabel);
+    if (wasSplit)
+        editPage.timeline.selectClip (rightHalf);
+}
+
+void MainComponent::deleteSelectedClip()
+{
+    const auto selected = editPage.timeline.selectedClip();
+    if (! selected.has_value() || passRunning())
+        return;
+    applyEdit (song::deleteClip (openSong->song(), *selected), song::deleteClipLabel);
+}
+
+void MainComponent::applyEdit (core::Expected<song::Song> changed, const std::string& label)
+{
+    if (openSong == nullptr || passRunning())
+        return;
+    if (! changed.has_value())
+    {
+        handleError (changed.error());
+        return;
+    }
+    if (auto edited = openSong->edit (std::move (*changed), label); ! edited.has_value())
+        handleError (edited.error());
     refresh();
 }
 
@@ -231,6 +295,8 @@ void MainComponent::refresh()
             openSong->audio().inputChannelNames,
             [this] (const song::Id& trackId) { return openSong->isMonitoring (trackId); },
             recording));
+        if (currentMode == Mode::edit)
+            editPage.show (TimelineState { song, openSong->position(), state.playing, ! recording });
     }
     topBar.show (state);
 

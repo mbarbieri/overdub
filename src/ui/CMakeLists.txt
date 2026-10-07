@@ -8,12 +8,15 @@ add_library(overdub_ui STATIC)
 target_sources(overdub_ui PRIVATE
     Commands.cpp
     DeviceSettingsPanel.cpp
+    EditPage.cpp
     Layout.cpp
     MainComponent.cpp
     OpenSong.cpp
     Pages.cpp
     RecordPage.cpp
     SongFiles.cpp
+    Timeline.cpp
+    TimelineGeometry.cpp
     TopBar.cpp
     TrackRowEdits.cpp
     TransportText.cpp

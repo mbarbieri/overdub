@@ -4,8 +4,8 @@
 
 #include <functional>
 
-// The simple pages and the notice line (issue #27): Edit and Export placeholders (their real
-// pages are slices 7 and 16), the page shown when no Song is open, and the Notice one-liner.
+// The simple pages and the notice line (issue #27): the Export placeholder (its real page is
+// slice 16), the page shown when no Song is open, and the Notice one-liner.
 namespace overdub::ui
 {
 // A page with one centred line of text.
