@@ -3,6 +3,7 @@
 #include "core/Log.h"
 #include "engine/ClipSchedule.h"
 #include "engine/TrackPlayer.h"
+#include "song/BackingTrackImport.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -24,29 +25,11 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PlanPlayHead::getPosition() co
 
 namespace
 {
-const char* sourceKindName (song::ClipSourceKind kind)
-{
-    return kind == song::ClipSourceKind::take ? "take" : "backing";
-}
-
-    // Package-relative playback file of a Clip source (ADR 0004); empty when the Song lacks it.
-std::string sourcePath (const song::Song& song, const song::ClipSource& source)
-{
-    if (source.kind == song::ClipSourceKind::take)
-    {
-        const auto take = std::ranges::find (song.takes, source.id, &song::Take::id);
-        return take != song.takes.end() ? take->file : std::string {};
-    }
-
-    const auto backing = std::ranges::find (song.backingTracks, source.id, &song::BackingTrack::id);
-    return backing != song.backingTracks.end() ? "backing/" + backing->id + ".wav" : std::string {};
-}
-
     // Every Clip source that plays silence is logged here: `event` with the source's kind, id and
     // path, plus any event-specific fields.
 void logSilentSource (const char* event, const song::ClipSource& source, const juce::File& file, const char* message, core::Fields extra = core::Fields::object())
 {
-    extra["source_kind"] = sourceKindName (source.kind);
+    extra["source_kind"] = song::toString (source.kind);
     extra["source_id"] = source.id;
     extra["path"] = file.getFullPathName().toStdString();
     core::logEvent (core::Level::warn, event, extra, message);
@@ -99,7 +82,8 @@ SourceAudio loadSource (const song::ClipSource& source, const juce::File& file, 
     return audio;
 }
 
-    // Loads each distinct source file once per plan, keyed by package-relative path.
+    // Loads each distinct source file once per plan, keyed by its full path (empty when the Song
+    // lacks the source).
 class SourceLoader
 {
 public:
@@ -107,12 +91,12 @@ public:
 
     SourceAudio load (const song::ClipSource& source)
     {
-        const auto path = sourcePath (song, source);
+        const auto mediaFile = song::mediaFileFor (packageRoot, song, source);
+        const auto path = mediaFile.has_value() ? mediaFile->getFullPathName().toStdString() : std::string {};
         if (const auto cached = loaded.find (path); cached != loaded.end())
             return cached->second;
 
-        const auto file = path.empty() ? packageRoot.getChildFile ("<unknown " + juce::String (sourceKindName (source.kind)) + " " + juce::String (source.id) + ">")
-                                       : packageRoot.getChildFile (path);
+        const auto file = mediaFile.value_or (packageRoot.getChildFile ("<unknown " + juce::String (std::string (song::toString (source.kind))) + " " + juce::String (source.id) + ">"));
         auto audio = loadSource (source, file, song.sampleRate);
         loaded.emplace (path, audio);
         return audio;

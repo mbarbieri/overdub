@@ -1,4 +1,6 @@
 #include "engine/Engine.h"
+#include "song/BackingTrackImport.h"
+#include "song/SongPackage.h"
 
 #include "EngineFixture.h"
 #include "TestProcessors.h"
@@ -240,4 +242,39 @@ TEST_CASE ("a Clip whose source file is missing plays silence and still hides th
     CHECK ((*missing)["source_kind"] == "take");
     CHECK ((*missing)["source_id"] == "take-missing");
     CHECK ((*missing)["path"] == package.root.getChildFile (missingTake.file).getFullPathName().toStdString());
+}
+
+TEST_CASE ("an imported Backing Track plays from sample 0, and plays silence once both its files are gone", "[engine][playback][import]")
+{
+    TempPackage folder;
+    const auto source = folder.root.getChildFile ("Click.wav");
+    writeFloatWav (source, { impulse (2000, 300) });
+    const auto location = folder.root.getChildFile ("Song.overdub");
+    {
+        auto created = overdub::song::SongPackage::create (location, overdub::song::makeEmptySong (testSampleRate));
+        REQUIRE (created.has_value());
+        REQUIRE ((*created)->importBackingTrack (source).has_value());
+    }
+    auto opened = overdub::song::SongPackage::open (location);
+    REQUIRE (opened.has_value());
+    const auto song = opened->package->song();
+
+    Engine engine { stereoConfig() };
+    engine.loadSong (song, location);
+    engine.play();
+    DeviceDriver device { 2, 256 };
+    CHECK (nonZeroSamples (device.render (engine, 4).channels[0]) == std::vector<std::int64_t> { 300 });
+
+    const auto& backingTrack = song.backingTracks.at (0);
+    REQUIRE (overdub::song::derivedFileFor (location, backingTrack).deleteFile());
+    REQUIRE (overdub::song::originalFileFor (location, backingTrack).deleteFile());
+    auto reopened = overdub::song::SongPackage::open (location);
+    REQUIRE (reopened.has_value());
+    REQUIRE (reopened->package->isBackingTrackMissing (backingTrack.id));
+
+    Engine silentEngine { stereoConfig() };
+    silentEngine.loadSong (reopened->package->song(), location);
+    silentEngine.play();
+    DeviceDriver silentDevice { 2, 256 };
+    CHECK (nonZeroSamples (silentDevice.render (silentEngine, 4).channels[0]).empty());
 }

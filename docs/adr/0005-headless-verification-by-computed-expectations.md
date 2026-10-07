@@ -25,6 +25,9 @@ Every implementation slice must build and pass the full `ctest` suite, and it mu
   | Export A/V offset | within ±½ frame per marker, end − start ≤ 1 ms |
   | Clock-fit unit tests | recovered drift within 0.1 ppm of the injected value |
   | Loopback selftest | jitter ≤ 5 samples across bursts |
+  | Backing Track import, lossless (WAV, AIFF, CAF, FLAC, ALAC) | click lands sample-exact; length = source length × Song rate / source rate |
+  | Backing Track import, AAC (M4A) and MP3 | click (loudest sample) sample-exact: error measured as 0 samples in issue #25 at 48 → 48 kHz and 48 → 44.1 kHz (AAC at Core Audio's default bit rate, MP3 128 kbit/s CBR from `lame`); length as lossless, priming trimmed |
+  | Backing Track import, resampled sine | frequency within 0.01 Hz (1 kHz, 48 → 44.1 kHz) |
 - UI verification is covered by the amendment below.
 
 ## Amendment: UI verification (issue #17)

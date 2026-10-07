@@ -167,10 +167,8 @@ constexpr std::array<std::pair<PreRoll, int>, 4> preRollSeconds { {
     { PreRoll::fourSeconds, 4 },
 } };
 
-constexpr std::array<std::pair<ClipSourceKind, std::string_view>, 2> clipSourceKindNames { {
-    { ClipSourceKind::take, "take" },
-    { ClipSourceKind::backing, "backing" },
-} };
+// Every ClipSourceKind; its song.json name is toString (kind).
+constexpr std::array<ClipSourceKind, 2> clipSourceKinds { ClipSourceKind::take, ClipSourceKind::backing };
 
 int preRollToSeconds (PreRoll preRoll)
 {
@@ -190,20 +188,12 @@ PreRoll readPreRoll (const Reader& reader, std::string_view key)
     return PreRoll::off;
 }
 
-std::string clipSourceKindToName (ClipSourceKind kind)
-{
-    for (const auto& [value, name] : clipSourceKindNames)
-        if (value == kind)
-            return std::string (name);
-    return std::string (clipSourceKindNames.front().second);
-}
-
 ClipSourceKind readClipSourceKind (const Reader& reader, std::string_view key)
 {
     const auto name = reader.string (key);
-    for (const auto& [value, valueName] : clipSourceKindNames)
-        if (valueName == name)
-            return value;
+    for (const auto kind : clipSourceKinds)
+        if (toString (kind) == name)
+            return kind;
     reader.report (reader.childPath (key), "expected \"take\" or \"backing\"");
     return ClipSourceKind::take;
 }
@@ -235,7 +225,7 @@ json clipToJson (const Clip& clip)
 {
     return {
         { "id", clip.id },
-        { "source", { { "kind", clipSourceKindToName (clip.source.kind) }, { "id", clip.source.id } } },
+        { "source", { { "kind", std::string (toString (clip.source.kind)) }, { "id", clip.source.id } } },
         { "timelineStart", clip.timelineStart },
         { "sourceOffset", clip.sourceOffset },
         { "length", clip.length },
