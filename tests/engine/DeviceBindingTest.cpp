@@ -156,11 +156,11 @@ TEST_CASE ("the first device callback on a fresh thread neither allocates nor lo
     CHECK_THAT (firstCallback, overdub::testing::isRealtimeSafe());
 }
 
-TEST_CASE ("starting the device logs engine.device_opened with the device's shape and latencies", "[engine][device][binding]")
+TEST_CASE ("starting the device logs engine.device_opened with the device's shape, latencies and calibration offset", "[engine][device][binding]")
 {
     ScopedLogCapture capture;
     Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
-    DeviceBinding binding { engine };
+    DeviceBinding binding { engine, -821 };
     FakeAudioIODevice device { FakeDeviceShape {
         .name = "Scarlett 2i2 USB",
         .typeName = "CoreAudio",
@@ -185,7 +185,7 @@ TEST_CASE ("starting the device logs engine.device_opened with the device's shap
     CHECK (opened[0]["output_channels"] == 2);
     CHECK (opened[0]["input_latency_samples"] == 301);
     CHECK (opened[0]["output_latency_samples"] == 287);
-    CHECK (opened[0]["calibration_offset_samples"] == 0);
+    CHECK (opened[0]["calibration_offset_samples"] == -821);
     CHECK (eventsNamed (capture, "engine.device_engine_mismatch").empty());
 }
 

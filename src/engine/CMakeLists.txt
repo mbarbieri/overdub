@@ -9,6 +9,8 @@ target_sources(overdub_engine PRIVATE
     DeviceBinding.cpp
     DeviceSettings.cpp
     Engine.cpp
+    LatencyCalibration.cpp
+    RecordSession.cpp
     RenderPlan.cpp
     TrackPlayer.cpp)
 

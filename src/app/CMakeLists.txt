@@ -13,12 +13,15 @@ juce_add_gui_app(Overdub
 
 target_sources(Overdub PRIVATE
     LiveEngine.cpp
+    LoopbackSelftest.cpp
     Main.cpp
-    MainWindow.cpp)
+    MainWindow.cpp
+    MicrophonePermission.mm)
 
-# overdub_engine links overdub_song and overdub_core publicly.
+# overdub_capture links overdub_engine, overdub_song and overdub_core publicly.
 target_link_libraries(Overdub PRIVATE
-    overdub_engine
+    overdub_capture
+    "-framework AVFoundation"
     juce::juce_recommended_warning_flags)
 
 # ADR 0001: sign with one stable local identity (no hardened runtime) so camera and microphone

@@ -108,7 +108,7 @@ private:
     std::map<std::string, SourceAudio> loaded;
 };
 
-std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLoader& loader)
+std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLoader& loader, const LiveInput& liveInput)
 {
     std::vector<LayeredClip> layered;
     std::vector<SourceAudio> sources;
@@ -119,7 +119,9 @@ std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLo
         if (audio != nullptr)
             sources.push_back (std::move (audio));
     }
-    return std::make_unique<TrackPlayer> (juce::String (track.id), flattenClips (layered), std::move (sources));
+    // Only an Armed Track hears its input; an unarmed Track's input channels stay silent.
+    auto monitorChannels = track.armed ? track.inputChannels : std::vector<int> {};
+    return std::make_unique<TrackPlayer> (juce::String (track.id), flattenClips (layered), std::move (sources), liveInput, std::move (monitorChannels));
 }
 
 void connectStereo (Graph& graph, Graph::NodeID from, Graph::NodeID to)
@@ -142,7 +144,7 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
     for (const auto& track : song.tracks)
     {
         clipCount += (int) track.clips.size();
-        auto previous = graph.addNode (makeTrackPlayer (track, loader), {}, Graph::UpdateKind::none)->nodeID;
+        auto previous = graph.addNode (makeTrackPlayer (track, loader, liveInput), {}, Graph::UpdateKind::none)->nodeID;
 
         if (makeInserts)
         {
@@ -182,8 +184,9 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
                       { "max_block_size", config.maxBlockSize } });
 }
 
-std::uint64_t RenderPlan::render (float* const* outputs, int numSamples, std::int64_t renderSample, bool playing) noexcept
+std::uint64_t RenderPlan::render (float* const* outputs, const LiveInput& input, int numSamples, std::int64_t renderSample, bool playing) noexcept
 {
+    liveInput = input;
     playHead.renderSample = renderSample;
     playHead.playing = playing;
 

@@ -47,6 +47,22 @@ struct Peaks
 // The min/max of each 256-sample block of each channel; the last block may be shorter.
 Peaks computePeaks (const juce::AudioBuffer<float>& audio);
 
+// computePeaks over audio that arrives in chunks of any size (Recording writes a Take this way):
+// after every chunk is appended, finish() equals computePeaks of the whole audio.
+class PeaksBuilder
+{
+public:
+    explicit PeaksBuilder (int numChannels);
+
+    // `channels` has the builder's channel count, each `numSamples` long.
+    void append (const float* const* channels, int numSamples);
+    Peaks finish() const;
+
+private:
+    Peaks peaks;
+    int samplesInLastPeak = samplesPerPeak; // samples already in the last PeakRange; full = start a new one
+};
+
 std::string encodePeaks (const Peaks& peaks);
 
 // Errors: song.peaks_corrupt (reason).
@@ -59,6 +75,9 @@ juce::File peaksFileFor (const juce::File& packageRoot, const Id& mediaId);
 // atomically to `peaksFile`, creating its folder. Errors: song.write_failed (step create_folder,
 // open, write, fsync or rename), or the hook's Error.
 core::Expected<void> writePeaksFile (const juce::File& peaksFile, const juce::AudioBuffer<float>& audio, const BeforeRenameHook& beforeRename);
+
+// The same writer for peaks computed already (PeaksBuilder). Errors: as above.
+core::Expected<void> writePeaksFile (const juce::File& peaksFile, const Peaks& peaks, const BeforeRenameHook& beforeRename);
 
 // Reads peaks/<mediaId>.peaks. When it is missing or corrupt, rebuilds it from `mediaFile` (a WAV),
 // logs song.peaks_rebuilt (info: media_id, reason missing|corrupt, path) and returns the new peaks.

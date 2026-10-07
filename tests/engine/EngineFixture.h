@@ -69,6 +69,19 @@ inline std::vector<float> sine (std::int64_t length, double frequency, float amp
     return samples;
 }
 
+// Adds a Take with the given channels (1 or 2, same length) to the Song and writes its file.
+inline song::Take addMultichannelTake (song::Song& song, const TempPackage& package, const std::string& id, const std::vector<std::vector<float>>& channels)
+{
+    song::Take take;
+    take.id = id;
+    take.file = "audio/" + id + ".wav";
+    take.channels = (int) channels.size();
+    take.lengthSamples = (song::SampleCount) channels[0].size();
+    writeFloatWav (package.root.getChildFile (take.file), channels, song.sampleRate);
+    song.takes.push_back (take);
+    return take;
+}
+
 // Adds a mono Take with the given samples to the Song and writes its file into the package.
 inline song::Take addTake (song::Song& song, const TempPackage& package, const std::string& id, const std::vector<float>& samples)
 {
@@ -151,6 +164,93 @@ struct DeviceDriver
                 rendered.channels[c].insert (rendered.channels[c].end(), outputStorage[c].begin(), outputStorage[c].end());
         }
         return rendered;
+    }
+};
+
+// A duplex device for recording tests: each block's input is the device's own output stream
+// delayed by `loopDelay` samples (output channel c echoes into input channel c, as a cable or a
+// speaker and microphone would), plus whatever `extraInput` holds at that stream position.
+// loopDelay must be at least one block: a real round trip never reaches into the block being
+// rendered. Every input and output sample is kept, indexed by stream position from 0.
+struct LoopbackDevice
+{
+    int numChannels = 2;
+    int blockSize = 256;
+    std::int64_t loopDelay = 0;
+    std::uint64_t hostTimeNs = 1'000'000'000;
+    std::vector<std::vector<float>> extraInput; // per channel, by stream position; may be empty
+    std::vector<std::vector<float>> outputHistory;
+    std::vector<std::vector<float>> inputHistory;
+    std::vector<std::vector<float>> outputStorage;
+    std::vector<std::vector<float>> inputStorage;
+    std::vector<float*> outputPointers;
+    std::vector<const float*> inputPointers;
+
+    LoopbackDevice (int channels, int samplesPerBlock, std::int64_t delay)
+        : numChannels (channels), blockSize (samplesPerBlock), loopDelay (delay)
+    {
+        REQUIRE (loopDelay >= blockSize);
+        outputStorage.assign ((std::size_t) numChannels, std::vector<float> ((std::size_t) blockSize, 0.0f));
+        inputStorage.assign ((std::size_t) numChannels, std::vector<float> ((std::size_t) blockSize, 0.0f));
+        outputHistory.assign ((std::size_t) numChannels, {});
+        inputHistory.assign ((std::size_t) numChannels, {});
+        extraInput.assign ((std::size_t) numChannels, {});
+        for (auto& channel : outputStorage)
+            outputPointers.push_back (channel.data());
+        for (auto& channel : inputStorage)
+            inputPointers.push_back (channel.data());
+    }
+
+    std::int64_t streamPosition() const { return (std::int64_t) outputHistory[0].size(); }
+
+    std::uint64_t blockDurationNs() const { return (std::uint64_t) blockSize * 1'000'000'000ULL / testSampleRate; }
+
+    // Fills this block's input from the history; may allocate (the histories grow), so tests call
+    // it outside REQUIRE_REALTIME_SAFE and then processPreparedBlock inside.
+    void prepareInput()
+    {
+        const auto start = streamPosition();
+        for (std::size_t c = 0; c < inputStorage.size(); ++c)
+        {
+            for (int i = 0; i < blockSize; ++i)
+            {
+                const auto position = start + i;
+                const auto echoed = position - loopDelay;
+                float value = echoed >= 0 ? outputHistory[c][(std::size_t) echoed] : 0.0f;
+                if (position < (std::int64_t) extraInput[c].size())
+                    value += extraInput[c][(std::size_t) position];
+                inputStorage[c][(std::size_t) i] = value;
+            }
+        }
+    }
+
+    // One callback with the prepared input; no allocation.
+    void processPreparedBlock (Engine& engine)
+    {
+        engine.process (inputPointers.data(), numChannels, outputPointers.data(), numChannels, blockSize, hostTimeNs);
+        hostTimeNs += blockDurationNs();
+    }
+
+    void keepHistory()
+    {
+        for (std::size_t c = 0; c < outputStorage.size(); ++c)
+        {
+            outputHistory[c].insert (outputHistory[c].end(), outputStorage[c].begin(), outputStorage[c].end());
+            inputHistory[c].insert (inputHistory[c].end(), inputStorage[c].begin(), inputStorage[c].end());
+        }
+    }
+
+    void processOneBlock (Engine& engine)
+    {
+        prepareInput();
+        processPreparedBlock (engine);
+        keepHistory();
+    }
+
+    void run (Engine& engine, int numBlocks)
+    {
+        for (int block = 0; block < numBlocks; ++block)
+            processOneBlock (engine);
     }
 };
 

@@ -98,6 +98,24 @@ TEST_CASE ("peaks hold the min and max of every 256 samples of every channel", "
     CHECK (overdub::song::computePeaks (rampSignal()) == expectedRampPeaks());
 }
 
+TEST_CASE ("peaks built from chunks of any size equal the peaks of the whole audio", "[song][peaks]")
+{
+    const auto audio = rampSignal();
+    // Chunk sizes that straddle the 256-sample peak boundaries in different places.
+    for (const int chunk : { 1, 7, 100, 256, 300, signalLength })
+    {
+        overdub::song::PeaksBuilder builder { 2 };
+        for (int start = 0; start < signalLength; start += chunk)
+        {
+            const auto count = std::min (chunk, signalLength - start);
+            const float* channels[] = { audio.getReadPointer (0, start), audio.getReadPointer (1, start) };
+            builder.append (channels, count);
+        }
+        CAPTURE (chunk);
+        CHECK (builder.finish() == expectedRampPeaks());
+    }
+}
+
 TEST_CASE ("peaks survive their file encoding", "[song][peaks]")
 {
     const auto decoded = overdub::song::decodePeaks (overdub::song::encodePeaks (expectedRampPeaks()));

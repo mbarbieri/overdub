@@ -17,3 +17,14 @@ A Take is placed at its first dry sample's timeline position minus (device input
 - Watch `kAudioComponentInstanceInvalidationNotification` to detect a crashed hosting process. One `AUHostingService` process can host several units.
 - The calibration offset is a per-machine device setting, not part of a Song.
 - JUCE's `RuntimePermissions` is a no-op on macOS. Request microphone access through `AVCaptureDevice` before opening the audio device, or the TCC prompt blocks the message thread inside CoreAudio's device open.
+
+## Amendment: recording details settled by the implementation (issue #26)
+
+- **Placement under render-ahead.** The engine renders L (plan PDC) samples ahead (ADR 0003 amendment), so the first captured input sample was captured while the Track nodes rendered Song sample start + L. A Take's `origin` is `start + L − (input latency + output latency + L + calibration offset)`, which is `start − (input + output + calibration)`. `TakeCompensation.reportedLatencySamples` stores `input + output + L`.
+- **The Take keeps every dry sample**; its Clip starts at the Pass start (the record point) or at `origin` if that is later, with `sourceOffset` set so each sample stays at its placed position. Input captured before the record point is in the file but not heard.
+- **A Pass covers one continuous run of the transport.** It starts on the first playing block after record is pressed, and ends at stop, or when the transport stops or seeks.
+- **Calibration store.** `~/Library/Application Support/Overdub/latency-calibration.json` keeps one offset per (input device, output device, sample rate); a missing entry is 0. `engine.device_opened` logs the offset in use.
+- **Selftest.** On the built-in MacBook devices at 44.1 kHz with a 512 buffer, `--selftest loopback` measured `offset_samples` −821 and a jitter of 3 samples, matching the spike: the calibration flow (slice 18) stores `offset_samples` added to the current offset.
+- **Overruns.** A block that does not fit an Armed Track's FIFO is recorded as silence of the same length, so later samples keep their place; the count is in `capture.pass_stopped` (`overrun_frames`).
+- **Anchors** of a Pass (one per callback, ADR 0003) are returned in memory with the finished Pass (`capture::RecordedPass::anchors`), not stored in the package; slice 14 keeps what the Video Take needs.
+- **Plain Monitoring** adds an Armed Track's input at its Track node, so it is delayed by the plan's PDC like the Track's playback. With no AUs (slice 12) that delay is 0.
