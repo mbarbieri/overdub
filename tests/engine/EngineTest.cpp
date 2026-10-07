@@ -158,7 +158,7 @@ TEST_CASE ("a Track with a delaying processor stays aligned with an undelayed Tr
     CHECK (nonZeroSamples (rendered.channels[1]) == std::vector<std::int64_t> { 1200, 2000 });
 }
 
-TEST_CASE ("Track processors shape only their own Track", "[engine][pdc]")
+TEST_CASE ("an Insert Chain shapes only its own Track", "[engine][pdc]")
 {
     TempPackage package;
     auto song = overdub::song::makeEmptySong (testSampleRate);
