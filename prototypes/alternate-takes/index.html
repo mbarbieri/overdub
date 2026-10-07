@@ -1,0 +1,1045 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overdub alternate takes — PROTOTYPE</title>
+<!--
+  PROTOTYPE — throwaway, never production. Production UI is JUCE Components (ADR 0001).
+  Question (issue #15 "Alternate takes"): how do you browse the older Takes a newer Take covers, and bring one back?
+  Also: should v1 have pre-roll and cycle recording?
+  Built on the agreed main window (issue #9, variant C: Record / Edit / Export modes).
+  Three variants of take browsing, switchable via ?variant=A|B|C (or ← → keys / the bottom pill):
+    A  Swap on the Clip  — a "Takes ▾" tag on a Clip; picking a Take swaps that Clip's source in place (trim, fades, gain stay).
+    B  Bring to top      — same tag; picking a Take lays a new Clip of it on top over that span (old Clips stay underneath).
+    C  Take lanes        — no tag; a Track's header unfolds one thin lane per Take; click a lane to use it for the Clip under that point.
+  In every variant the Passes list ("↺ Bring back") re-lays a whole Pass on top on every Track, as recorded. It also reaches Takes no Clip uses.
+  Pre-roll (top bar) and Cycle (⟳, range on the ruler, key C) are live in every variant.
+  State is in memory only. Click "state" in the pill to see the full model after every action.
+-->
+<style>
+:root{
+  --bg:#1e1f22; --panel:#26272b; --panel2:#2d2e33; --line:#3a3b41; --text:#e6e6e9; --dim:#9a9ba3;
+  --accent:#4f8cff; --rec:#ff453a; --mute:#ffb340; --solo:#ffd60a; --take:#3d7a5c; --backing:#5a5f8a; --video:#8a5a8a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:12px -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;overflow:hidden;user-select:none}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:3px 8px;cursor:pointer}
+button:hover{border-color:#55565e}
+button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.arm.on,button.rec.on{background:var(--rec);border-color:var(--rec);color:#fff}
+button.rec{color:var(--rec)}
+button.mute.on{background:var(--mute);border-color:var(--mute);color:#000}
+button.solo.on{background:var(--solo);border-color:var(--solo);color:#000}
+select{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:2px 4px}
+input[type=range]{accent-color:var(--accent)}
+#app{height:100vh}
+.spacer{flex:1}
+.sep{width:1px;align-self:stretch;background:var(--line);margin:0 4px}
+.dim{color:var(--dim)}
+.badge{font-size:10px;padding:1px 5px;border-radius:8px;background:#ffffff14;color:var(--dim)}
+.mon{font-size:10px;color:#7fd1a0;white-space:nowrap}
+
+/* transport */
+.transport{display:flex;align-items:center;gap:4px}
+.transport button{min-width:30px}
+.transport .clock{font:600 16px ui-monospace,Menlo,monospace;background:#000;padding:2px 10px;border-radius:5px;display:flex;flex-direction:column;align-items:center;min-width:110px;margin-left:6px}
+.transport .clock small{font:9px -apple-system;color:var(--dim);letter-spacing:1px}
+.transport.big button{min-width:52px;font-size:18px;padding:6px 10px}
+.transport.big .clock{font-size:22px;min-width:150px}
+
+/* meters */
+.meter{flex:1;height:6px;background:#111;border-radius:3px;overflow:hidden;min-width:30px}
+.meter i{display:block;height:100%;width:calc(var(--l,0)*100%);background:linear-gradient(90deg,#3fbf6f 70%,#ffd60a 88%,#ff453a)}
+.meter-v{width:8px;background:#111;border-radius:3px;overflow:hidden;display:flex;align-items:flex-end}
+.meter-v i{display:block;width:100%;height:calc(var(--l,0)*100%);background:linear-gradient(0deg,#3fbf6f 70%,#ffd60a 88%,#ff453a)}
+.meter.big{height:14px;border-radius:4px}
+
+/* timeline */
+.timeline{position:relative;overflow:auto;height:100%;background:#1a1b1e}
+.tl-inner{position:relative;width:max-content;min-height:100%}
+.row{display:flex;border-bottom:1px solid var(--line)}
+.row.sel .hdr{background:#2f3340}
+.hdr{position:sticky;left:0;z-index:30;background:var(--panel);border-right:1px solid var(--line);padding:5px 7px;display:flex;flex-direction:column;gap:4px;justify-content:center;flex-shrink:0;overflow:hidden}
+.ruler-row{position:sticky;top:0;z-index:40;height:24px;background:var(--panel)}
+.ruler-row .hdr{z-index:50;flex-direction:row;align-items:center;justify-content:flex-start}
+.ruler{position:relative;height:24px;cursor:text;background:var(--panel)}
+.tick{position:absolute;top:0;bottom:0;border-left:1px solid #55565e;font-size:9px;color:var(--dim);padding:2px 3px}
+.tick.minor{top:16px;border-color:#44454b}
+.lane{position:relative;flex-shrink:0;background:repeating-linear-gradient(90deg,transparent 0,transparent calc(var(--z)*10px - 1px),#ffffff08 calc(var(--z)*10px - 1px),#ffffff08 calc(var(--z)*10px))}
+.playhead{position:absolute;top:0;bottom:0;width:1px;background:#fff;z-index:35;pointer-events:none}
+.playhead.rec{background:var(--rec)}
+.h-row{display:flex;align-items:center;gap:4px;min-width:0}
+.tname{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.h-row button{padding:1px 6px;font-size:11px}
+
+.clip{position:absolute;top:3px;border-radius:5px;overflow:hidden;cursor:grab;border:1px solid #0006}
+.clip.take{background:var(--take)}
+.clip.backing{background:var(--backing)}
+.clip.sel{outline:2px solid #fff;outline-offset:-1px}
+.clip.recording{background:#7a2b2b}
+.clip .clip-label{position:absolute;left:4px;top:1px;right:46px;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;color:#fffd}
+.clip .wave{position:absolute;left:0;top:14px;pointer-events:none}
+.clip .wave path{stroke:#ffffffa0;stroke-width:1.5}
+.clip .fades{position:absolute;left:0;top:0;pointer-events:none}
+.clip .gain{position:absolute;right:3px;top:1px;font-size:9px;padding:0 3px;border-radius:3px;background:#0005;cursor:ns-resize}
+.clip .fh{position:absolute;top:0;width:8px;height:8px;background:#fff;border-radius:2px;cursor:ew-resize;opacity:0}
+.clip:hover .fh,.clip.sel .fh{opacity:.9}
+.clip .edge{position:absolute;top:14px;bottom:0;width:7px;cursor:col-resize}
+.clip .edge.l{left:0}.clip .edge.r{right:0}
+.clip:hover .edge{background:#ffffff22}
+.covered{position:absolute;bottom:1px;height:5px;background:repeating-linear-gradient(45deg,#b8c4ff 0 2px,transparent 2px 5px);opacity:.7;z-index:200;border-radius:2px}
+.cam-lane{background:#1c171c}
+.vtake{position:absolute;top:4px;bottom:4px;border-radius:4px;background:repeating-linear-gradient(90deg,var(--video) 0 10px,#6b456b 10px 12px);font-size:10px;padding:2px 5px;white-space:nowrap;overflow:hidden;cursor:pointer;border:1px solid #0006}
+.vtake.chosen{outline:2px solid #fff;outline-offset:-1px}
+.vtake.recording{background:#7a2b2b}
+
+/* inserts */
+.inserts{display:flex;gap:3px}
+.inserts.vertical{flex-direction:column}
+.inserts.chips{flex-wrap:wrap}
+.ins{display:flex;align-items:stretch;background:#33405a;border-radius:4px;overflow:hidden}
+.ins.byp{opacity:.45}
+.ins button{border:0;border-radius:0;background:transparent;padding:2px 5px;font-size:10px}
+.ins .ins-name{flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ins button:hover{background:#ffffff1a}
+.inserts select{font-size:10px;color:var(--dim)}
+
+/* channel strips */
+.strip{width:120px;flex-shrink:0;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px;display:flex;flex-direction:column;gap:6px}
+.strip.sel{border-color:var(--accent)}
+.strip.master{background:#2b2a33}
+.strip-name{font-weight:600;text-align:center}
+.strip .inserts{min-height:90px}
+.fader-wrap{display:flex;gap:6px;justify-content:center;flex:1;min-height:120px}
+.vfader{writing-mode:vertical-lr;direction:rtl;width:22px}
+.db{text-align:center;font:10px ui-monospace,Menlo,monospace;color:var(--dim)}
+.btns{display:flex;gap:4px;justify-content:center}
+.pan{display:flex;flex-direction:column;font-size:10px;color:var(--dim)}
+.pan input{width:100%}
+
+/* floating windows */
+.win{position:fixed;z-index:1000;background:var(--panel);border:1px solid #55565e;border-radius:9px;box-shadow:0 12px 40px #000a;overflow:hidden}
+.titlebar{display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--panel2);cursor:move;font-size:11px}
+.titlebar .close{width:12px;height:12px;border-radius:6px;background:#ff5f57;padding:0;border:0;min-width:0}
+.plugin{width:360px}
+.plugin-body{display:flex;justify-content:space-around;padding:22px 12px;background:linear-gradient(#3a3340,#25212a)}
+.knob{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:10px;color:var(--dim)}
+.knob .k{width:44px;height:44px;border-radius:50%;background:radial-gradient(#666,#222);position:relative;border:2px solid #111;cursor:ns-resize}
+.knob .k::after{content:"";position:absolute;left:50%;top:4px;width:2px;height:14px;background:#fff;transform-origin:50% 18px;transform:translateX(-50%) rotate(var(--r))}
+.plugin-foot{padding:6px 10px;font-size:10px;color:var(--dim)}
+.screen{aspect-ratio:16/9;background:#000;position:relative;overflow:hidden}
+.vid{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:space-between;padding:6px;font-size:11px}
+.vid.black{align-items:center;justify-content:center;color:#555}
+.vid .fig{position:absolute;left:50%;bottom:0;width:70px;height:110px;margin-left:-35px}
+.vid .fig::before{content:"";position:absolute;left:20px;top:0;width:30px;height:30px;border-radius:50%;background:#0006}
+.vid .fig::after{content:"";position:absolute;left:0;top:34px;width:70px;height:80px;border-radius:30px 30px 0 0;background:#0006}
+.vid span{position:relative;background:#0008;padding:1px 5px;border-radius:3px}
+.live-dot{color:var(--rec);font-weight:700}
+.preview-win{width:340px}
+.preview-win .foot{padding:5px 8px;font-size:10px;color:var(--dim);display:flex;justify-content:space-between}
+.toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:#000d;border:1px solid #55565e;padding:7px 14px;border-radius:8px;z-index:3000}
+.sheet-backdrop{position:fixed;inset:0;background:#0007;z-index:1500;display:flex;justify-content:center;align-items:flex-start}
+.sheet{margin-top:0;width:520px;background:var(--panel);border:1px solid #55565e;border-top:0;border-radius:0 0 10px 10px;padding:16px;box-shadow:0 20px 50px #000}
+
+/* export form */
+.export h3{margin:0 0 10px;font-size:14px}
+.export fieldset{border:1px solid var(--line);border-radius:6px;margin:0 0 10px;padding:8px 10px}
+.export legend{color:var(--dim);font-size:11px;padding:0 4px}
+.export label{display:flex;gap:6px;align-items:center;padding:2px 0}
+.span-bar{position:relative;height:18px;background:#111;border-radius:4px;margin:6px 0 2px}
+.span-bar .blk{position:absolute;top:0;bottom:0;background:#000;border:1px dashed #555}
+.span-bar .hl{position:absolute;top:2px;bottom:2px;background:var(--accent);border-radius:3px}
+.span-bar .vt{position:absolute;top:2px;bottom:2px;background:var(--video);border-radius:3px}
+.progress{height:8px;background:#111;border-radius:4px;overflow:hidden;margin:10px 0}
+.progress i{display:block;height:100%;background:var(--accent)}
+.export .actions{display:flex;justify-content:flex-end;gap:6px}
+.export input[type=text]{width:100%;background:#111;border:1px solid var(--line);border-radius:4px;padding:3px 6px}
+
+/* ---------- Variant C ---------- */
+.vc{display:flex;flex-direction:column;height:100%}
+.c-top{display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
+.modes{display:flex;background:#111;border-radius:7px;padding:2px}
+.modes button{border:0;background:transparent;padding:4px 14px}
+.modes button.on{background:var(--accent);color:#fff}
+.c-body{flex:1;min-height:0;display:flex;flex-direction:column}
+.c-rec{flex:1;display:flex;gap:12px;padding:12px;min-height:0}
+.c-stage{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.c-stage .screen{flex:1;min-height:0;aspect-ratio:auto;border-radius:10px}
+.c-stage .vid{font-size:14px;padding:12px}
+.c-stage .vid .fig{transform-origin:bottom;scale:2.2}
+.c-side{width:320px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;overflow:auto}
+.armrow{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px;display:flex;flex-direction:column;gap:5px}
+.armrow.armed{border-color:var(--rec)}
+.chain{display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:10px;color:var(--dim)}
+.chain button{font-size:10px;padding:1px 6px;background:#33405a;border:0}
+.c-look{flex-shrink:0;border-top:1px solid var(--line);background:#16171a;padding:6px 12px 8px}
+.c-look .look-head{display:flex;justify-content:space-between;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.look{position:relative;height:110px;background:#1d1e24;border-radius:6px;overflow:hidden}
+.look svg{position:absolute;inset:0;width:100%;height:100%}
+.look .lt{position:absolute;top:0;bottom:0;border-left:1px solid #ffffff14;font-size:9px;color:var(--dim);padding:2px 3px}
+.look .past{position:absolute;left:0;top:0;bottom:0;background:#0006}
+.look .lph{position:absolute;top:0;bottom:0;width:2px;background:#fff}
+.look .lph.rec{background:var(--rec)}
+.look .recspan{position:absolute;top:0;bottom:0;background:#ff453a22;border-left:1px solid var(--rec)}
+.look .next{position:absolute;right:8px;top:6px;font-size:11px;background:#000a;padding:2px 7px;border-radius:4px}
+.passes{background:var(--panel);border-radius:8px;padding:8px;overflow:auto;flex:1}
+.passes h4{margin:0 0 6px;font-size:10px;color:var(--dim);text-transform:uppercase}
+.pass{display:block;width:100%;text-align:left;margin-bottom:3px}
+.c-overview{height:auto;flex-shrink:0;border-top:1px solid var(--line);position:relative;background:#1a1b1e;cursor:text;padding:6px 0}
+.ov-row{position:relative;height:8px;margin:1px 0}
+.ov-clip{position:absolute;top:2px;bottom:2px;border-radius:2px}
+.ov-ph{position:absolute;top:0;bottom:0;width:1px;background:#fff}
+.c-edit{flex:1;display:flex;flex-direction:column;min-height:0}
+.c-cliptools{display:flex;gap:10px;align-items:center;padding:5px 10px;background:var(--panel2);border-bottom:1px solid var(--line);font-size:11px;min-height:32px}
+.c-edit-tl{flex:1;min-height:0}
+.c-split{height:6px;flex-shrink:0;cursor:row-resize;background:var(--line)}
+.c-split:hover{background:var(--accent)}
+.c-edit-mix{flex-shrink:0;display:flex;gap:6px;padding:8px;overflow-x:auto;background:#202125}
+.c-edit-mix .strip .inserts{min-height:60px}
+.c-edit-mix .fader-wrap{min-height:60px}
+.c-export{flex:1;display:flex;justify-content:center;padding:30px;overflow:auto}
+.c-export .export{width:560px}
+
+
+/* ---------- alternate takes ---------- */
+.c-side{width:420px}
+.ttag{position:absolute;left:3px;bottom:2px;font-size:9px;font-weight:600;padding:0 5px;border-radius:3px;background:#000b;color:#fff;cursor:pointer;z-index:5}
+.ttag:hover{background:var(--accent)}
+.menu{position:fixed;z-index:2000;background:var(--panel);border:1px solid #55565e;border-radius:8px;box-shadow:0 12px 40px #000a;padding:6px;min-width:320px}
+.menu h5{margin:2px 4px 6px;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.tm-row{display:flex;gap:8px;width:100%;text-align:left;border:0;background:transparent;align-items:center;padding:4px 6px}
+.tm-row:hover{background:#ffffff14}
+.tm-row.cur{background:#4f8cff33}
+.tm-row .ck{width:10px}
+.st{font-size:10px;padding:0 6px;border-radius:7px;background:#ffffff14;color:var(--dim);margin-left:auto;white-space:nowrap}
+.st.heard{background:#3fbf6f33;color:#8fe0a8}
+.st.partly{background:#ffd60a26;color:#ffe680}
+.st.none{background:#ff453a22;color:#ff9a92}
+.menu .foot{font-size:10px;color:var(--dim);padding:6px 4px 2px;border-top:1px solid var(--line);margin-top:4px;max-width:340px}
+.tlane{background:#16171a}
+.tk{position:absolute;top:3px;bottom:3px;border-radius:3px;background:#3d7a5c40;border:1px solid #3d7a5c;cursor:pointer;font-size:9px;color:#fff9;padding-left:4px;overflow:hidden;white-space:nowrap}
+.tk:hover{border-color:#fff}
+.tk-heard{position:absolute;top:3px;bottom:3px;background:var(--take);pointer-events:none;border-radius:2px}
+.hdr.sub{padding:2px 7px 2px 20px;font-size:10px;flex-direction:row;align-items:center;justify-content:space-between;background:#222327}
+.lanes-btn{font-size:10px;padding:0 6px}
+.cyc{position:absolute;top:0;height:8px;background:#ffd60a33;border-radius:2px;cursor:grab;z-index:3}
+.cyc.on{background:#ffd60a}
+.cyc i{position:absolute;top:0;bottom:0;width:6px;cursor:ew-resize}
+.cyc i.l{left:0}.cyc i.r{right:0}
+.cyc-shade{position:absolute;top:24px;bottom:0;background:#ffd60a0c;border-left:1px dashed #ffd60a66;border-right:1px dashed #ffd60a66;pointer-events:none;z-index:34}
+.pass-row{display:flex;gap:4px;align-items:center;margin-bottom:3px}
+.pass-row .pass{flex:1;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pass-row .bb{white-space:nowrap}
+.rec-opts{display:flex;align-items:center;gap:6px;font-size:11px}
+button.cycle.on{background:#ffd60a;border-color:#ffd60a;color:#000}
+.qbar{display:flex;gap:10px;align-items:center;padding:4px 10px;background:#2b2f3d;border-bottom:1px solid var(--line);font-size:11px;color:#c9d3ff}
+.qbar button{padding:0 6px;font-size:10px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="floating"></div>
+<pre id="statepanel"></pre>
+<div id="switcher">
+  <button data-sw="-1">←</button><span id="swlabel"></span><button data-sw="1">→</button>
+  <button data-sw="state">state</button>
+</div>
+<script>
+// ---------- fixtures ----------
+const SONG_LEN = 210;
+const INPUTS = ['In 1', 'In 2', 'In 3', 'In 4', 'In 1+2 (stereo)', 'In 3+4 (stereo)'];
+const CAMERAS = ['FaceTime HD Camera', 'iPhone (Continuity Camera)', 'USB Webcam'];
+const AUS = ['AUNBandEQ', 'AUDynamicsProcessor', 'AUPeakLimiter', 'AUDistortion', 'AUDelay', 'AUMatrixReverb', 'AUGraphicEQ', 'Third-party Amp Sim (AUv3)', 'Third-party Reverb (AUv2, Intel-only)'];
+const VARIANTS = [['A', 'Swap on the Clip'], ['B', 'Bring to top'], ['C', 'Take lanes']];
+const PREROLLS = [0, 1, 2, 4];
+let uid = 100;
+const newId = (p) => p + (uid++);
+
+// A Take is the immutable recording a Track captured in one Pass. A Clip is a window onto a Take (or Backing Track).
+// Takes are recorded aligned to their Pass, so a Clip's source offset is always (clip.start - take.start) for an unmoved Clip.
+function clipForTake(take, start, length, layer) {
+  return { id: newId('c'), source: 'take', takeId: take.id, passId: take.passId, label: `Take · Pass ${take.passId}`, srcLength: take.length,
+    start, offset: start - take.start, length, fadeIn: 0.05, fadeOut: 0.05, gain: 0, layer, seed: take.seed };
+}
+function makeState() {
+  // Fixture story: Pass 1 is a full guitar take. Passes 2 and 3 are two retakes of the chorus (38–62 s) on Guitar and Vocals.
+  // Pass 4 was a vocal ad-lib at 1:40 whose Clip was deleted: its Take is still in the Song but nothing on the timeline uses it.
+  const k1 = { id: 'k1', passId: 1, start: 20, length: 60, seed: 3 }, k2 = { id: 'k2', passId: 2, start: 38, length: 24, seed: 11 }, k3 = { id: 'k3', passId: 3, start: 38, length: 24, seed: 8 };
+  const k4 = { id: 'k4', passId: 2, start: 38, length: 24, seed: 5 }, k5 = { id: 'k5', passId: 3, start: 38, length: 24, seed: 9 }, k6 = { id: 'k6', passId: 4, start: 100, length: 30, seed: 13 };
+  const g1 = clipForTake(k1, 20, 60, 1), g2 = { ...clipForTake(k2, 38, 24, 2), fadeIn: 0.3, fadeOut: 0.3, gain: -1.5 }, g3 = clipForTake(k3, 38, 24, 3);
+  const v2 = clipForTake(k4, 38, 24, 1), v3 = clipForTake(k5, 38, 24, 2);
+  return {
+    playhead: 36, playing: false, recording: null, preroll: null,
+    prerollSec: 2, cycle: { on: false, a: 38, b: 62 },
+    passes: [{ id: 1, start: 20, length: 60 }, { id: 2, start: 38, length: 24 }, { id: 3, start: 38, length: 24 }, { id: 4, start: 100, length: 30 }],
+    tracks: [
+      { id: 't1', name: 'Backing Track', armed: false, mute: false, solo: false, input: 'In 1', vol: -6, pan: 0, inserts: [], takes: [],
+        clips: [{ id: 'c1', source: 'backing', label: 'my-song.wav', srcLength: 200, start: 0, offset: 0, length: 200, fadeIn: 0.5, fadeOut: 4, gain: 0, layer: 1, passId: null, seed: 7 }] },
+      { id: 't2', name: 'Guitar', armed: true, mute: false, solo: false, input: 'In 1', vol: -3, pan: -20,
+        inserts: [{ id: 'p1', name: 'AUDistortion', bypass: false }, { id: 'p2', name: 'AUNBandEQ', bypass: false }],
+        takes: [k1, k2, k3], clips: [g1, g2, g3] },
+      { id: 't3', name: 'Vocals', armed: true, mute: false, solo: false, input: 'In 2', vol: 0, pan: 0,
+        inserts: [{ id: 'p3', name: 'AUDynamicsProcessor', bypass: false }, { id: 'p4', name: 'AUMatrixReverb', bypass: false }],
+        takes: [k4, k5, k6], clips: [v2, v3] },
+    ],
+    master: { id: 'master', name: 'Master', vol: 0, inserts: [{ id: 'p5', name: 'AUPeakLimiter', bypass: false }] },
+    camera: { armed: true, device: CAMERAS[0] },
+    videoTakes: [{ id: 'v2', passId: 2, start: 38, length: 24 }, { id: 'v3', passId: 3, start: 38, length: 24 }, { id: 'v4', passId: 4, start: 100, length: 30 }],
+    sel: { track: 't2', clip: null },
+    zoom: 10,
+    undo: [], redo: [],
+    ui: {
+      previewOpen: false, mode: 'edit', toast: null, cMix: { open: false, h: 300 }, qbar: true,
+      takeMenu: null, passMenu: null, lanesOpen: { t2: true },
+      pluginWindows: [], pos: { preview: { x: window.innerWidth - 370, y: 120 } },
+      export: { format: 'mp4', videoId: 'v3', span: 'take', status: null, progress: 0 },
+    },
+  };
+}
+let S = makeState();
+
+// ---------- helpers ----------
+const $ = (s, r = document) => r.querySelector(s);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const fmt = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s.toFixed(1).padStart(4, '0')}`; };
+const fmtDb = (g) => (g > 0 ? '+' : '') + g.toFixed(1) + ' dB';
+const track = (id) => S.tracks.find((t) => t.id === id);
+const owner = (id) => (id === 'master' ? S.master : track(id));
+const findClip = (id) => { for (const t of S.tracks) { const c = t.clips.find((c) => c.id === id); if (c) return { t, c }; } return null; };
+const songEnd = () => Math.max(...S.tracks.flatMap((t) => t.clips.map((c) => c.start + c.length)), 0);
+const topLayer = (t) => Math.max(0, ...t.clips.map((c) => c.layer));
+function toast(text) { S.ui.toast = { text, at: Date.now() }; }
+function currentVariant() { const v = new URLSearchParams(location.search).get('variant'); return VARIANTS.some((x) => x[0] === v) ? v : 'A'; }
+
+// ---------- undo: whole-Song snapshots (mirrors ADR 0004). Arm and input stay outside undo. ----------
+function snapshot() { return JSON.stringify({ tracks: S.tracks, master: S.master, videoTakes: S.videoTakes, passes: S.passes }); }
+function pushUndo(snap, label) { S.undo.push({ snap, label }); if (S.undo.length > 200) S.undo.shift(); S.redo = []; }
+function restore(snap) {
+  const keep = Object.fromEntries(S.tracks.map((t) => [t.id, { armed: t.armed, input: t.input }]));
+  Object.assign(S, JSON.parse(snap));
+  S.tracks.forEach((t) => { if (keep[t.id]) Object.assign(t, keep[t.id]); });
+}
+function busy() { return S.recording || S.preroll; }
+function undo() { if (busy() || !S.undo.length) return; const e = S.undo.pop(); S.redo.push({ snap: snapshot(), label: e.label }); restore(e.snap); toast('Undo ' + e.label); }
+function redo() { if (busy() || !S.redo.length) return; const e = S.redo.pop(); S.undo.push({ snap: snapshot(), label: e.label }); restore(e.snap); toast('Redo ' + e.label); }
+
+// ---------- takes: what is heard, what is covered ----------
+function topClipAt(t, time) { return [...t.clips].sort((a, b) => b.layer - a.layer).find((c) => time > c.start && time < c.start + c.length); }
+function takeById(t, id) { return t.takes.find((k) => k.id === id); }
+function overlap(a0, a1, b0, b1) { return Math.max(0, Math.min(a1, b1) - Math.max(a0, b0)); }
+// Every Take on this Track that recorded anything under the Clip's span, newest Pass first.
+function takesUnder(t, c) { return t.takes.filter((k) => overlap(k.start, k.start + k.length, c.start, c.start + c.length) > 0).sort((a, b) => b.passId - a.passId); }
+// Spans where this Take is the one you hear (its Clip is the top layer). Sampled at 0.25 s; the real app would compute exact intervals.
+function heardSegments(t, take) {
+  const segs = []; let cur = null;
+  for (let x = take.start; x < take.start + take.length; x += 0.25) {
+    const c = topClipAt(t, x + 0.125), on = c && c.takeId === take.id;
+    if (on && !cur) cur = { a: x, b: x + 0.25 }; else if (on) cur.b = x + 0.25; else if (cur) { segs.push(cur); cur = null; }
+  }
+  if (cur) segs.push(cur);
+  return segs;
+}
+function heardFraction(t, take) { return take.length ? heardSegments(t, take).reduce((s, g) => s + g.b - g.a, 0) / take.length : 0; }
+function takeStatus(t, take) {
+  if (!t.clips.some((c) => c.takeId === take.id)) return ['no Clip', 'none'];
+  const f = heardFraction(t, take);
+  return f > 0.98 ? ['heard', 'heard'] : f > 0 ? [`${Math.round(f * 100)}% heard`, 'partly'] : ['covered', 'none'];
+}
+function passStatus(p) {
+  const pairs = S.tracks.flatMap((t) => t.takes.filter((k) => k.passId === p.id).map((k) => [t, k]));
+  if (!pairs.length) return ['video only', ''];
+  const total = pairs.reduce((s, [, k]) => s + k.length, 0), heard = pairs.reduce((s, [t, k]) => s + heardFraction(t, k) * k.length, 0);
+  const f = total ? heard / total : 0;
+  return f > 0.98 ? ['heard', 'heard'] : f > 0 ? [`${Math.round(f * 100)}% heard`, 'partly'] : ['not heard', 'none'];
+}
+
+// ---------- bringing a Take back: the three candidate models ----------
+// Variant A / C: the Clip keeps its place, trim, fades and gain; only its source Take changes. Trims to where the new Take has audio.
+function swapClipTake(t, c, take) {
+  if (c.takeId === take.id) return;
+  const a = Math.max(c.start, take.start), b = Math.min(c.start + c.length, take.start + take.length);
+  if (b <= a) { toast(`Pass ${take.passId} has nothing under this Clip`); return; }
+  const before = snapshot(), trimmed = a > c.start || b < c.start + c.length;
+  Object.assign(c, { takeId: take.id, passId: take.passId, label: `Take · Pass ${take.passId}`, srcLength: take.length, seed: take.seed, start: a, length: b - a, offset: a - take.start });
+  c.fadeIn = Math.min(c.fadeIn, c.length); c.fadeOut = Math.min(c.fadeOut, c.length - c.fadeIn);
+  pushUndo(before, `Use Pass ${take.passId} on ${t.name}`);
+  toast(`${t.name}: Clip now plays Pass ${take.passId}${trimmed ? ' (trimmed to where Pass ' + take.passId + ' has audio)' : ''}`);
+}
+// Variant B: a new Clip of the Take goes on top over the span. Nothing underneath changes.
+function raiseTakeOver(t, c, take) {
+  const a = Math.max(c.start, take.start), b = Math.min(c.start + c.length, take.start + take.length);
+  if (b <= a) { toast(`Pass ${take.passId} has nothing under this Clip`); return; }
+  const before = snapshot();
+  const n = clipForTake(take, a, b - a, topLayer(t) + 1);
+  t.clips.push(n); S.sel.clip = n.id;
+  pushUndo(before, `Bring back Pass ${take.passId} on ${t.name}`);
+  toast(`${t.name}: new Clip of Pass ${take.passId} on top (${t.clips.length} Clips on this Track now)`);
+}
+// All variants: re-lay a whole Pass on top, on every Track it recorded, exactly as it was recorded.
+function bringBackPass(passId) {
+  const before = snapshot(), names = [];
+  for (const t of S.tracks) for (const k of t.takes.filter((x) => x.passId === passId)) { t.clips.push(clipForTake(k, k.start, k.length, topLayer(t) + 1)); names.push(t.name); }
+  if (!names.length) { toast(`Pass ${passId} has no audio Takes`); return; }
+  pushUndo(before, `Bring back Pass ${passId}`);
+  S.playhead = S.passes.find((p) => p.id === passId).start;
+  toast(`Pass ${passId} back on top: ${names.join(', ')}. Its Video Take is still picked at Export.`);
+}
+function pickTake(t, c, take) { if (currentVariant() === 'B') raiseTakeOver(t, c, take); else swapClipTake(t, c, take); }
+// Variant C: a click on a Take lane uses that Take for the top Clip under the click; with no Clip there, the whole Take comes back on top.
+function lanePick(t, take, time) {
+  const c = topClipAt(t, time);
+  const covers = time >= take.start && time <= take.start + take.length;
+  if (c && c.source === 'take' && covers) {
+    if (c.takeId === take.id) { toast(`Pass ${take.passId} is already what you hear here`); return; }
+    S.sel.clip = c.id; swapClipTake(t, c, take); return;
+  }
+  const before = snapshot();
+  const n = clipForTake(take, take.start, take.length, topLayer(t) + 1);
+  t.clips.push(n); S.sel.clip = n.id;
+  pushUndo(before, `Bring back Pass ${take.passId} on ${t.name}`);
+  toast(`${t.name}: no Clip there, so all of Pass ${take.passId} comes back on top`);
+}
+
+// ---------- transport: pre-roll, cycle, record ----------
+function play() { if (S.playing) return stop(); S.playing = true; }
+function stop() {
+  if (S.preroll) S.preroll = null;
+  if (S.recording) {
+    const r = S.recording;
+    const last = S.passes.find((p) => p.id === r.passId);
+    if (r.runPasses.length > 1 && last.length < 0.5) { dropPass(r.passId); r.runPasses.pop(); } // stopped right at a loop boundary
+    const ids = r.runPasses;
+    pushUndo(r.runBefore, ids.length > 1 ? `Record Passes ${ids[0]}–${ids[ids.length - 1]}` : `Record Pass ${ids[0]}`);
+    toast(ids.length > 1 ? `Cycle: ${ids.length} Passes (${ids[0]}–${ids[ids.length - 1]}), one undo step. Newest on top; the last loop is kept even if partial.`
+      : `Pass ${ids[0]} recorded. New Takes sound over older ones.`);
+    S.recording = null;
+  }
+  S.playing = false;
+}
+function dropPass(passId) {
+  S.passes = S.passes.filter((p) => p.id !== passId);
+  S.videoTakes = S.videoTakes.filter((v) => v.passId !== passId);
+  S.tracks.forEach((t) => { t.takes = t.takes.filter((k) => k.passId !== passId); t.clips = t.clips.filter((c) => c.passId !== passId); });
+}
+function record() {
+  if (busy()) return stop();
+  const armed = S.tracks.filter((t) => t.armed);
+  if (!armed.length && !S.camera.armed) { toast('Arm a Track or the camera first'); return; }
+  const at = S.cycle.on ? S.cycle.a : S.playhead;
+  const runBefore = snapshot();
+  if (S.prerollSec > 0 && at > 0) { S.preroll = { at, runBefore }; S.playhead = Math.max(0, at - S.prerollSec); S.playing = true; return; }
+  beginPass(at, runBefore, []);
+}
+function beginPass(at, runBefore, runPasses) {
+  const passId = Math.max(0, ...S.passes.map((p) => p.id)) + 1;
+  S.passes.push({ id: passId, start: at, length: 0 });
+  const clipIds = S.tracks.filter((t) => t.armed).map((t) => {
+    const k = { id: newId('k'), passId, start: at, length: 0, seed: Math.random() * 20 };
+    t.takes.push(k);
+    const c = clipForTake(k, at, 0, topLayer(t) + 1);
+    t.clips.push(c);
+    return c.id;
+  });
+  let videoId = null;
+  if (S.camera.armed) { videoId = newId('v'); S.videoTakes.push({ id: videoId, passId, start: at, length: 0 }); }
+  S.recording = { passId, start: at, clipIds, videoId, runBefore, runPasses: [...runPasses, passId] };
+  S.playhead = at; S.playing = true;
+}
+function growRecording() {
+  const r = S.recording, len = S.playhead - r.start;
+  r.clipIds.forEach((id) => { const { t, c } = findClip(id); c.length = c.srcLength = len; takeById(t, c.takeId).length = len; });
+  if (r.videoId) S.videoTakes.find((v) => v.id === r.videoId).length = len;
+  S.passes.find((p) => p.id === r.passId).length = len;
+}
+
+// ---------- clip edits ----------
+function splitAtPlayhead() {
+  const t = track(S.sel.track); if (!t) return;
+  const sel = t.clips.find((c) => c.id === S.sel.clip && S.playhead > c.start && S.playhead < c.start + c.length);
+  const c = sel || topClipAt(t, S.playhead);
+  if (!c) { toast('No Clip under the playhead on the selected Track'); return; }
+  const before = snapshot();
+  const cut = S.playhead - c.start;
+  const right = { ...c, id: newId('c'), start: S.playhead, offset: c.offset + cut, length: c.length - cut, fadeIn: 0 };
+  c.length = cut; c.fadeOut = 0;
+  t.clips.push(right);
+  S.sel.clip = right.id;
+  pushUndo(before, 'Split Clip');
+}
+function deleteSelected() {
+  const f = S.sel.clip && findClip(S.sel.clip); if (!f) return;
+  const before = snapshot();
+  f.t.clips = f.t.clips.filter((c) => c !== f.c);
+  S.sel.clip = null;
+  pushUndo(before, 'Delete Clip');
+  toast('Clip removed. Its Take stays in the Song (see the Passes list).');
+}
+function applyDrag(d, dx, dy) {
+  const c = findClip(d.clipId).c, o = d.orig;
+  if (d.type === 'move') c.start = Math.max(0, o.start + dx);
+  if (d.type === 'trimL') {
+    const off = clamp(o.offset + dx, Math.max(0, o.offset - o.start), o.offset + o.length - 0.5);
+    c.start = o.start + (off - o.offset); c.length = o.length - (off - o.offset); c.offset = off;
+  }
+  if (d.type === 'trimR') c.length = clamp(o.length + dx, 0.5, c.srcLength - o.offset);
+  if (d.type === 'fadeIn') c.fadeIn = clamp(o.fadeIn + dx, 0, c.length - c.fadeOut);
+  if (d.type === 'fadeOut') c.fadeOut = clamp(o.fadeOut - dx, 0, c.length - c.fadeIn);
+  if (d.type === 'gain') c.gain = Math.round(clamp(o.gain - dy * 0.1, -24, 12) * 10) / 10;
+  c.fadeIn = Math.min(c.fadeIn, c.length); c.fadeOut = Math.min(c.fadeOut, c.length - c.fadeIn);
+}
+const DRAG_LABEL = { move: 'Move Clip', trimL: 'Trim Clip', trimR: 'Trim Clip', fadeIn: 'Fade In', fadeOut: 'Fade Out', gain: 'Clip Gain' };
+
+// ---------- shared view pieces ----------
+function transportHtml() {
+  const r = S.recording;
+  const st = S.preroll ? `PRE-ROLL ${(S.preroll.at - S.playhead).toFixed(1)}` : r ? `REC · PASS ${r.passId}${r.runPasses.length > 1 ? ' · LOOP ' + r.runPasses.length : ''}` : S.playing ? 'PLAY' : 'STOP';
+  return `<div class="transport">
+    <button data-act="rewind" title="Return to start (↩)">⏮</button>
+    <button data-act="play" class="${S.playing && !busy() ? 'on' : ''}" title="Play / Stop (Space)">${S.playing ? '■' : '▶'}</button>
+    <button data-act="record" class="rec ${busy() ? 'on' : ''}" title="Record (R)">●</button>
+    <div class="clock"><span data-live="time">${fmt(S.playhead)}</span><small data-live="status">${st}</small></div>
+  </div>`;
+}
+function recOptsHtml() {
+  const c = S.cycle;
+  return `<div class="rec-opts"><span class="dim">Pre-roll</span><select data-input="preroll" ${busy() ? 'disabled' : ''}>${PREROLLS.map((n) => `<option value="${n}" ${n === S.prerollSec ? 'selected' : ''}>${n ? n + ' s' : 'off'}</option>`).join('')}</select>
+    <button data-act="cycle" class="cycle ${c.on ? 'on' : ''}" ${busy() ? 'disabled' : ''} title="Cycle (C): loop the yellow range on the ruler. Recording makes a new Pass every loop.">⟳ ${fmt(c.a)}–${fmt(c.b)}</button></div>`;
+}
+function cameraArmHtml() {
+  return `<button data-act="cam-arm" class="arm ${S.camera.armed ? 'on' : ''}" title="Arm the camera: the next Pass also records a Video Take">◉ Camera</button>
+    <select data-input="cam-device">${CAMERAS.map((c) => `<option ${c === S.camera.device ? 'selected' : ''}>${c}</option>`).join('')}</select>`;
+}
+function undoHtml() {
+  const u = S.undo[S.undo.length - 1], r = S.redo[S.redo.length - 1];
+  return `<button data-act="undo" ${u ? '' : 'disabled'} title="⌘Z">↶ ${u ? u.label : 'Undo'}</button><button data-act="redo" ${r ? '' : 'disabled'} title="⇧⌘Z">↷</button>`;
+}
+function zoomHtml() { return `<button data-act="zoom-out">−</button><span class="dim">zoom</span><button data-act="zoom-in">+</button>`; }
+const armBtn = (t) => `<button data-act="arm" data-track="${t.id}" class="arm ${t.armed ? 'on' : ''}" title="Arm">●</button>`;
+const muteBtn = (t) => `<button data-act="mute" data-track="${t.id}" class="mute ${t.mute ? 'on' : ''}" title="Mute">M</button>`;
+const soloBtn = (t) => `<button data-act="solo" data-track="${t.id}" class="solo ${t.solo ? 'on' : ''}" title="Solo">S</button>`;
+const inputSelect = (t) => `<select data-input="input" data-track="${t.id}" title="Input">${INPUTS.map((i) => `<option ${i === t.input ? 'selected' : ''}>${i}</option>`).join('')}</select>`;
+const meterHtml = (id, cls = '') => `<div class="meter ${cls}"><i data-meter="${id}"></i></div>`;
+const monHtml = (t) => (t.armed ? `<span class="mon" title="Monitoring: you hear the live input through the Insert Chain; the Take is recorded dry">🎧 ${t.inserts.filter((p) => !p.bypass).length} fx</span>` : '');
+
+function insertsHtml(o, layout) {
+  const items = o.inserts.map((p) => `<div class="ins ${p.bypass ? 'byp' : ''}">
+      <button class="ins-name" data-act="open-plugin" data-owner="${o.id}" data-ins="${p.id}" title="Open plugin window">${p.name}</button>
+      <button data-act="bypass" data-owner="${o.id}" data-ins="${p.id}" title="Bypass">⏻</button>
+      <button data-act="remove-ins" data-owner="${o.id}" data-ins="${p.id}" title="Remove">×</button></div>`).join('');
+  return `<div class="inserts ${layout}">${items}<select data-input="add-ins" data-owner="${o.id}"><option value="">+ Insert…</option>${AUS.map((a) => `<option>${a}</option>`).join('')}</select></div>`;
+}
+function stripHtml(o, isMaster) {
+  return `<div class="strip ${isMaster ? 'master' : ''} ${S.sel.track === o.id ? 'sel' : ''}" data-act="sel-track" data-track="${o.id}">
+    <div class="strip-name">${o.name}</div>
+    ${insertsHtml(o, 'vertical')}
+    ${isMaster ? '' : `<label class="pan">Pan ${o.pan}<input type="range" min="-50" max="50" value="${o.pan}" data-input="pan" data-owner="${o.id}"></label>`}
+    <div class="fader-wrap"><input class="vfader" type="range" min="-60" max="12" step="0.5" value="${o.vol}" data-input="vol" data-owner="${o.id}"><div class="meter-v"><i data-meter="${o.id}"></i></div></div>
+    <div class="db">${o.vol.toFixed(1)} dB</div>
+    ${isMaster ? '<div class="btns dim">Master</div>' : `<div class="btns">${muteBtn(o)}${soloBtn(o)}</div>`}
+  </div>`;
+}
+
+// ---------- timeline ----------
+function amp(seed, t) {
+  const v = Math.abs(Math.sin(t * 2.3 + seed * 1.3) * Math.sin(t * 0.17 + seed));
+  const j = Math.abs(Math.sin(Math.floor(t * 12) * 91.7 + seed * 13.1) * 43758.5) % 1;
+  return 0.12 + 0.5 * v + 0.35 * j * v;
+}
+// Fixture only: the imported song has sections and a silent break, so the Record look-ahead has something to warn about.
+const BACKING_SECTIONS = [[0, 10, 0.3], [10, 50, 0.6], [50, 80, 1], [80, 88, 0], [88, 92, 0.25], [92, 130, 0.6], [130, 165, 1], [165, 172, 0], [172, 200, 0.4]];
+function backingLevel(t) { const s = BACKING_SECTIONS.find((x) => t >= x[0] && t < x[1]); return s ? s[2] : 0; }
+function clipAmp(c, srcT) { return amp(c.seed, srcT) * (c.source === 'backing' ? backingLevel(srcT) : 1); }
+function wavePath(c, w, h) {
+  const g = Math.pow(10, c.gain / 20); let d = '';
+  for (let x = 1; x < w; x += 3) {
+    const a = Math.min(1, clipAmp(c, c.offset + x / S.zoom) * g) * (h / 2 - 1);
+    d += `M${x} ${(h / 2 - a).toFixed(1)}V${(h / 2 + a).toFixed(1)}`;
+  }
+  return d;
+}
+function clipHtml(c, t, h) {
+  const z = S.zoom, w = Math.max(2, c.length * z), ch = h - 8, wh = ch - 15;
+  const fi = c.fadeIn * z, fo = c.fadeOut * z;
+  const rec = S.recording && S.recording.clipIds.includes(c.id);
+  const others = c.source === 'take' && !rec && currentVariant() !== 'C' ? takesUnder(t, c).length - 1 : 0;
+  const tag = others > 0 ? `<div class="ttag" data-act="takes-menu" data-clip="${c.id}" title="Other Takes recorded under this Clip">Takes ▾ ${others + 1}</div>` : '';
+  return `<div class="clip ${c.source} ${S.sel.clip === c.id ? 'sel' : ''} ${rec ? 'recording' : ''}" data-clip="${c.id}" data-track="${t.id}"
+      style="left:${c.start * z}px;width:${w}px;height:${ch}px;z-index:${10 + c.layer}" title="${c.label} · layer ${c.layer}">
+    <svg class="wave" width="${w}" height="${wh}"><path d="${wavePath(c, w, wh)}"/></svg>
+    <svg class="fades" width="${w}" height="${ch}">
+      <polygon points="0,0 ${fi},0 0,${ch}" fill="#0008"/><line x1="0" y1="${ch}" x2="${fi}" y2="0" stroke="#fff" stroke-width="1"/>
+      <polygon points="${w - fo},0 ${w},0 ${w},${ch}" fill="#0008"/><line x1="${w - fo}" y1="0" x2="${w}" y2="${ch}" stroke="#fff" stroke-width="1"/>
+    </svg>
+    <div class="clip-label">${c.label}</div>
+    <div class="gain" data-h="gain" title="Drag up/down: Clip gain">${fmtDb(c.gain)}</div>
+    <div class="fh" data-h="fadeIn" style="left:${Math.max(0, fi - 4)}px" title="Drag: fade in"></div>
+    <div class="fh" data-h="fadeOut" style="left:${Math.min(w - 8, w - fo - 4)}px" title="Drag: fade out"></div>
+    <div class="edge l" data-h="trimL" title="Drag: trim start"></div><div class="edge r" data-h="trimR" title="Drag: trim end"></div>
+    ${tag}
+  </div>`;
+}
+function coveredHtml(t) {
+  // Hatched strip under the top Clip wherever an older (lower-layer) Clip is hidden: the punch-in made visible.
+  let html = '';
+  for (const c of t.clips) for (const d of t.clips) {
+    if (d.layer <= c.layer) continue;
+    const a = Math.max(c.start, d.start), b = Math.min(c.start + c.length, d.start + d.length);
+    if (b > a) html += `<div class="covered" style="left:${a * S.zoom}px;width:${(b - a) * S.zoom}px" title="${c.label} is covered here by ${d.label}"></div>`;
+  }
+  return html;
+}
+function videoBlockHtml(v) {
+  const rec = S.recording && S.recording.videoId === v.id;
+  return `<div class="vtake ${S.ui.export.videoId === v.id ? 'chosen' : ''} ${rec ? 'recording' : ''}" data-act="sel-video" data-video="${v.id}"
+    style="left:${v.start * S.zoom}px;width:${Math.max(2, v.length * S.zoom)}px;top:${4 + ((v.passId % 2) * 0)}px" title="Video Take · Pass ${v.passId} (locked to its Pass)">🎞 ${v.passId}</div>`;
+}
+function rulerHtml() {
+  const step = S.zoom < 4 ? 30 : S.zoom < 12 ? 10 : 5; let h = '';
+  for (let s = 0; s <= SONG_LEN; s += step / 2) {
+    const major = s % step === 0;
+    h += `<div class="tick ${major ? '' : 'minor'}" style="left:${s * S.zoom}px">${major ? fmt(s).replace(/\.0$/, '') : ''}</div>`;
+  }
+  const c = S.cycle;
+  h += `<div class="cyc ${c.on ? 'on' : ''}" data-cyc="move" style="left:${c.a * S.zoom}px;width:${(c.b - c.a) * S.zoom}px" title="Cycle range: drag to move, edges to resize"><i class="l" data-cyc="l"></i><i class="r" data-cyc="r"></i></div>`;
+  return h;
+}
+// Variant C: one thin lane per Take under the Track, newest first. Bright = heard now.
+function takeLanesHtml(t, headerW, W) {
+  if (currentVariant() !== 'C' || !S.ui.lanesOpen[t.id]) return '';
+  return [...t.takes].sort((a, b) => b.passId - a.passId).map((k) => {
+    const [st, cls] = takeStatus(t, k);
+    const heard = heardSegments(t, k).map((g) => `<div class="tk-heard" style="left:${g.a * S.zoom}px;width:${(g.b - g.a) * S.zoom}px"></div>`).join('');
+    return `<div class="row" style="height:22px"><div class="hdr sub" style="width:${headerW}px"><span>Pass ${k.passId}</span><span class="st ${cls}">${st}</span></div>
+      <div class="lane tlane" data-tlane="${t.id}" style="width:${W}px;--z:${S.zoom}">
+        <div class="tk" data-act="lane-pick" data-track="${t.id}" data-take="${k.id}" style="left:${k.start * S.zoom}px;width:${Math.max(2, k.length * S.zoom)}px" title="Click: use Pass ${k.passId} here">Pass ${k.passId}</div>${heard}</div></div>`;
+  }).join('');
+}
+function timelineHtml(o) {
+  const W = SONG_LEN * S.zoom;
+  const camRow = `<div class="row" style="height:36px"><div class="hdr" style="width:${o.headerW}px">${o.cameraHeader()}</div>
+    <div class="lane cam-lane" style="width:${W}px;--z:${S.zoom}">${S.videoTakes.map(videoBlockHtml).join('')}</div></div>`;
+  const rows = S.tracks.map((t) => `<div class="row ${S.sel.track === t.id ? 'sel' : ''}" style="height:${o.laneH}px">
+      <div class="hdr" data-act="sel-track" data-track="${t.id}" style="width:${o.headerW}px">${o.header(t)}</div>
+      <div class="lane" data-lane="${t.id}" style="width:${W}px;--z:${S.zoom}">${[...t.clips].sort((a, b) => a.layer - b.layer).map((c) => clipHtml(c, t, o.laneH)).join('')}${coveredHtml(t)}</div>
+    </div>${takeLanesHtml(t, o.headerW, W)}`).join('');
+  const shade = S.cycle.on ? `<div class="cyc-shade" style="left:${o.headerW + S.cycle.a * S.zoom}px;width:${(S.cycle.b - S.cycle.a) * S.zoom}px"></div>` : '';
+  return `<div class="timeline" data-scroll="tl"><div class="tl-inner">
+    <div class="row ruler-row"><div class="hdr" style="width:${o.headerW}px">${o.corner || ''}</div><div class="ruler" data-ruler style="width:${W}px">${rulerHtml()}</div></div>
+    ${camRow}${rows}${shade}
+    <div class="playhead ${busy() ? 'rec' : ''}" data-live="playhead" data-hw="${o.headerW}" style="left:${o.headerW + S.playhead * S.zoom}px"></div>
+  </div></div>`;
+}
+
+// ---------- menus: Takes ▾ on a Clip, Passes ----------
+function takesMenuHtml() {
+  const m = S.ui.takeMenu, f = m && findClip(m.clipId);
+  if (!f) return '';
+  const rows = takesUnder(f.t, f.c).map((k) => {
+    const [st, cls] = takeStatus(f.t, k), cur = k.id === f.c.takeId;
+    return `<button class="tm-row ${cur ? 'cur' : ''}" data-act="pick-take" data-take="${k.id}"><span class="ck">${cur ? '✓' : ''}</span><b>Pass ${k.passId}</b><span class="dim">${fmt(k.start)} – ${fmt(k.start + k.length)}</span><span class="st ${cls}">${st}</span></button>`;
+  }).join('');
+  const foot = currentVariant() === 'B'
+    ? 'Picking lays a new Clip of that Take on top over this Clip\'s span. Nothing underneath changes. One undo step.'
+    : 'Picking swaps this Clip\'s source Take. Its place, trim, fades and gain stay. One undo step. To use different Takes per section, split first (S).';
+  return `<div class="menu" style="left:${Math.min(m.x, window.innerWidth - 360)}px;top:${Math.min(m.y, window.innerHeight - 260)}px">
+    <h5>${f.t.name} · Takes under ${fmt(f.c.start)} – ${fmt(f.c.start + f.c.length)}</h5>${rows}<div class="foot">${foot}</div></div>`;
+}
+function passRowsHtml() {
+  return [...S.passes].reverse().map((p) => {
+    const names = S.tracks.filter((t) => t.takes.some((k) => k.passId === p.id)).map((t) => t.name).join(', ');
+    const vid = S.videoTakes.some((v) => v.passId === p.id);
+    const [st, cls] = passStatus(p);
+    const live = S.recording && S.recording.runPasses.includes(p.id);
+    return `<div class="pass-row"><button class="pass" data-act="jump" data-t="${p.start}" title="Jump to the start of Pass ${p.id}">Pass ${p.id} · ${fmt(p.start)} – ${fmt(p.start + p.length)} · ${names || '—'}${vid ? ' + 🎞' : ''}</button>
+      <span class="st ${cls}">${live ? 'recording' : st}</span><button class="bb" data-act="bring-pass" data-pass="${p.id}" ${live || !names ? 'disabled' : ''} title="Put this Pass's Takes back on top on every Track, as recorded">↺ Bring back</button></div>`;
+  }).join('');
+}
+function passMenuHtml() {
+  const m = S.ui.passMenu; if (!m) return '';
+  return `<div class="menu" style="left:${Math.min(m.x, window.innerWidth - 470)}px;top:${m.y}px;width:460px"><h5>Passes · newest first</h5>${passRowsHtml()}
+    <div class="foot">↺ Bring back re-lays a whole Pass on top on every Track it recorded, as one undo step. It's also how you reach a Take that no Clip uses any more.</div></div>`;
+}
+
+// ---------- video preview ----------
+function videoAt(time) { return [...S.videoTakes].reverse().find((v) => time >= v.start && time < v.start + v.length); }
+function screenInner() {
+  if (S.recording && S.camera.armed) {
+    return `<div class="vid" style="background:linear-gradient(160deg,#4a5a6a,#1d232a)"><div class="fig" style="transform:translateX(${Math.sin(S.playhead * 2) * 8}px)"></div>
+      <span class="live-dot">● LIVE</span><span>${S.camera.device}</span></div>`;
+  }
+  const v = videoAt(S.playhead);
+  if (!v) return `<div class="vid black">No Video Take at the playhead</div>`;
+  const hue = (v.passId * 67) % 360;
+  return `<div class="vid" style="background:linear-gradient(135deg,hsl(${hue},40%,32%),hsl(${hue + 40},50%,12%))"><div class="fig" style="transform:translateX(${Math.sin(S.playhead * 1.3) * 10}px)"></div>
+    <span>Pass ${v.passId}</span><span>${fmt(S.playhead - v.start)}</span></div>`;
+}
+function screenHtml() { return `<div class="screen" data-live="screen">${screenInner()}</div>`; }
+function previewWindowHtml() {
+  const p = S.ui.pos.preview;
+  return `<div class="win preview-win" style="left:${p.x}px;top:${p.y}px">
+    <div class="titlebar" data-drag-window="preview"><button class="close" data-act="toggle-preview"></button><span>Video Preview</span></div>
+    ${screenHtml()}<div class="foot"><span>${S.camera.armed ? '◉ ' + S.camera.device + ' armed' : 'Camera not armed'}</span><span>${S.videoTakes.length} Video Takes</span></div></div>`;
+}
+
+// ---------- plugin windows ----------
+function openPlugin(ownerId, insId) {
+  const key = `pw-${ownerId}-${insId}`;
+  if (!S.ui.pluginWindows.some((w) => w.key === key)) {
+    S.ui.pluginWindows.push({ key, owner: ownerId, ins: insId });
+    const n = S.ui.pluginWindows.length;
+    S.ui.pos[key] = { x: 180 + n * 30, y: 120 + n * 30 };
+  }
+}
+function pluginWindowHtml(w) {
+  const o = owner(w.owner), p = o && o.inserts.find((i) => i.id === w.ins);
+  if (!p) return '';
+  const pos = S.ui.pos[w.key];
+  const kind = p.name.includes('AUv3') ? 'AUv3' : 'AUv2';
+  return `<div class="win plugin" style="left:${pos.x}px;top:${pos.y}px">
+    <div class="titlebar" data-drag-window="${w.key}"><button class="close" data-act="close-plugin" data-key="${w.key}"></button>
+      <span>${o.name} — ${p.name}</span><span class="spacer"></span><span class="badge">${kind} · out-of-process</span>
+      <button data-act="bypass" data-owner="${o.id}" data-ins="${p.id}" class="${p.bypass ? 'on' : ''}" style="padding:0 6px">⏻</button></div>
+    <div class="plugin-body">${['Drive', 'Tone', 'Mix', 'Output'].map((k, i) => `<div class="knob"><div class="k" style="--r:${-120 + ((p.seed || 3) * (i + 1) * 37) % 240}deg"></div>${k}</div>`).join('')}</div>
+    <div class="plugin-foot">The plugin's own editor. Changes here save with the Song but don't add undo steps.</div></div>`;
+}
+
+// ---------- export ----------
+function exportHtml() {
+  const x = S.ui.export, vt = S.videoTakes.find((v) => v.id === x.videoId) || S.videoTakes[0];
+  if (vt) x.videoId = vt.id;
+  if (x.status === 'running') return `<div class="export"><h3>Exporting ${x.format.toUpperCase()}…</h3><div class="progress"><i style="width:${x.progress * 100}%"></i></div></div>`;
+  if (x.status === 'done') return `<div class="export"><h3>Export finished</h3><p class="dim">${x.dest}</p><div class="actions"><button data-act="export-reset">Export another</button><button>Reveal in Finder</button></div></div>`;
+  const end = songEnd();
+  let span = `<div class="hl" style="left:0;width:${(end / SONG_LEN) * 100}%"></div>`;
+  let spanText = `Whole mix, 0:00 – ${fmt(end)}`;
+  if (x.format === 'mp4' && vt) {
+    if (x.span === 'take') {
+      span = `<div class="vt" style="left:${(vt.start / SONG_LEN) * 100}%;width:${(vt.length / SONG_LEN) * 100}%"></div>`;
+      spanText = `Trimmed to Pass ${vt.passId}: ${fmt(vt.start)} – ${fmt(vt.start + vt.length)}`;
+    } else {
+      span = `<div class="blk" style="left:0;width:${(end / SONG_LEN) * 100}%"></div><div class="vt" style="left:${(vt.start / SONG_LEN) * 100}%;width:${(vt.length / SONG_LEN) * 100}%"></div>`;
+      spanText = `Full song 0:00 – ${fmt(end)}, black outside Pass ${vt.passId}`;
+    }
+  }
+  const ext = { wav: 'wav', m4a: 'm4a', mp4: 'mp4' }[x.format];
+  const fmtRadio = (k, label) => `<label><input type="radio" name="fmt" data-input="exp-format" value="${k}" ${x.format === k ? 'checked' : ''}>${label}</label>`;
+  return `<div class="export"><h3>Export</h3>
+    <fieldset><legend>Format</legend>${fmtRadio('wav', 'WAV — 24-bit, Song sample rate')}${fmtRadio('m4a', 'M4A — AAC 256 kbps')}${fmtRadio('mp4', 'MP4 — mix + one Video Take')}</fieldset>
+    ${x.format === 'mp4' ? `<fieldset><legend>Video Take</legend>${S.videoTakes.length ? S.videoTakes.map((v) => `<label><input type="radio" name="vt" data-input="exp-video" value="${v.id}" ${v.id === x.videoId ? 'checked' : ''}>Pass ${v.passId} · ${fmt(v.start)} – ${fmt(v.start + v.length)}</label>`).join('') : '<span class="dim">No Video Takes yet. Arm the camera and record a Pass.</span>'}</fieldset>
+    <fieldset><legend>Length</legend>
+      <label><input type="radio" name="span" data-input="exp-span" value="take" ${x.span === 'take' ? 'checked' : ''}>Trim to the Video Take</label>
+      <label><input type="radio" name="span" data-input="exp-span" value="full" ${x.span === 'full' ? 'checked' : ''}>Full song, black where there's no video</label></fieldset>` : ''}
+    <div class="span-bar">${span}</div><div class="dim" style="margin-bottom:10px">${spanText}</div>
+    <fieldset><legend>Save as</legend><input type="text" value="~/Music/Overdub/My Song.${ext}" data-input="exp-dest"></fieldset>
+    <div class="actions"><button class="primary" data-act="export-run" ${x.format === 'mp4' && !vt ? 'disabled' : ''}>Export</button></div></div>`;
+}
+
+// ---------- the window: Record / Edit / Export (issue #9 variant C) ----------
+const C_MODES = ['record', 'edit', 'export'];
+const LOOK_SPAN = 30, LOOK_PH = 0.2; // look-ahead window in seconds; playhead sits at 20% of it
+function armRowC(t) {
+  const chain = t.inserts.map((p) => `→ <button data-act="open-plugin" data-owner="${t.id}" data-ins="${p.id}" style="${p.bypass ? 'opacity:.4' : ''}">${p.name}</button>`).join(' ');
+  return `<div class="armrow ${t.armed ? 'armed' : ''}">
+    <div class="h-row">${armBtn(t)}<span class="tname">${t.name}</span><span class="spacer"></span>${muteBtn(t)}${soloBtn(t)}</div>
+    <div class="h-row">${inputSelect(t)}${meterHtml(t.id)}${monHtml(t)}</div>
+    <div class="chain"><span>${t.input}</span> ${chain} <select data-input="add-ins" data-owner="${t.id}"><option value="">+</option>${AUS.map((a) => `<option>${a}</option>`).join('')}</select></div></div>`;
+}
+function backingClips() { return S.tracks.flatMap((t) => t.clips.filter((c) => c.source === 'backing')); }
+function backingEnvelopeAt(time) {
+  let a = 0;
+  for (const c of backingClips()) if (time >= c.start && time < c.start + c.length) a = Math.max(a, backingLevel(c.offset + time - c.start));
+  return a;
+}
+function nextChangeText() {
+  const sounding = backingEnvelopeAt(S.playhead) > 0.05;
+  for (let dt = 0.1; dt <= LOOK_SPAN * (1 - LOOK_PH); dt += 0.1) {
+    if ((backingEnvelopeAt(S.playhead + dt) > 0.05) !== sounding) return sounding ? `Silence in ${dt.toFixed(1)} s` : `Music back in ${dt.toFixed(1)} s`;
+  }
+  return sounding ? 'Music continues' : 'Silence';
+}
+function lookaheadInner() {
+  const t0 = S.playhead - LOOK_SPAN * LOOK_PH, W = 1000, H = 100, clips = backingClips();
+  let d = '';
+  for (let x = 1; x < W; x += 3) {
+    const t = t0 + (x / W) * LOOK_SPAN; let a = 0;
+    for (const c of clips) if (t >= c.start && t < c.start + c.length) a = Math.max(a, Math.min(1, clipAmp(c, c.offset + t - c.start) * Math.pow(10, c.gain / 20)));
+    if (a > 0) d += `M${x} ${(H / 2 - a * (H / 2 - 2)).toFixed(1)}V${(H / 2 + a * (H / 2 - 2)).toFixed(1)}`;
+  }
+  let ticks = '';
+  for (let s = Math.ceil(t0 / 5) * 5; s < t0 + LOOK_SPAN; s += 5) if (s >= 0) ticks += `<div class="lt" style="left:${((s - t0) / LOOK_SPAN) * 100}%">${fmt(s).replace(/\.0$/, '')}</div>`;
+  const r = S.recording, pr = S.preroll;
+  const rec = r ? `<div class="recspan" style="left:${Math.max(0, ((r.start - t0) / LOOK_SPAN) * 100)}%;right:${(1 - LOOK_PH) * 100}%"></div>`
+    : pr ? `<div class="recspan" style="left:${((pr.at - t0) / LOOK_SPAN) * 100}%;width:2px"></div>` : '';
+  const cyc = S.cycle.on ? `<div class="recspan" style="background:#ffd60a14;border-left:1px dashed #ffd60a;border-right:1px dashed #ffd60a;left:${((S.cycle.a - t0) / LOOK_SPAN) * 100}%;width:${((S.cycle.b - S.cycle.a) / LOOK_SPAN) * 100}%"></div>` : '';
+  const label = pr ? `Recording in ${(pr.at - S.playhead).toFixed(1)} s` : nextChangeText();
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path d="${d}" stroke="#a9b0ff" stroke-width="2"/></svg>${ticks}
+    <div class="past" style="width:${LOOK_PH * 100}%"></div>${cyc}${rec}<div class="lph ${busy() ? 'rec' : ''}" style="left:${LOOK_PH * 100}%"></div><div class="next">${label}</div>`;
+}
+function overviewHtml() {
+  const rows = S.tracks.map((t) => `<div class="ov-row">${[...t.clips].sort((a, b) => a.layer - b.layer).map((c) => `<div class="ov-clip" style="left:${(c.start / SONG_LEN) * 100}%;width:${(c.length / SONG_LEN) * 100}%;background:var(--${c.source === 'take' ? 'take' : 'backing'});z-index:${c.layer}"></div>`).join('')}</div>`).join('');
+  const vids = `<div class="ov-row">${S.videoTakes.map((v) => `<div class="ov-clip" style="left:${(v.start / SONG_LEN) * 100}%;width:${(v.length / SONG_LEN) * 100}%;background:var(--video)"></div>`).join('')}</div>`;
+  return `<div class="c-overview" data-overview title="Whole Song: click to move the playhead">${rows}${vids}<div class="ov-ph" data-live="ov-ph" style="left:${(S.playhead / SONG_LEN) * 100}%"></div></div>`;
+}
+function headerC(t) {
+  const lanes = currentVariant() === 'C' && t.takes.length ? `<button class="lanes-btn ${S.ui.lanesOpen[t.id] ? 'on' : ''}" data-act="toggle-lanes" data-track="${t.id}" title="Show every Take on this Track">${S.ui.lanesOpen[t.id] ? '▾' : '▸'} ${t.takes.length} Takes</button>` : '';
+  return `<div class="h-row">${armBtn(t)}${muteBtn(t)}${soloBtn(t)}<span class="tname">${t.name}</span></div>${lanes ? `<div class="h-row">${lanes}</div>` : ''}`;
+}
+const camHeaderC = () => `<div class="h-row"><button data-act="cam-arm" class="arm ${S.camera.armed ? 'on' : ''}">●</button><span class="tname">Camera</span></div>`;
+function qbarHtml() {
+  if (!S.ui.qbar) return '';
+  const how = { A: 'Click a Clip\'s "Takes ▾" tag and pick a Pass: the Clip swaps its source.', B: 'Click a Clip\'s "Takes ▾" tag and pick a Pass: a new Clip goes on top.', C: 'Unfold a Track\'s Takes (▸ in the header) and click a Take lane: the Clip under that point swaps to it.' }[currentVariant()];
+  return `<div class="qbar"><b>PROTOTYPE · Alternate takes</b><span>${how} The Passes list brings a whole Pass back. Try pre-roll and ⟳ Cycle, then R.</span><span class="spacer"></span><button data-act="qbar">hide</button></div>`;
+}
+function renderWindow() {
+  const m = S.ui.mode;
+  const modes = C_MODES.map((k, i) => `<button data-act="mode" data-mode="${k}" class="${m === k ? 'on' : ''}" title="${i + 1}">${k[0].toUpperCase() + k.slice(1)}</button>`).join('');
+  let body = '';
+  if (m === 'record') {
+    body = `<div class="c-rec"><div class="c-stage"><div class="h-row">${cameraArmHtml()}</div>${screenHtml()}</div>
+        <div class="c-side" data-scroll="cside">${S.tracks.map(armRowC).join('')}<div class="passes"><h4>Passes</h4>${passRowsHtml()}</div></div></div>
+      <div class="c-look"><div class="look-head"><span>Backing Track · what's coming</span><span>next ${LOOK_SPAN * (1 - LOOK_PH)} s</span></div><div class="look" data-live="look">${lookaheadInner()}</div></div>
+      ${overviewHtml()}`;
+  } else if (m === 'edit') {
+    const f = S.sel.clip && findClip(S.sel.clip);
+    const tools = f ? `<b>${f.c.label}</b><span class="dim">on ${f.t.name} · layer ${f.c.layer}</span><span>start ${fmt(f.c.start)}</span><span>length ${fmt(f.c.length)}</span><span>${fmtDb(f.c.gain)}</span><button data-act="split">Split (S)</button><button data-act="delete">Delete</button>`
+      : `<span class="dim">Select a Clip. Drag to move, edges to trim, top corners for fades, the dB tag for gain. S splits at the playhead.</span>`;
+    body = `<div class="c-edit"><div class="c-cliptools">${tools}<span class="spacer"></span><button data-act="pass-menu" class="${S.ui.passMenu ? 'on' : ''}">Passes ▾</button>${zoomHtml()}<button data-act="toggle-preview" class="${S.ui.previewOpen ? 'on' : ''}">Video</button><button data-act="toggle-cmix" class="${S.ui.cMix.open ? 'on' : ''}" title="Mixer (X)">Mixer</button></div>
+      <div class="c-edit-tl">${timelineHtml({ headerW: 150, laneH: 76, header: headerC, cameraHeader: camHeaderC })}</div>
+      ${S.ui.cMix.open ? `<div class="c-split" data-splitter title="Drag to resize the mixer"></div>
+      <div class="c-edit-mix" data-scroll="mix" style="height:${S.ui.cMix.h}px">${S.tracks.map((t) => stripHtml(t)).join('')}<div class="spacer"></div>${stripHtml(S.master, true)}</div>` : ''}</div>`;
+  } else {
+    body = `<div class="c-export">${exportHtml()}</div>`;
+  }
+  return `<div class="vc"><div class="c-top"><div class="modes">${modes}</div><div class="sep"></div>${transportHtml()}<div class="sep"></div>${recOptsHtml()}<span class="spacer"></span>${undoHtml()}</div>${qbarHtml()}<div class="c-body">${body}</div></div>`;
+}
+
+// ---------- render ----------
+function floatingHtml() {
+  let h = S.ui.pluginWindows.map(pluginWindowHtml).join('');
+  if (S.ui.mode === 'edit' && S.ui.previewOpen) h += previewWindowHtml();
+  h += takesMenuHtml() + passMenuHtml();
+  if (S.ui.toast) h += `<div class="toast">${S.ui.toast.text}</div>`;
+  return h;
+}
+function render() {
+  const scrolls = {};
+  document.querySelectorAll('[data-scroll]').forEach((el) => { scrolls[el.dataset.scroll] = [el.scrollLeft, el.scrollTop]; });
+  const v = currentVariant();
+  $('#app').innerHTML = renderWindow();
+  $('#floating').innerHTML = floatingHtml();
+  document.querySelectorAll('[data-scroll]').forEach((el) => { const s = scrolls[el.dataset.scroll]; if (s) { el.scrollLeft = s[0]; el.scrollTop = s[1]; } });
+  $('#swlabel').textContent = `${v} (${VARIANTS.find((x) => x[0] === v)[1]})`;
+  renderStatePanel();
+}
+function renderStatePanel() {
+  const p = $('#statepanel'); if (p.style.display !== 'block') return;
+  const r2 = (n) => Math.round(n * 100) / 100;
+  p.textContent = JSON.stringify({
+    variant: currentVariant(), playhead: r2(S.playhead), playing: S.playing, preRoll: S.prerollSec, cycle: S.cycle,
+    recording: S.recording && { passId: S.recording.passId, runPasses: S.recording.runPasses },
+    passes: S.passes.map((p) => ({ id: p.id, start: r2(p.start), length: r2(p.length), status: passStatus(p)[0] })),
+    tracks: S.tracks.map((t) => ({ name: t.name,
+      takes: t.takes.map((k) => ({ id: k.id, pass: k.passId, start: r2(k.start), length: r2(k.length), status: takeStatus(t, k)[0] })),
+      clips: [...t.clips].sort((a, b) => b.layer - a.layer).map((c) => ({ layer: c.layer, source: c.takeId || c.source, label: c.label, start: r2(c.start), length: r2(c.length), offset: r2(c.offset), gain: c.gain })) })),
+    videoTakes: S.videoTakes.map((v) => ({ pass: v.passId, start: r2(v.start), length: r2(v.length) })),
+    undo: S.undo.map((u) => u.label), redo: S.redo.map((u) => u.label),
+  }, null, 1);
+}
+
+// ---------- events ----------
+document.addEventListener('click', (e) => {
+  const sw = e.target.closest('[data-sw]');
+  if (sw) {
+    if (sw.dataset.sw === 'state') { const p = $('#statepanel'); p.style.display = p.style.display === 'block' ? 'none' : 'block'; render(); return; }
+    return cycleVariant(+sw.dataset.sw);
+  }
+  const a = e.target.closest('[data-act]');
+  const act = a && a.dataset.act, d = a ? a.dataset : {};
+  if (!e.target.closest('.menu') && act !== 'takes-menu' && act !== 'pass-menu') { S.ui.takeMenu = null; S.ui.passMenu = null; }
+  if (!a) { render(); return; }
+  if (act === 'play') play();
+  if (act === 'record') record();
+  if (act === 'rewind') S.playhead = 0;
+  if (act === 'cycle') { S.cycle.on = !S.cycle.on; if (S.cycle.on && S.ui.mode !== 'record') toast('Cycle on: drag the yellow bar on the ruler to set the range. R records a new Pass every loop.'); }
+  if (act === 'arm') { const t = track(d.track); t.armed = !t.armed; }
+  if (act === 'mute') { const t = track(d.track); const b = snapshot(); t.mute = !t.mute; pushUndo(b, 'Mute'); }
+  if (act === 'solo') { const t = track(d.track); const b = snapshot(); t.solo = !t.solo; pushUndo(b, 'Solo'); }
+  if (act === 'cam-arm') S.camera.armed = !S.camera.armed;
+  if (act === 'sel-track') { S.sel.track = d.track; }
+  if (act === 'sel-video') S.ui.export.videoId = d.video;
+  if (act === 'jump') S.playhead = +d.t;
+  if (act === 'undo') undo();
+  if (act === 'redo') redo();
+  if (act === 'zoom-in') S.zoom = Math.min(40, S.zoom * 1.5);
+  if (act === 'zoom-out') S.zoom = Math.max(2, S.zoom / 1.5);
+  if (act === 'toggle-preview') S.ui.previewOpen = !S.ui.previewOpen;
+  if (act === 'toggle-cmix') S.ui.cMix.open = !S.ui.cMix.open;
+  if (act === 'export-reset') S.ui.export.status = null;
+  if (act === 'export-run') runExport();
+  if (act === 'mode') S.ui.mode = d.mode;
+  if (act === 'qbar') S.ui.qbar = false;
+  if (act === 'split') splitAtPlayhead();
+  if (act === 'delete') deleteSelected();
+  if (act === 'open-plugin') openPlugin(d.owner, d.ins);
+  if (act === 'close-plugin') S.ui.pluginWindows = S.ui.pluginWindows.filter((w) => w.key !== d.key);
+  if (act === 'bypass') { const p = owner(d.owner).inserts.find((i) => i.id === d.ins); const b = snapshot(); p.bypass = !p.bypass; pushUndo(b, 'Bypass ' + p.name); }
+  if (act === 'remove-ins') { const o = owner(d.owner); const b = snapshot(); o.inserts = o.inserts.filter((i) => i.id !== d.ins); pushUndo(b, 'Remove Insert'); }
+  if (act === 'takes-menu') { const f = findClip(d.clip); S.sel.clip = d.clip; S.sel.track = f.t.id; S.ui.passMenu = null; S.ui.takeMenu = S.ui.takeMenu && S.ui.takeMenu.clipId === d.clip ? null : { clipId: d.clip, x: e.clientX, y: e.clientY + 8 }; }
+  if (act === 'pick-take') { const f = findClip(S.ui.takeMenu.clipId); if (!busy()) pickTake(f.t, f.c, takeById(f.t, d.take)); S.ui.takeMenu = null; }
+  if (act === 'pass-menu') { S.ui.takeMenu = null; const r = a.getBoundingClientRect(); S.ui.passMenu = S.ui.passMenu ? null : { x: r.left, y: r.bottom + 4 }; }
+  if (act === 'bring-pass') { if (!busy()) bringBackPass(+d.pass); S.ui.passMenu = null; }
+  if (act === 'toggle-lanes') S.ui.lanesOpen[d.track] = !S.ui.lanesOpen[d.track];
+  if (act === 'lane-pick') { const t = track(d.track), lane = a.closest('[data-tlane]'); if (!busy()) lanePick(t, takeById(t, d.take), (e.clientX - lane.getBoundingClientRect().left) / S.zoom); }
+  render();
+});
+let rangeBefore = null;
+document.addEventListener('pointerdown', (e) => { if (e.target.matches('input[type=range]')) rangeBefore = snapshot(); }, true);
+document.addEventListener('input', (e) => {
+  const d = e.target.dataset;
+  if (d.input === 'vol') owner(d.owner).vol = +e.target.value;
+  if (d.input === 'pan') owner(d.owner).pan = +e.target.value;
+});
+document.addEventListener('change', (e) => {
+  const d = e.target.dataset, val = e.target.value;
+  if (d.input === 'vol' || d.input === 'pan') { if (rangeBefore) pushUndo(rangeBefore, d.input === 'vol' ? 'Volume' : 'Pan'); rangeBefore = null; }
+  if (d.input === 'input') track(d.track).input = val;
+  if (d.input === 'cam-device') S.camera.device = val;
+  if (d.input === 'preroll') S.prerollSec = +val;
+  if (d.input === 'add-ins' && val) { const o = owner(d.owner); const b = snapshot(); const p = { id: newId('p'), name: val, bypass: false, seed: uid }; o.inserts.push(p); pushUndo(b, 'Add ' + val); openPlugin(o.id, p.id); }
+  if (d.input === 'exp-format') S.ui.export.format = val;
+  if (d.input === 'exp-video') S.ui.export.videoId = val;
+  if (d.input === 'exp-span') S.ui.export.span = val;
+  render();
+});
+function runExport() {
+  const x = S.ui.export;
+  x.status = 'running'; x.progress = 0;
+  x.dest = `~/Music/Overdub/My Song.${x.format}`;
+  const iv = setInterval(() => { x.progress += 0.05; if (x.progress >= 1) { clearInterval(iv); x.status = 'done'; } render(); }, 60);
+}
+
+// drags: clips, cycle range, scrubbing, windows. Document-level listeners survive the full re-render.
+let drag = null;
+document.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  if (e.target.closest('.menu,.ttag,.tk')) return;
+  const win = e.target.closest('[data-drag-window]');
+  if (win && !e.target.closest('button')) { const k = win.dataset.dragWindow; drag = { type: 'window', key: k, sx: e.clientX, sy: e.clientY, orig: { ...S.ui.pos[k] } }; return; }
+  if (e.target.closest('[data-splitter]')) { drag = { type: 'splitter', sy: e.clientY, orig: S.ui.cMix.h }; e.preventDefault(); return; }
+  const cyc = e.target.closest('[data-cyc]');
+  if (cyc && !busy()) { drag = { type: 'cycle', part: e.target.dataset.cyc || 'move', sx: e.clientX, orig: { ...S.cycle } }; e.preventDefault(); return; }
+  const clipEl = e.target.closest('[data-clip]');
+  if (clipEl) {
+    const h = e.target.closest('[data-h]');
+    S.sel.clip = clipEl.dataset.clip; S.sel.track = clipEl.dataset.track;
+    drag = { type: h ? h.dataset.h : 'move', clipId: clipEl.dataset.clip, sx: e.clientX, sy: e.clientY, orig: { ...findClip(clipEl.dataset.clip).c }, before: snapshot(), moved: false };
+    e.preventDefault(); render(); return;
+  }
+  const area = e.target.closest('[data-ruler],[data-lane]');
+  if (area) {
+    if (area.dataset.lane) { S.sel.track = area.dataset.lane; S.sel.clip = null; }
+    drag = { type: 'scrub', left: area.getBoundingClientRect().left, width: null };
+    if (!busy()) S.playhead = clamp((e.clientX - drag.left) / S.zoom, 0, SONG_LEN);
+    render(); return;
+  }
+  const ov = e.target.closest('[data-overview]');
+  if (ov) { const r = ov.getBoundingClientRect(); drag = { type: 'scrub', left: r.left, width: r.width }; if (!busy()) S.playhead = clamp(((e.clientX - r.left) / r.width) * SONG_LEN, 0, SONG_LEN); render(); }
+});
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  if (drag.type === 'window') { S.ui.pos[drag.key] = { x: drag.orig.x + e.clientX - drag.sx, y: Math.max(0, drag.orig.y + e.clientY - drag.sy) }; render(); return; }
+  if (drag.type === 'splitter') { S.ui.cMix.h = clamp(drag.orig - (e.clientY - drag.sy), 120, window.innerHeight - 220); render(); return; }
+  if (drag.type === 'cycle') {
+    const dx = (e.clientX - drag.sx) / S.zoom, o = drag.orig, len = o.b - o.a;
+    if (drag.part === 'l') S.cycle.a = Math.round(clamp(o.a + dx, 0, o.b - 1) * 10) / 10;
+    if (drag.part === 'r') S.cycle.b = Math.round(clamp(o.b + dx, o.a + 1, SONG_LEN) * 10) / 10;
+    if (drag.part === 'move') { S.cycle.a = Math.round(clamp(o.a + dx, 0, SONG_LEN - len) * 10) / 10; S.cycle.b = S.cycle.a + len; }
+    render(); return;
+  }
+  if (drag.type === 'scrub') {
+    if (busy()) return;
+    S.playhead = drag.width ? clamp(((e.clientX - drag.left) / drag.width) * SONG_LEN, 0, SONG_LEN) : clamp((e.clientX - drag.left) / S.zoom, 0, SONG_LEN);
+    render(); return;
+  }
+  if (S.recording && S.recording.clipIds.includes(drag.clipId)) return;
+  drag.moved = true;
+  applyDrag(drag, (e.clientX - drag.sx) / S.zoom, e.clientY - drag.sy);
+  render();
+});
+document.addEventListener('pointerup', () => {
+  if (drag && drag.moved) { pushUndo(drag.before, DRAG_LABEL[drag.type]); render(); }
+  drag = null;
+});
+
+function cycleVariant(dir) {
+  const i = VARIANTS.findIndex((x) => x[0] === currentVariant());
+  const next = VARIANTS[(i + dir + VARIANTS.length) % VARIANTS.length][0];
+  const u = new URL(location.href); u.searchParams.set('variant', next); history.replaceState(null, '', u);
+  S.ui.takeMenu = null;
+  render();
+}
+document.addEventListener('keydown', (e) => {
+  if (e.target.matches('input[type=text],textarea,[contenteditable],select')) return;
+  const k = e.key;
+  if (k === 'ArrowLeft' || k === 'ArrowRight') { e.preventDefault(); return cycleVariant(k === 'ArrowLeft' ? -1 : 1); }
+  if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return render(); }
+  if (e.metaKey || e.ctrlKey) return;
+  if (k === ' ') { e.preventDefault(); play(); }
+  else if (k === 'r' || k === 'R') record();
+  else if (k === 's' || k === 'S') splitAtPlayhead();
+  else if (k === 'c' || k === 'C') { if (!busy()) S.cycle.on = !S.cycle.on; }
+  else if (k === 'Backspace' || k === 'Delete') deleteSelected();
+  else if (k === 'Enter') S.playhead = S.cycle.on ? S.cycle.a : 0;
+  else if (k === 'x' || k === 'X') S.ui.cMix.open = !S.ui.cMix.open;
+  else if (k === 'Escape') { S.sel.clip = null; S.ui.takeMenu = null; S.ui.passMenu = null; }
+  else if ('123'.includes(k)) S.ui.mode = C_MODES[+k - 1];
+  else return;
+  render();
+});
+
+// ---------- clock: pre-roll, cycle loops, playhead, meters, live screen ----------
+let last = performance.now(), lastFull = 0, lastScreen = 0;
+function audible(t) { const anySolo = S.tracks.some((x) => x.solo); return !t.mute && (!anySolo || t.solo); }
+function levelFor(t) {
+  let l = 0;
+  if (t.armed) l = 0.35 + Math.random() * 0.35; // live input while Monitoring
+  if (S.playing && audible(t)) { const c = topClipAt(t, S.playhead); if (c) l = Math.max(l, clipAmp(c, c.offset + S.playhead - c.start) * Math.pow(10, (c.gain + t.vol) / 20)); }
+  return clamp(l, 0, 1);
+}
+function tick(now) {
+  const dt = (now - last) / 1000; last = now;
+  if (S.playing) {
+    S.playhead += dt;
+    if (S.preroll && S.playhead >= S.preroll.at) { const p = S.preroll; S.preroll = null; beginPass(p.at, p.runBefore, []); render(); }
+    if (S.cycle.on && !S.preroll && S.playhead >= S.cycle.b) {
+      if (S.recording) { S.playhead = S.cycle.b; growRecording(); beginPass(S.cycle.a, S.recording.runBefore, S.recording.runPasses); render(); }
+      else S.playhead = S.cycle.a;
+    }
+    if (S.playhead >= SONG_LEN) { S.playhead = SONG_LEN; stop(); render(); }
+    if (S.recording) { growRecording(); if (now - lastFull > 120 && !drag) { lastFull = now; render(); } }
+  }
+  if (S.ui.toast && Date.now() - S.ui.toast.at > 4500) { S.ui.toast = null; render(); }
+  document.querySelectorAll('[data-live=time]').forEach((el) => { el.textContent = fmt(S.playhead); });
+  if (S.preroll) document.querySelectorAll('[data-live=status]').forEach((el) => { el.textContent = `PRE-ROLL ${(S.preroll.at - S.playhead).toFixed(1)}`; });
+  document.querySelectorAll('[data-live=playhead]').forEach((el) => {
+    const x = +el.dataset.hw + S.playhead * S.zoom; el.style.left = x + 'px';
+    const sc = el.closest('.timeline');
+    if (S.playing && sc && (x > sc.scrollLeft + sc.clientWidth - 40 || x < sc.scrollLeft + +el.dataset.hw)) sc.scrollLeft = x - +el.dataset.hw - 40;
+  });
+  document.querySelectorAll('[data-live=ov-ph]').forEach((el) => { el.style.left = (S.playhead / SONG_LEN) * 100 + '%'; });
+  document.querySelectorAll('[data-live=look]').forEach((el) => { el.innerHTML = lookaheadInner(); });
+  if (now - lastScreen > 80) { lastScreen = now; document.querySelectorAll('[data-live=screen]').forEach((el) => { el.innerHTML = screenInner(); }); }
+  const levels = {};
+  S.tracks.forEach((t) => { levels[t.id] = levelFor(t); });
+  levels.master = clamp(Math.max(0, ...S.tracks.filter((t) => audible(t) && S.playing).map((t) => levels[t.id])) * Math.pow(10, S.master.vol / 20), 0, 1);
+  document.querySelectorAll('[data-meter]').forEach((el) => { el.style.setProperty('--l', levels[el.dataset.meter] || 0); });
+  requestAnimationFrame(tick);
+}
+render();
+requestAnimationFrame(() => { const tl = $('[data-scroll=tl]'); if (tl) tl.scrollLeft = 15 * S.zoom; });
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
