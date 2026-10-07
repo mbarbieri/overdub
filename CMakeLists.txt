@@ -33,6 +33,9 @@ add_subdirectory(src/engine)
 # Recording Passes and the loopback latency measurement (issue #26).
 add_subdirectory(src/capture)
 
+# The main window's Components and the pure UI logic under them (issue #27).
+add_subdirectory(src/ui)
+
 # Overdub.app
 add_subdirectory(src/app)
 

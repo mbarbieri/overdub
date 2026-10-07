@@ -49,8 +49,7 @@ public:
 
         // Microphone access first: the audio device opens only once the user has decided (ADR 0002).
         requestMicrophoneAccess ([this] (bool) {
-            liveEngine = std::make_unique<LiveEngine>();
-            mainWindow = std::make_unique<MainWindow> (getApplicationName());
+            mainWindow = std::make_unique<MainWindow> (getApplicationName(), std::make_unique<LiveEngine>());
         });
     }
 
@@ -134,8 +133,8 @@ private:
     }
 
     core::JuceLoggerBridge juceLoggerBridge;
-    std::unique_ptr<LiveEngine> liveEngine;
-    std::unique_ptr<MainWindow> mainWindow;
+    std::unique_ptr<LiveEngine> liveEngine; // only in --selftest; the window owns its own
+    std::unique_ptr<MainWindow> mainWindow; // owns the live engine and the open Song
     std::unique_ptr<LoopbackSelftest> selftest; // only in --selftest loopback; destroyed before liveEngine
 };
 } // namespace overdub::app
