@@ -6,6 +6,7 @@ add_library(overdub_engine STATIC)
 
 target_sources(overdub_engine PRIVATE
     ClipSchedule.cpp
+    DeviceBinding.cpp
     DeviceSettings.cpp
     Engine.cpp
     RenderPlan.cpp
