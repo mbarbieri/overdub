@@ -12,6 +12,7 @@ target_sources(overdub_tests PRIVATE
     core/LogFilesTest.cpp
     core/LogTest.cpp
     core/RtEventRingTest.cpp
+    engine/EngineEventsTest.cpp
     engine/EngineRealtimeTest.cpp
     engine/EngineTest.cpp
     song/SongJsonTest.cpp
