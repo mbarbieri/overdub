@@ -21,7 +21,8 @@ Engine::~Engine()
 {
     delete currentPlan;
     delete pendingPlan.exchange (nullptr);
-    delete retiredPlan.exchange (nullptr);
+    for (auto& slot : retiredPlans)
+        delete slot.exchange (nullptr);
 }
 
 //==============================================================================
@@ -30,9 +31,11 @@ Engine::~Engine()
 void Engine::loadSong (const song::Song& song, const juce::File& packageRoot, const TrackInsertFactory& makeInserts)
 {
     const std::scoped_lock lock { nonRealtimeMutex };
-    freeRetiredPlan();
 
     auto* plan = new RenderPlan (song, packageRoot, config, makeInserts);
+    // Right before publishing, so the audio thread has a free slot for the plan it replaces
+    // (see the progress invariant in Engine.h).
+    freeRetiredPlans();
     // A plan the audio thread never took is replaced; it was never used, so it is freed here.
     delete pendingPlan.exchange (plan, std::memory_order_acq_rel);
 }
@@ -88,7 +91,7 @@ std::optional<Anchor> Engine::latestAnchor() const
 void Engine::housekeeping (std::uint64_t nowHostNs)
 {
     const std::scoped_lock lock { nonRealtimeMutex };
-    freeRetiredPlan();
+    freeRetiredPlans();
 
     if (! lastLoadSummaryNs.has_value())
     {
@@ -117,9 +120,10 @@ void Engine::housekeeping (std::uint64_t nowHostNs)
                       { "callbacks", callbacks } });
 }
 
-void Engine::freeRetiredPlan()
+void Engine::freeRetiredPlans()
 {
-    delete retiredPlan.exchange (nullptr, std::memory_order_acq_rel);
+    for (auto& slot : retiredPlans)
+        delete slot.exchange (nullptr, std::memory_order_acq_rel);
 }
 
 //==============================================================================
@@ -169,15 +173,17 @@ void Engine::process (const float* const*,
 
 void Engine::takePendingPlan (std::uint64_t hostTimeNs) noexcept
 {
-    // The old plan can only be parked when the previous one has been freed.
-    if (retiredPlan.load (std::memory_order_acquire) != nullptr)
+    // A slot seen empty here stays empty until this thread fills it. By the progress invariant
+    // (Engine.h) one is always empty when a plan is pending; if not, the swap waits a callback.
+    const auto emptySlot = std::ranges::find_if (retiredPlans, [] (const auto& slot) { return slot.load (std::memory_order_acquire) == nullptr; });
+    if (emptySlot == retiredPlans.end())
         return;
 
     auto* next = pendingPlan.exchange (nullptr, std::memory_order_acq_rel);
     if (next == nullptr)
         return;
 
-    retiredPlan.store (currentPlan, std::memory_order_release);
+    emptySlot->store (currentPlan, std::memory_order_release);
     currentPlan = next;
     staleOutputSamples = next->latencySamples();
     currentLatency.store (next->latencySamples());

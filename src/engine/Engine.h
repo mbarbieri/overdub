@@ -5,6 +5,7 @@
 #include "engine/RenderPlan.h"
 #include "song/Song.h"
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -75,7 +76,7 @@ public:
     // RT events: drain with core::drainRtEvents (rtEvents(), engineRtCatalog) or an RtEventDrainThread.
     core::RtEventRing& rtEvents() { return rtEventRing; }
 
-    // Non-audio thread, call regularly (e.g. every 50-100 ms): frees a replaced plan, and once per
+    // Non-audio thread, call regularly (e.g. every 50-100 ms): frees replaced plans, and once per
     // second since the previous summary logs `engine.load` (debug) while the transport plays.
     void housekeeping (std::uint64_t nowHostNs);
 
@@ -102,16 +103,20 @@ private:
     void pushEvent (EngineRtCode code, std::uint64_t hostTimeNs, double arg0 = 0.0, double arg1 = 0.0, double arg2 = 0.0, double arg3 = 0.0) noexcept;
 
     // Non-audio thread, under nonRealtimeMutex.
-    void freeRetiredPlan();
+    void freeRetiredPlans();
 
     EngineConfig config;
     core::RtEventRing rtEventRing;
 
     // Plan handover: non-audio threads publish into pendingPlan; the audio thread moves it to
-    // currentPlan and parks the old one in retiredPlan (only when that slot is empty) for a
-    // non-audio thread to free.
+    // currentPlan and parks the old one in an empty retiredPlans slot for a non-audio thread to
+    // free. Only the audio thread fills a slot; only non-audio threads empty one.
+    // Invariant (progress): loadSong empties both slots right before it publishes. Until then the
+    // audio thread can make at most one swap (taking the one plan already pending), so at most
+    // one slot is full when it reaches the new plan, and every published plan is taken by the
+    // next callback, with or without housekeeping().
     std::atomic<RenderPlan*> pendingPlan { nullptr };
-    std::atomic<RenderPlan*> retiredPlan { nullptr };
+    std::array<std::atomic<RenderPlan*>, 2> retiredPlans {};
     RenderPlan* currentPlan = nullptr; // audio thread only
     std::atomic<int> currentLatency { 0 };
     std::atomic<int> currentSampleRate { 0 };
