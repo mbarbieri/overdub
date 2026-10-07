@@ -1,11 +1,15 @@
 #pragma once
 
 #include "core/Error.h"
+#include "song/Song.h"
+
+#include <juce_core/juce_core.h>
 
 #include <nlohmann/json.hpp>
 
 #include <functional>
 #include <span>
+#include <string_view>
 
 // The formatVersion migration scaffold (issue #8, ADR 0004). One step function per version moves a
 // raw song.json document from version v to v + 1; the package runs it over song.json and every
@@ -34,4 +38,18 @@ std::span<const MigrationStep> songMigrationSteps();
 
 // migrateDocument with songMigrationSteps().
 core::Expected<MigratedDocument> migrateSongDocument (nlohmann::json document);
+
+// A Song read from a package file (song.json or a history snapshot) at any supported version.
+struct StoredSong
+{
+    nlohmann::json file; // the whole parsed file, as on disk
+    Song song;           // converted after migrating to songFormatVersion
+    int fromVersion = 0; // the formatVersion on disk
+};
+
+// The one read path for package Songs: read, parse, migrate, convert. The Song document is the
+// file's member `songKey`, or the whole file when `songKey` is empty. Every Error carries the
+// file's `path`. Errors: song.read_failed, song.json_unparsable, song.json_invalid,
+// song.format_too_new, song.migration_failed.
+core::Expected<StoredSong> readStoredSong (const juce::File& file, std::string_view songKey);
 } // namespace overdub::song

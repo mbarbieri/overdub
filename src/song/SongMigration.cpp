@@ -1,5 +1,8 @@
 #include "song/SongMigration.h"
 
+#include "song/AtomicWrite.h"
+#include "song/SongJson.h"
+
 namespace overdub::song
 {
 core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::span<const MigrationStep> steps)
@@ -51,5 +54,29 @@ std::span<const MigrationStep> songMigrationSteps()
 core::Expected<MigratedDocument> migrateSongDocument (nlohmann::json document)
 {
     return migrateDocument (std::move (document), songMigrationSteps());
+}
+
+core::Expected<StoredSong> readStoredSong (const juce::File& file, std::string_view songKey)
+{
+    auto parsed = readJsonFile (file);
+    if (! parsed.has_value())
+        return std::unexpected (parsed.error());
+
+    const bool wholeFile = songKey.empty();
+    if (! wholeFile && (! parsed->is_object() || ! parsed->contains (songKey)))
+        return std::unexpected (withFilePath (core::Error {
+                                                  "song.json_invalid",
+                                                  "package file has no song document",
+                                                  { { "json_path", "$." + std::string (songKey) }, { "reason", "missing" } },
+                                              },
+                                              file));
+
+    auto migrated = migrateSongDocument (wholeFile ? *parsed : parsed->at (songKey));
+    if (! migrated.has_value())
+        return std::unexpected (withFilePath (migrated.error(), file));
+    auto song = songFromJson (migrated->document);
+    if (! song.has_value())
+        return std::unexpected (withFilePath (song.error(), file));
+    return StoredSong { std::move (*parsed), std::move (*song), migrated->fromVersion };
 }
 } // namespace overdub::song

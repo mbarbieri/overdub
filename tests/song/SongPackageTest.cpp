@@ -7,6 +7,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include <sys/stat.h>
+
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -91,7 +93,13 @@ TEST_CASE ("a created Song opens again with the same content", "[song][package]"
     CHECK (opened.package->song() == song);
     CHECK (opened.notices.empty());
     CHECK (opened.package->canUndo() == false);
-    CHECK (firstEvent (capture, "song.opened").at ("lvl") == "info");
+    const auto openedEvent = firstEvent (capture, "song.opened");
+    CHECK (openedEvent.at ("lvl") == "info");
+    CHECK (openedEvent.at ("format_version") == 1);
+    CHECK (openedEvent.at ("tracks") == 2);
+    CHECK (openedEvent.at ("undo_steps") == 0);
+    CHECK (openedEvent.at ("temp_files_deleted") == 0);
+    CHECK (openedEvent.at ("plugin_blobs_deleted") == 0);
 }
 
 TEST_CASE ("creating a Song where something already exists is an Error", "[song][package]")
@@ -526,6 +534,9 @@ TEST_CASE ("a corrupt history opens the Song with history dropped, the event log
     const auto dropped = firstEvent (capture, "song.history_dropped");
     CHECK (dropped.at ("lvl") == "warn");
     CHECK (dropped.at ("cause") == "song.json_unparsable");
+    CHECK (dropped.at ("path") == overdub::song::pathOf (temp.package().getChildFile ("history/000001.json")));
+    CHECK (dropped.at ("package") == overdub::song::pathOf (temp.package()));
+    CHECK (dropped.contains ("byte")); // the cause's own fields are kept
     CHECK (historyFileNames (temp.package()) == std::vector<std::string> { "000000.json", "index.json" });
 }
 
@@ -535,16 +546,35 @@ TEST_CASE ("a missing history folder or index drops history without blocking the
     const auto song = overdub::song::testing::fullyPopulatedSong();
     createPackage (temp.package(), song);
 
-    SECTION ("folder missing") { REQUIRE (temp.package().getChildFile ("history").deleteRecursively()); }
-    SECTION ("index unreadable") { REQUIRE (temp.package().getChildFile ("history/index.json").replaceWithText ("{\"oldest\": 0}")); }
-    SECTION ("snapshot from a newer format") { REQUIRE (temp.package().getChildFile ("history/000000.json").replaceWithText (R"({"label": "", "song": {"formatVersion": 9}})")); }
+    std::string expectedCause;
+    juce::File expectedPath;
+    SECTION ("folder missing")
+    {
+        REQUIRE (temp.package().getChildFile ("history").deleteRecursively());
+        expectedCause = "song.read_failed";
+        expectedPath = temp.package().getChildFile ("history/index.json");
+    }
+    SECTION ("index unreadable")
+    {
+        REQUIRE (temp.package().getChildFile ("history/index.json").replaceWithText ("{\"oldest\": 0}"));
+        expectedCause = "song.history_index_invalid";
+        expectedPath = temp.package().getChildFile ("history/index.json");
+    }
+    SECTION ("snapshot from a newer format")
+    {
+        REQUIRE (temp.package().getChildFile ("history/000000.json").replaceWithText (R"({"label": "", "song": {"formatVersion": 9}})"));
+        expectedCause = "song.format_too_new";
+        expectedPath = temp.package().getChildFile ("history/000000.json");
+    }
 
     ScopedLogCapture capture;
     auto opened = openPackage (temp.package());
 
     CHECK (opened.package->song() == song);
     CHECK (opened.notices.size() == 1);
-    CHECK (hasEvent (capture, "song.history_dropped"));
+    const auto dropped = firstEvent (capture, "song.history_dropped");
+    CHECK (dropped.at ("cause") == expectedCause);
+    CHECK (dropped.at ("path") == overdub::song::pathOf (expectedPath));
 
     // The fresh history works.
     REQUIRE (opened.package->edit (renamedFirstTrack (song, "Lead"), "Rename Track").has_value());
@@ -666,6 +696,59 @@ TEST_CASE ("Duplicate Song copies the whole package, history and ids included", 
     CHECK (package->song().tracks.at (0).name == "Lead"); // the original is untouched
 
     CHECK (package->duplicateTo (temp.package ("Copy.overdub")).error().code == "song.duplicate_failed");
+}
+
+namespace
+{
+// Makes a folder read-only, so nothing in it can be deleted, until the end of the scope.
+struct ReadOnlyFolder
+{
+    juce::File folder;
+
+    explicit ReadOnlyFolder (juce::File readOnly)
+        : folder (std::move (readOnly))
+    {
+        REQUIRE (::chmod (folder.getFullPathName().toRawUTF8(), 0555) == 0);
+    }
+    ~ReadOnlyFolder() { ::chmod (folder.getFullPathName().toRawUTF8(), 0755); }
+
+    ReadOnlyFolder (const ReadOnlyFolder&) = delete;
+    ReadOnlyFolder& operator= (const ReadOnlyFolder&) = delete;
+};
+} // namespace
+
+TEST_CASE ("a file open cannot delete is a warn event and the open goes on", "[song][package]")
+{
+    TempDirectory temp;
+    const auto song = overdub::song::testing::fullyPopulatedSong();
+    {
+        auto package = createPackage (temp.package(), song);
+        REQUIRE (package->storePluginState (juce::MemoryBlock ("never used", 10)).has_value());
+    }
+    const auto strayTemp = temp.package().getChildFile ("backing/backing-1.wav.tmp");
+    REQUIRE (strayTemp.replaceWithText ("partial"));
+    const auto straySnapshot = temp.package().getChildFile ("history/000007.json");
+    REQUIRE (straySnapshot.replaceWithText ("{}"));
+
+    struct Case
+    {
+        const char* folder;
+        const char* event;
+    };
+    const auto deletion = GENERATE (Case { "backing", "song.temp_delete_failed" },
+                                    Case { "history", "song.snapshot_delete_failed" },
+                                    Case { "plugins", "song.plugin_blob_delete_failed" });
+
+    ScopedLogCapture capture;
+    {
+        ReadOnlyFolder readOnly (temp.package().getChildFile (deletion.folder));
+        const auto opened = openPackage (temp.package());
+        CHECK (opened.package->song() == song);
+    }
+
+    const auto failed = firstEvent (capture, deletion.event);
+    CHECK (failed.at ("lvl") == "warn");
+    CHECK (juce::String (failed.at ("path").get<std::string>()).startsWith (temp.package().getChildFile (deletion.folder).getFullPathName() + "/"));
 }
 
 TEST_CASE ("a track name that is not valid UTF-8 is an Error, never an exception", "[song][package]")

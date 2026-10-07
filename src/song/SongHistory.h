@@ -33,14 +33,21 @@ public:
 
     // Reads index.json and every snapshot, migrating each. Any problem (missing folder, unreadable
     // index, missing, corrupt or unmigratable snapshot) is an Error: the caller drops the history.
-    // Errors: song.history_unreadable (path, cause: the underlying Error code).
+    // Errors: song.history_unreadable: `path` is the history file that failed, `cause` the
+    // underlying Error code (song.read_failed, song.json_unparsable, song.json_invalid,
+    // song.history_index_invalid, song.format_too_new, song.migration_failed), plus the cause's
+    // own fields. A stray snapshot file that cannot be deleted is logged as
+    // song.snapshot_delete_failed (warn, path).
     static core::Expected<SongHistory> load (const juce::File& directory, BeforeRenameHook beforeRename);
 
     // Deletes `directory` and starts it over with `baseline` as the only snapshot.
+    // Errors: song.write_failed (step clear_folder|create_folder, or a file write's),
+    // song.json_unserializable.
     static core::Expected<SongHistory> startFresh (const juce::File& directory, const Song& baseline, BeforeRenameHook beforeRename);
 
     // Adds a step after the current one, deleting any redo branch and anything over the cap. The
     // step is committed once index.json is written; on an Error nothing changed in memory.
+    // Errors: song.write_failed, song.json_unserializable (writeJsonAtomically).
     core::Expected<void> push (const Song& song, const std::string& label);
 
     bool canUndo() const { return current > oldest; }

@@ -55,8 +55,14 @@ int deleteUnreferencedPluginBlobs (const juce::File& pluginsDirectory, const std
 {
     int deleted = 0;
     for (const auto& file : pluginsDirectory.findChildFiles (juce::File::findFiles, false, "*.state"))
-        if (! referenced.contains (file.getFileNameWithoutExtension().toStdString()) && file.deleteFile())
+    {
+        if (referenced.contains (file.getFileNameWithoutExtension().toStdString()))
+            continue;
+        if (file.deleteFile())
             ++deleted;
+        else
+            core::logEvent (core::Level::warn, "song.plugin_blob_delete_failed", { { "path", pathOf (file) } });
+    }
     return deleted;
 }
 } // namespace overdub::song

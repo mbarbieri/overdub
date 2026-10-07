@@ -1,5 +1,7 @@
 #include "song/AtomicWrite.h"
 
+#include "song/SongJson.h"
+
 #include <cerrno>
 #include <cstdio>
 #include <fcntl.h>
@@ -12,9 +14,7 @@ std::string pathOf (const juce::File& file)
     return file.getFullPathName().toStdString();
 }
 
-namespace
-{
-core::Error writeError (const juce::File& file, const char* step, int savedErrno)
+core::Error writeFailed (const juce::File& file, const char* step, int savedErrno)
 {
     return core::Error {
         "song.write_failed",
@@ -23,12 +23,14 @@ core::Error writeError (const juce::File& file, const char* step, int savedErrno
     };
 }
 
+namespace
+{
 // Writes all of `bytes` to a new file at `file` and fsyncs it.
 core::Expected<void> writeAndSync (const juce::File& file, std::string_view bytes)
 {
     const int descriptor = ::open (file.getFullPathName().toRawUTF8(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (descriptor < 0)
-        return std::unexpected (writeError (file, "open", errno));
+        return std::unexpected (writeFailed (file, "open", errno));
 
     std::size_t written = 0;
     while (written < bytes.size())
@@ -38,7 +40,7 @@ core::Expected<void> writeAndSync (const juce::File& file, std::string_view byte
         {
             const int writeErrno = errno;
             ::close (descriptor);
-            return std::unexpected (writeError (file, "write", writeErrno));
+            return std::unexpected (writeFailed (file, "write", writeErrno));
         }
         written += static_cast<std::size_t> (result);
     }
@@ -47,7 +49,7 @@ core::Expected<void> writeAndSync (const juce::File& file, std::string_view byte
     {
         const int syncErrno = errno;
         ::close (descriptor);
-        return std::unexpected (writeError (file, "fsync", syncErrno));
+        return std::unexpected (writeFailed (file, "fsync", syncErrno));
     }
     ::close (descriptor);
     return {};
@@ -66,7 +68,7 @@ core::Expected<void> writeFileAtomically (const juce::File& destination, std::st
             return std::unexpected (*injected);
 
     if (std::rename (tempFile.getFullPathName().toRawUTF8(), destination.getFullPathName().toRawUTF8()) != 0)
-        return std::unexpected (writeError (destination, "rename", errno));
+        return std::unexpected (writeFailed (destination, "rename", errno));
     return {};
 }
 
@@ -98,17 +100,38 @@ core::Expected<std::string> readTextFile (const juce::File& file)
         return std::unexpected (core::Error {
             "song.read_failed",
             "could not read a package file",
-            { { "path", file.getFullPathName().toStdString() } },
+            { { "path", pathOf (file) } },
         });
     return contents.toString().toStdString();
+}
+
+core::Expected<nlohmann::json> readJsonFile (const juce::File& file)
+{
+    const auto text = readTextFile (file);
+    if (! text.has_value())
+        return std::unexpected (text.error());
+    auto parsed = parseJsonText (*text);
+    if (! parsed.has_value())
+        return std::unexpected (withFilePath (parsed.error(), file));
+    return parsed;
+}
+
+core::Error withFilePath (core::Error error, const juce::File& file)
+{
+    error.fields["path"] = pathOf (file);
+    return error;
 }
 
 int deleteTempFiles (const juce::File& directory)
 {
     int deleted = 0;
     for (const auto& file : directory.findChildFiles (juce::File::findFiles, true, "*.tmp"))
+    {
         if (file.deleteFile())
             ++deleted;
+        else
+            core::logEvent (core::Level::warn, "song.temp_delete_failed", { { "path", pathOf (file) } });
+    }
     return deleted;
 }
 } // namespace overdub::song

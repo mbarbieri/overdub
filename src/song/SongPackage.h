@@ -34,11 +34,11 @@
 // Single-threaded: every call comes from one thread (the message thread in the app).
 namespace overdub::song
 {
-// A one-line message for the user, surfaced by the UI (e.g. "Undo history could not be read").
+// A Notice-tier situation for the UI to show as its one-line notice (ADR 0006). Only the code:
+// the sentence the user reads comes from ui/'s code-to-sentence table.
 struct Notice
 {
     std::string code; // same namespace as events, e.g. "song.history_dropped"
-    std::string message;
 };
 
 struct PackageOptions
@@ -47,8 +47,7 @@ struct PackageOptions
     // is not pushed back by later changes, so a stream of changes (playhead) still gets written.
     std::chrono::milliseconds saveDelay { 500 };
 
-    // Test seam: called with the destination after its temp file is written, before the rename.
-    // Returning an Error aborts that write and leaves the temp file behind, as a crash would.
+    // Test seam for every package write; see BeforeRenameHook in song/AtomicWrite.h.
     BeforeRenameHook beforeRename;
 };
 
@@ -60,7 +59,7 @@ public:
     struct Opened;
 
     // Creates a new package at `location`, which must not exist yet. Errors: song.package_exists,
-    // song.create_failed, plus any write error.
+    // song.create_failed (path, folder, reason), song.write_failed, song.json_unserializable.
     static core::Expected<std::unique_ptr<SongPackage>> create (const juce::File& location, Song song, PackageOptions options = {});
 
     // Opens an existing package: reads and migrates song.json (any Error here leaves the package
@@ -68,7 +67,8 @@ public:
     // unreadable history (a Notice, never an Error), deletes unreferenced plugin blobs, and
     // rewrites song.json only if it was migrated or restored from history.
     // Errors: song.package_not_found, song.read_failed, song.json_unparsable, song.json_invalid,
-    // song.format_too_new, song.migration_failed, plus writeJsonAtomically's.
+    // song.format_too_new, song.migration_failed (all with the file's path); song.write_failed,
+    // song.json_unserializable (rewriting song.json, or starting a fresh history).
     static core::Expected<Opened> open (const juce::File& location, PackageOptions options = {});
 
     // Writes any pending change; a failure is logged.
@@ -83,6 +83,7 @@ public:
     // An undoable change: one history step named `label` ("Import Band Mix.mp3"), then song.json.
     // An Error from the history write leaves everything unchanged. An Error from the song.json
     // write comes after the step is committed: the change stays applied and the write pending.
+    // Errors: song.write_failed, song.json_unserializable, or the beforeRename hook's.
     core::Expected<void> edit (Song changed, std::string label, Clock::time_point now = Clock::now());
 
     // A change that is saved (debounced) but not undoable.
@@ -94,25 +95,28 @@ public:
     std::string redoLabel() const { return history.redoLabel(); }
 
     // Restore the neighbouring snapshot, keeping state outside history (keepStateOutsideHistory),
-    // then write song.json. Failures behave as in edit().
+    // then write song.json. Errors: song.history_empty (nothing to undo/redo), otherwise as edit().
     core::Expected<void> undo (Clock::time_point now = Clock::now());
     core::Expected<void> redo (Clock::time_point now = Clock::now());
 
     bool hasPendingWrite() const { return writeDeadline.has_value(); }
 
     // Writes song.json if a change is pending and its deadline has passed. Call it from a timer.
+    // Errors: song.write_failed, song.json_unserializable; the write stays pending.
     core::Expected<void> writeIfDue (Clock::time_point now);
 
-    // Writes song.json now if a change is pending.
+    // Writes song.json now if a change is pending. Errors: as writeIfDue.
     core::Expected<void> flush();
 
     // Stores plugin state as plugins/<sha256>.state (once per distinct content) and returns the
-    // hash to put in an InsertSlot.
+    // hash to put in an InsertSlot. Errors: song.write_failed.
     core::Expected<std::string> storePluginState (const juce::MemoryBlock& state);
+    // Errors: song.plugin_state_invalid_hash, song.plugin_state_missing.
     core::Expected<juce::MemoryBlock> loadPluginState (const std::string& hash) const;
 
     // Duplicate Song: flushes, then clonefile()s the whole package, history included, ids kept.
-    // `destination` must not exist. Errors: song.duplicate_failed (errno).
+    // `destination` must not exist. Errors: song.duplicate_failed (path, destination, errno), or
+    // the flush's.
     core::Expected<void> duplicateTo (const juce::File& destination);
 
 private:

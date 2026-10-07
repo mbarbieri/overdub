@@ -21,6 +21,7 @@ core::Expected<std::string> storePluginBlob (const juce::File& pluginsDirectory,
 // Errors: song.plugin_state_missing (hash), song.plugin_state_invalid_hash (hash).
 core::Expected<juce::MemoryBlock> loadPluginBlob (const juce::File& pluginsDirectory, const std::string& hash);
 
-// Deletes every <hash>.state whose hash is not in `referenced`. Returns how many were deleted.
+// Deletes every <hash>.state whose hash is not in `referenced`. Returns how many were deleted. A
+// blob that cannot be deleted is logged as song.plugin_blob_delete_failed (warn, path).
 int deleteUnreferencedPluginBlobs (const juce::File& pluginsDirectory, const std::set<std::string>& referenced);
 } // namespace overdub::song

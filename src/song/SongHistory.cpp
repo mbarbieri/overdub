@@ -4,24 +4,22 @@
 #include "song/SongMigration.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <optional>
 #include <utility>
 
 namespace overdub::song
 {
 namespace
 {
+// Wraps the reason history could not be loaded. Keeps the cause's fields (its path, json_path,
+// byte, versions...) and adds its code as `cause`. `path` is the history file that failed.
 core::Error unreadable (const juce::File& file, const core::Error& cause)
 {
-    return core::Error {
-        "song.history_unreadable",
-        "undo history could not be read",
-        { { "path", file.getFullPathName().toStdString() }, { "cause", cause.code } },
-    };
-}
-
-core::Error unreadable (const juce::File& file, const std::string& reason)
-{
-    return unreadable (file, core::Error { reason, reason, {} });
+    auto fields = cause.fields.is_object() ? cause.fields : nlohmann::json::object();
+    fields["path"] = pathOf (file);
+    fields["cause"] = cause.code;
+    return core::Error { "song.history_unreadable", "undo history could not be read: " + cause.message, std::move (fields) };
 }
 
 // Reads one integer field of index.json, or nullopt.
@@ -32,25 +30,45 @@ std::optional<std::int64_t> indexField (const nlohmann::json& index, const char*
     return index.at (key).get<std::int64_t>();
 }
 
-// Reads, migrates and converts one snapshot file.
+struct StepRange
+{
+    std::int64_t oldest = 0;
+    std::int64_t newest = 0;
+    std::int64_t current = 0;
+};
+
+// Reads index.json. Errors: song.read_failed, song.json_unparsable, song.history_index_invalid.
+core::Expected<StepRange> readIndex (const juce::File& indexFile, std::int64_t maxSteps)
+{
+    const auto index = readJsonFile (indexFile);
+    if (! index.has_value())
+        return std::unexpected (index.error());
+
+    const auto oldest = indexField (*index, "oldest");
+    const auto newest = indexField (*index, "newest");
+    const auto current = indexField (*index, "current");
+    const bool consistent = oldest && newest && current && *oldest >= 0 && *oldest <= *current && *current <= *newest
+                            && *newest - *oldest <= maxSteps;
+    if (! consistent)
+        return std::unexpected (core::Error {
+            "song.history_index_invalid",
+            "index.json does not hold a valid step range",
+            { { "path", pathOf (indexFile) }, { "index", index->dump() } },
+        });
+    return StepRange { *oldest, *newest, *current };
+}
+
+// Reads one snapshot file through the package's one Song read path.
 core::Expected<std::pair<std::string, Song>> readSnapshot (const juce::File& file)
 {
-    const auto text = readTextFile (file);
-    if (! text.has_value())
-        return std::unexpected (text.error());
-    const auto parsed = parseJsonText (*text);
-    if (! parsed.has_value())
-        return std::unexpected (parsed.error());
-    if (! parsed->is_object() || ! parsed->contains ("label") || ! parsed->at ("label").is_string() || ! parsed->contains ("song"))
-        return std::unexpected (core::Error { "song.json_invalid", "snapshot has no label or song", { { "path", "$" } } });
+    auto stored = readStoredSong (file, "song");
+    if (! stored.has_value())
+        return std::unexpected (stored.error());
 
-    const auto migrated = migrateSongDocument (parsed->at ("song"));
-    if (! migrated.has_value())
-        return std::unexpected (migrated.error());
-    const auto song = songFromJson (migrated->document);
-    if (! song.has_value())
-        return std::unexpected (song.error());
-    return std::pair { parsed->at ("label").get<std::string>(), *song };
+    const auto label = stored->file.find ("label");
+    if (label == stored->file.end() || ! label->is_string())
+        return std::unexpected (withFilePath (core::Error { "song.json_invalid", "snapshot has no label", { { "json_path", "$.label" }, { "reason", "expected a string" } } }, file));
+    return std::pair { label->get<std::string>(), std::move (stored->song) };
 }
 } // namespace
 
@@ -63,26 +81,15 @@ SongHistory::SongHistory (juce::File historyDirectory, BeforeRenameHook hook)
 core::Expected<SongHistory> SongHistory::load (const juce::File& directory, BeforeRenameHook beforeRename)
 {
     const auto indexFile = directory.getChildFile ("index.json");
-    const auto indexText = readTextFile (indexFile);
-    if (! indexText.has_value())
-        return std::unexpected (unreadable (indexFile, indexText.error()));
-    const auto index = parseJsonText (*indexText);
-    if (! index.has_value())
-        return std::unexpected (unreadable (indexFile, index.error()));
-
-    const auto oldest = indexField (*index, "oldest");
-    const auto newest = indexField (*index, "newest");
-    const auto current = indexField (*index, "current");
-    const bool consistent = oldest && newest && current && *oldest >= 0 && *oldest <= *current && *current <= *newest
-                            && *newest - *oldest <= maxUndoSteps;
-    if (! consistent)
-        return std::unexpected (unreadable (indexFile, "song.history_index_invalid"));
+    const auto range = readIndex (indexFile, maxUndoSteps);
+    if (! range.has_value())
+        return std::unexpected (unreadable (indexFile, range.error()));
 
     SongHistory history (directory, std::move (beforeRename));
-    history.oldest = *oldest;
-    history.newest = *newest;
-    history.current = *current;
-    for (auto number = *oldest; number <= *newest; ++number)
+    history.oldest = range->oldest;
+    history.newest = range->newest;
+    history.current = range->current;
+    for (auto number = range->oldest; number <= range->newest; ++number)
     {
         const auto file = history.snapshotFile (number);
         auto snapshot = readSnapshot (file);
@@ -97,14 +104,11 @@ core::Expected<SongHistory> SongHistory::load (const juce::File& directory, Befo
 
 core::Expected<SongHistory> SongHistory::startFresh (const juce::File& directory, const Song& baseline, BeforeRenameHook beforeRename)
 {
+    // errno is read right after the JUCE call; JUCE's last failing syscall sets it.
     if (directory.exists() && ! directory.deleteRecursively())
-        return std::unexpected (core::Error { "song.write_failed", "could not clear the history folder", { { "path", directory.getFullPathName().toStdString() } } });
-    if (const auto created = directory.createDirectory(); created.failed())
-        return std::unexpected (core::Error {
-            "song.write_failed",
-            "could not create the history folder",
-            { { "path", directory.getFullPathName().toStdString() }, { "reason", created.getErrorMessage().toStdString() } },
-        });
+        return std::unexpected (writeFailed (directory, "clear_folder", errno));
+    if (directory.createDirectory().failed())
+        return std::unexpected (writeFailed (directory, "create_folder", errno));
 
     SongHistory history (directory, std::move (beforeRename));
     history.snapshots.push_back (Snapshot { "", baseline });
@@ -184,7 +188,10 @@ std::set<std::string> SongHistory::pluginStateHashes() const
 
 const SongHistory::Snapshot& SongHistory::snapshotAt (std::int64_t number) const
 {
-    return snapshots.at (static_cast<std::size_t> (number - oldest));
+    // Callers stay within [oldest, newest]; snapshots is never empty.
+    if (! OVERDUB_CHECK (number >= oldest && number <= newest, "song.history_step_out_of_range", { "step", number }, { "oldest", oldest }, { "newest", newest }))
+        number = std::clamp (number, oldest, newest);
+    return snapshots[static_cast<std::size_t> (number - oldest)];
 }
 
 juce::File SongHistory::snapshotFile (std::int64_t number) const
@@ -216,8 +223,8 @@ void SongHistory::deleteSnapshotFilesOutsideRange() const
         if (name == "index" || ! name.containsOnly ("0123456789"))
             continue;
         const auto number = name.getLargeIntValue();
-        if (number < oldest || number > newest)
-            file.deleteFile();
+        if ((number < oldest || number > newest) && ! file.deleteFile())
+            core::logEvent (core::Level::warn, "song.snapshot_delete_failed", { { "path", pathOf (file) } });
     }
 }
 } // namespace overdub::song

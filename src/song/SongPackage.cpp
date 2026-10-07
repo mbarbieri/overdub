@@ -24,24 +24,14 @@ struct SongJsonOnDisk
 core::Expected<SongJsonOnDisk> readSongJson (const juce::File& root)
 {
     const auto file = root.getChildFile ("song.json");
-    const auto text = readTextFile (file);
-    if (! text.has_value())
-        return std::unexpected (text.error());
-    const auto parsed = parseJsonText (*text);
-    if (! parsed.has_value())
-        return std::unexpected (parsed.error());
-    const auto migrated = migrateSongDocument (*parsed);
-    if (! migrated.has_value())
-        return std::unexpected (migrated.error());
+    auto stored = readStoredSong (file, "");
+    if (! stored.has_value())
+        return std::unexpected (stored.error());
 
-    auto song = songFromJson (migrated->document);
-    if (! song.has_value())
-        return std::unexpected (song.error());
-
-    const bool wasMigrated = migrated->fromVersion != songFormatVersion;
+    const bool wasMigrated = stored->fromVersion != songFormatVersion;
     if (wasMigrated)
-        core::logEvent (core::Level::info, "song.migrated", { { "path", pathOf (root) }, { "fromVersion", migrated->fromVersion }, { "toVersion", songFormatVersion } });
-    return SongJsonOnDisk { std::move (*song), wasMigrated };
+        core::logEvent (core::Level::info, "song.migrated", { { "path", pathOf (file) }, { "from_version", stored->fromVersion }, { "to_version", songFormatVersion } });
+    return SongJsonOnDisk { std::move (stored->song), wasMigrated };
 }
 
 // Loads the history, or drops it and starts a fresh one from `song` (adding a Notice).
@@ -55,7 +45,7 @@ core::Expected<SongHistory> loadOrDropHistory (const juce::File& root, const Son
     auto fields = loaded.error().fields;
     fields["package"] = pathOf (root);
     core::logEvent (core::Level::warn, "song.history_dropped", fields, loaded.error().message);
-    notices.push_back (Notice { "song.history_dropped", "Undo history could not be read, so it was cleared. The Song itself is intact." });
+    notices.push_back (Notice { "song.history_dropped" });
     return SongHistory::startFresh (directory, song, beforeRename);
 }
 } // namespace
@@ -84,7 +74,7 @@ core::Expected<std::unique_ptr<SongPackage>> SongPackage::create (const juce::Fi
             return std::unexpected (core::Error {
                 "song.create_failed",
                 "could not create the Song package",
-                { { "path", pathOf (location) }, { "reason", created.getErrorMessage().toStdString() } },
+                { { "path", pathOf (location) }, { "folder", folder }, { "reason", created.getErrorMessage().toStdString() } },
             });
 
     if (auto written = writeJsonAtomically (location.getChildFile ("song.json"), songToJson (song), options.beforeRename); ! written.has_value())
@@ -93,7 +83,7 @@ core::Expected<std::unique_ptr<SongPackage>> SongPackage::create (const juce::Fi
     if (! history.has_value())
         return std::unexpected (history.error());
 
-    core::logEvent (core::Level::info, "song.created", { { "path", pathOf (location) }, { "sampleRate", song.sampleRate } });
+    core::logEvent (core::Level::info, "song.created", { { "path", pathOf (location) }, { "sample_rate", song.sampleRate } });
     return std::unique_ptr<SongPackage> (new SongPackage (location, std::move (song), std::move (*history), std::move (options)));
 }
 
@@ -136,11 +126,11 @@ core::Expected<SongPackage::Opened> SongPackage::open (const juce::File& locatio
                     "song.opened",
                     {
                         { "path", pathOf (location) },
-                        { "formatVersion", songFormatVersion },
+                        { "format_version", songFormatVersion },
                         { "tracks", package->currentSong.tracks.size() },
-                        { "undoSteps", package->history.undoStepCount() },
-                        { "tempFilesDeleted", tempFilesDeleted },
-                        { "pluginBlobsDeleted", blobsDeleted },
+                        { "undo_steps", package->history.undoStepCount() },
+                        { "temp_files_deleted", tempFilesDeleted },
+                        { "plugin_blobs_deleted", blobsDeleted },
                     });
     return Opened { std::move (package), std::move (notices) };
 }

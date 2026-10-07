@@ -24,7 +24,11 @@ using BeforeRenameHook = std::function<std::optional<core::Error> (const juce::F
 // The file's full path, for Error and event fields.
 std::string pathOf (const juce::File& file);
 
-// Errors: song.write_failed (path, step: open|write|fsync|rename, errno), or the hook's Error.
+// The one shape of song.write_failed: path, step (what failed: open, write, fsync, rename,
+// clear_folder, create_folder) and errno (0 when the failing call reports none).
+core::Error writeFailed (const juce::File& file, const char* step, int savedErrno);
+
+// Errors: song.write_failed (step open|write|fsync|rename), or the hook's Error.
 core::Expected<void> writeFileAtomically (const juce::File& destination, std::string_view bytes, const BeforeRenameHook& beforeRename);
 
 // Serializes `document` (one space indent) and writes it with writeFileAtomically. Returns the
@@ -35,6 +39,14 @@ core::Expected<std::size_t> writeJsonAtomically (const juce::File& destination, 
 // Errors: song.read_failed (path).
 core::Expected<std::string> readTextFile (const juce::File& file);
 
-// Deletes every *.tmp file under `directory`, recursively. Returns how many were deleted.
+// Reads and parses a JSON file. Errors: song.read_failed (path), song.json_unparsable (path,
+// byte, reason).
+core::Expected<nlohmann::json> readJsonFile (const juce::File& file);
+
+// The Error with the file's path set as its `path` field, for Errors raised about its contents.
+core::Error withFilePath (core::Error error, const juce::File& file);
+
+// Deletes every *.tmp file under `directory`, recursively. Returns how many were deleted. A file
+// that cannot be deleted is logged as song.temp_delete_failed (warn, path) and skipped.
 int deleteTempFiles (const juce::File& directory);
 } // namespace overdub::song
