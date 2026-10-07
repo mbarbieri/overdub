@@ -27,8 +27,7 @@ TEST_CASE ("a fully populated Song round-trips through song.json equal", "[song]
     CHECK (*restored == original); // every field of every element, in order
     CHECK (songToJson (*restored) == songToJson (original));
 
-    const auto clipIds = [] (const overdub::song::Track& track)
-    {
+    const auto clipIds = [] (const overdub::song::Track& track) {
         std::vector<std::string> ids;
         for (const auto& clip : track.clips)
             ids.push_back (clip.id);

@@ -11,7 +11,7 @@ namespace
 bool isSha256Hex (const std::string& hash)
 {
     return hash.size() == 2 * CC_SHA256_DIGEST_LENGTH
-           && hash.find_first_not_of ("0123456789abcdef") == std::string::npos;
+        && hash.find_first_not_of ("0123456789abcdef") == std::string::npos;
 }
 
 juce::File blobFile (const juce::File& pluginsDirectory, const std::string& hash)

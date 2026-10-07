@@ -296,8 +296,11 @@ struct InterposeTuple
     const void* original;
 };
 
-#define OVERDUB_INTERPOSE(replacement, original) \
-    InterposeTuple { reinterpret_cast<const void*> (&replacement), reinterpret_cast<const void*> (&original) }
+#define OVERDUB_INTERPOSE(replacement, original)                                                \
+    InterposeTuple                                                                              \
+    {                                                                                           \
+        reinterpret_cast<const void*> (&replacement), reinterpret_cast<const void*> (&original) \
+    }
 
 __attribute__ ((used, section ("__DATA,__interpose"))) const InterposeTuple interposeTuples[] = {
     OVERDUB_INTERPOSE (guardedMalloc, malloc),

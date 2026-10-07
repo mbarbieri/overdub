@@ -1,6 +1,6 @@
+#include "song/SongPackage.h"
 #include "song/PluginBlobStore.h"
 #include "song/SongJson.h"
-#include "song/SongPackage.h"
 
 #include "FullSong.h"
 
@@ -178,8 +178,7 @@ struct CrashInjector
     PackageOptions options() const
     {
         PackageOptions options;
-        options.beforeRename = [target = crashAt, done = crashed] (const juce::File& destination) -> std::optional<overdub::core::Error>
-        {
+        options.beforeRename = [target = crashAt, done = crashed] (const juce::File& destination) -> std::optional<overdub::core::Error> {
             if (*done || destination.getFileName().toStdString() == *target)
             {
                 *done = true;
@@ -312,8 +311,7 @@ TEST_CASE ("a failure injected before the rename leaves the previous song.json i
     const auto song = overdub::song::testing::fullyPopulatedSong();
     auto failSongJson = std::make_shared<bool> (false);
     PackageOptions options;
-    options.beforeRename = [failSongJson] (const juce::File& destination) -> std::optional<overdub::core::Error>
-    {
+    options.beforeRename = [failSongJson] (const juce::File& destination) -> std::optional<overdub::core::Error> {
         if (*failSongJson && destination.getFileName() == "song.json")
             return overdub::core::Error { "song.test_injected_failure", "injected", {} };
         return std::nullopt;

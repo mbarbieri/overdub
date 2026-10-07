@@ -1,5 +1,5 @@
-#include "core/Log.h"
 #include "core/LogFiles.h"
+#include "core/Log.h"
 
 #include <catch2/catch_test_macros.hpp>
 

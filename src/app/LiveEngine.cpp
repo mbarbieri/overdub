@@ -10,21 +10,21 @@ namespace overdub::app
 namespace
 {
     // Duplex from the start (ADR 0005): recording (slice 5) reads the inputs.
-    constexpr int inputChannelsNeeded = 2;
-    constexpr int outputChannelsNeeded = 2;
-    constexpr int housekeepingIntervalMs = 100;
+constexpr int inputChannelsNeeded = 2;
+constexpr int outputChannelsNeeded = 2;
+constexpr int housekeepingIntervalMs = 100;
 
     // Applies a saved choice to an initialised manager. Returns JUCE's error text ("" on success).
-    juce::String applySavedChoice (juce::AudioDeviceManager& deviceManager, const engine::DeviceSettings& settings)
-    {
-        if (settings.outputDevice.empty())
-            return "the saved choice names no output device";
+juce::String applySavedChoice (juce::AudioDeviceManager& deviceManager, const engine::DeviceSettings& settings)
+{
+    if (settings.outputDevice.empty())
+        return "the saved choice names no output device";
 
-        if (! settings.deviceType.empty())
-            deviceManager.setCurrentAudioDeviceType (juce::String::fromUTF8 (settings.deviceType.c_str()), true);
+    if (! settings.deviceType.empty())
+        deviceManager.setCurrentAudioDeviceType (juce::String::fromUTF8 (settings.deviceType.c_str()), true);
 
-        return deviceManager.setAudioDeviceSetup (engine::toAudioDeviceSetup (settings), true);
-    }
+    return deviceManager.setAudioDeviceSetup (engine::toAudioDeviceSetup (settings), true);
+}
 } // namespace
 
 LiveEngine::LiveEngine()

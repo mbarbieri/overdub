@@ -6,19 +6,19 @@ namespace overdub::engine
 {
 namespace
 {
-    constexpr int settingsVersion = 1;
+constexpr int settingsVersion = 1;
 
-    std::string pathOf (const juce::File& file)
-    {
-        return file.getFullPathName().toStdString();
-    }
+std::string pathOf (const juce::File& file)
+{
+    return file.getFullPathName().toStdString();
+}
 
-    core::Error unreadable (const juce::File& file, const std::string& reason)
-    {
-        return core::Error { "engine.device_settings_unreadable",
-                             "the audio device settings file could not be read",
-                             { { "path", pathOf (file) }, { "reason", reason } } };
-    }
+core::Error unreadable (const juce::File& file, const std::string& reason)
+{
+    return core::Error { "engine.device_settings_unreadable",
+                         "the audio device settings file could not be read",
+                         { { "path", pathOf (file) }, { "reason", reason } } };
+}
 } // namespace
 
 juce::File defaultDeviceSettingsFile()

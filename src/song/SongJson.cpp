@@ -104,20 +104,18 @@ public:
     std::vector<Element> objects (std::string_view key, ReadElement readElement) const
     {
         return elements<Element> (key,
-                                  [&] (const json& element, std::string elementPath)
-                                  { return readElement (Reader (element, std::move (elementPath), problem)); });
+                                  [&] (const json& element, std::string elementPath) { return readElement (Reader (element, std::move (elementPath), problem)); });
     }
 
     std::vector<int> integers (std::string_view key) const
     {
         return elements<int> (key,
-                              [&] (const json& element, std::string elementPath)
-                              {
-                                  if (element.is_number_integer())
-                                      return element.get<int>();
-                                  report (std::move (elementPath), "expected an integer");
-                                  return 0;
-                              });
+                              [&] (const json& element, std::string elementPath) {
+            if (element.is_number_integer())
+                return element.get<int>();
+            report (std::move (elementPath), "expected an integer");
+            return 0;
+        });
     }
 
 private:
@@ -127,7 +125,7 @@ private:
         return null;
     }
 
-    const json* valueWhere (std::string_view key, bool (json::*hasType) () const noexcept, const char* reason) const
+    const json* valueWhere (std::string_view key, bool (json::*hasType)() const noexcept, const char* reason) const
     {
         const auto* found = value (key);
         if (found == nullptr)
