@@ -1,6 +1,7 @@
 #include "song/SongPackage.h"
 
 #include "song/BackingTrackImport.h"
+#include "song/PackageFolders.h"
 #include "song/PluginBlobStore.h"
 #include "song/SongJson.h"
 #include "song/SongMigration.h"
@@ -14,7 +15,7 @@ namespace overdub::song
 {
 namespace
 {
-constexpr const char* mediaFolders[] = { "audio", "backing", "video", "plugins" };
+constexpr const char* mediaFolders[] = { audioFolderName, backingFolderName, videoFolderName, pluginsFolderName };
 
 struct SongJsonOnDisk
 {
@@ -115,7 +116,7 @@ core::Expected<SongPackage::Opened> SongPackage::open (const juce::File& locatio
 
     auto referencedHashes = history->pluginStateHashes();
     referencedHashes.merge (pluginStateHashes (song));
-    const int blobsDeleted = deleteUnreferencedPluginBlobs (location.getChildFile ("plugins"), referencedHashes);
+    const int blobsDeleted = deleteUnreferencedPluginBlobs (location.getChildFile (pluginsFolderName), referencedHashes);
 
     if (const auto missing = repairBackingTrackFiles (location, song, options.beforeRename); ! missing.empty())
         notices.push_back (Notice { "song.backing_track_missing" });
@@ -142,10 +143,15 @@ core::Expected<SongPackage::Opened> SongPackage::open (const juce::File& locatio
 
 core::Expected<void> SongPackage::edit (Song changed, std::string label, Clock::time_point now)
 {
+    return commitEdit (std::move (changed), std::move (label), now).result;
+}
+
+SongPackage::EditOutcome SongPackage::commitEdit (Song changed, std::string label, Clock::time_point now)
+{
     if (auto pushed = history.push (changed, label); ! pushed.has_value())
-        return pushed;
+        return EditOutcome { false, std::move (pushed) };
     currentSong = std::move (changed);
-    return writeCommittedStep (now);
+    return EditOutcome { true, writeCommittedStep (now) };
 }
 
 void SongPackage::changeWithoutHistory (Song changed, Clock::time_point now)
@@ -199,12 +205,12 @@ core::Expected<void> SongPackage::flush()
 
 core::Expected<std::string> SongPackage::storePluginState (const juce::MemoryBlock& state)
 {
-    return storePluginBlob (root.getChildFile ("plugins"), state, options.beforeRename);
+    return storePluginBlob (root.getChildFile (pluginsFolderName), state, options.beforeRename);
 }
 
 core::Expected<juce::MemoryBlock> SongPackage::loadPluginState (const std::string& hash) const
 {
-    return loadPluginBlob (root.getChildFile ("plugins"), hash);
+    return loadPluginBlob (root.getChildFile (pluginsFolderName), hash);
 }
 
 core::Expected<Id> SongPackage::importBackingTrack (const juce::File& source, Clock::time_point now)
@@ -213,15 +219,14 @@ core::Expected<Id> SongPackage::importBackingTrack (const juce::File& source, Cl
     if (! backingTrack.has_value())
         return std::unexpected (backingTrack.error());
 
-    if (auto edited = edit (withImportedBackingTrack (currentSong, *backingTrack), importStepLabel (*backingTrack), now); ! edited.has_value())
+    auto edited = commitEdit (withImportedBackingTrack (currentSong, *backingTrack), importStepLabel (*backingTrack), now);
+    if (! edited.committed)
     {
-        // Only a history write Error leaves the Song unchanged; after the step is committed the
-        // import stands and only its song.json write is pending.
-        if (currentSong.backingTracks.empty() || currentSong.backingTracks.back().id != backingTrack->id)
-            deleteBackingTrackFiles (root, *backingTrack);
-        return std::unexpected (edited.error());
+        deleteBackingTrackFiles (root, *backingTrack);
+        return std::unexpected (edited.result.error());
     }
 
+    // Committed: the import stands even when its song.json write failed (that write stays pending).
     core::logEvent (core::Level::info,
                     "song.backing_track_imported",
                     {
@@ -233,6 +238,8 @@ core::Expected<Id> SongPackage::importBackingTrack (const juce::File& source, Cl
                         { "channels", backingTrack->channels },
                         { "length_samples", backingTrack->lengthSamples },
                     });
+    if (! edited.result.has_value())
+        return std::unexpected (edited.result.error());
     return backingTrack->id;
 }
 
@@ -250,24 +257,14 @@ bool SongPackage::isBackingTrackMissing (const Id& backingTrackId) const
     return backingTrack == currentSong.backingTracks.end() || ! derivedFileFor (root, *backingTrack).existsAsFile();
 }
 
-core::Expected<Peaks> SongPackage::peaks (const ClipSource& source) const
+core::Expected<Peaks> SongPackage::peaks (const ClipSource& source)
 {
-    std::optional<juce::File> mediaFile;
-    if (source.kind == ClipSourceKind::take)
-    {
-        if (const auto take = std::ranges::find (currentSong.takes, source.id, &Take::id); take != currentSong.takes.end())
-            mediaFile = root.getChildFile (take->file);
-    }
-    else if (const auto backingTrack = std::ranges::find (currentSong.backingTracks, source.id, &BackingTrack::id); backingTrack != currentSong.backingTracks.end())
-    {
-        mediaFile = derivedFileFor (root, *backingTrack);
-    }
-
+    const auto mediaFile = mediaFileFor (root, currentSong, source);
     if (! mediaFile.has_value())
         return std::unexpected (core::Error {
             "song.media_unknown",
             "the Song has no such Take or Backing Track",
-            { { "source_kind", source.kind == ClipSourceKind::take ? "take" : "backing" }, { "source_id", source.id } },
+            { { "source_kind", toString (source.kind) }, { "source_id", source.id } },
         });
     return loadOrRebuildPeaks (root, source.id, *mediaFile, options.beforeRename);
 }

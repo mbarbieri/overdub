@@ -24,16 +24,21 @@ using BeforeRenameHook = std::function<std::optional<core::Error> (const juce::F
 // The file's full path, for Error and event fields.
 std::string pathOf (const juce::File& file);
 
-// The one shape of song.write_failed: path, step (what failed: open, write, fsync, rename,
-// clear_folder, create_folder) and errno (0 when the failing call reports none).
-core::Error writeFailed (const juce::File& file, const char* step, int savedErrno);
+// The one shape of song.write_failed: path, step (what failed: open, write, copy, fsync, rename,
+// clear_folder, create_folder), errno (0 when the failing call reports none) and, only when not
+// empty, detail (the failing call's own description, for calls that report no errno).
+core::Error writeFailed (const juce::File& file, const char* step, int savedErrno, const std::string& detail = {});
+
+// `<destination>.tmp`: where every atomic writer puts the new content first.
+juce::File tempFileFor (const juce::File& destination);
+
+// The end of every atomic write, once `tempFile` holds the whole new content: fsyncs it, runs the
+// hook, renames it over `destination`. Errors: song.write_failed (step fsync|rename), or the
+// hook's Error (the temp file is then left in place).
+core::Expected<void> renameIntoPlace (const juce::File& tempFile, const juce::File& destination, const BeforeRenameHook& beforeRename);
 
 // Errors: song.write_failed (step open|write|fsync|rename), or the hook's Error.
 core::Expected<void> writeFileAtomically (const juce::File& destination, std::string_view bytes, const BeforeRenameHook& beforeRename);
-
-// fsyncs a finished file before it is renamed into place, for writers that do not (the WAV writer,
-// file copies). Errors: song.write_failed (step fsync).
-core::Expected<void> syncFile (const juce::File& file);
 
 // Serializes `document` (one space indent) and writes it with writeFileAtomically. Returns the
 // number of bytes written. Errors: song.json_unserializable (path, reason; e.g. a string that is

@@ -12,6 +12,18 @@ Id makeId()
     return juce::Uuid().toDashedString().toLowerCase().toStdString();
 }
 
+std::string_view toString (ClipSourceKind kind)
+{
+    switch (kind)
+    {
+        case ClipSourceKind::take:
+            return "take";
+        case ClipSourceKind::backing:
+            return "backing";
+    }
+    return "take";
+}
+
 Song makeEmptySong (int sampleRate)
 {
     Song song;

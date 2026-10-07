@@ -185,7 +185,8 @@ TEST_CASE ("a click in an MP3 file lands on its source position within ADR 0005'
     ImportFixture fixture;
     const auto source = fixture.source ("Clicks.mp3");
     if (! writeMp3File (source, { clicks (sourceLength, sourceClicks) }, 48000))
-        SKIP ("lame is not installed: Core Audio has no MP3 encoder to make the fixture with");
+        SKIP ("lame is not installed (Core Audio has no MP3 encoder to make the fixture with): the MP3 half of ADR 0005's "
+              "\"Backing Track import, AAC (M4A) and MP3\" tolerance row is left unverified");
     auto package = fixture.createSong (songRate);
 
     const auto id = importOrFail (*package, source);
@@ -365,6 +366,99 @@ TEST_CASE ("a failed history write leaves the Song unchanged and no Backing Trac
     CHECK (package.song() == before);
     CHECK (fixture.packageRoot.getChildFile ("backing").getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0);
     CHECK (fixture.packageRoot.getChildFile ("peaks").getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0);
+}
+
+TEST_CASE ("a media write failure leaves the Song unchanged and no Backing Track file behind", "[song][import]")
+{
+    ImportFixture fixture;
+    const auto source = fixture.source ("Band Mix.wav");
+    writeEncodedFile (source, FixtureFormat::wavFloat, { sine (4800, 440.0, 48000) }, 48000);
+    {
+        auto package = fixture.createSong (48000);
+    }
+    // The original copy (backing/<id>.orig.wav) or the derived WAV (backing/<id>.wav).
+    const bool failOriginal = GENERATE (true, false);
+    CAPTURE (failOriginal);
+    overdub::song::PackageOptions options;
+    options.beforeRename = [failOriginal] (const juce::File& destination) -> std::optional<overdub::core::Error> {
+        if (destination.getParentDirectory().getFileName() == "backing" && destination.getFileName().contains (".orig") == failOriginal)
+            return overdub::core::Error { "song.write_failed", "injected", {} };
+        return std::nullopt;
+    };
+    auto opened = SongPackage::open (fixture.packageRoot, options);
+    REQUIRE (opened.has_value());
+    auto& package = *opened->package;
+    const auto before = package.song();
+
+    const auto imported = package.importBackingTrack (source);
+
+    REQUIRE_FALSE (imported.has_value());
+    CHECK (imported.error().code == "song.write_failed");
+    CHECK (package.song() == before);
+    CHECK_FALSE (package.canUndo());
+    CHECK (fixture.packageRoot.getChildFile ("backing").getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0);
+}
+
+TEST_CASE ("a song.json write failure after the step is committed is reported but the import stands", "[song][import][history]")
+{
+    ImportFixture fixture;
+    const auto source = fixture.source ("Band Mix.wav");
+    writeEncodedFile (source, FixtureFormat::wavFloat, { sine (4800, 440.0, 48000) }, 48000);
+    {
+        auto package = fixture.createSong (48000);
+    }
+    overdub::song::PackageOptions options;
+    options.beforeRename = [] (const juce::File& destination) -> std::optional<overdub::core::Error> {
+        if (destination.getFileName() == "song.json")
+            return overdub::core::Error { "song.write_failed", "injected", {} };
+        return std::nullopt;
+    };
+    auto opened = SongPackage::open (fixture.packageRoot, options);
+    REQUIRE (opened.has_value());
+    auto& package = *opened->package;
+    ScopedLogCapture capture;
+
+    const auto imported = package.importBackingTrack (source);
+
+    REQUIRE_FALSE (imported.has_value());
+    CHECK (imported.error().code == "song.write_failed");
+    REQUIRE (package.song().backingTracks.size() == 1);
+    const auto backingTrack = package.song().backingTracks[0];
+    CHECK (package.song().tracks.size() == 1);
+    CHECK (package.undoLabel() == "Import Band Mix.wav");
+    CHECK (package.hasPendingWrite());
+    CHECK (overdub::song::derivedFileFor (package.location(), backingTrack).existsAsFile());
+    CHECK (overdub::song::originalFileFor (package.location(), backingTrack).existsAsFile());
+
+    const auto events = capture.events();
+    const auto logged = std::ranges::find_if (events, [] (const auto& e) { return e["event"] == "song.backing_track_imported"; });
+    REQUIRE (logged != events.end());
+    CHECK ((*logged)["backing_track_id"] == backingTrack.id);
+}
+
+TEST_CASE ("a file with no extension is kept as backing/<id>.orig and rebuilds from it on open", "[song][import]")
+{
+    ImportFixture fixture;
+    const auto source = fixture.source ("Band Mix");
+    writeEncodedFile (source, FixtureFormat::wavFloat, { sine (4800, 440.0, 48000) }, 48000);
+    std::string id;
+    {
+        auto package = fixture.createSong (48000);
+        id = importOrFail (*package, source);
+        const auto& backingTrack = backingTrackOf (package->song(), id);
+        CHECK (backingTrack.originalExtension.empty());
+        CHECK (package->song().tracks.at (0).name == "Band Mix");
+        const auto original = overdub::song::originalFileFor (package->location(), backingTrack);
+        CHECK (original.getFileName() == juce::String (id) + ".orig");
+        CHECK (original.hasIdenticalContentTo (source));
+        REQUIRE (overdub::song::derivedFileFor (package->location(), backingTrack).deleteFile());
+    }
+
+    auto opened = SongPackage::open (fixture.packageRoot);
+
+    REQUIRE (opened.has_value());
+    CHECK_FALSE (opened->package->isBackingTrackMissing (id));
+    CHECK (derivedAudio (*opened->package, id).getNumSamples() == 4800);
 }
 
 TEST_CASE ("on open a missing derived file is rebuilt from the original", "[song][import][open]")

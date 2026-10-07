@@ -4,9 +4,7 @@
 
 #include <AudioToolbox/AudioToolbox.h>
 
-#include <cerrno>
 #include <cstddef>
-#include <cstdio>
 #include <memory>
 #include <vector>
 
@@ -172,12 +170,14 @@ core::Expected<void> writeFloatWavAtomically (const juce::File& destination,
                                               int sampleRate,
                                               const BeforeRenameHook& beforeRename)
 {
-    const auto tempFile = destination.getSiblingFile (destination.getFileName() + ".tmp");
-    tempFile.deleteFile();
+    const auto tempFile = tempFileFor (destination);
+    tempFile.deleteFile(); // FileOutputStream appends to an existing file
     {
         auto fileStream = std::make_unique<juce::FileOutputStream> (tempFile);
         if (! fileStream->openedOk())
-            return std::unexpected (writeFailed (tempFile, "open", 0));
+            return std::unexpected (writeFailed (tempFile, "open", 0, fileStream->getStatus().getErrorMessage().toStdString()));
+        // Owned by the writer below, which outlives every use of this pointer.
+        const auto* openedStream = fileStream.get();
         std::unique_ptr<juce::OutputStream> stream = std::move (fileStream);
 
         juce::WavAudioFormat wav;
@@ -188,20 +188,11 @@ core::Expected<void> writeFloatWavAtomically (const juce::File& destination,
                                  .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint);
         auto writer = wav.createWriterFor (stream, options);
         if (writer == nullptr)
-            return std::unexpected (writeFailed (tempFile, "open", 0));
+            return std::unexpected (writeFailed (tempFile, "open", 0, "the WAV writer refused the format"));
         if (! writer->writeFromAudioSampleBuffer (audio, 0, audio.getNumSamples()) || ! writer->flush())
-            return std::unexpected (writeFailed (tempFile, "write", 0));
+            return std::unexpected (writeFailed (tempFile, "write", 0, openedStream->getStatus().getErrorMessage().toStdString()));
     }
-    if (auto synced = syncFile (tempFile); ! synced.has_value())
-        return synced;
-
-    if (beforeRename)
-        if (auto injected = beforeRename (destination); injected.has_value())
-            return std::unexpected (*injected);
-
-    if (std::rename (tempFile.getFullPathName().toRawUTF8(), destination.getFullPathName().toRawUTF8()) != 0)
-        return std::unexpected (writeFailed (destination, "rename", errno));
-    return {};
+    return renameIntoPlace (tempFile, destination, beforeRename);
 }
 
 core::Expected<juce::AudioBuffer<float>> readWavFile (const juce::File& file)

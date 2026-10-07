@@ -123,9 +123,14 @@ public:
     // Imports an audio file as a Backing Track at the Song's rate (ADR 0004, issue #14 amendment):
     // writes its files (BackingTrackImport.h), then adds the Backing Track, a Track named after the
     // file and one Clip of it at sample 0 as one undo step "Import <file name>". Returns the
-    // Backing Track id and logs song.backing_track_imported. On an Error the Song is unchanged and
-    // no file is left behind. Errors: song.import_unreadable, song.import_too_many_channels,
-    // song.write_failed, or edit()'s history write Error.
+    // Backing Track id and logs song.backing_track_imported.
+    // When decoding, a media write (original copy, derived WAV) or the history write fails, the
+    // Song is unchanged, no undo step is added and every file the import wrote is deleted.
+    // When only the song.json write fails, the step is already committed: the import stands (Song
+    // changed, files kept, song.backing_track_imported logged, the write pending) and that Error is
+    // returned. A failed peaks write is only logged (song.peaks_write_failed): the cache is rebuilt.
+    // Errors: song.import_unreadable, song.import_too_many_channels, song.write_failed,
+    // song.json_unserializable, or the beforeRename hook's.
     core::Expected<Id> importBackingTrack (const juce::File& source, Clock::time_point now = Clock::now());
 
     // Several files: one importBackingTrack each, in order, so each becomes its own Track at sample
@@ -138,7 +143,8 @@ public:
     // The peaks of a Take's or Backing Track's media, from the cache, rebuilt (song.peaks_rebuilt)
     // when missing or corrupt. Errors: song.media_unknown (source_kind, source_id: not in the Song),
     // song.read_failed (the media file is missing), song.write_failed.
-    core::Expected<Peaks> peaks (const ClipSource& source) const;
+    // Not const: a rebuild writes peaks/<media-id>.peaks and logs.
+    core::Expected<Peaks> peaks (const ClipSource& source);
 
     // Duplicate Song: flushes, then clonefile()s the whole package, history included, ids kept.
     // `destination` must not exist. Errors: song.duplicate_failed (path, destination, errno), or
@@ -147,6 +153,17 @@ public:
 
 private:
     SongPackage (juce::File root, Song song, SongHistory history, PackageOptions options);
+
+    // What an undoable change did. committed: the history step was written and the change applied.
+    // result: when committed, the song.json write's result; otherwise the history write's Error.
+    struct EditOutcome
+    {
+        bool committed = false;
+        core::Expected<void> result;
+    };
+
+    // edit(), reporting whether the step was committed (importBackingTrack's file cleanup needs it).
+    EditOutcome commitEdit (Song changed, std::string label, Clock::time_point now);
 
     core::Expected<void> restoreSnapshot (core::Expected<Song> snapshot, Clock::time_point now);
     core::Expected<void> writeCommittedStep (Clock::time_point now);

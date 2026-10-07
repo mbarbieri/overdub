@@ -1,39 +1,54 @@
 #include "song/BackingTrackImport.h"
 
 #include "song/AudioFileDecode.h"
+#include "song/PackageFolders.h"
 #include "song/Peaks.h"
 
+#include <algorithm>
 #include <cerrno>
-#include <cstdio>
+#include <copyfile.h>
 
 namespace overdub::song
 {
 juce::File derivedFileFor (const juce::File& packageRoot, const BackingTrack& backingTrack)
 {
-    return packageRoot.getChildFile ("backing").getChildFile (juce::String (backingTrack.id) + ".wav");
+    return packageRoot.getChildFile (backingFolderName).getChildFile (juce::String (backingTrack.id) + ".wav");
 }
 
 juce::File originalFileFor (const juce::File& packageRoot, const BackingTrack& backingTrack)
 {
-    return packageRoot.getChildFile ("backing").getChildFile (juce::String (backingTrack.id) + ".orig." + juce::String (backingTrack.originalExtension));
+    auto name = juce::String (backingTrack.id) + ".orig";
+    if (! backingTrack.originalExtension.empty())
+        name += "." + juce::String (backingTrack.originalExtension);
+    return packageRoot.getChildFile (backingFolderName).getChildFile (name);
+}
+
+std::optional<juce::File> mediaFileFor (const juce::File& packageRoot, const Song& song, const ClipSource& source)
+{
+    if (source.kind == ClipSourceKind::take)
+    {
+        const auto take = std::ranges::find (song.takes, source.id, &Take::id);
+        if (take == song.takes.end())
+            return std::nullopt;
+        return packageRoot.getChildFile (take->file);
+    }
+
+    const auto backingTrack = std::ranges::find (song.backingTracks, source.id, &BackingTrack::id);
+    if (backingTrack == song.backingTracks.end())
+        return std::nullopt;
+    return derivedFileFor (packageRoot, *backingTrack);
 }
 
 namespace
 {
-// Copies `source` to `<destination>.tmp`, then renames it.
+// Copies `source` to `<destination>.tmp`, then renames it into place.
 core::Expected<void> copyFileAtomically (const juce::File& source, const juce::File& destination, const BeforeRenameHook& beforeRename)
 {
-    const auto tempFile = destination.getSiblingFile (destination.getFileName() + ".tmp");
-    if (! source.copyFileTo (tempFile))
-        return std::unexpected (writeFailed (tempFile, "copy", 0));
-    if (auto synced = syncFile (tempFile); ! synced.has_value())
-        return synced;
-    if (beforeRename)
-        if (auto injected = beforeRename (destination); injected.has_value())
-            return std::unexpected (*injected);
-    if (std::rename (tempFile.getFullPathName().toRawUTF8(), destination.getFullPathName().toRawUTF8()) != 0)
-        return std::unexpected (writeFailed (destination, "rename", errno));
-    return {};
+    const auto tempFile = tempFileFor (destination);
+    tempFile.deleteFile(); // crash debris from an earlier attempt
+    if (::copyfile (source.getFullPathName().toRawUTF8(), tempFile.getFullPathName().toRawUTF8(), nullptr, COPYFILE_DATA) != 0)
+        return std::unexpected (writeFailed (tempFile, "copy", errno));
+    return renameIntoPlace (tempFile, destination, beforeRename);
 }
 
 core::Expected<void> rebuildDerivedFile (const juce::File& packageRoot, const BackingTrack& backingTrack, int sampleRate, const BeforeRenameHook& beforeRename)
@@ -60,9 +75,9 @@ core::Expected<BackingTrack> writeBackingTrackFiles (const juce::File& packageRo
     backingTrack.formatName = decoded->formatName;
     backingTrack.lengthSamples = decoded->audio.getNumSamples();
 
-    const auto backingFolder = packageRoot.getChildFile ("backing");
+    const auto backingFolder = packageRoot.getChildFile (backingFolderName);
     if (const auto created = backingFolder.createDirectory(); created.failed())
-        return std::unexpected (writeFailed (backingFolder, "create_folder", 0));
+        return std::unexpected (writeFailed (backingFolder, "create_folder", 0, created.getErrorMessage().toStdString()));
 
     if (auto copied = copyFileAtomically (source, originalFileFor (packageRoot, backingTrack), beforeRename); ! copied.has_value())
     {
@@ -84,7 +99,7 @@ void deleteBackingTrackFiles (const juce::File& packageRoot, const BackingTrack&
     for (const auto& file : { originalFileFor (packageRoot, backingTrack), derivedFileFor (packageRoot, backingTrack), peaksFileFor (packageRoot, backingTrack.id) })
     {
         file.deleteFile();
-        file.getSiblingFile (file.getFileName() + ".tmp").deleteFile();
+        tempFileFor (file).deleteFile();
     }
 }
 

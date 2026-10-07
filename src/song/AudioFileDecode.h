@@ -30,7 +30,8 @@ inline constexpr int maxImportChannels = 2;
 core::Expected<DecodedAudio> decodeAudioFile (const juce::File& file, int sampleRate);
 
 // Writes `audio` as a 32-bit float WAV at `sampleRate` to `<destination>.tmp`, then renames it.
-// Errors: song.write_failed (path, step open|write|fsync|rename, errno), or the hook's Error.
+// Errors: song.write_failed (path, step open|write|fsync|rename, errno; open and write carry the
+// WAV writer's detail instead of an errno), or the hook's Error.
 core::Expected<void> writeFloatWavAtomically (const juce::File& destination,
                                               const juce::AudioBuffer<float>& audio,
                                               int sampleRate,

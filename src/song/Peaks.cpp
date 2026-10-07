@@ -1,6 +1,7 @@
 #include "song/Peaks.h"
 
 #include "song/AudioFileDecode.h"
+#include "song/PackageFolders.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -118,13 +119,13 @@ core::Expected<Peaks> decodePeaks (std::string_view bytes)
 
 juce::File peaksFileFor (const juce::File& packageRoot, const Id& mediaId)
 {
-    return packageRoot.getChildFile ("peaks").getChildFile (juce::String (mediaId) + ".peaks");
+    return packageRoot.getChildFile (peaksFolderName).getChildFile (juce::String (mediaId) + ".peaks");
 }
 
 core::Expected<void> writePeaksFile (const juce::File& peaksFile, const juce::AudioBuffer<float>& audio, const BeforeRenameHook& beforeRename)
 {
     if (const auto created = peaksFile.getParentDirectory().createDirectory(); created.failed())
-        return std::unexpected (writeFailed (peaksFile.getParentDirectory(), "create_folder", 0));
+        return std::unexpected (writeFailed (peaksFile.getParentDirectory(), "create_folder", 0, created.getErrorMessage().toStdString()));
     return writeFileAtomically (peaksFile, encodePeaks (computePeaks (audio)), beforeRename);
 }
 

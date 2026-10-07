@@ -56,7 +56,8 @@ core::Expected<Peaks> decodePeaks (std::string_view bytes);
 juce::File peaksFileFor (const juce::File& packageRoot, const Id& mediaId);
 
 // The one writer, used at import and at Pass end: computes the peaks of `audio` and writes them
-// atomically to `peaksFile`, creating its folder. Errors: song.write_failed, or the hook's Error.
+// atomically to `peaksFile`, creating its folder. Errors: song.write_failed (step create_folder,
+// open, write, fsync or rename), or the hook's Error.
 core::Expected<void> writePeaksFile (const juce::File& peaksFile, const juce::AudioBuffer<float>& audio, const BeforeRenameHook& beforeRename);
 
 // Reads peaks/<mediaId>.peaks. When it is missing or corrupt, rebuilds it from `mediaFile` (a WAV),

@@ -4,6 +4,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // The v1 Song model: plain value structs (ADR 0004, issues #8, #14, #15, #23).
@@ -62,6 +63,9 @@ enum class ClipSourceKind
     take,
     backing
 };
+
+// "take" or "backing": the name in song.json and in event and Error fields (source_kind).
+std::string_view toString (ClipSourceKind kind);
 
 struct ClipSource
 {
