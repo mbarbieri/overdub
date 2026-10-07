@@ -1,0 +1,48 @@
+analysis: session (recorded offset)
+video: /Users/matteo/Library/Logs/OverdubAvSpike/sessions/session-20261007-124841/video.mov (675.170 s)
+video_start_sample: 138485.309  movie_seconds_per_sample: 0.999991216/rate
+claps found: 10
+clap  audio_s      movie_s     clap_frame_d_ms  motion_peak_d_ms  sheet
+   0  6.2952       3.1550      -21.6            -55.0             clap-00.png
+   1  7.0940       3.9537      -27.0            -27.0             clap-01.png
+   2  7.9306       4.7903      -3.6             -38.6             clap-02.png
+   3  8.7750       5.6347      -21.3            -56.3             clap-03.png
+   4  9.6238       6.4835      -10.2            -43.5             clap-04.png
+   5  673.6655     670.5194    -34.4            -34.4             clap-05.png
+   6  674.3712     671.2250    -16.7            -16.7             clap-06.png
+   7  675.0530     671.9068    -8.5             -8.5              clap-07.png
+   8  675.8458     672.6996    -9.6             -44.6             clap-08.png
+   9  676.7384     673.5923    -7.3             -42.3             clap-09.png
+
+analysis: export-trimmed (audio first pts 0.000 ms)
+video: /Users/matteo/Library/Logs/OverdubAvSpike/sessions/session-20261007-124841/export-trimmed.mp4 (675.177 s)
+video_start_sample: -0.000  movie_seconds_per_sample: 1.000000000/rate
+claps found: 10
+clap  audio_s      movie_s     clap_frame_d_ms  motion_peak_d_ms  sheet
+   0  3.1550       3.1550      -21.7            -55.0             clap-00.png
+   1  3.9537       3.9537      -27.1            -27.1             clap-01.png
+   2  4.7903       4.7903      -3.7             -38.7             clap-02.png
+   3  5.6347       5.6347      -21.4            -56.4             clap-03.png
+   4  6.4836       6.4836      -10.2            -43.6             clap-04.png
+   5  670.5253     670.5253    -33.6            -67.0             clap-05.png
+   6  671.2310     671.2310    -16.0            -16.0             clap-06.png
+   7  671.9127     671.9127    -7.7             -7.7              clap-07.png
+   8  672.7055     672.7055    -8.8             -43.8             clap-08.png
+   9  673.5982     673.5982    -6.5             -41.5             clap-09.png
+
+analysis: export-full (audio first pts 0.000 ms)
+video: /Users/matteo/Library/Logs/OverdubAvSpike/sessions/session-20261007-124841/export-full.mp4 (680.309 s)
+video_start_sample: -0.000  movie_seconds_per_sample: 1.000000000/rate
+claps found: 10
+clap  audio_s      movie_s     clap_frame_d_ms  motion_peak_d_ms  sheet
+   0  6.2952       6.2952      -11.6            -46.3             clap-00.png
+   1  7.0938       7.0938      -11.7            -11.7             clap-01.png
+   2  7.9306       7.9306      -15.3            -15.3             clap-02.png
+   3  8.7750       8.7750      -26.5            -26.5             clap-03.png
+   4  9.6238       9.6238      -7.4             -42.2             clap-04.png
+   5  673.6655     673.6655    -32.5            -101.9            clap-05.png
+   6  674.3712     674.3712    -9.1             -9.1              clap-06.png
+   7  675.0530     675.0530    -31.3            3.4               clap-07.png
+   8  675.8458     675.8458    -25.6            -25.6             clap-08.png
+   9  676.7384     676.7384    -15.6            -15.6             clap-09.png
+

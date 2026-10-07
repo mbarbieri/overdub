@@ -1,0 +1,7 @@
+frame 2 at 0.103s: gap 69.1 ms
+frame 12066 at 415.632s: gap 130.9 ms
+frame 19177 at 661.946s: gap 1480.7 ms
+frame 19201 at 663.840s: gap 1101.6 ms
+frame 19225 at 665.940s: gap 1308.4 ms
+frame 19249 at 667.937s: gap 1205.0 ms
+frame 19273 at 669.143s: gap 413.3 ms
