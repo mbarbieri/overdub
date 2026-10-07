@@ -20,3 +20,11 @@ The spike (issue #7, branch `spike/av-sync`) measured this on the built-in FaceT
 - Cameras can stall for over a second without a drop callback, so nothing may rebuild timestamps from frame counts. Playback holds the last frame across a gap.
 - The full-song export re-times frames onto its output frame grid. That costs up to ±½ frame per frame, but adds no offset.
 - Untested, and needed before the spec is final: a USB or Continuity Camera's calibration and a real interface's drift.
+
+## Amendment: the engine renders ahead by the plan latency (issue #24)
+
+The engine's graph delays every Track path by the plan latency L (PDC, ADR 0001), so the transport renders L samples ahead: on each callback the Track nodes read from `position + L`, and after the graph's delay, output sample n of the block is Song sample `position + n`. The anchor's song sample is therefore the Song sample at the block's first **output** sample, after PDC. We chose this so that every consumer (Recording, Video, the playhead) maps an output sample to a Song sample with no latency term of its own, and a plan swap that changes L moves nothing in time.
+
+- Song samples `start .. start + L − 1` are never heard after playback starts at `start` (play, seek, or the first plan). Those output samples are silence: after a seek, play, stop or plan swap, the engine silences the first L output samples, because the graph's delay lines still hold audio rendered before the change. Hearing a few milliseconds less after a start is accepted; outputting stale audio is not.
+- The anchor's host time is the device's output IO time for that buffer and **excludes the device's output latency**. Heard time stays output IO time + output latency (+ the calibration offset, ADR 0002), applied by the consumer, as above.
+- `Engine::position()` and the anchor both count in output samples: they do not move by L when the plan changes.

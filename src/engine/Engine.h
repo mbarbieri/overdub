@@ -26,8 +26,10 @@ namespace overdub::engine
 using song::SampleCount;
 
 // One per callback: the Song position of the block's first output sample, and the output host
-// time of that sample as the device reported it (ADR 0003). Song position here is what the graph
-// outputs at that sample after PDC; device output latency is not included.
+// time of that sample as the device reported it (ADR 0003).
+// Invariant (render-ahead, ADR 0003 amendment): the Track nodes render L = plan latency samples
+// ahead, so after PDC output sample n is Song sample songSample + n. hostTimeNs excludes the
+// device's output latency; consumers add it to get heard time.
 struct Anchor
 {
     SampleCount songSample = 0;
