@@ -1,11 +1,14 @@
 #include "app/LiveEngine.h"
+#include "app/LoopbackSelftest.h"
 #include "app/MainWindow.h"
+#include "app/MicrophonePermission.h"
 #include "core/BuildInfo.h"
 #include "core/Log.h"
 #include "core/LogFiles.h"
 
 #include <chrono>
 #include <cstdlib>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <unistd.h>
@@ -19,7 +22,7 @@ public:
     const juce::String getApplicationVersion() override { return core::currentBuildInfo().version; }
     bool moreThanOneInstanceAllowed() override { return false; }
 
-    void initialise (const juce::String& /*commandLine*/) override
+    void initialise (const juce::String& commandLine) override
     {
         core::setCurrentThreadRole (core::ThreadRole::ui);
         const auto logPath = startLogging();
@@ -36,12 +39,24 @@ public:
                             { "pid", static_cast<int> (getpid()) },
                         });
 
-        liveEngine = std::make_unique<LiveEngine>();
-        mainWindow = std::make_unique<MainWindow> (getApplicationName());
+        const auto args = juce::StringArray::fromTokens (commandLine, true);
+        const auto selftestIndex = args.indexOf ("--selftest");
+        if (selftestIndex >= 0)
+        {
+            runSelftest (args[selftestIndex + 1]);
+            return;
+        }
+
+        // Microphone access first: the audio device opens only once the user has decided (ADR 0002).
+        requestMicrophoneAccess ([this] (bool) {
+            liveEngine = std::make_unique<LiveEngine>();
+            mainWindow = std::make_unique<MainWindow> (getApplicationName());
+        });
     }
 
     void shutdown() override
     {
+        selftest.reset();
         mainWindow.reset();
         liveEngine.reset();
 
@@ -55,6 +70,40 @@ public:
     }
 
 private:
+    // `overdub --selftest <name>` (ADR 0005): runs the selftest without a window, prints its JSON
+    // report as one line on stdout, logs app.selftest_finished and quits with 0 (pass) or 1
+    // (fail). An unknown name prints an error report and quits with 2.
+    void runSelftest (const juce::String& name)
+    {
+        if (name != "loopback")
+        {
+            finishSelftest ({ { "selftest", name.toStdString() }, { "pass", false }, { "error", "app.selftest_unknown" } }, 2);
+            return;
+        }
+
+        requestMicrophoneAccess ([this] (bool granted) {
+            if (! granted)
+            {
+                finishSelftest ({ { "selftest", "loopback" }, { "pass", false }, { "error", "app.microphone_denied" } }, 1);
+                return;
+            }
+            liveEngine = std::make_unique<LiveEngine>();
+            selftest = std::make_unique<LoopbackSelftest> (*liveEngine, [this] (const core::Fields& report) {
+                // Quit after this callback returns: the selftest is still on the stack here.
+                juce::MessageManager::callAsync ([this, report] { finishSelftest (report, report.value ("pass", false) ? 0 : 1); });
+            });
+            selftest->start();
+        });
+    }
+
+    void finishSelftest (const core::Fields& report, int exitCode)
+    {
+        std::cout << report.dump (-1, ' ', false, nlohmann::json::error_handler_t::replace) << std::endl;
+        core::logEvent (exitCode == 0 ? core::Level::info : core::Level::warn, "app.selftest_finished", report);
+        setApplicationReturnValue (exitCode);
+        quit();
+    }
+
     // Opens this launch's JSONL file (ADR 0006) and routes JUCE's own messages into it.
     // Returns the log file path, or "" when the file could not be opened and stderr is used instead.
     std::string startLogging()
@@ -87,6 +136,7 @@ private:
     core::JuceLoggerBridge juceLoggerBridge;
     std::unique_ptr<LiveEngine> liveEngine;
     std::unique_ptr<MainWindow> mainWindow;
+    std::unique_ptr<LoopbackSelftest> selftest; // only in --selftest loopback; destroyed before liveEngine
 };
 } // namespace overdub::app
 

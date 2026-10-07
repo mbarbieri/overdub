@@ -18,7 +18,9 @@ class DeviceBinding final : public juce::AudioIODeviceCallback
 {
 public:
     // The engine must outlive the binding and stay registered no longer than it lives.
-    explicit DeviceBinding (Engine& engine);
+    // calibrationOffsetSamples: this machine's loopback calibration for the device and rate
+    // (engine/LatencyCalibration.h, ADR 0002), logged with engine.device_opened.
+    explicit DeviceBinding (Engine& engine, song::SampleCount calibrationOffsetSamples = 0);
 
     // Audio thread. Marks the calling thread as `audio` for logging, then calls Engine::process.
     // When the device reports no host time, the time the callback ran is used instead.
@@ -38,6 +40,7 @@ public:
 
 private:
     Engine& engine;
+    song::SampleCount calibrationOffset;
     // Valid from audioDeviceAboutToStart until audioDeviceStopped; never read by the callback.
     juce::AudioIODevice* runningDevice = nullptr;
 };

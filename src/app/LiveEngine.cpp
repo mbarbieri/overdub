@@ -4,12 +4,13 @@
 #include "core/Log.h"
 #include "engine/DeviceSettings.h"
 #include "engine/EngineEvents.h"
+#include "engine/LatencyCalibration.h"
 
 namespace overdub::app
 {
 namespace
 {
-    // Duplex from the start (ADR 0005): recording (slice 5) reads the inputs.
+    // Duplex (ADR 0005): recording reads the inputs.
 constexpr int inputChannelsNeeded = 2;
 constexpr int outputChannelsNeeded = 2;
 constexpr int housekeepingIntervalMs = 100;
@@ -87,13 +88,35 @@ void LiveEngine::openDevice()
 
 void LiveEngine::startEngine (juce::AudioIODevice& device)
 {
+    const auto setup = deviceManager.getAudioDeviceSetup();
+    const engine::CalibrationKey key {
+        .inputDevice = setup.inputDeviceName.toStdString(),
+        .outputDevice = setup.outputDeviceName.toStdString(),
+        .sampleRate = juce::roundToInt (device.getCurrentSampleRate()),
+    };
+    auto calibration = engine::readCalibrationOffset (engine::defaultLatencyCalibrationFile(), key);
+    if (! calibration.has_value())
+        core::logError (calibration.error(), core::Level::warn); // placed with reported latency only
+    latency = capture::RecordLatency {
+        .inputLatencySamples = device.getInputLatencyInSamples(),
+        .outputLatencySamples = device.getOutputLatencyInSamples(),
+        .calibrationOffsetSamples = calibration.value_or (0),
+    };
+
     audioEngine = std::make_unique<engine::Engine> (engine::engineConfigFor (device));
-    binding = std::make_unique<engine::DeviceBinding> (*audioEngine);
+    binding = std::make_unique<engine::DeviceBinding> (*audioEngine, latency.calibrationOffsetSamples);
     drainThread.emplace (audioEngine->rtEvents(), engine::engineRtCatalog);
 
     // Calls binding->audioDeviceAboutToStart (logs engine.device_opened), then the callbacks begin.
     deviceManager.addAudioCallback (binding.get());
     startTimer (housekeepingIntervalMs);
+}
+
+core::Fields LiveEngine::deviceFields()
+{
+    if (deviceManager.getCurrentAudioDevice() == nullptr)
+        return core::Fields::object();
+    return engine::deviceSettingsFields (engine::deviceSettingsFrom (deviceManager.getCurrentAudioDeviceType(), deviceManager.getAudioDeviceSetup()));
 }
 
 void LiveEngine::timerCallback()

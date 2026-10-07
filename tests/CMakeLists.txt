@@ -7,6 +7,8 @@ add_subdirectory(support)
 add_executable(overdub_tests)
 
 target_sources(overdub_tests PRIVATE
+    capture/LoopbackMeasurementTest.cpp
+    capture/PassRecorderTest.cpp
     core/BuildInfoTest.cpp
     core/ErrorTest.cpp
     core/LogFilesTest.cpp
@@ -16,6 +18,8 @@ target_sources(overdub_tests PRIVATE
     engine/DeviceSettingsTest.cpp
     engine/EngineEventsTest.cpp
     engine/EngineRealtimeTest.cpp
+    engine/EngineRecordTest.cpp
+    engine/LatencyCalibrationTest.cpp
     engine/EngineTest.cpp
     song/BackingTrackImportTest.cpp
     song/SongJsonTest.cpp
@@ -25,10 +29,10 @@ target_sources(overdub_tests PRIVATE
     support/RealtimeGuardTest.cpp
     support/RealtimeGuardCatchTest.cpp)
 
-# overdub_engine links overdub_song and overdub_core publicly; listing those too makes ld warn
+# overdub_capture links overdub_engine, which links overdub_song and overdub_core publicly; listing those too makes ld warn
 # about duplicate libraries.
 target_link_libraries(overdub_tests PRIVATE
-    overdub_engine
+    overdub_capture
     overdub_rt_guard
     Catch2::Catch2WithMain
     juce::juce_recommended_warning_flags)

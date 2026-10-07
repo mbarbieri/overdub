@@ -6,10 +6,6 @@ namespace overdub::engine
 {
 namespace
 {
-    // ADR 0002: the loopback calibration offset defaults to 0 until the user calibrates; the
-    // calibration and its per-machine storage arrive with that slice.
-constexpr int calibrationOffsetSamples = 0;
-
 void reportShapeMismatch (juce::AudioIODevice& device, const EngineConfig& config)
 {
     const auto deviceConfig = engineConfigFor (device);
@@ -38,8 +34,8 @@ EngineConfig engineConfigFor (juce::AudioIODevice& device)
     };
 }
 
-DeviceBinding::DeviceBinding (Engine& engineToDrive)
-    : engine (engineToDrive)
+DeviceBinding::DeviceBinding (Engine& engineToDrive, song::SampleCount calibrationOffsetSamples)
+    : engine (engineToDrive), calibrationOffset (calibrationOffsetSamples)
 {
 }
 
@@ -75,7 +71,7 @@ void DeviceBinding::audioDeviceAboutToStart (juce::AudioIODevice* device)
                         { "output_channels", device->getActiveOutputChannels().countNumberOfSetBits() },
                         { "input_latency_samples", device->getInputLatencyInSamples() },
                         { "output_latency_samples", device->getOutputLatencyInSamples() },
-                        { "calibration_offset_samples", calibrationOffsetSamples },
+                        { "calibration_offset_samples", calibrationOffset },
                     });
     reportShapeMismatch (*device, engine.configuration());
 }

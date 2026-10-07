@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/LiveInput.h"
 #include "song/Song.h"
 
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
@@ -49,10 +50,11 @@ public:
     RenderPlan& operator= (const RenderPlan&) = delete;
 
     // Audio thread. outputs has config.numOutputChannels channels of numSamples <= maxBlockSize.
+    // input is the device input of the block, which Armed Tracks hear while input.monitoring.
     // renderSample is the render position of the first sample (song position + latency).
     // Returns how many nodes rendered silence this block because another thread held their
     // callback lock (the patched graph never waits for it, ADR 0001 amendment).
-    std::uint64_t render (float* const* outputs, int numSamples, std::int64_t renderSample, bool playing) noexcept;
+    std::uint64_t render (float* const* outputs, const LiveInput& input, int numSamples, std::int64_t renderSample, bool playing) noexcept;
 
     int sampleRate() const { return songSampleRate; }
     int numOutputChannels() const { return config.numOutputChannels; }
@@ -67,6 +69,7 @@ private:
     int graphLatency = 0;
     int trackCount = 0;
     PlanPlayHead playHead;
+    LiveInput liveInput; // read by every Track node during render()
     juce::MidiBuffer midi; // always empty: no node reads or writes MIDI
     juce::AudioProcessorGraph graph;
 };

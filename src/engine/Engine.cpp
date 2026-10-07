@@ -55,6 +55,38 @@ void Engine::seek (SampleCount songSample)
     seekRequest.store (std::max<SampleCount> (songSample, 0));
 }
 
+void Engine::startRecording (RecordSession& session)
+{
+    recordStopRequested.store (false);
+    pendingRecord.store (&session, std::memory_order_release);
+}
+
+void Engine::stopRecording()
+{
+    // Not taken yet: cancel it here. Taken (or none): ask the audio thread to end it.
+    if (auto* notTaken = pendingRecord.exchange (nullptr, std::memory_order_acq_rel); notTaken != nullptr)
+    {
+        notTaken->cancel();
+        return;
+    }
+    recordStopRequested.store (true);
+}
+
+bool Engine::isRecording() const
+{
+    return publishedRecording.load();
+}
+
+void Engine::setMonitoring (bool on)
+{
+    monitoringOn.store (on);
+}
+
+bool Engine::isMonitoring() const
+{
+    return monitoringOn.load();
+}
+
 bool Engine::isPlaying() const
 {
     return publishedPlaying.load();
@@ -131,8 +163,8 @@ void Engine::freeRetiredPlans()
 //==============================================================================
 // Audio thread
 
-void Engine::process (const float* const*,
-                      int,
+void Engine::process (const float* const* inputs,
+                      int numInputChannels,
                       float* const* outputs,
                       int numOutputChannels,
                       int numSamples,
@@ -141,8 +173,11 @@ void Engine::process (const float* const*,
     const auto callbackStartNs = core::hostTimeNowNs();
 
     takePendingPlan (hostTimeNs);
-    applyTransportCommands (hostTimeNs);
+    const auto seekedThisBlock = applyTransportCommands (hostTimeNs);
     publishAnchor (hostTimeNs);
+    updateRecording (seekedThisBlock, hostTimeNs);
+    if (activeRecord != nullptr)
+        activeRecord->capture (inputs, numInputChannels, numSamples, Anchor { playPosition, hostTimeNs });
 
     const auto fitsPlan = currentPlan != nullptr
                        && numSamples <= currentPlan->maxBlockSize()
@@ -153,7 +188,11 @@ void Engine::process (const float* const*,
         // Render-ahead (ADR 0003 amendment): the graph delays every path by its latency L, so the
         // Track nodes read L samples ahead and output sample n of the block is Song sample
         // playPosition + n. Song samples 0..L-1 after a start are never heard.
-        const auto silencedNodes = currentPlan->render (outputs, numSamples, playPosition + currentPlan->latencySamples(), playing);
+        const auto silencedNodes = currentPlan->render (outputs,
+                                                        LiveInput { inputs, numInputChannels, monitoringOn.load (std::memory_order_relaxed) },
+                                                        numSamples,
+                                                        playPosition + currentPlan->latencySamples(),
+                                                        playing);
         reportSilencedNodes (silencedNodes, hostTimeNs);
         silenceStaleOutput (outputs, numOutputChannels, numSamples);
         rejectedShape = {};
@@ -194,7 +233,7 @@ void Engine::takePendingPlan (std::uint64_t hostTimeNs) noexcept
     pushEvent (planSwapped, hostTimeNs, next->latencySamples(), next->numTracks());
 }
 
-void Engine::applyTransportCommands (std::uint64_t hostTimeNs) noexcept
+bool Engine::applyTransportCommands (std::uint64_t hostTimeNs) noexcept
 {
     const auto seekTarget = seekRequest.exchange (noSeek);
     if (seekTarget != noSeek)
@@ -213,6 +252,45 @@ void Engine::applyTransportCommands (std::uint64_t hostTimeNs) noexcept
         pushEvent (playing ? transportStarted : transportStopped, hostTimeNs);
         publishedPlaying.store (playing);
     }
+    return seekTarget != noSeek;
+}
+
+void Engine::updateRecording (bool seekedThisBlock, std::uint64_t hostTimeNs) noexcept
+{
+    if (activeRecord != nullptr)
+    {
+        auto reason = RecordStopReason::none;
+        if (recordStopRequested.exchange (false))
+            reason = RecordStopReason::requested;
+        else if (seekedThisBlock)
+            reason = RecordStopReason::seeked;
+        else if (! playing)
+            reason = RecordStopReason::transportStopped;
+
+        if (reason == RecordStopReason::none)
+            return;
+
+        const auto frames = activeRecord->capturedFrames();
+        const auto overrun = activeRecord->overrunFrames();
+        // The last touch of the session: its owner may free it from here on.
+        activeRecord->end (reason);
+        activeRecord = nullptr;
+        publishedRecording.store (false);
+        pushEvent (recordingStopped, hostTimeNs, (double) frames, (double) overrun, (double) reason);
+    }
+
+    if (! playing || pendingRecord.load (std::memory_order_acquire) == nullptr)
+        return;
+
+    auto* session = pendingRecord.exchange (nullptr, std::memory_order_acq_rel);
+    if (session == nullptr)
+        return;
+
+    const auto latency = currentPlan != nullptr ? currentPlan->latencySamples() : 0;
+    session->begin (playPosition, latency);
+    activeRecord = session;
+    publishedRecording.store (true);
+    pushEvent (recordingStarted, hostTimeNs, (double) session->inputs().size(), latency);
 }
 
 void Engine::restartStaleOutput() noexcept

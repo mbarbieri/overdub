@@ -1,7 +1,9 @@
 #pragma once
 
 #include "core/RtEventRing.h"
+#include "engine/Anchor.h"
 #include "engine/EngineEvents.h"
+#include "engine/RecordSession.h"
 #include "engine/RenderPlan.h"
 #include "song/Song.h"
 
@@ -25,19 +27,6 @@
 namespace overdub::engine
 {
 using song::SampleCount;
-
-// One per callback: the Song position of the block's first output sample, and the output host
-// time of that sample as the device reported it (ADR 0003).
-// Invariant (render-ahead, ADR 0003 amendment): the Track nodes render L = plan latency samples
-// ahead, so after PDC output sample n is Song sample songSample + n. hostTimeNs excludes the
-// device's output latency; consumers add it to get heard time.
-struct Anchor
-{
-    SampleCount songSample = 0;
-    std::uint64_t hostTimeNs = 0;
-
-    bool operator== (const Anchor&) const = default;
-};
 
 class Engine
 {
@@ -66,12 +55,28 @@ public:
     const EngineConfig& configuration() const { return config; }
 
     bool isPlaying() const;
+    // True while the audio thread captures a Pass.
+    bool isRecording() const;
     // The Song position of the next block's first sample (a pending seek counts as done).
     SampleCount position() const;
     // The latency of the plan the audio thread plays now (0 before the first plan arrives).
     int latencySamples() const;
     // The latest callback's anchor; empty before the first callback.
     std::optional<Anchor> latestAnchor() const;
+
+    // Recording (issue #26), any non-audio thread. The session must stay alive until its state()
+    // is `stopped`. It starts at the first block that plays after this call: that block's first
+    // input sample is attributed to the block's Song position (RecordSession::begin). It ends at
+    // the first block after stopRecording(), or when the transport stops or seeks. A session the
+    // audio thread has not taken yet is cancelled by stopRecording() (state `stopped` at once).
+    void startRecording (RecordSession& session);
+    void stopRecording();
+
+    // Plain Monitoring (issue #26): while on, every Armed Track with input channels hears its live
+    // input through its Insert Chain to Master, whether or not the transport plays. Takes effect at
+    // the next block. Which Tracks are Armed comes from the loaded Song.
+    void setMonitoring (bool on);
+    bool isMonitoring() const;
 
     // RT events: drain with core::drainRtEvents (rtEvents(), engineRtCatalog) or an RtEventDrainThread.
     core::RtEventRing& rtEvents() { return rtEventRing; }
@@ -80,8 +85,9 @@ public:
     // second since the previous summary logs `engine.load` (debug) while the transport plays.
     void housekeeping (std::uint64_t nowHostNs);
 
-    // The duplex device callback. Writes numOutputChannels x numSamples into outputs.
-    // inputs are unused in this slice (recording is slice 5).
+    // The duplex device callback. Writes numOutputChannels x numSamples into outputs. Reads
+    // numInputChannels x numSamples from inputs (null when there are none) for Monitoring and
+    // recording; a missing input channel reads as silence.
     void process (const float* const* inputs,
                   int numInputChannels,
                   float* const* outputs,
@@ -94,7 +100,9 @@ private:
 
     // Audio thread.
     void takePendingPlan (std::uint64_t hostTimeNs) noexcept;
-    void applyTransportCommands (std::uint64_t hostTimeNs) noexcept;
+    // Returns true when a seek moved the position this block.
+    bool applyTransportCommands (std::uint64_t hostTimeNs) noexcept;
+    void updateRecording (bool seekedThisBlock, std::uint64_t hostTimeNs) noexcept;
     void restartStaleOutput() noexcept;
     void silenceStaleOutput (float* const* outputs, int numOutputChannels, int numSamples) noexcept;
     void reportSilencedNodes (std::uint64_t silencedNodes, std::uint64_t hostTimeNs) noexcept;
@@ -160,6 +168,15 @@ private:
     std::atomic<std::uint64_t> loadCallbacks { 0 };
     std::atomic<std::uint64_t> loadPeakCallbackNs { 0 };
     std::atomic<std::uint64_t> silencedNodeBlocks { 0 };
+
+    // Recording: the non-audio thread publishes a session; the audio thread takes it into
+    // activeRecord on a playing block and drops it after RecordSession::end().
+    std::atomic<RecordSession*> pendingRecord { nullptr };
+    std::atomic<bool> recordStopRequested { false };
+    RecordSession* activeRecord = nullptr; // audio thread only
+    std::atomic<bool> publishedRecording { false };
+
+    std::atomic<bool> monitoringOn { false };
 
     std::mutex nonRealtimeMutex; // serialises loadSong and housekeeping; never taken by process()
     std::optional<std::uint64_t> lastLoadSummaryNs;

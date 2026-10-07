@@ -65,6 +65,38 @@ Peaks computePeaks (const juce::AudioBuffer<float>& audio)
     return peaks;
 }
 
+PeaksBuilder::PeaksBuilder (int numChannels)
+{
+    peaks.channels.resize ((std::size_t) numChannels);
+}
+
+void PeaksBuilder::append (const float* const* channels, int numSamples)
+{
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const bool startsPeak = samplesInLastPeak == samplesPerPeak;
+        for (std::size_t c = 0; c < peaks.channels.size(); ++c)
+        {
+            const auto sample = channels[c][i];
+            auto& ranges = peaks.channels[c];
+            if (startsPeak)
+                ranges.push_back (PeakRange { sample, sample });
+            else
+            {
+                ranges.back().minimum = std::min (ranges.back().minimum, sample);
+                ranges.back().maximum = std::max (ranges.back().maximum, sample);
+            }
+        }
+        samplesInLastPeak = startsPeak ? 1 : samplesInLastPeak + 1;
+    }
+    peaks.lengthSamples += numSamples;
+}
+
+Peaks PeaksBuilder::finish() const
+{
+    return peaks;
+}
+
 std::string encodePeaks (const Peaks& peaks)
 {
     std::string bytes (peaksMagic, sizeof (peaksMagic));
@@ -124,9 +156,14 @@ juce::File peaksFileFor (const juce::File& packageRoot, const Id& mediaId)
 
 core::Expected<void> writePeaksFile (const juce::File& peaksFile, const juce::AudioBuffer<float>& audio, const BeforeRenameHook& beforeRename)
 {
+    return writePeaksFile (peaksFile, computePeaks (audio), beforeRename);
+}
+
+core::Expected<void> writePeaksFile (const juce::File& peaksFile, const Peaks& peaks, const BeforeRenameHook& beforeRename)
+{
     if (const auto created = peaksFile.getParentDirectory().createDirectory(); created.failed())
         return std::unexpected (writeFailed (peaksFile.getParentDirectory(), "create_folder", 0, created.getErrorMessage().toStdString()));
-    return writeFileAtomically (peaksFile, encodePeaks (computePeaks (audio)), beforeRename);
+    return writeFileAtomically (peaksFile, encodePeaks (peaks), beforeRename);
 }
 
 core::Expected<Peaks> loadOrRebuildPeaks (const juce::File& packageRoot, const Id& mediaId, const juce::File& mediaFile, const BeforeRenameHook& beforeRename)
