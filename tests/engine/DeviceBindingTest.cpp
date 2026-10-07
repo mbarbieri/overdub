@@ -2,12 +2,15 @@
 #include "engine/Engine.h"
 
 #include "EngineFixture.h"
+#include "FakeAudioIODevice.h"
 #include "support/RealtimeGuardCatch.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <string>
 #include <vector>
 
+using overdub::core::ScopedLogCapture;
 using overdub::engine::DeviceBinding;
 using overdub::engine::Engine;
 using overdub::engine::EngineConfig;
@@ -15,6 +18,15 @@ using namespace overdub::engine::testing;
 
 namespace
 {
+std::vector<nlohmann::json> eventsNamed (const ScopedLogCapture& capture, const std::string& name)
+{
+    std::vector<nlohmann::json> found;
+    for (const auto& event : capture.events())
+        if (event.at ("event") == name)
+            found.push_back (event);
+    return found;
+}
+
 overdub::song::Song impulseSong (const TempPackage& package, std::int64_t impulseAt)
 {
     auto song = overdub::song::makeEmptySong (testSampleRate);
@@ -121,4 +133,56 @@ TEST_CASE ("the device callback neither allocates nor locks, with or without a h
     engine.play();
     REQUIRE_REALTIME_SAFE (device.callback (binding, withHostTime));
     REQUIRE_REALTIME_SAFE (for (int block = 0; block < 4; ++block) device.callback (binding, withoutHostTime));
+}
+
+TEST_CASE ("starting the device logs engine.device_opened with the device's shape and latencies", "[engine][device][binding]")
+{
+    ScopedLogCapture capture;
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    DeviceBinding binding { engine };
+    FakeAudioIODevice device { FakeDeviceShape {
+        .name = "Scarlett 2i2 USB",
+        .typeName = "CoreAudio",
+        .numInputChannels = 2,
+        .numOutputChannels = 2,
+        .sampleRate = 48000.0,
+        .bufferSize = 256,
+        .inputLatencySamples = 301,
+        .outputLatencySamples = 287,
+    } };
+
+    binding.audioDeviceAboutToStart (&device);
+
+    const auto opened = eventsNamed (capture, "engine.device_opened");
+    REQUIRE (opened.size() == 1);
+    CHECK (opened[0]["lvl"] == "info");
+    CHECK (opened[0]["device"] == "Scarlett 2i2 USB");
+    CHECK (opened[0]["type"] == "CoreAudio");
+    CHECK (opened[0]["sample_rate"] == 48000);
+    CHECK (opened[0]["buffer_size"] == 256);
+    CHECK (opened[0]["input_channels"] == 2);
+    CHECK (opened[0]["output_channels"] == 2);
+    CHECK (opened[0]["input_latency_samples"] == 301);
+    CHECK (opened[0]["output_latency_samples"] == 287);
+    CHECK (opened[0]["calibration_offset_samples"] == 0);
+    CHECK (eventsNamed (capture, "engine.device_engine_mismatch").empty());
+}
+
+TEST_CASE ("stopping the device logs engine.device_closed with the device's xrun count", "[engine][device][binding]")
+{
+    ScopedLogCapture capture;
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    DeviceBinding binding { engine };
+    FakeAudioIODevice device { FakeDeviceShape { .name = "Scarlett 2i2 USB", .typeName = "CoreAudio" } };
+
+    binding.audioDeviceAboutToStart (&device);
+    device.shape.xruns = 3;
+    binding.audioDeviceStopped();
+
+    const auto closed = eventsNamed (capture, "engine.device_closed");
+    REQUIRE (closed.size() == 1);
+    CHECK (closed[0]["lvl"] == "info");
+    CHECK (closed[0]["device"] == "Scarlett 2i2 USB");
+    CHECK (closed[0]["type"] == "CoreAudio");
+    CHECK (closed[0]["xruns"] == 3);
 }

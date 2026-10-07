@@ -25,10 +25,14 @@ public:
                                            int numSamples,
                                            const juce::AudioIODeviceCallbackContext& context) override;
 
+    // Non-audio thread (the thread starting or stopping the device). Log engine.device_opened /
+    // engine.device_closed (ADR 0006).
     void audioDeviceAboutToStart (juce::AudioIODevice* device) override;
     void audioDeviceStopped() override;
 
 private:
     Engine& engine;
+    // Valid from audioDeviceAboutToStart until audioDeviceStopped; never read by the callback.
+    juce::AudioIODevice* runningDevice = nullptr;
 };
 } // namespace overdub::engine
