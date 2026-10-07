@@ -309,6 +309,36 @@ TEST_CASE ("undo keeps Armed, input channels, playhead and the other state outsi
     CHECK (package->song() == expected);
 }
 
+TEST_CASE ("undo and redo keep the current plugin state of every Insert Chain slot that still exists", "[song][package][history]")
+{
+    TempDirectory temp;
+    const auto song = overdub::song::testing::fullyPopulatedSong();
+    auto package = createPackage (temp.package(), song);
+
+    auto withNewSlot = song;
+    withNewSlot.tracks.at (0).insertChain.push_back (overdub::song::testing::insertSlot ("slot-new", "dddd"));
+    REQUIRE (package->edit (withNewSlot, "Add Plugin").has_value());
+
+    auto tweaked = package->song(); // parameters changed in the plugins' own editors
+    tweaked.tracks.at (0).insertChain.at (0).stateHash = "cccc";
+    tweaked.tracks.at (0).insertChain.at (1).stateHash = "ffff";
+    tweaked.master.insertChain.at (0).stateHash = "eeee";
+    package->changeWithoutHistory (tweaked);
+
+    REQUIRE (package->undo().has_value());
+    const auto& undone = package->song();
+    REQUIRE (undone.tracks.at (0).insertChain.size() == 1);
+    CHECK (undone.tracks.at (0).insertChain.at (0).stateHash == "cccc");
+    CHECK (undone.master.insertChain.at (0).stateHash == "eeee");
+
+    REQUIRE (package->redo().has_value());
+    const auto& redone = package->song();
+    REQUIRE (redone.tracks.at (0).insertChain.size() == 2);
+    CHECK (redone.tracks.at (0).insertChain.at (0).stateHash == "cccc");
+    CHECK (redone.tracks.at (0).insertChain.at (1).stateHash == "dddd"); // not in the Song undo left: the snapshot's state
+    CHECK (redone.master.insertChain.at (0).stateHash == "eeee");
+}
+
 TEST_CASE ("step 201 drops the oldest step", "[song][package][history]")
 {
     TempDirectory temp;

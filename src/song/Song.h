@@ -200,7 +200,9 @@ Song makeEmptySong (int sampleRate);
 
 // Undo and redo restore a snapshot's undoable content but keep the current state that lives
 // outside history: pre-roll, camera arm and device, playhead, the export choice (unless it would
-// name a Video Take the snapshot does not have) and, per Track id, Armed and input channels.
+// name a Video Take the snapshot does not have), per Track id Armed and input channels, and per
+// Insert Chain slot id (Master's included) the plugin state hash: plugin parameters are outside
+// history. A slot only the snapshot has keeps the snapshot's hash.
 Song keepStateOutsideHistory (Song snapshot, const Song& current);
 
 // Every non-empty plugin state hash used by the Song's Insert Chains.
