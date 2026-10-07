@@ -34,6 +34,14 @@ _Avoid_: Loop, accompaniment, stem
 Camera footage captured during a pass, which stays aligned with that pass's takes on the timeline. A song has at most one camera armed at a time.
 _Avoid_: Video track, camera clip
 
+**Take Lane**:
+A thin row under a Track, one per Take recorded on that Track, showing where that Take is currently heard. Clicking it makes the Clip at that point play that Take.
+_Avoid_: Comp lane, playlist, take folder
+
+**Pre-roll**:
+Playback that starts a few seconds before the record point so you can come in on time. The Pass still starts at the record point.
+_Avoid_: Count-in (that implies a tempo)
+
 ### Signal flow
 
 **Insert Chain**:
