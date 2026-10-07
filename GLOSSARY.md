@@ -27,7 +27,7 @@ A non-destructive window onto a take or backing track on the timeline, with its 
 _Avoid_: Region, segment
 
 **Backing Track**:
-An existing audio file imported onto its own track to play along with, typically an already recorded song. It is never generated or sequenced in the app.
+An existing audio file imported onto its own track to play along with, typically an already recorded song. A song can have several, for example one per instrument when the original was delivered as separate parts. It is never generated or sequenced in the app.
 _Avoid_: Loop, accompaniment, stem
 
 **Video Take**:
