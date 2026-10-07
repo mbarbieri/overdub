@@ -11,15 +11,19 @@ The single document a user works in: its tracks, takes, mixer settings and video
 _Avoid_: Project, session, arrangement
 
 **Track**:
-A horizontal lane in a song that holds takes or a backing track, with its own mixer channel and insert chain.
+A horizontal lane in a song that holds clips of takes, backing tracks or both, with its own mixer channel and insert chain.
 _Avoid_: Channel (when you mean the lane), lane
 
+**Pass**:
+One press of record through to stop. It produces one take on every armed track, plus a video take if the camera is armed.
+_Avoid_: Session, run
+
 **Take**:
-One continuous recording pass on a track, from when recording starts to when it stops. It stores the dry input. Effects are never baked into it.
-_Avoid_: Recording, pass
+The dry input one track captured during a pass. Effects are never baked into it.
+_Avoid_: Recording
 
 **Clip**:
-A non-destructive window onto a take or backing track on the timeline, with its own trim, fades and gain.
+A non-destructive window onto a take or backing track on the timeline, with its own trim, fades and gain. Clips on a track are stacked in layer order. Where they overlap, only the top one sounds.
 _Avoid_: Region, segment
 
 **Backing Track**:
@@ -27,7 +31,7 @@ An existing audio file imported onto its own track to play along with, typically
 _Avoid_: Loop, accompaniment, stem
 
 **Video Take**:
-Camera footage captured during the same pass as audio takes, which stays aligned with them on the timeline. A song has at most one camera armed at a time.
+Camera footage captured during a pass, which stays aligned with that pass's takes on the timeline. A song has at most one camera armed at a time.
 _Avoid_: Video track, camera clip
 
 ### Signal flow
