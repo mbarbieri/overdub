@@ -31,6 +31,10 @@ core::Error writeFailed (const juce::File& file, const char* step, int savedErrn
 // Errors: song.write_failed (step open|write|fsync|rename), or the hook's Error.
 core::Expected<void> writeFileAtomically (const juce::File& destination, std::string_view bytes, const BeforeRenameHook& beforeRename);
 
+// fsyncs a finished file before it is renamed into place, for writers that do not (the WAV writer,
+// file copies). Errors: song.write_failed (step fsync).
+core::Expected<void> syncFile (const juce::File& file);
+
 // Serializes `document` (one space indent) and writes it with writeFileAtomically. Returns the
 // number of bytes written. Errors: song.json_unserializable (path, reason; e.g. a string that is
 // not valid UTF-8), plus writeFileAtomically's.

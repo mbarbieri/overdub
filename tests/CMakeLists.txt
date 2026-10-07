@@ -17,8 +17,10 @@ target_sources(overdub_tests PRIVATE
     engine/EngineEventsTest.cpp
     engine/EngineRealtimeTest.cpp
     engine/EngineTest.cpp
+    song/BackingTrackImportTest.cpp
     song/SongJsonTest.cpp
     song/SongMigrationTest.cpp
+    song/PeaksTest.cpp
     song/SongPackageTest.cpp
     support/RealtimeGuardTest.cpp
     support/RealtimeGuardCatchTest.cpp)

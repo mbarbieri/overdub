@@ -2,6 +2,7 @@
 
 #include "core/Error.h"
 #include "song/AtomicWrite.h"
+#include "song/Peaks.h"
 #include "song/Song.h"
 #include "song/SongHistory.h"
 
@@ -20,7 +21,10 @@
 //     history/NNNNNN.json        { "label", "song" }: one whole-Song snapshot per step (SongHistory.h)
 //     history/index.json         { "oldest", "newest", "current" }
 //     plugins/<sha256>.state     plugin state blobs, content-addressed, written once
-//     audio/ backing/ video/     media, written by later slices; never touched here
+//     backing/<id>.orig.<ext>    an imported Backing Track's original file, untouched
+//     backing/<id>.wav           its derived 32-bit float WAV at the Song's rate (BackingTrackImport.h)
+//     peaks/<media-id>.peaks     the peaks cache of every Take and Backing Track (Peaks.h)
+//     audio/ video/              Take and Video Take media, written by later slices
 //
 // There is no Save. Two change paths:
 // - edit(), undo() and redo() write a history step and song.json at once, in this order:
@@ -66,6 +70,8 @@ public:
     // untouched), then deletes leftover *.tmp files, loads and migrates every snapshot, drops
     // unreadable history (a Notice, never an Error), deletes unreferenced plugin blobs, and
     // rewrites song.json only if it was migrated or restored from history.
+    // Then it rebuilds each missing derived Backing Track file from its original; a Backing Track
+    // with neither is missing (song.backing_track_missing, plus a Notice): its Clips play silence.
     // Errors: song.package_not_found, song.read_failed, song.json_unparsable, song.json_invalid,
     // song.format_too_new, song.migration_failed (all with the file's path); song.write_failed,
     // song.json_unserializable (rewriting song.json, or starting a fresh history).
@@ -113,6 +119,26 @@ public:
     core::Expected<std::string> storePluginState (const juce::MemoryBlock& state);
     // Errors: song.plugin_state_invalid_hash, song.plugin_state_missing.
     core::Expected<juce::MemoryBlock> loadPluginState (const std::string& hash) const;
+
+    // Imports an audio file as a Backing Track at the Song's rate (ADR 0004, issue #14 amendment):
+    // writes its files (BackingTrackImport.h), then adds the Backing Track, a Track named after the
+    // file and one Clip of it at sample 0 as one undo step "Import <file name>". Returns the
+    // Backing Track id and logs song.backing_track_imported. On an Error the Song is unchanged and
+    // no file is left behind. Errors: song.import_unreadable, song.import_too_many_channels,
+    // song.write_failed, or edit()'s history write Error.
+    core::Expected<Id> importBackingTrack (const juce::File& source, Clock::time_point now = Clock::now());
+
+    // Several files: one importBackingTrack each, in order, so each becomes its own Track at sample
+    // 0 and its own undo step. A failed file does not stop the others.
+    std::vector<core::Expected<Id>> importBackingTracks (const std::vector<juce::File>& sources, Clock::time_point now = Clock::now());
+
+    // True when the Backing Track's derived file is not there to play (shown as missing).
+    bool isBackingTrackMissing (const Id& backingTrackId) const;
+
+    // The peaks of a Take's or Backing Track's media, from the cache, rebuilt (song.peaks_rebuilt)
+    // when missing or corrupt. Errors: song.media_unknown (source_kind, source_id: not in the Song),
+    // song.read_failed (the media file is missing), song.write_failed.
+    core::Expected<Peaks> peaks (const ClipSource& source) const;
 
     // Duplicate Song: flushes, then clonefile()s the whole package, history included, ids kept.
     // `destination` must not exist. Errors: song.duplicate_failed (path, destination, errno), or

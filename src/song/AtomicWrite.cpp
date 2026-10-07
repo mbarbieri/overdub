@@ -72,6 +72,19 @@ core::Expected<void> writeFileAtomically (const juce::File& destination, std::st
     return {};
 }
 
+core::Expected<void> syncFile (const juce::File& file)
+{
+    const int descriptor = ::open (file.getFullPathName().toRawUTF8(), O_RDONLY);
+    if (descriptor < 0)
+        return std::unexpected (writeFailed (file, "fsync", errno));
+    const int synced = ::fsync (descriptor);
+    const int syncErrno = errno;
+    ::close (descriptor);
+    if (synced != 0)
+        return std::unexpected (writeFailed (file, "fsync", syncErrno));
+    return {};
+}
+
 core::Expected<std::size_t> writeJsonAtomically (const juce::File& destination, const nlohmann::json& document, const BeforeRenameHook& beforeRename)
 {
     std::string text;

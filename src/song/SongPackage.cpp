@@ -1,9 +1,11 @@
 #include "song/SongPackage.h"
 
+#include "song/BackingTrackImport.h"
 #include "song/PluginBlobStore.h"
 #include "song/SongJson.h"
 #include "song/SongMigration.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <sys/clonefile.h>
 #include <utility>
@@ -115,6 +117,9 @@ core::Expected<SongPackage::Opened> SongPackage::open (const juce::File& locatio
     referencedHashes.merge (pluginStateHashes (song));
     const int blobsDeleted = deleteUnreferencedPluginBlobs (location.getChildFile ("plugins"), referencedHashes);
 
+    if (const auto missing = repairBackingTrackFiles (location, song, options.beforeRename); ! missing.empty())
+        notices.push_back (Notice { "song.backing_track_missing" });
+
     auto package = std::unique_ptr<SongPackage> (new SongPackage (location, std::move (song), std::move (*history), std::move (options)));
 
     // Rewritten only when it differs from what is on disk: migrated, or restored from history.
@@ -200,6 +205,71 @@ core::Expected<std::string> SongPackage::storePluginState (const juce::MemoryBlo
 core::Expected<juce::MemoryBlock> SongPackage::loadPluginState (const std::string& hash) const
 {
     return loadPluginBlob (root.getChildFile ("plugins"), hash);
+}
+
+core::Expected<Id> SongPackage::importBackingTrack (const juce::File& source, Clock::time_point now)
+{
+    auto backingTrack = writeBackingTrackFiles (root, source, currentSong.sampleRate, options.beforeRename);
+    if (! backingTrack.has_value())
+        return std::unexpected (backingTrack.error());
+
+    if (auto edited = edit (withImportedBackingTrack (currentSong, *backingTrack), importStepLabel (*backingTrack), now); ! edited.has_value())
+    {
+        // Only a history write Error leaves the Song unchanged; after the step is committed the
+        // import stands and only its song.json write is pending.
+        if (currentSong.backingTracks.empty() || currentSong.backingTracks.back().id != backingTrack->id)
+            deleteBackingTrackFiles (root, *backingTrack);
+        return std::unexpected (edited.error());
+    }
+
+    core::logEvent (core::Level::info,
+                    "song.backing_track_imported",
+                    {
+                        { "backing_track_id", backingTrack->id },
+                        { "source", pathOf (source) },
+                        { "format_name", backingTrack->formatName },
+                        { "original_sample_rate", backingTrack->originalSampleRate },
+                        { "sample_rate", currentSong.sampleRate },
+                        { "channels", backingTrack->channels },
+                        { "length_samples", backingTrack->lengthSamples },
+                    });
+    return backingTrack->id;
+}
+
+std::vector<core::Expected<Id>> SongPackage::importBackingTracks (const std::vector<juce::File>& sources, Clock::time_point now)
+{
+    std::vector<core::Expected<Id>> results;
+    for (const auto& source : sources)
+        results.push_back (importBackingTrack (source, now));
+    return results;
+}
+
+bool SongPackage::isBackingTrackMissing (const Id& backingTrackId) const
+{
+    const auto backingTrack = std::ranges::find (currentSong.backingTracks, backingTrackId, &BackingTrack::id);
+    return backingTrack == currentSong.backingTracks.end() || ! derivedFileFor (root, *backingTrack).existsAsFile();
+}
+
+core::Expected<Peaks> SongPackage::peaks (const ClipSource& source) const
+{
+    std::optional<juce::File> mediaFile;
+    if (source.kind == ClipSourceKind::take)
+    {
+        if (const auto take = std::ranges::find (currentSong.takes, source.id, &Take::id); take != currentSong.takes.end())
+            mediaFile = root.getChildFile (take->file);
+    }
+    else if (const auto backingTrack = std::ranges::find (currentSong.backingTracks, source.id, &BackingTrack::id); backingTrack != currentSong.backingTracks.end())
+    {
+        mediaFile = derivedFileFor (root, *backingTrack);
+    }
+
+    if (! mediaFile.has_value())
+        return std::unexpected (core::Error {
+            "song.media_unknown",
+            "the Song has no such Take or Backing Track",
+            { { "source_kind", source.kind == ClipSourceKind::take ? "take" : "backing" }, { "source_id", source.id } },
+        });
+    return loadOrRebuildPeaks (root, source.id, *mediaFile, options.beforeRename);
 }
 
 core::Expected<void> SongPackage::duplicateTo (const juce::File& destination)

@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -65,6 +66,15 @@ Song renamedFirstTrack (Song song, const std::string& name)
     return song;
 }
 
+// The Notices with this code. fullyPopulatedSong() has no media files, so opening it also gives
+// the song.backing_track_missing Notice; tests about history look at their own code only.
+std::vector<overdub::song::Notice> noticesWithCode (const SongPackage::Opened& opened, const std::string& code)
+{
+    std::vector<overdub::song::Notice> found;
+    std::ranges::copy_if (opened.notices, std::back_inserter (found), [&] (const overdub::song::Notice& notice) { return notice.code == code; });
+    return found;
+}
+
 bool hasEvent (const ScopedLogCapture& capture, const std::string& name)
 {
     const auto events = capture.events();
@@ -91,7 +101,7 @@ TEST_CASE ("a created Song opens again with the same content", "[song][package]"
     const auto opened = openPackage (temp.package());
 
     CHECK (opened.package->song() == song);
-    CHECK (opened.notices.empty());
+    CHECK (noticesWithCode (opened, "song.history_dropped").empty());
     CHECK (opened.package->canUndo() == false);
     const auto openedEvent = firstEvent (capture, "song.opened");
     CHECK (openedEvent.at ("lvl") == "info");
@@ -527,8 +537,7 @@ TEST_CASE ("a corrupt history opens the Song with history dropped, the event log
 
     CHECK (opened.package->song() == renamedFirstTrack (song, "Lead"));
     CHECK_FALSE (opened.package->canUndo());
-    REQUIRE (opened.notices.size() == 1);
-    CHECK (opened.notices.front().code == "song.history_dropped");
+    CHECK (noticesWithCode (opened, "song.history_dropped").size() == 1);
     const auto dropped = firstEvent (capture, "song.history_dropped");
     CHECK (dropped.at ("lvl") == "warn");
     CHECK (dropped.at ("cause") == "song.json_unparsable");
@@ -569,7 +578,7 @@ TEST_CASE ("a missing history folder or index drops history without blocking the
     auto opened = openPackage (temp.package());
 
     CHECK (opened.package->song() == song);
-    CHECK (opened.notices.size() == 1);
+    CHECK (noticesWithCode (opened, "song.history_dropped").size() == 1);
     const auto dropped = firstEvent (capture, "song.history_dropped");
     CHECK (dropped.at ("cause") == expectedCause);
     CHECK (dropped.at ("path") == overdub::song::pathOf (expectedPath));
