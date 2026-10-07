@@ -6,6 +6,7 @@ add_executable(overdub_tests)
 target_sources(overdub_tests PRIVATE
     core/BuildInfoTest.cpp
     core/ErrorTest.cpp
+    core/LogFilesTest.cpp
     core/LogTest.cpp
     core/RtEventRingTest.cpp)
 

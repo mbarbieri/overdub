@@ -27,6 +27,17 @@ Use `release` in place of `debug` for an optimised build. The first build compil
 - `external/` → `overdub_juce`: the JUCE modules, compiled once. Our targets get JUCE through `overdub_core`, never by linking `juce::juce_*` modules directly (that would compile JUCE again and duplicate symbols).
 - `tests/<area>/` → `overdub_tests`: one Catch2 executable. Each `TEST_CASE` becomes one ctest test.
 
+## Logs
+
+Each launch writes `~/Library/Logs/Overdub/overdub-<UTC timestamp>-<pid>.jsonl` (ADR 0006); the last 20 launches are kept. Debug builds log `debug` and up and echo every line to stderr; release builds log `info` and up. Override at launch with `OVERDUB_LOG=debug` (or `info`, `warn`, `error`):
+
+```sh
+OVERDUB_LOG=debug build/release/src/app/Overdub_artefacts/Release/Overdub.app/Contents/MacOS/Overdub
+jq -c 'select(.lvl == "error")' "$(ls -1 ~/Library/Logs/Overdub/overdub-*.jsonl | tail -1)"
+```
+
+In code: `core::logEvent` (`core/Log.h`) off the audio thread; `core::RtEventRing` + an `RtEventSpec` catalog (`core/RtEventRing.h`) on it; `core::Expected<T>`, `core::logError` and `OVERDUB_CHECK` (`core/Error.h`) for failures. Tests use `core::ScopedLogCapture` and never read the log file.
+
 ## The JUCE patch
 
 `patches/juce-force-auv2-oop.patch` makes JUCE load AUv2 plugins out-of-process through `AUHostingService`, as it already does for AUv3 (ADR 0002). Configuring applies it to `external/JUCE` idempotently: if it is already applied nothing happens, if it applies cleanly it is applied, otherwise configure stops with an error. `external/JUCE` shows as modified inside the submodule; `.gitmodules` sets `ignore = dirty` so the superproject stays clean.

@@ -2,6 +2,9 @@
 
 namespace overdub::core
 {
+// Defined in the build-time generated GitSha.cpp (src/core/WriteGitSha.cmake).
+const char* buildGitSha();
+
 BuildInfo currentBuildInfo()
 {
 #if defined(__x86_64__)
@@ -12,6 +15,6 @@ BuildInfo currentBuildInfo()
     #error "overdub: unsupported architecture"
 #endif
 
-    return BuildInfo { OVERDUB_VERSION_STRING, architecture };
+    return BuildInfo { OVERDUB_VERSION_STRING, architecture, buildGitSha() };
 }
 } // namespace overdub::core

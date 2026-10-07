@@ -166,6 +166,12 @@ std::vector<std::string> MemoryLogSink::lines() const
     return storedLines;
 }
 
+void StderrLogSink::writeLine (std::string_view line)
+{
+    std::fwrite (line.data(), 1, line.size(), stderr);
+    std::fputc ('\n', stderr);
+}
+
 void Logger::setSink (std::shared_ptr<LogSink> newSink)
 {
     const std::scoped_lock lock (mutex);

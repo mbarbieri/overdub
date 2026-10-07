@@ -105,6 +105,13 @@ private:
     std::vector<std::string> storedLines;
 };
 
+// Writes lines to stderr. The fallback when the launch log file cannot be opened.
+class StderrLogSink final : public LogSink
+{
+public:
+    void writeLine (std::string_view line) override;
+};
+
 class Logger
 {
 public:
