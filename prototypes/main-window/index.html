@@ -219,7 +219,9 @@ input[type=range]{accent-color:var(--accent)}
 .c-edit{flex:1;display:flex;flex-direction:column;min-height:0}
 .c-cliptools{display:flex;gap:10px;align-items:center;padding:5px 10px;background:var(--panel2);border-bottom:1px solid var(--line);font-size:11px;min-height:32px}
 .c-edit-tl{flex:1;min-height:0}
-.c-edit-mix{height:44%;flex-shrink:0;display:flex;gap:6px;padding:8px;overflow-x:auto;border-top:2px solid var(--line);background:#202125}
+.c-split{height:6px;flex-shrink:0;cursor:row-resize;background:var(--line)}
+.c-split:hover{background:var(--accent)}
+.c-edit-mix{flex-shrink:0;display:flex;gap:6px;padding:8px;overflow-x:auto;background:#202125}
 .c-edit-mix .strip .inserts{min-height:60px}
 .c-edit-mix .fader-wrap{min-height:60px}
 .c-export{flex:1;display:flex;justify-content:center;padding:30px;overflow:auto}
@@ -273,7 +275,7 @@ function makeState() {
     zoom: 8,
     undo: [], redo: [],
     ui: {
-      mixerOpen: false, previewOpen: true, exportOpen: false, side: 'video', mode: 'record', toast: null,
+      mixerOpen: false, previewOpen: true, exportOpen: false, side: 'video', mode: 'record', toast: null, cMix: { open: true, h: 340 },
       pluginWindows: [], pos: { preview: { x: window.innerWidth - 370, y: 90 } },
       export: { format: 'mp4', videoId: 'v2', span: 'take', status: null, progress: 0 },
     },
@@ -688,9 +690,10 @@ function renderC() {
     const f = S.sel.clip && findClip(S.sel.clip);
     const tools = f ? `<b>${f.c.label}</b><span class="dim">on ${f.t.name}</span><span>start ${fmt(f.c.start)}</span><span>length ${fmt(f.c.length)}</span><span>fades ${f.c.fadeIn.toFixed(2)} / ${f.c.fadeOut.toFixed(2)} s</span><span>${fmtDb(f.c.gain)}</span><button data-act="split">Split (S)</button><button data-act="delete">Delete</button>`
       : `<span class="dim">Select a Clip. Drag to move, edges to trim, top corners for fades, the dB tag for gain. S splits at the playhead.</span>`;
-    body = `<div class="c-edit"><div class="c-cliptools">${tools}<span class="spacer"></span>${zoomHtml()}<button data-act="toggle-preview" class="${S.ui.previewOpen ? 'on' : ''}">Video</button></div>
+    body = `<div class="c-edit"><div class="c-cliptools">${tools}<span class="spacer"></span>${zoomHtml()}<button data-act="toggle-preview" class="${S.ui.previewOpen ? 'on' : ''}">Video</button><button data-act="toggle-cmix" class="${S.ui.cMix.open ? 'on' : ''}" title="Mixer (X)">Mixer</button></div>
       <div class="c-edit-tl">${timelineHtml({ headerW: 150, laneH: 76, camera: 'top', header: headerC, cameraHeader: camHeaderC })}</div>
-      <div class="c-edit-mix" data-scroll="mix">${S.tracks.map((t) => stripHtml(t)).join('')}<div class="spacer"></div>${stripHtml(S.master, true)}</div></div>`;
+      ${S.ui.cMix.open ? `<div class="c-split" data-splitter title="Drag to resize the mixer"></div>
+      <div class="c-edit-mix" data-scroll="mix" style="height:${S.ui.cMix.h}px">${S.tracks.map((t) => stripHtml(t)).join('')}<div class="spacer"></div>${stripHtml(S.master, true)}</div>` : ''}</div>`;
   } else {
     body = `<div class="c-export">${exportHtml(false)}</div>`;
   }
@@ -758,6 +761,7 @@ document.addEventListener('click', (e) => {
   if (act === 'zoom-out') S.zoom = Math.max(2, S.zoom / 1.5);
   if (act === 'toggle-preview') S.ui.previewOpen = !S.ui.previewOpen;
   if (act === 'toggle-mixer') S.ui.mixerOpen = !S.ui.mixerOpen;
+  if (act === 'toggle-cmix') S.ui.cMix.open = !S.ui.cMix.open;
   if (act === 'open-export') { S.ui.exportOpen = true; S.ui.export.status = null; }
   if (act === 'close-export') S.ui.exportOpen = false;
   if (act === 'export-reset') S.ui.export.status = null;
@@ -803,6 +807,7 @@ document.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
   const win = e.target.closest('[data-drag-window]');
   if (win && !e.target.closest('button')) { const k = win.dataset.dragWindow; drag = { type: 'window', key: k, sx: e.clientX, sy: e.clientY, orig: { ...S.ui.pos[k] } }; return; }
+  if (e.target.closest('[data-splitter]')) { drag = { type: 'splitter', sy: e.clientY, orig: S.ui.cMix.h }; e.preventDefault(); return; }
   const clipEl = e.target.closest('[data-clip]');
   if (clipEl) {
     const h = e.target.closest('[data-h]');
@@ -822,6 +827,7 @@ document.addEventListener('pointerdown', (e) => {
 document.addEventListener('pointermove', (e) => {
   if (!drag) return;
   if (drag.type === 'window') { S.ui.pos[drag.key] = { x: drag.orig.x + e.clientX - drag.sx, y: Math.max(0, drag.orig.y + e.clientY - drag.sy) }; render(); return; }
+  if (drag.type === 'splitter') { S.ui.cMix.h = clamp(drag.orig - (e.clientY - drag.sy), 120, window.innerHeight - 220); render(); return; }
   if (drag.type === 'scrub') {
     if (S.recording) return;
     S.playhead = drag.width ? clamp(((e.clientX - drag.left) / drag.width) * SONG_LEN, 0, SONG_LEN) : clamp((e.clientX - drag.left) / S.zoom, 0, SONG_LEN);
@@ -854,7 +860,7 @@ document.addEventListener('keydown', (e) => {
   else if (k === 's' || k === 'S') splitAtPlayhead();
   else if (k === 'Backspace' || k === 'Delete') deleteSelected();
   else if (k === 'Enter') S.playhead = 0;
-  else if (k === 'x' || k === 'X') S.ui.mixerOpen = !S.ui.mixerOpen;
+  else if (k === 'x' || k === 'X') { if (currentVariant() === 'C') S.ui.cMix.open = !S.ui.cMix.open; else S.ui.mixerOpen = !S.ui.mixerOpen; }
   else if (k === 'Escape') { S.sel.clip = null; S.ui.exportOpen = false; }
   else if (currentVariant() === 'C' && '123'.includes(k)) S.ui.mode = C_MODES[+k - 1];
   else return;
