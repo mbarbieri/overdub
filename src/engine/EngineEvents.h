@@ -16,7 +16,7 @@ enum EngineRtCode : std::uint16_t
     transportStopped = 1, // stop took effect at the start of this block
     seeked = 2,           // the block starts at the seek target; args: from_sample
     planSwapped = 3,      // a new render plan plays from this block; args: latency_samples, tracks
-    blockRejected = 4,    // the block was silenced; args: num_samples, output_channels, max_block_size, plan_output_channels
+    blockRejected = 4,    // blocks of this shape do not fit the plan and are silenced, from this block on (pushed on change only); args: num_samples, output_channels, max_block_size, plan_output_channels
 
     engineRtCodeCount // not a code: the number of codes, which the catalog must match
 };

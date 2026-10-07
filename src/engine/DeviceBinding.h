@@ -32,7 +32,7 @@ public:
     // Non-audio thread (the thread starting or stopping the device). Log engine.device_opened /
     // engine.device_closed (ADR 0006). A device whose shape differs from the engine's config is
     // logged as engine.device_engine_mismatch (warn); the engine then renders silence and
-    // reports engine.block_rejected. Handling device changes is slice 20.
+    // reports engine.block_rejected once per rejected shape. Handling device changes is slice 20.
     void audioDeviceAboutToStart (juce::AudioIODevice* device) override;
     void audioDeviceStopped() override;
 

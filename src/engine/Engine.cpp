@@ -145,6 +145,7 @@ void Engine::process (const float* const*,
     if (fitsPlan)
     {
         currentPlan->render (outputs, numSamples, playPosition + currentPlan->latencySamples(), playing);
+        rejectedShape = {};
     }
     else
     {
@@ -152,7 +153,7 @@ void Engine::process (const float* const*,
             std::memset (outputs[channel], 0, sizeof (float) * (std::size_t) std::max (numSamples, 0));
 
         if (currentPlan != nullptr)
-            pushEvent (blockRejected, hostTimeNs, numSamples, numOutputChannels, currentPlan->maxBlockSize(), currentPlan->numOutputChannels());
+            reportRejectedBlock (numSamples, numOutputChannels, hostTimeNs);
     }
 
     if (playing)
@@ -196,6 +197,17 @@ void Engine::applyTransportCommands (std::uint64_t hostTimeNs) noexcept
         pushEvent (playing ? transportStarted : transportStopped, hostTimeNs);
         publishedPlaying.store (playing);
     }
+}
+
+void Engine::reportRejectedBlock (int numSamples, int numOutputChannels, std::uint64_t hostTimeNs) noexcept
+{
+    // ADR 0006: a device stuck on a wrong shape would otherwise flood the ring every callback.
+    const BlockShape shape { numSamples, numOutputChannels };
+    if (shape == rejectedShape)
+        return;
+
+    rejectedShape = shape;
+    pushEvent (blockRejected, hostTimeNs, numSamples, numOutputChannels, currentPlan->maxBlockSize(), currentPlan->numOutputChannels());
 }
 
 void Engine::publishAnchor (std::uint64_t hostTimeNs) noexcept

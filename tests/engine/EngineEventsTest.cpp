@@ -113,6 +113,33 @@ TEST_CASE ("a block larger than the plan was prepared for comes out silent and i
     CHECK (engine.position() == 256);
 }
 
+TEST_CASE ("rejected blocks are reported once when the rejection starts or changes shape", "[engine][rt][events]")
+{
+    ScopedLogCapture capture;
+    TempPackage package;
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 128 } };
+    engine.loadSong (oneTrackSong (package), package.root);
+    engine.play();
+
+    DeviceDriver tooLarge { 2, 256 };
+    DeviceDriver evenLarger { 2, 512 };
+    DeviceDriver fitting { 2, 128 };
+    tooLarge.render (engine, 3);   // rejection starts at Song sample 0: reported
+    evenLarger.render (engine, 3); // new shape at 768: reported
+    fitting.render (engine, 1);    // plays at 2304
+    tooLarge.render (engine, 2);   // rejection starts again at 2432: reported
+    drain (engine);
+
+    const auto rejected = eventsNamed (capture, "engine.block_rejected");
+    REQUIRE (rejected.size() == 3);
+    CHECK (rejected[0]["sample"] == 0);
+    CHECK (rejected[0]["num_samples"] == 256.0);
+    CHECK (rejected[1]["sample"] == 768);
+    CHECK (rejected[1]["num_samples"] == 512.0);
+    CHECK (rejected[2]["sample"] == 2432);
+    CHECK (rejected[2]["num_samples"] == 256.0);
+}
+
 TEST_CASE ("engine RT events beyond the ring's capacity are counted and reported once", "[engine][rt][events]")
 {
     ScopedLogCapture capture;

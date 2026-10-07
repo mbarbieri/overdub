@@ -90,6 +90,7 @@ private:
     // Audio thread.
     void takePendingPlan (std::uint64_t hostTimeNs) noexcept;
     void applyTransportCommands (std::uint64_t hostTimeNs) noexcept;
+    void reportRejectedBlock (int numSamples, int numOutputChannels, std::uint64_t hostTimeNs) noexcept;
     void publishAnchor (std::uint64_t hostTimeNs) noexcept;
     void recordLoad (std::uint64_t callbackNs, int numSamples) noexcept;
     void pushEvent (EngineRtCode code, std::uint64_t hostTimeNs, double arg0 = 0.0, double arg1 = 0.0, double arg2 = 0.0, double arg3 = 0.0) noexcept;
@@ -108,6 +109,17 @@ private:
     RenderPlan* currentPlan = nullptr; // audio thread only
     std::atomic<int> currentLatency { 0 };
     std::atomic<int> currentSampleRate { 0 };
+
+    // The shape of the block being rejected (audio thread only); {0, 0} while blocks fit.
+    // engine.block_rejected is pushed only when this changes to a new rejected shape.
+    struct BlockShape
+    {
+        int numSamples = 0;
+        int numOutputChannels = 0;
+
+        bool operator== (const BlockShape&) const = default;
+    };
+    BlockShape rejectedShape;
 
     // Transport: requests in, audio-thread state, published state out.
     std::atomic<bool> playRequested { false };
