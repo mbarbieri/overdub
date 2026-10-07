@@ -27,6 +27,9 @@ add_subdirectory(src/core)
 # The Song model, its JSON form and the .overdub package (ADR 0004).
 add_subdirectory(src/song)
 
+# The headless engine: process() callback, transport, render graph, Clip playback (ADR 0005).
+add_subdirectory(src/engine)
+
 # Overdub.app
 add_subdirectory(src/app)
 

@@ -1,0 +1,102 @@
+#include "engine/ClipSchedule.h"
+
+#include <algorithm>
+
+namespace overdub::engine
+{
+namespace
+{
+    // The parts of `segment` outside [coverStart, coverEnd), appended to `out`.
+    void appendUncovered (const ClipSegment& segment, SampleCount coverStart, SampleCount coverEnd, std::vector<ClipSegment>& out)
+    {
+        if (segment.timelineEnd <= coverStart || segment.timelineStart >= coverEnd)
+        {
+            out.push_back (segment);
+            return;
+        }
+
+        if (segment.timelineStart < coverStart)
+        {
+            auto before = segment;
+            before.timelineEnd = coverStart;
+            out.push_back (before);
+        }
+
+        if (segment.timelineEnd > coverEnd)
+        {
+            auto after = segment;
+            after.timelineStart = coverEnd;
+            after.sourceStart = segment.sourceStart + (coverEnd - segment.timelineStart);
+            out.push_back (after);
+        }
+    }
+} // namespace
+
+std::vector<ClipSegment> flattenClips (std::span<const LayeredClip> clipsInLayerOrder)
+{
+    std::vector<ClipSegment> segments;
+
+    for (const auto& clip : clipsInLayerOrder)
+    {
+        if (clip.length <= 0)
+            continue;
+
+        const ClipSegment top {
+            .timelineStart = clip.timelineStart,
+            .timelineEnd = clip.timelineStart + clip.length,
+            .sourceStart = clip.sourceOffset,
+            .source = clip.source.get(),
+        };
+
+        std::vector<ClipSegment> painted;
+        painted.reserve (segments.size() + 2);
+        for (const auto& segment : segments)
+            appendUncovered (segment, top.timelineStart, top.timelineEnd, painted);
+        painted.push_back (top);
+
+        segments = std::move (painted);
+    }
+
+    std::ranges::sort (segments, {}, &ClipSegment::timelineStart);
+    return segments;
+}
+
+void renderSegments (std::span<const ClipSegment> segments, SampleCount startSample, juce::AudioBuffer<float>& out) noexcept
+{
+    out.clear();
+
+    const auto numSamples = (SampleCount) out.getNumSamples();
+    const auto endSample = startSample + numSamples;
+
+    // First segment that ends after startSample; segments are sorted and disjoint.
+    auto segment = std::ranges::upper_bound (segments, startSample, {}, &ClipSegment::timelineEnd);
+
+    for (; segment != segments.end() && segment->timelineStart < endSample; ++segment)
+    {
+        if (segment->source == nullptr)
+            continue;
+
+        const auto& source = *segment->source;
+        const auto sourceLength = (SampleCount) source.getNumSamples();
+
+        // Song range to copy, then narrowed to where the source has samples.
+        auto from = std::max (startSample, segment->timelineStart);
+        auto to = std::min (endSample, segment->timelineEnd);
+        const auto sourceAtFrom = segment->sourceStart + (from - segment->timelineStart);
+        if (sourceAtFrom < 0)
+            from -= sourceAtFrom;
+        to = std::min (to, from + (sourceLength - std::max<SampleCount> (sourceAtFrom, 0)));
+        if (from >= to)
+            continue;
+
+        const auto sourceIndex = segment->sourceStart + (from - segment->timelineStart);
+        for (int channel = 0; channel < out.getNumChannels(); ++channel)
+        {
+            const auto sourceChannel = std::min (channel, source.getNumChannels() - 1);
+            juce::FloatVectorOperations::copy (out.getWritePointer (channel, (int) (from - startSample)),
+                                               source.getReadPointer (sourceChannel, (int) sourceIndex),
+                                               (int) (to - from));
+        }
+    }
+}
+} // namespace overdub::engine

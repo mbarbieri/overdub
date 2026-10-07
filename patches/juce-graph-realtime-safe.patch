@@ -1,0 +1,34 @@
+diff --git a/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.cpp b/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.cpp
+index 854fc9f109..a2ca93cdce 100644
+--- a/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.cpp
++++ b/modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.cpp
+@@ -555,7 +555,9 @@ struct GraphRenderSequence
+             return;
+         }
+ 
+-        currentAudioOutputBuffer.setSize (jmax (1, buffer.getNumChannels()), numSamples);
++        // OVERDUB PATCH (ADR 0001): reuse the buffer prepared in prepareBuffers, so a block no larger
++        // than the prepared size never allocates on the audio thread.
++        currentAudioOutputBuffer.setSize (jmax (1, buffer.getNumChannels()), numSamples, false, false, true);
+         currentAudioOutputBuffer.clear();
+         currentMidiOutputBuffer.clear();
+ 
+@@ -919,7 +921,17 @@ private:
+ 
+         void processWithBuffer (const GlobalIO&, bool bypass, AudioBuffer<FloatType>& audio, MidiBuffer& midi) final
+         {
+-            const ScopedLock lock { this->processor.getCallbackLock() };
++            // OVERDUB PATCH (ADR 0001): never block on the node's callback lock on the audio thread.
++            // While another thread holds it (e.g. suspendProcessing), the node outputs silence.
++            const ScopedTryLock lock { this->processor.getCallbackLock() };
++
++            if (! lock.isLocked())
++            {
++                audio.clear();
++                midi.clear();
++                return;
++            }
++
+             callProcess (bypass, audio, midi);
+         }
+ 
