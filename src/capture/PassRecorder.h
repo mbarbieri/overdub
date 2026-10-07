@@ -68,8 +68,8 @@ struct RecordedPass
 class PassRecorder
 {
 public:
-    // Prepares one Take per Armed Track with input channels (an Armed Track without any is logged
-    // as capture.track_without_input, warn, and skipped), opens their temp files, starts the io
+    // Prepares one Take per Armed Track with 1 or 2 input channels (any other Armed Track is
+    // logged as capture.armed_track_skipped, warn, with `reason`, and skipped), opens their temp files, starts the io
     // thread and hands the capture to the engine, which starts it on its next playing block.
     // Errors: capture.nothing_armed, song.write_failed (a Take file could not be opened).
     static core::Expected<std::unique_ptr<PassRecorder>> start (song::SongPackage& package,
@@ -77,6 +77,7 @@ public:
                                                                 RecordLatency latency,
                                                                 PassRecorderOptions options = {});
 
+    // The engine must outlive the recorder.
     // Without finish(): asks the engine to stop, waits for it briefly and stops the io thread. The
     // Pass is not added; its temp files are left for the next open to delete.
     ~PassRecorder();
@@ -92,7 +93,8 @@ public:
     // Requires hasStopped(). Writes the rest of every Take, renames the files into audio/, writes
     // peaks, and adds the Pass as one undo step. Logs capture.pass_stopped (Pass id, Tracks,
     // start sample, length, overrun and dropped counts, stop reason) whatever the outcome.
-    // Errors: capture.not_stopped, capture.pass_empty (nothing was captured; temp files deleted),
+    // A failed peaks write is only logged (capture.peaks_write_failed, warn): it is a cache.
+    // Errors: capture.not_stopped, capture.already_finished, capture.pass_empty (nothing was captured; temp files deleted),
     // capture.take_write_failed (track_id, take_id, path), song.write_failed (rename),
     // the package edit's Errors (the Take files are kept).
     core::Expected<RecordedPass> finish (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());

@@ -397,9 +397,10 @@ TEST_CASE ("a Pass with no Armed Track input cannot start", "[capture][record]")
 
     REQUIRE_FALSE (started.has_value());
     CHECK (started.error().code == "capture.nothing_armed");
-    const auto skipped = eventsNamed (capture, "capture.track_without_input");
+    const auto skipped = eventsNamed (capture, "capture.armed_track_skipped");
     REQUIRE (skipped.size() == 1);
     CHECK (skipped[0]["track_id"] == "track-no-input");
+    CHECK (skipped[0]["reason"] == "no_input_channels");
 }
 
 TEST_CASE ("a Pass stopped before any block played captures nothing and changes nothing", "[capture][record]")

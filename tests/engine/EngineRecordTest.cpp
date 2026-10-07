@@ -105,7 +105,7 @@ TEST_CASE ("a Pass captures every input sample from its first playing block, at 
     CHECK (engine.isRecording());
     CHECK (session.state() == RecordState::recording);
 
-    engine.stopRecording();
+    engine.stopRecording (session);
     device.run (engine, 2);
     CHECK (session.state() == RecordState::stopped);
     CHECK (session.stopReason() == RecordStopReason::requested);
@@ -158,7 +158,7 @@ TEST_CASE ("stopping a Pass the audio thread has not started cancels it", "[engi
 
     RecordSession session { { RecordInput { "track", { 0 } } }, testSampleRate };
     engine.startRecording (session);
-    engine.stopRecording();
+    engine.stopRecording (session);
     CHECK (session.state() == RecordState::stopped);
     CHECK (session.stopReason() == RecordStopReason::cancelled);
 
@@ -167,6 +167,36 @@ TEST_CASE ("stopping a Pass the audio thread has not started cancels it", "[engi
     device.run (engine, 2);
     CHECK (session.capturedFrames() == 0);
     CHECK_FALSE (engine.isRecording());
+}
+
+TEST_CASE ("a stop names its Pass: it never ends another, and a newer Pass replaces one still waiting", "[engine][record]")
+{
+    TempPackage package;
+    Engine engine { stereoConfig() };
+    engine.loadSong (emptySong(), package.root);
+    LoopbackDevice device { 2, blockSize, blockSize };
+
+    RecordSession replaced { { RecordInput { "track", { 0 } } }, testSampleRate };
+    RecordSession active { { RecordInput { "track", { 0 } } }, testSampleRate };
+    engine.startRecording (replaced);
+    engine.startRecording (active);
+    CHECK (replaced.state() == RecordState::stopped);
+    CHECK (replaced.stopReason() == RecordStopReason::cancelled);
+
+    engine.play();
+    device.run (engine, 2);
+    REQUIRE (active.state() == RecordState::recording);
+
+    // A late stop for the replaced Pass leaves the active one recording.
+    engine.stopRecording (replaced);
+    device.run (engine, 2);
+    CHECK (active.state() == RecordState::recording);
+    CHECK (active.capturedFrames() == 4 * blockSize);
+
+    engine.stopRecording (active);
+    device.run (engine, 1);
+    CHECK (active.state() == RecordState::stopped);
+    CHECK (active.stopReason() == RecordStopReason::requested);
 }
 
 TEST_CASE ("every block of a Pass records its anchor", "[engine][record][anchor]")
@@ -183,7 +213,7 @@ TEST_CASE ("every block of a Pass records its anchor", "[engine][record][anchor]
     engine.startRecording (session);
     const auto firstHostNs = device.hostTimeNs;
     device.run (engine, 3);
-    engine.stopRecording();
+    engine.stopRecording (session);
     device.run (engine, 1);
 
     std::vector<Anchor> anchors;
@@ -233,7 +263,7 @@ TEST_CASE ("recording RT events carry the block's Song position and host time", 
     engine.startRecording (session);
     const auto startHostNs = device.hostTimeNs;
     device.run (engine, 2);
-    engine.stopRecording();
+    engine.stopRecording (session);
     const auto stopHostNs = device.hostTimeNs;
     device.run (engine, 1);
     overdub::core::drainRtEvents (engine.rtEvents(), overdub::engine::engineRtCatalog);
@@ -279,7 +309,7 @@ TEST_CASE ("process() neither allocates nor locks while recording and Monitoring
         REQUIRE_REALTIME_SAFE (device.processPreparedBlock (engine));
         device.keepHistory();
     }
-    engine.stopRecording();
+    engine.stopRecording (session);
     device.prepareInput();
     REQUIRE_REALTIME_SAFE (device.processPreparedBlock (engine));
     CHECK (session.state() == RecordState::stopped);

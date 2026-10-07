@@ -57,19 +57,22 @@ void Engine::seek (SampleCount songSample)
 
 void Engine::startRecording (RecordSession& session)
 {
-    recordStopRequested.store (false);
-    pendingRecord.store (&session, std::memory_order_release);
+    // A session nobody took is replaced; its owner sees it cancelled.
+    if (auto* replaced = pendingRecord.exchange (&session, std::memory_order_acq_rel); replaced != nullptr && replaced != &session)
+        replaced->cancel();
 }
 
-void Engine::stopRecording()
+void Engine::stopRecording (RecordSession& session)
 {
-    // Not taken yet: cancel it here. Taken (or none): ask the audio thread to end it.
-    if (auto* notTaken = pendingRecord.exchange (nullptr, std::memory_order_acq_rel); notTaken != nullptr)
+    // Not taken yet: cancel it here. Taken (or about to be): ask the audio thread to end it.
+    auto* expected = &session;
+    if (pendingRecord.compare_exchange_strong (expected, nullptr, std::memory_order_acq_rel))
     {
-        notTaken->cancel();
+        session.cancel();
         return;
     }
-    recordStopRequested.store (true);
+    if (session.state() != RecordState::stopped)
+        recordStopRequestedFor.store (&session, std::memory_order_release);
 }
 
 bool Engine::isRecording() const
@@ -260,7 +263,8 @@ void Engine::updateRecording (bool seekedThisBlock, std::uint64_t hostTimeNs) no
     if (activeRecord != nullptr)
     {
         auto reason = RecordStopReason::none;
-        if (recordStopRequested.exchange (false))
+        auto* stopFor = activeRecord;
+        if (recordStopRequestedFor.compare_exchange_strong (stopFor, nullptr, std::memory_order_acq_rel))
             reason = RecordStopReason::requested;
         else if (seekedThisBlock)
             reason = RecordStopReason::seeked;

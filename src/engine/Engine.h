@@ -67,10 +67,12 @@ public:
     // Recording (issue #26), any non-audio thread. The session must stay alive until its state()
     // is `stopped`. It starts at the first block that plays after this call: that block's first
     // input sample is attributed to the block's Song position (RecordSession::begin). It ends at
-    // the first block after stopRecording(), or when the transport stops or seeks. A session the
-    // audio thread has not taken yet is cancelled by stopRecording() (state `stopped` at once).
+    // the first block after stopRecording (session), or when the transport stops or seeks. A
+    // session the audio thread has not taken yet is cancelled by stopRecording (state `stopped`
+    // at once), and so is one still pending when another session is started.
+    // stopRecording only acts on the session it names; any other is left alone.
     void startRecording (RecordSession& session);
-    void stopRecording();
+    void stopRecording (RecordSession& session);
 
     // Plain Monitoring (issue #26): while on, every Armed Track with input channels hears its live
     // input through its Insert Chain to Master, whether or not the transport plays. Takes effect at
@@ -172,7 +174,7 @@ private:
     // Recording: the non-audio thread publishes a session; the audio thread takes it into
     // activeRecord on a playing block and drops it after RecordSession::end().
     std::atomic<RecordSession*> pendingRecord { nullptr };
-    std::atomic<bool> recordStopRequested { false };
+    std::atomic<RecordSession*> recordStopRequestedFor { nullptr };
     RecordSession* activeRecord = nullptr; // audio thread only
     std::atomic<bool> publishedRecording { false };
 

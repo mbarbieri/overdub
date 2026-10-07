@@ -173,7 +173,7 @@ core::Expected<std::unique_ptr<PassRecorder>> PassRecorder::start (song::SongPac
             continue;
         if (track.inputChannels.empty() || track.inputChannels.size() > 2)
         {
-            core::logEvent (core::Level::warn, "capture.track_without_input", { { "track_id", track.id }, { "input_channels", track.inputChannels } });
+            core::logEvent (core::Level::warn, "capture.armed_track_skipped", { { "track_id", track.id }, { "input_channels", track.inputChannels }, { "reason", track.inputChannels.empty() ? "no_input_channels" : "more_than_two_input_channels" } });
             continue;
         }
 
@@ -224,7 +224,7 @@ PassRecorder::~PassRecorder()
 
 void PassRecorder::requestStop()
 {
-    engine.stopRecording();
+    engine.stopRecording (*session);
 }
 
 bool PassRecorder::hasStopped() const
@@ -336,7 +336,7 @@ void PassRecorder::logPassStopped (const RecordedPass& pass, const char* outcome
     auto trackIds = core::Fields::array();
     for (const auto& writer : writers)
         trackIds.push_back (writer->trackId);
-    core::logEvent (core::Level::info,
+    core::logEvent (std::string_view (outcome) == "recorded" ? core::Level::info : core::Level::warn,
                     "capture.pass_stopped",
                     {
                         { "pass_id", passIdentifier },
@@ -357,7 +357,7 @@ void PassRecorder::logPassStopped (const RecordedPass& pass, const char* outcome
 core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::time_point now)
 {
     if (finished)
-        return std::unexpected (core::Error { "capture.not_stopped", "the Pass was already finished", { { "pass_id", passIdentifier } } });
+        return std::unexpected (core::Error { "capture.already_finished", "the Pass was already finished", { { "pass_id", passIdentifier } } });
     if (! hasStopped())
         return std::unexpected (core::Error { "capture.not_stopped", "the audio thread has not ended the Pass yet", { { "pass_id", passIdentifier } } });
 
@@ -382,20 +382,22 @@ core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::tim
         return std::unexpected (core::Error { "capture.pass_empty", "the Pass captured no audio", { { "pass_id", passIdentifier } } });
     }
 
+    // Every Take or none: a failed write leaves all of them as temp files, which the next open deletes.
+    if (const auto failedWriter = std::ranges::find_if (writers, [] (const auto& writer) { return writer->failed; }); failedWriter != writers.end())
+    {
+        logPassStopped (pass, "failed");
+        return std::unexpected (failedTakeWrite (**failedWriter));
+    }
+
     for (auto& writer : writers)
     {
-        if (writer->failed)
-        {
-            logPassStopped (pass, "failed");
-            return std::unexpected (failedTakeWrite (*writer));
-        }
         if (auto renamed = song::renameIntoPlace (writer->tempFile, writer->destination, {}); ! renamed.has_value())
         {
             logPassStopped (pass, "failed");
             return std::unexpected (renamed.error());
         }
         if (auto peaks = song::writePeaksFile (song::peaksFileFor (package.location(), writer->takeId), writer->peaks.finish(), {}); ! peaks.has_value())
-            core::logError (core::Error { "song.peaks_write_failed", "could not write the peaks cache", peaks.error().fields }, core::Level::warn);
+            core::logError (core::Error { "capture.peaks_write_failed", "could not write the peaks cache", peaks.error().fields }, core::Level::warn);
     }
 
     // ADR 0002 with the render-ahead amendment: see the header.

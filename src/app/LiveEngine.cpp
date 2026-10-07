@@ -103,6 +103,7 @@ void LiveEngine::startEngine (juce::AudioIODevice& device)
         .calibrationOffsetSamples = calibration.value_or (0),
     };
 
+    deviceSampleRate = key.sampleRate;
     audioEngine = std::make_unique<engine::Engine> (engine::engineConfigFor (device));
     binding = std::make_unique<engine::DeviceBinding> (*audioEngine, latency.calibrationOffsetSamples);
     drainThread.emplace (audioEngine->rtEvents(), engine::engineRtCatalog);

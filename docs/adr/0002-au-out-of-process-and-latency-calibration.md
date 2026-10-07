@@ -26,3 +26,5 @@ A Take is placed at its first dry sample's timeline position minus (device input
 - **Calibration store.** `~/Library/Application Support/Overdub/latency-calibration.json` keeps one offset per (input device, output device, sample rate); a missing entry is 0. `engine.device_opened` logs the offset in use.
 - **Selftest.** On the built-in MacBook devices at 44.1 kHz with a 512 buffer, `--selftest loopback` measured `offset_samples` −821 and a jitter of 3 samples, matching the spike: the calibration flow (slice 18) stores `offset_samples` added to the current offset.
 - **Overruns.** A block that does not fit an Armed Track's FIFO is recorded as silence of the same length, so later samples keep their place; the count is in `capture.pass_stopped` (`overrun_frames`).
+- **Anchors** of a Pass (one per callback, ADR 0003) are returned in memory with the finished Pass (`capture::RecordedPass::anchors`), not stored in the package; slice 14 keeps what the Video Take needs.
+- **Plain Monitoring** adds an Armed Track's input at its Track node, so it is delayed by the plan's PDC like the Track's playback. With no AUs (slice 12) that delay is 0.

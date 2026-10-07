@@ -2,8 +2,6 @@
 
 #include "song/AudioFileDecode.h"
 
-#include <unistd.h>
-
 namespace overdub::app
 {
 namespace
@@ -60,9 +58,9 @@ void LoopbackSelftest::start()
     if (engine == nullptr)
         return fail (core::Error { "app.selftest_no_device", "no audio device is open", {} });
     if (! folder.createDirectory().wasOk())
-        return fail (core::Error { "app.selftest_failed", "could not create the selftest folder", { { "path", folder.getFullPathName().toStdString() } } });
+        return fail (core::Error { "app.selftest_folder_failed", "could not create the selftest folder", { { "path", folder.getFullPathName().toStdString() } } });
 
-    const auto sampleRate = live.deviceFields().value ("sample_rate", 0);
+    const auto sampleRate = live.sampleRate();
     if (sampleRate <= 0)
         return fail (core::Error { "app.selftest_no_device", "the audio device reports no sample rate", {} });
 
@@ -122,7 +120,7 @@ void LoopbackSelftest::finish()
     const auto& takes = package->song().takes;
     const auto take = std::ranges::find (takes, pass->takeIds.front(), &song::Take::id);
     if (take == takes.end())
-        return fail (core::Error { "app.selftest_failed", "the recorded Take is not in the Song", {} });
+        return fail (core::Error { "app.selftest_take_missing", "the recorded Take is not in the Song", {} });
     const auto audio = song::readWavFile (package->location().getChildFile (take->file));
     if (! audio.has_value())
         return fail (audio.error());

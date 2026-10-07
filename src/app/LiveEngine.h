@@ -37,6 +37,9 @@ public:
     // for it (ADR 0002): what a Pass recorded now is placed with. All 0 without a device.
     capture::RecordLatency recordLatency() const { return latency; }
 
+    // The open device's sample rate in Hz; 0 without a device.
+    int sampleRate() const { return deviceSampleRate; }
+
     // The open device as report fields: device_type, input_device, output_device, sample_rate,
     // buffer_size. Empty without a device.
     core::Fields deviceFields();
@@ -51,6 +54,7 @@ private:
     // members declared above it. deviceManager (declared last, destroyed first) calls binding;
     // drainThread reads the engine's ring; binding calls the engine; audioEngine goes last.
     capture::RecordLatency latency;
+    int deviceSampleRate = 0;
     std::unique_ptr<engine::Engine> audioEngine;
     std::unique_ptr<engine::DeviceBinding> binding;
     std::optional<core::RtEventDrainThread> drainThread;
