@@ -559,6 +559,8 @@ TEST_CASE ("a newer formatVersion is refused with an Error and the package is le
     auto document = *overdub::song::parseJsonText (songJson.loadFileAsString().toStdString());
     document["formatVersion"] = 2;
     REQUIRE (songJson.replaceWithText (document.dump()));
+    const auto leftoverTemp = temp.package().getChildFile ("history/000001.json.tmp");
+    REQUIRE (leftoverTemp.replaceWithText ("partial"));
 
     const auto opened = SongPackage::open (temp.package());
 
@@ -566,6 +568,22 @@ TEST_CASE ("a newer formatVersion is refused with an Error and the package is le
     CHECK (opened.error().code == "song.format_too_new");
     CHECK (opened.error().fields.at ("versionFound") == 2);
     CHECK (songJson.loadFileAsString().toStdString() == document.dump());
+    CHECK (leftoverTemp.existsAsFile());
+}
+
+TEST_CASE ("opening a current, consistent Song leaves song.json as it is", "[song][package]")
+{
+    TempDirectory temp;
+    createPackage (temp.package(), overdub::song::testing::fullyPopulatedSong());
+    const auto songJson = temp.package().getChildFile ("song.json");
+    const auto compact = overdub::song::parseJsonText (songJson.loadFileAsString().toStdString())->dump(); // not how the package writes it
+    REQUIRE (songJson.replaceWithText (compact));
+
+    ScopedLogCapture capture;
+    openPackage (temp.package());
+
+    CHECK (songJson.loadFileAsString().toStdString() == compact);
+    CHECK_FALSE (hasEvent (capture, "song.saved"));
 }
 
 TEST_CASE ("plugin state is stored once under its SHA-256 and loads back", "[song][package][plugins]")

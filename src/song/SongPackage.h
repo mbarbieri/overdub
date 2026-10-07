@@ -63,10 +63,12 @@ public:
     // song.create_failed, plus any write error.
     static core::Expected<std::unique_ptr<SongPackage>> create (const juce::File& location, Song song, PackageOptions options = {});
 
-    // Opens an existing package: deletes leftover *.tmp files, migrates song.json and every
-    // snapshot, drops unreadable history (a Notice, never an Error), deletes unreferenced plugin
-    // blobs. Errors: song.package_not_found, song.read_failed, song.json_unparsable,
-    // song.json_invalid, song.format_too_new, song.migration_failed.
+    // Opens an existing package: reads and migrates song.json (any Error here leaves the package
+    // untouched), then deletes leftover *.tmp files, loads and migrates every snapshot, drops
+    // unreadable history (a Notice, never an Error), deletes unreferenced plugin blobs, and
+    // rewrites song.json only if it was migrated or restored from history.
+    // Errors: song.package_not_found, song.read_failed, song.json_unparsable, song.json_invalid,
+    // song.format_too_new, song.migration_failed, plus writeJsonAtomically's.
     static core::Expected<Opened> open (const juce::File& location, PackageOptions options = {});
 
     // Writes any pending change; a failure is logged.

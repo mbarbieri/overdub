@@ -14,8 +14,14 @@ namespace
 {
 constexpr const char* mediaFolders[] = { "audio", "backing", "video", "plugins" };
 
+struct SongJsonOnDisk
+{
+    Song song;
+    bool migrated = false; // the file is at an older formatVersion
+};
+
 // Reads, migrates and converts song.json. Logs song.migrated when the document was older.
-core::Expected<Song> readSongJson (const juce::File& root)
+core::Expected<SongJsonOnDisk> readSongJson (const juce::File& root)
 {
     const auto file = root.getChildFile ("song.json");
     const auto text = readTextFile (file);
@@ -28,9 +34,14 @@ core::Expected<Song> readSongJson (const juce::File& root)
     if (! migrated.has_value())
         return std::unexpected (migrated.error());
 
-    if (migrated->fromVersion != songFormatVersion)
+    auto song = songFromJson (migrated->document);
+    if (! song.has_value())
+        return std::unexpected (song.error());
+
+    const bool wasMigrated = migrated->fromVersion != songFormatVersion;
+    if (wasMigrated)
         core::logEvent (core::Level::info, "song.migrated", { { "path", pathOf (root) }, { "fromVersion", migrated->fromVersion }, { "toVersion", songFormatVersion } });
-    return songFromJson (migrated->document);
+    return SongJsonOnDisk { std::move (*song), wasMigrated };
 }
 
 // Loads the history, or drops it and starts a fresh one from `song` (adding a Notice).
@@ -91,21 +102,22 @@ core::Expected<SongPackage::Opened> SongPackage::open (const juce::File& locatio
     if (! location.getChildFile ("song.json").existsAsFile())
         return std::unexpected (core::Error { "song.package_not_found", "no Song package at this location", { { "path", pathOf (location) } } });
 
-    const int tempFilesDeleted = deleteTempFiles (location);
-
+    // Read (and so check formatVersion) before touching anything: a refused package is left as is.
     const auto songJson = readSongJson (location);
     if (! songJson.has_value())
         return std::unexpected (songJson.error());
 
+    const int tempFilesDeleted = deleteTempFiles (location);
+
     std::vector<Notice> notices;
-    auto history = loadOrDropHistory (location, *songJson, options.beforeRename, notices);
+    auto history = loadOrDropHistory (location, songJson->song, options.beforeRename, notices);
     if (! history.has_value())
         return std::unexpected (history.error());
 
     // Write order (edit, undo, redo): index.json commits the step, then song.json follows. After
     // a crash between the two, history holds the undoable content and song.json the rest.
-    auto song = keepStateOutsideHistory (history->currentSong(), *songJson);
-    const bool restoredFromHistory = song != *songJson;
+    auto song = keepStateOutsideHistory (history->currentSong(), songJson->song);
+    const bool restoredFromHistory = song != songJson->song;
     if (restoredFromHistory)
         core::logEvent (core::Level::warn, "song.restored_from_history", { { "path", pathOf (location) } });
 
@@ -115,11 +127,10 @@ core::Expected<SongPackage::Opened> SongPackage::open (const juce::File& locatio
 
     auto package = std::unique_ptr<SongPackage> (new SongPackage (location, std::move (song), std::move (*history), std::move (options)));
 
-    // A migrated song.json is written back at once, so the file on disk is at the current version.
-    // (Kept unconditional and cheap: at v1 the document is rewritten unchanged.)
-    package->writeDeadline = Clock::time_point {};
-    if (auto written = package->flush(); ! written.has_value())
-        return std::unexpected (written.error());
+    // Rewritten only when it differs from what is on disk: migrated, or restored from history.
+    if (songJson->migrated || restoredFromHistory)
+        if (auto written = package->writeSongJson(); ! written.has_value())
+            return std::unexpected (written.error());
 
     core::logEvent (core::Level::info,
                     "song.opened",
