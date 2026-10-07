@@ -4,6 +4,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cerrno>
+#include <string>
+#include <vector>
 
 using overdub::core::Level;
 using overdub::core::ScopedLogCapture;
@@ -17,7 +20,11 @@ struct TempDirectory
                           .getNonexistentChildFile ("overdub-logfiles-test", "", false);
 
     TempDirectory() { path.createDirectory(); }
-    ~TempDirectory() { path.deleteRecursively(); }
+    ~TempDirectory()
+    {
+        path.setReadOnly (false, false);
+        path.deleteRecursively();
+    }
 
     std::vector<std::string> fileNames() const
     {
@@ -33,6 +40,19 @@ std::chrono::system_clock::time_point utcTime (int year, unsigned month, unsigne
 {
     using namespace std::chrono;
     return sys_days { std::chrono::year { year } / std::chrono::month { month } / std::chrono::day { day } } + hours { hour } + minutes { minute } + seconds { second };
+}
+
+overdub::core::ProcessLoggingOptions loggingOptions (const juce::File& directory,
+                                                     std::chrono::system_clock::time_point launchTime,
+                                                     int processId)
+{
+    return overdub::core::ProcessLoggingOptions {
+        .directory = directory,
+        .launchTime = launchTime,
+        .processId = processId,
+        .minLevel = Level::info,
+        .echoToStderr = false,
+    };
 }
 } // namespace
 
@@ -56,6 +76,35 @@ TEST_CASE ("pruning keeps only the newest launch logs and leaves other files alo
                                          "overdub-2026-01-01T00-04-00Z-100.jsonl" });
 }
 
+TEST_CASE ("pruning orders launches from the same second by numeric process id", "[core][log]")
+{
+    TempDirectory dir;
+    dir.path.getChildFile (overdub::core::launchLogFileName (utcTime (2026, 1, 1, 0, 0, 0), 1000)).create();
+    dir.path.getChildFile (overdub::core::launchLogFileName (utcTime (2026, 1, 1, 0, 0, 0), 999)).create();
+
+    overdub::core::pruneLaunchLogs (dir.path, 1);
+
+    CHECK (dir.fileNames() == std::vector<std::string> { "overdub-2026-01-01T00-00-00Z-1000.jsonl" });
+}
+
+TEST_CASE ("pruning logs a warning for a launch log it cannot delete", "[core][log]")
+{
+    ScopedLogCapture capture;
+    TempDirectory dir;
+    dir.path.getChildFile (overdub::core::launchLogFileName (utcTime (2026, 1, 1, 0, 0, 0), 1)).create();
+    dir.path.getChildFile (overdub::core::launchLogFileName (utcTime (2026, 1, 1, 0, 1, 0), 1)).create();
+    // Files in a read-only directory cannot be deleted.
+    dir.path.setReadOnly (true, false);
+
+    overdub::core::pruneLaunchLogs (dir.path, 1);
+
+    const auto events = capture.events();
+    REQUIRE (events.size() == 1);
+    CHECK (events[0]["event"] == "app.log_prune_failed");
+    CHECK (events[0]["lvl"] == "warn");
+    CHECK (events[0]["path"].get<std::string>().ends_with ("overdub-2026-01-01T00-00-00Z-1.jsonl"));
+}
+
 TEST_CASE ("starting process logging creates a new launch file, keeps the last 20 launches and writes flushed lines to it", "[core][log]")
 {
     ScopedLogCapture restoresProcessSinkAfterwards;
@@ -63,7 +112,7 @@ TEST_CASE ("starting process logging creates a new launch file, keeps the last 2
     for (int minute = 0; minute < 25; ++minute)
         dir.path.getChildFile (overdub::core::launchLogFileName (utcTime (2026, 1, 1, 0, minute, 0), 100)).create();
 
-    const auto started = overdub::core::startProcessLogging (dir.path, utcTime (2026, 2, 1, 12, 0, 0), 777, Level::info, false);
+    const auto started = overdub::core::startProcessLogging (loggingOptions (dir.path, utcTime (2026, 2, 1, 12, 0, 0), 777));
 
     REQUIRE (started.has_value());
     CHECK (started->getFileName() == "overdub-2026-02-01T12-00-00Z-777.jsonl");
@@ -84,15 +133,30 @@ TEST_CASE ("starting process logging creates a new launch file, keeps the last 2
     CHECK (nlohmann::json::parse (lines[1].toStdString())["event"] == "app.second");
 }
 
-TEST_CASE ("starting process logging in a directory that cannot be created returns an Error", "[core][log]")
+TEST_CASE ("starting process logging in a directory that cannot be created returns app.log_dir_create_failed", "[core][log]")
 {
     ScopedLogCapture restoresProcessSinkAfterwards;
     TempDirectory dir;
     const auto blockingFile = dir.path.getChildFile ("not-a-directory");
     blockingFile.create();
 
-    const auto started = overdub::core::startProcessLogging (blockingFile.getChildFile ("Logs"), utcTime (2026, 2, 1, 12, 0, 0), 1, Level::info, false);
+    const auto started = overdub::core::startProcessLogging (loggingOptions (blockingFile.getChildFile ("Logs"), utcTime (2026, 2, 1, 12, 0, 0), 1));
+
+    REQUIRE_FALSE (started.has_value());
+    CHECK (started.error().code == "app.log_dir_create_failed");
+}
+
+TEST_CASE ("starting process logging when the launch file cannot be opened returns app.log_open_failed with errno", "[core][log]")
+{
+    ScopedLogCapture restoresProcessSinkAfterwards;
+    TempDirectory dir;
+    const auto launchTime = utcTime (2026, 2, 1, 12, 0, 0);
+    // A directory in place of the launch file makes fopen fail with EISDIR.
+    dir.path.getChildFile (overdub::core::launchLogFileName (launchTime, 5)).createDirectory();
+
+    const auto started = overdub::core::startProcessLogging (loggingOptions (dir.path, launchTime, 5));
 
     REQUIRE_FALSE (started.has_value());
     CHECK (started.error().code == "app.log_open_failed");
+    CHECK (started.error().fields["errno"] == EISDIR);
 }

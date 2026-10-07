@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <memory>
+#include <string>
 #include <unistd.h>
 
 namespace overdub::app
@@ -55,21 +56,24 @@ private:
     // Returns the log file path, or "" when the file could not be opened and stderr is used instead.
     std::string startLogging()
     {
-        const auto level = core::levelFromOverride (std::getenv ("OVERDUB_LOG"), core::defaultLevelForBuild());
-        const bool echoToStderr = JUCE_DEBUG != 0;
+#if JUCE_DEBUG
+        constexpr bool echoToStderr = true;
+#else
+        constexpr bool echoToStderr = false;
+#endif
 
-        const auto logFile = core::startProcessLogging (core::defaultLogDirectory(),
-                                                        std::chrono::system_clock::now(),
-                                                        static_cast<int> (getpid()),
-                                                        level,
-                                                        echoToStderr);
+        const auto logFile = core::startProcessLogging (core::ProcessLoggingOptions {
+            .directory = core::defaultLogDirectory(),
+            .launchTime = std::chrono::system_clock::now(),
+            .processId = static_cast<int> (getpid()),
+            .minLevel = core::levelFromOverride (std::getenv ("OVERDUB_LOG"), core::defaultLevelForBuild()),
+            .echoToStderr = echoToStderr,
+        });
 
         juce::Logger::setCurrentLogger (&juceLoggerBridge);
 
         if (! logFile.has_value())
         {
-            core::processLogger().setSink (std::make_shared<core::StderrLogSink>());
-            core::processLogger().setMinLevel (level);
             core::logError (logFile.error(), core::Level::warn);
             return {};
         }

@@ -2,10 +2,42 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <ctime>
+#include <utility>
 
 namespace overdub::core
 {
+namespace
+{
+struct LaunchOrderKey
+{
+    juce::String timestamp; // fixed-width UTC timestamp, so text order is time order
+    juce::int64 processId = 0;
+};
+
+// Splits overdub-<timestamp>-<pid>.jsonl into its timestamp and numeric pid. A name without a
+// numeric pid gets pid 0.
+LaunchOrderKey launchOrderKey (const juce::File& logFile)
+{
+    const auto stem = logFile.getFileNameWithoutExtension();
+    const auto pidSeparator = stem.lastIndexOfChar ('-');
+    return LaunchOrderKey {
+        .timestamp = stem.substring (0, pidSeparator),
+        .processId = stem.substring (pidSeparator + 1).getLargeIntValue(),
+    };
+}
+
+bool launchedBefore (const juce::File& a, const juce::File& b)
+{
+    const auto keyA = launchOrderKey (a);
+    const auto keyB = launchOrderKey (b);
+    if (keyA.timestamp != keyB.timestamp)
+        return keyA.timestamp < keyB.timestamp;
+    return keyA.processId < keyB.processId;
+}
+} // namespace
+
 juce::File defaultLogDirectory()
 {
     return juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("Library/Logs/Overdub");
@@ -34,18 +66,30 @@ std::string launchLogFileName (std::chrono::system_clock::time_point launchTime,
 void pruneLaunchLogs (const juce::File& directory, int keep)
 {
     auto logs = directory.findChildFiles (juce::File::findFiles, false, "overdub-*.jsonl");
-    std::sort (logs.begin(), logs.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName() < b.getFileName(); });
+    std::sort (logs.begin(), logs.end(), launchedBefore);
 
     const int excess = logs.size() - std::max (keep, 0);
     for (int index = 0; index < excess; ++index)
-        logs.getReference (index).deleteFile();
+    {
+        const auto& oldLog = logs.getReference (index);
+        if (! oldLog.deleteFile())
+            logEvent (Level::warn, "app.log_prune_failed", { { "path", oldLog.getFullPathName().toStdString() } });
+    }
 }
 
 Expected<std::shared_ptr<FileLogSink>> FileLogSink::open (const juce::File& file, bool echoToStderr)
 {
     std::FILE* openedFile = std::fopen (file.getFullPathName().toRawUTF8(), "a");
     if (openedFile == nullptr)
-        return std::unexpected (Error { "app.log_open_failed", "could not open the log file", { { "path", file.getFullPathName().toStdString() }, { "errno", errno } } });
+    {
+        // Captured before any other call can overwrite errno.
+        const int openErrno = errno;
+        return std::unexpected (Error {
+            "app.log_open_failed",
+            "could not open the log file",
+            { { "path", file.getFullPathName().toStdString() }, { "errno", openErrno } },
+        });
+    }
 
     return std::shared_ptr<FileLogSink> (new FileLogSink (openedFile, echoToStderr));
 }
@@ -74,25 +118,40 @@ void FileLogSink::writeLine (std::string_view line)
     }
 }
 
-Expected<juce::File> startProcessLogging (const juce::File& directory,
-                                          std::chrono::system_clock::time_point launchTime,
-                                          int processId,
-                                          Level minLevel,
-                                          bool echoToStderr)
+namespace
 {
-    if (! directory.createDirectory())
-        return std::unexpected (Error { "app.log_open_failed", "could not create the log directory", { { "path", directory.getFullPathName().toStdString() } } });
+Expected<std::pair<juce::File, std::shared_ptr<LogSink>>> openLaunchLogFile (const ProcessLoggingOptions& options)
+{
+    if (! options.directory.createDirectory())
+        return std::unexpected (Error {
+            "app.log_dir_create_failed",
+            "could not create the log directory",
+            { { "path", options.directory.getFullPathName().toStdString() } },
+        });
 
     // Leave room for this launch's file so launchLogsKept launches remain.
-    pruneLaunchLogs (directory, launchLogsKept - 1);
+    pruneLaunchLogs (options.directory, launchLogsKept - 1);
 
-    const auto logFile = directory.getChildFile (launchLogFileName (launchTime, processId));
-    auto sink = FileLogSink::open (logFile, echoToStderr);
+    const auto logFile = options.directory.getChildFile (launchLogFileName (options.launchTime, options.processId));
+    auto sink = FileLogSink::open (logFile, options.echoToStderr);
     if (! sink.has_value())
         return std::unexpected (sink.error());
 
-    processLogger().setSink (*sink);
-    processLogger().setMinLevel (minLevel);
-    return logFile;
+    return std::pair<juce::File, std::shared_ptr<LogSink>> { logFile, *sink };
+}
+} // namespace
+
+Expected<juce::File> startProcessLogging (const ProcessLoggingOptions& options)
+{
+    auto opened = openLaunchLogFile (options);
+    const std::shared_ptr<LogSink> sink = opened.has_value() ? opened->second : std::make_shared<StderrLogSink>();
+
+    processLogger().setSink (sink);
+    processLogger().setMinLevel (options.minLevel);
+
+    if (! opened.has_value())
+        return std::unexpected (opened.error());
+
+    return opened->first;
 }
 } // namespace overdub::core
