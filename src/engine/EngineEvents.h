@@ -17,13 +17,18 @@ enum EngineRtCode : std::uint16_t
     seeked = 2,           // the block starts at the seek target; args: from_sample
     planSwapped = 3,      // a new render plan plays from this block; args: latency_samples, tracks
     blockRejected = 4,    // the block was silenced; args: num_samples, output_channels, max_block_size, plan_output_channels
+
+    engineRtCodeCount // not a code: the number of codes, which the catalog must match
 };
 
-inline constexpr std::array<core::RtEventSpec, 5> engineRtCatalog { {
+// Row N describes code N.
+inline constexpr auto engineRtCatalog = std::to_array<core::RtEventSpec> ({
     { "engine.transport_started", core::Level::info, {} },
     { "engine.transport_stopped", core::Level::info, {} },
     { "engine.seeked", core::Level::info, { "from_sample" } },
     { "engine.plan_swapped", core::Level::info, { "latency_samples", "tracks" } },
     { "engine.block_rejected", core::Level::error, { "num_samples", "output_channels", "max_block_size", "plan_output_channels" } },
-} };
+});
+
+static_assert (engineRtCatalog.size() == engineRtCodeCount, "every EngineRtCode needs exactly one catalog row, in code order");
 } // namespace overdub::engine
