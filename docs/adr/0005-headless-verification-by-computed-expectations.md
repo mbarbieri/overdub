@@ -25,4 +25,21 @@ Every implementation slice must build and pass the full `ctest` suite, and it mu
   | Export A/V offset | within ±½ frame per marker, end − start ≤ 1 ms |
   | Clock-fit unit tests | recovered drift within 0.1 ppm of the injected value |
   | Loopback selftest | jitter ≤ 5 samples across bursts |
-- UI verification isn't covered by this decision.
+- UI verification is covered by the amendment below.
+
+## Amendment: UI verification (issue #17)
+
+The JUCE Component UI is checked the same way as audio: by computed expectations in `ctest`, never by comparing pixels. Components stay thin. They translate events and draw. Timeline geometry (sample ↔ x, hit-testing), and the mapping from a gesture to a Song operation, are pure functions next to the Component, unit-tested without JUCE. Component tests build the real Component tree under `ScopedJuceInitialiser_GUI` at a fixed size against a fixture Song. They deliver synthesized mouse and key events, then assert on the resulting Song, the history step label, and child bounds and visibility. Screenshots exist only so someone can look at them. A `[snapshot]`-tagged test renders each surface off-screen with `createComponentSnapshot` into `build/ui-snapshots/<slice>/`. The session inspects the PNGs, fixes what's visibly wrong, and attaches them to the slice's closing comment. Nothing passes or fails on pixels. We chose this for the same reason as golden audio files: a session would regenerate a golden screenshot to make a test pass.
+
+### Considered Options
+
+- **Golden screenshots with a pixel tolerance**: catch visual regressions, but they're opaque to a session and easy to "fix" by regenerating, and fonts and antialiasing shift with OS updates.
+- **Driving the launched app through macOS accessibility**: exercises the real app, but needs real devices and permissions, and is flaky without CI.
+- **A human UI checklist on every slice**: catches feel problems, but makes every UI slice wait on a person. Feel problems become new issues instead.
+
+### Consequences
+
+- Fixture Songs are built in code by one shared test-support builder, with generated media (sines, clicks). No `.overdub` packages are committed as fixtures.
+- Slice 6 (App shell and bare Record mode) builds the harness: fixed-size Component helpers, event synthesis, the snapshot test and the fixture builder. It confirms that synthesized `MouseEvent`s work without an on-screen peer. If they don't, tests call the Component's handlers directly, and this amendment records which approach is used.
+- Each UI slice's acceptance names its pure-logic tests, its Component tests and the surfaces it snapshots.
+- Human UI checks stay where the hardware or third-party code demands them: the skeleton walkthrough in slice 6, and third-party AU editor windows in slice 13.
