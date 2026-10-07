@@ -110,12 +110,11 @@ TEST_CASE ("Songs loaded while the audio thread runs are all taken without house
     engine.play();
 
     std::atomic<bool> running { true };
-    std::thread audioThread { [&]
-                              {
-                                  DeviceDriver device { 2, 256 };
-                                  while (running.load())
-                                      device.processOneBlock (engine);
-                              } };
+    std::thread audioThread { [&] {
+        DeviceDriver device { 2, 256 };
+        while (running.load())
+            device.processOneBlock (engine);
+    } };
 
     // Two loads back to back, so the audio thread may take the first while the second is being
     // published. The second must still be taken by a following callback.

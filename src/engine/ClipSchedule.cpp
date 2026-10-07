@@ -7,29 +7,29 @@ namespace overdub::engine
 namespace
 {
     // The parts of `segment` outside [coverStart, coverEnd), appended to `out`.
-    void appendUncovered (const ClipSegment& segment, SampleCount coverStart, SampleCount coverEnd, std::vector<ClipSegment>& out)
+void appendUncovered (const ClipSegment& segment, SampleCount coverStart, SampleCount coverEnd, std::vector<ClipSegment>& out)
+{
+    if (segment.timelineEnd <= coverStart || segment.timelineStart >= coverEnd)
     {
-        if (segment.timelineEnd <= coverStart || segment.timelineStart >= coverEnd)
-        {
-            out.push_back (segment);
-            return;
-        }
-
-        if (segment.timelineStart < coverStart)
-        {
-            auto before = segment;
-            before.timelineEnd = coverStart;
-            out.push_back (before);
-        }
-
-        if (segment.timelineEnd > coverEnd)
-        {
-            auto after = segment;
-            after.timelineStart = coverEnd;
-            after.sourceStart = segment.sourceStart + (coverEnd - segment.timelineStart);
-            out.push_back (after);
-        }
+        out.push_back (segment);
+        return;
     }
+
+    if (segment.timelineStart < coverStart)
+    {
+        auto before = segment;
+        before.timelineEnd = coverStart;
+        out.push_back (before);
+    }
+
+    if (segment.timelineEnd > coverEnd)
+    {
+        auto after = segment;
+        after.timelineStart = coverEnd;
+        after.sourceStart = segment.sourceStart + (coverEnd - segment.timelineStart);
+        out.push_back (after);
+    }
+}
 } // namespace
 
 std::vector<ClipSegment> flattenClips (std::span<const LayeredClip> clipsInLayerOrder)

@@ -5,8 +5,8 @@
 #include <vector>
 
 using nlohmann::json;
-using overdub::song::MigrationStep;
 using overdub::song::migrateDocument;
+using overdub::song::MigrationStep;
 
 namespace
 {

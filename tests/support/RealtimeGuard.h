@@ -14,11 +14,11 @@ struct RealtimeViolations
 namespace detail
 {
     // Per-guard state the interposed functions reach through a pthread TSD slot.
-    struct GuardState
-    {
-        RealtimeViolations record;
-        int callDepth = 0; // > 0 while an intercepted call is running on this thread
-    };
+struct GuardState
+{
+    RealtimeViolations record;
+    int callDepth = 0; // > 0 while an intercepted call is running on this thread
+};
 } // namespace detail
 
 // Test-only realtime guard (ADR 0005). While a guard is alive, the constructing thread's

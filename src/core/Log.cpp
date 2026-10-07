@@ -1,8 +1,8 @@
 #include "core/Log.h"
 
 #include <array>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <pthread.h>
@@ -20,8 +20,7 @@ namespace
 // The slot stores role + 1, so a thread that never set it (null) reads as `worker`.
 pthread_key_t threadRoleKey()
 {
-    static const pthread_key_t key = []
-    {
+    static const pthread_key_t key = [] {
         pthread_key_t created {};
         const auto result = pthread_key_create (&created, nullptr);
         if (result != 0)
@@ -267,7 +266,7 @@ void logEventCapturedAt (Level level,
     const auto nowHostNs = hostTimeNowNs();
     const auto ageNs = nowHostNs > capturedHostNs ? nowHostNs - capturedHostNs : 0;
     const auto capturedWallTime = std::chrono::system_clock::now()
-                                  - std::chrono::duration_cast<std::chrono::system_clock::duration> (std::chrono::nanoseconds (ageNs));
+                                - std::chrono::duration_cast<std::chrono::system_clock::duration> (std::chrono::nanoseconds (ageNs));
 
     processLogger().write (LogRecord {
         .level = level,

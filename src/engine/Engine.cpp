@@ -9,7 +9,7 @@ namespace overdub::engine
 {
 namespace
 {
-    constexpr std::uint64_t loadSummaryIntervalNs = 1'000'000'000;
+constexpr std::uint64_t loadSummaryIntervalNs = 1'000'000'000;
 }
 
 Engine::Engine (EngineConfig engineConfig, std::size_t rtEventCapacity)

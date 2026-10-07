@@ -1,5 +1,5 @@
-#include "core/Log.h"
 #include "core/RtEventRing.h"
+#include "core/Log.h"
 #include "support/RealtimeGuardCatch.h"
 
 #include <catch2/catch_test_macros.hpp>

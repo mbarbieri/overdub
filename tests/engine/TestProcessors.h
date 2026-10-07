@@ -85,8 +85,7 @@ public:
 template <typename MakeProcessor>
 TrackInsertFactory insertOnTrack (std::string trackId, MakeProcessor makeProcessor)
 {
-    return [trackId, makeProcessor] (const song::Track& track)
-    {
+    return [trackId, makeProcessor] (const song::Track& track) {
         std::vector<std::unique_ptr<juce::AudioProcessor>> inserts;
         if (track.id == trackId)
             inserts.push_back (makeProcessor());

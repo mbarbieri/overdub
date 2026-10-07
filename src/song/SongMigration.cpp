@@ -32,7 +32,7 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
 
     for (int stepVersion = fromVersion; stepVersion < newestVersion; ++stepVersion)
     {
-        auto migrated = steps[static_cast<std::size_t> (stepVersion - 1)] (std::move (document));
+        auto migrated = steps[static_cast<std::size_t> (stepVersion - 1)](std::move (document));
         if (! migrated.has_value())
             return std::unexpected (core::Error {
                 "song.migration_failed",

@@ -49,8 +49,7 @@ Song keepStateOutsideHistory (Song snapshot, const Song& current)
     snapshot.playhead = current.playhead;
 
     const bool exportChoiceExists = ! current.exportVideoTakeId.has_value()
-                                    || std::ranges::any_of (snapshot.videoTakes, [&] (const VideoTake& videoTake)
-                                                            { return videoTake.id == *current.exportVideoTakeId; });
+                                 || std::ranges::any_of (snapshot.videoTakes, [&] (const VideoTake& videoTake) { return videoTake.id == *current.exportVideoTakeId; });
     if (exportChoiceExists)
         snapshot.exportVideoTakeId = current.exportVideoTakeId;
 

@@ -48,7 +48,7 @@ core::Expected<StepRange> readIndex (const juce::File& indexFile, std::int64_t m
     const auto newest = indexField (*index, "newest");
     const auto current = indexField (*index, "current");
     const bool consistent = oldest && newest && current && *oldest >= 0 && *oldest <= *current && *current <= *newest
-                            && *newest - *oldest <= maxSteps;
+                         && *newest - *oldest <= maxSteps;
     if (! consistent)
         return std::unexpected (core::Error {
             "song.history_index_invalid",

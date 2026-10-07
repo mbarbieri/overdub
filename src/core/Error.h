@@ -34,7 +34,7 @@ bool reportFailedCheck (const char* condition, const char* event, const char* fi
 // build (a caller field named `condition` or `where` is written as field_<key>), asserts in debug
 // builds, and lets the caller recover in release:
 //     if (! OVERDUB_CHECK (count > 0, "song.empty_lane", {"lane", laneId})) return;
-#define OVERDUB_CHECK(cond, event, ...)                                                                        \
-    (static_cast<bool> (cond)                                                                                  \
-         ? true                                                                                                \
+#define OVERDUB_CHECK(cond, event, ...) \
+    (static_cast<bool> (cond)           \
+         ? true                         \
          : ::overdub::core::detail::reportFailedCheck (#cond, event, __FILE__, __LINE__, ::nlohmann::json::object ({ __VA_ARGS__ })))

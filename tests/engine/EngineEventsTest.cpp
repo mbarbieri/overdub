@@ -1,5 +1,5 @@
-#include "engine/Engine.h"
 #include "engine/EngineEvents.h"
+#include "engine/Engine.h"
 
 #include "EngineFixture.h"
 #include "TestProcessors.h"
@@ -39,13 +39,12 @@ class CallbackLockHeldElsewhere
 {
 public:
     explicit CallbackLockHeldElsewhere (juce::AudioProcessor& processor)
-        : holder ([this, &processor]
-                  {
-                      const juce::ScopedLock lock { processor.getCallbackLock() };
-                      held.store (true);
-                      while (! released.load())
-                          std::this_thread::sleep_for (std::chrono::microseconds (100));
-                  })
+        : holder ([this, &processor] {
+              const juce::ScopedLock lock { processor.getCallbackLock() };
+              held.store (true);
+              while (! released.load())
+                  std::this_thread::sleep_for (std::chrono::microseconds (100));
+          })
     {
         while (! held.load())
             std::this_thread::sleep_for (std::chrono::microseconds (100));
@@ -181,12 +180,11 @@ TEST_CASE ("a node whose callback lock is busy is silenced and reported, not wai
     TempPackage package;
     Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
     juce::AudioProcessor* gainNode = nullptr;
-    engine.loadSong (oneTrackSong (package), package.root, insertOnTrack ("track-a", [&gainNode]
-                                                                          {
-                                                                              auto gain = std::make_unique<GainProcessor> (1.0f);
-                                                                              gainNode = gain.get();
-                                                                              return gain;
-                                                                          }));
+    engine.loadSong (oneTrackSong (package), package.root, insertOnTrack ("track-a", [&gainNode] {
+        auto gain = std::make_unique<GainProcessor> (1.0f);
+        gainNode = gain.get();
+        return gain;
+    }));
     REQUIRE (gainNode != nullptr);
     engine.play();
     DeviceDriver device { 2, 256 };

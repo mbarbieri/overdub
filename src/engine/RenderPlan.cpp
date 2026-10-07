@@ -24,125 +24,125 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PlanPlayHead::getPosition() co
 
 namespace
 {
-    const char* sourceKindName (song::ClipSourceKind kind)
-    {
-        return kind == song::ClipSourceKind::take ? "take" : "backing";
-    }
+const char* sourceKindName (song::ClipSourceKind kind)
+{
+    return kind == song::ClipSourceKind::take ? "take" : "backing";
+}
 
     // Package-relative playback file of a Clip source (ADR 0004); empty when the Song lacks it.
-    std::string sourcePath (const song::Song& song, const song::ClipSource& source)
+std::string sourcePath (const song::Song& song, const song::ClipSource& source)
+{
+    if (source.kind == song::ClipSourceKind::take)
     {
-        if (source.kind == song::ClipSourceKind::take)
-        {
-            const auto take = std::ranges::find (song.takes, source.id, &song::Take::id);
-            return take != song.takes.end() ? take->file : std::string {};
-        }
-
-        const auto backing = std::ranges::find (song.backingTracks, source.id, &song::BackingTrack::id);
-        return backing != song.backingTracks.end() ? "backing/" + backing->id + ".wav" : std::string {};
+        const auto take = std::ranges::find (song.takes, source.id, &song::Take::id);
+        return take != song.takes.end() ? take->file : std::string {};
     }
+
+    const auto backing = std::ranges::find (song.backingTracks, source.id, &song::BackingTrack::id);
+    return backing != song.backingTracks.end() ? "backing/" + backing->id + ".wav" : std::string {};
+}
 
     // Every Clip source that plays silence is logged here: `event` with the source's kind, id and
     // path, plus any event-specific fields.
-    void logSilentSource (const char* event, const song::ClipSource& source, const juce::File& file, const char* message, core::Fields extra = core::Fields::object())
-    {
-        extra["source_kind"] = sourceKindName (source.kind);
-        extra["source_id"] = source.id;
-        extra["path"] = file.getFullPathName().toStdString();
-        core::logEvent (core::Level::warn, event, extra, message);
-    }
+void logSilentSource (const char* event, const song::ClipSource& source, const juce::File& file, const char* message, core::Fields extra = core::Fields::object())
+{
+    extra["source_kind"] = sourceKindName (source.kind);
+    extra["source_id"] = source.id;
+    extra["path"] = file.getFullPathName().toStdString();
+    core::logEvent (core::Level::warn, event, extra, message);
+}
 
-    void logUnusable (const song::ClipSource& source, const juce::File& file, const char* reason, core::Fields extra = core::Fields::object())
-    {
-        extra["reason"] = reason;
-        logSilentSource ("engine.clip_source_unusable", source, file, "Clip source plays silence", std::move (extra));
-    }
+void logUnusable (const song::ClipSource& source, const juce::File& file, const char* reason, core::Fields extra = core::Fields::object())
+{
+    extra["reason"] = reason;
+    logSilentSource ("engine.clip_source_unusable", source, file, "Clip source plays silence", std::move (extra));
+}
 
     // Decodes a 32-bit float WAV at the Song rate, mono or stereo. Anything else plays silence.
-    SourceAudio loadSource (const song::ClipSource& source, const juce::File& file, int songSampleRate)
+SourceAudio loadSource (const song::ClipSource& source, const juce::File& file, int songSampleRate)
+{
+    if (! file.existsAsFile())
     {
-        if (! file.existsAsFile())
-        {
-            logSilentSource ("engine.clip_source_missing", source, file, "Clip source file is missing; it plays silence");
-            return nullptr;
-        }
+        logSilentSource ("engine.clip_source_missing", source, file, "Clip source file is missing; it plays silence");
+        return nullptr;
+    }
 
-        juce::WavAudioFormat wav;
-        std::unique_ptr<juce::AudioFormatReader> reader { wav.createReaderFor (new juce::FileInputStream (file), true) };
-        if (reader == nullptr)
-        {
-            logUnusable (source, file, "not_wav");
-            return nullptr;
-        }
-        if (! reader->usesFloatingPointData || reader->bitsPerSample != 32)
-        {
-            logUnusable (source, file, "not_float32", { { "bits_per_sample", reader->bitsPerSample } });
-            return nullptr;
-        }
-        if ((int) reader->sampleRate != songSampleRate)
-        {
-            logUnusable (source, file, "sample_rate_mismatch", { { "file_rate", reader->sampleRate }, { "song_rate", songSampleRate } });
-            return nullptr;
-        }
-        if (reader->numChannels < 1 || reader->numChannels > 2)
-        {
-            logUnusable (source, file, "channel_count", { { "channels", reader->numChannels } });
-            return nullptr;
-        }
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::AudioFormatReader> reader { wav.createReaderFor (new juce::FileInputStream (file), true) };
+    if (reader == nullptr)
+    {
+        logUnusable (source, file, "not_wav");
+        return nullptr;
+    }
+    if (! reader->usesFloatingPointData || reader->bitsPerSample != 32)
+    {
+        logUnusable (source, file, "not_float32", { { "bits_per_sample", reader->bitsPerSample } });
+        return nullptr;
+    }
+    if ((int) reader->sampleRate != songSampleRate)
+    {
+        logUnusable (source, file, "sample_rate_mismatch", { { "file_rate", reader->sampleRate }, { "song_rate", songSampleRate } });
+        return nullptr;
+    }
+    if (reader->numChannels < 1 || reader->numChannels > 2)
+    {
+        logUnusable (source, file, "channel_count", { { "channels", reader->numChannels } });
+        return nullptr;
+    }
 
-        auto audio = std::make_shared<juce::AudioBuffer<float>> ((int) reader->numChannels, (int) reader->lengthInSamples);
-        if (! reader->read (audio->getArrayOfWritePointers(), audio->getNumChannels(), 0, audio->getNumSamples()))
-        {
-            logUnusable (source, file, "read_failed");
-            return nullptr;
-        }
+    auto audio = std::make_shared<juce::AudioBuffer<float>> ((int) reader->numChannels, (int) reader->lengthInSamples);
+    if (! reader->read (audio->getArrayOfWritePointers(), audio->getNumChannels(), 0, audio->getNumSamples()))
+    {
+        logUnusable (source, file, "read_failed");
+        return nullptr;
+    }
+    return audio;
+}
+
+    // Loads each distinct source file once per plan, keyed by package-relative path.
+class SourceLoader
+{
+public:
+    SourceLoader (const song::Song& s, const juce::File& root) : song (s), packageRoot (root) {}
+
+    SourceAudio load (const song::ClipSource& source)
+    {
+        const auto path = sourcePath (song, source);
+        if (const auto cached = loaded.find (path); cached != loaded.end())
+            return cached->second;
+
+        const auto file = path.empty() ? packageRoot.getChildFile ("<unknown " + juce::String (sourceKindName (source.kind)) + " " + juce::String (source.id) + ">")
+                                       : packageRoot.getChildFile (path);
+        auto audio = loadSource (source, file, song.sampleRate);
+        loaded.emplace (path, audio);
         return audio;
     }
 
-    // Loads each distinct source file once per plan, keyed by package-relative path.
-    class SourceLoader
+private:
+    const song::Song& song;
+    juce::File packageRoot;
+    std::map<std::string, SourceAudio> loaded;
+};
+
+std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLoader& loader)
+{
+    std::vector<LayeredClip> layered;
+    std::vector<SourceAudio> sources;
+    for (const auto& clip : track.clips)
     {
-    public:
-        SourceLoader (const song::Song& s, const juce::File& root) : song (s), packageRoot (root) {}
-
-        SourceAudio load (const song::ClipSource& source)
-        {
-            const auto path = sourcePath (song, source);
-            if (const auto cached = loaded.find (path); cached != loaded.end())
-                return cached->second;
-
-            const auto file = path.empty() ? packageRoot.getChildFile ("<unknown " + juce::String (sourceKindName (source.kind)) + " " + juce::String (source.id) + ">")
-                                           : packageRoot.getChildFile (path);
-            auto audio = loadSource (source, file, song.sampleRate);
-            loaded.emplace (path, audio);
-            return audio;
-        }
-
-    private:
-        const song::Song& song;
-        juce::File packageRoot;
-        std::map<std::string, SourceAudio> loaded;
-    };
-
-    std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLoader& loader)
-    {
-        std::vector<LayeredClip> layered;
-        std::vector<SourceAudio> sources;
-        for (const auto& clip : track.clips)
-        {
-            auto audio = loader.load (clip.source);
-            layered.push_back ({ .timelineStart = clip.timelineStart, .sourceOffset = clip.sourceOffset, .length = clip.length, .source = audio });
-            if (audio != nullptr)
-                sources.push_back (std::move (audio));
-        }
-        return std::make_unique<TrackPlayer> (juce::String (track.id), flattenClips (layered), std::move (sources));
+        auto audio = loader.load (clip.source);
+        layered.push_back ({ .timelineStart = clip.timelineStart, .sourceOffset = clip.sourceOffset, .length = clip.length, .source = audio });
+        if (audio != nullptr)
+            sources.push_back (std::move (audio));
     }
+    return std::make_unique<TrackPlayer> (juce::String (track.id), flattenClips (layered), std::move (sources));
+}
 
-    void connectStereo (Graph& graph, Graph::NodeID from, Graph::NodeID to)
-    {
-        for (int channel = 0; channel < 2; ++channel)
-            graph.addConnection ({ { from, channel }, { to, channel } }, Graph::UpdateKind::none);
-    }
+void connectStereo (Graph& graph, Graph::NodeID from, Graph::NodeID to)
+{
+    for (int channel = 0; channel < 2; ++channel)
+        graph.addConnection ({ { from, channel }, { to, channel } }, Graph::UpdateKind::none);
+}
 } // namespace
 
 RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& engineConfig, const TrackInsertFactory& makeInserts)
