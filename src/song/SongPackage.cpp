@@ -93,20 +93,27 @@ core::Expected<SongPackage::Opened> SongPackage::open (const juce::File& locatio
 
     const int tempFilesDeleted = deleteTempFiles (location);
 
-    auto song = readSongJson (location);
-    if (! song.has_value())
-        return std::unexpected (song.error());
+    const auto songJson = readSongJson (location);
+    if (! songJson.has_value())
+        return std::unexpected (songJson.error());
 
     std::vector<Notice> notices;
-    auto history = loadOrDropHistory (location, *song, options.beforeRename, notices);
+    auto history = loadOrDropHistory (location, *songJson, options.beforeRename, notices);
     if (! history.has_value())
         return std::unexpected (history.error());
 
+    // Write order (edit, undo, redo): index.json commits the step, then song.json follows. After
+    // a crash between the two, history holds the undoable content and song.json the rest.
+    auto song = keepStateOutsideHistory (history->currentSong(), *songJson);
+    const bool restoredFromHistory = song != *songJson;
+    if (restoredFromHistory)
+        core::logEvent (core::Level::warn, "song.restored_from_history", { { "path", pathOf (location) } });
+
     auto referencedHashes = history->pluginStateHashes();
-    referencedHashes.merge (pluginStateHashes (*song));
+    referencedHashes.merge (pluginStateHashes (song));
     const int blobsDeleted = deleteUnreferencedPluginBlobs (location.getChildFile ("plugins"), referencedHashes);
 
-    auto package = std::unique_ptr<SongPackage> (new SongPackage (location, std::move (*song), std::move (*history), std::move (options)));
+    auto package = std::unique_ptr<SongPackage> (new SongPackage (location, std::move (song), std::move (*history), std::move (options)));
 
     // A migrated song.json is written back at once, so the file on disk is at the current version.
     // (Kept unconditional and cheap: at v1 the document is rewritten unchanged.)
@@ -132,8 +139,7 @@ core::Expected<void> SongPackage::edit (Song changed, std::string label, Clock::
     if (auto pushed = history.push (changed, label); ! pushed.has_value())
         return pushed;
     currentSong = std::move (changed);
-    scheduleWrite (now);
-    return {};
+    return writeCommittedStep (now);
 }
 
 void SongPackage::changeWithoutHistory (Song changed, Clock::time_point now)
@@ -144,21 +150,30 @@ void SongPackage::changeWithoutHistory (Song changed, Clock::time_point now)
 
 core::Expected<void> SongPackage::undo (Clock::time_point now)
 {
-    auto snapshot = history.undo();
-    if (! snapshot.has_value())
-        return std::unexpected (snapshot.error());
-    currentSong = keepStateOutsideHistory (std::move (*snapshot), currentSong);
-    scheduleWrite (now);
-    return {};
+    return restoreSnapshot (history.undo(), now);
 }
 
 core::Expected<void> SongPackage::redo (Clock::time_point now)
 {
-    auto snapshot = history.redo();
+    return restoreSnapshot (history.redo(), now);
+}
+
+core::Expected<void> SongPackage::restoreSnapshot (core::Expected<Song> snapshot, Clock::time_point now)
+{
     if (! snapshot.has_value())
         return std::unexpected (snapshot.error());
     currentSong = keepStateOutsideHistory (std::move (*snapshot), currentSong);
-    scheduleWrite (now);
+    return writeCommittedStep (now);
+}
+
+core::Expected<void> SongPackage::writeCommittedStep (Clock::time_point now)
+{
+    // The step is already committed in history; a failed write stays pending and is retried.
+    if (auto written = writeSongJson(); ! written.has_value())
+    {
+        scheduleWrite (now);
+        return written;
+    }
     return {};
 }
 

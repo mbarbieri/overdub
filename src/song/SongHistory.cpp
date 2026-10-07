@@ -3,6 +3,7 @@
 #include "song/SongJson.h"
 #include "song/SongMigration.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace overdub::song
@@ -109,7 +110,7 @@ core::Expected<SongHistory> SongHistory::startFresh (const juce::File& directory
     history.snapshots.push_back (Snapshot { "", baseline });
     if (auto written = history.writeSnapshot (0, history.snapshots.back()); ! written.has_value())
         return std::unexpected (written.error());
-    if (auto written = history.writeIndex(); ! written.has_value())
+    if (auto written = history.writeIndex (0, 0, 0); ! written.has_value())
         return std::unexpected (written.error());
     return history;
 }
@@ -117,23 +118,21 @@ core::Expected<SongHistory> SongHistory::startFresh (const juce::File& directory
 core::Expected<void> SongHistory::push (const Song& song, const std::string& label)
 {
     const auto number = current + 1;
+    const auto newOldest = std::max (oldest, number - maxUndoSteps);
     Snapshot snapshot { label, song };
     if (auto written = writeSnapshot (number, snapshot); ! written.has_value())
         return written;
+    if (auto written = writeIndex (newOldest, number, number); ! written.has_value())
+        return written;
 
-    // In memory: drop the redo branch, append, then trim to the cap.
+    // Committed on disk. In memory: drop the redo branch, append, then trim to the cap.
     snapshots.resize (static_cast<std::size_t> (current - oldest + 1));
     snapshots.push_back (std::move (snapshot));
+    snapshots.erase (snapshots.begin(), snapshots.begin() + (newOldest - oldest));
+    oldest = newOldest;
     current = number;
     newest = number;
-    while (newest - oldest > maxUndoSteps)
-    {
-        snapshots.erase (snapshots.begin());
-        ++oldest;
-    }
 
-    if (auto written = writeIndex(); ! written.has_value())
-        return written;
     deleteSnapshotFilesOutsideRange();
     return {};
 }
@@ -151,26 +150,27 @@ std::string SongHistory::redoLabel() const
 core::Expected<Song> SongHistory::undo()
 {
     if (! canUndo())
-        return std::unexpected (core::Error { "song.history_empty", "nothing to undo", {} });
-    --current;
-    if (auto written = writeIndex(); ! written.has_value())
-    {
-        ++current;
-        return std::unexpected (written.error());
-    }
-    return snapshotAt (current).song;
+        return std::unexpected (core::Error { "song.history_empty", "nothing to undo", { { "direction", "undo" } } });
+    return moveTo (current - 1);
 }
 
 core::Expected<Song> SongHistory::redo()
 {
     if (! canRedo())
-        return std::unexpected (core::Error { "song.history_empty", "nothing to redo", {} });
-    ++current;
-    if (auto written = writeIndex(); ! written.has_value())
-    {
-        --current;
+        return std::unexpected (core::Error { "song.history_empty", "nothing to redo", { { "direction", "redo" } } });
+    return moveTo (current + 1);
+}
+
+core::Expected<Song> SongHistory::moveTo (std::int64_t step)
+{
+    if (auto written = writeIndex (oldest, newest, step); ! written.has_value())
         return std::unexpected (written.error());
-    }
+    current = step;
+    return snapshotAt (current).song;
+}
+
+const Song& SongHistory::currentSong() const
+{
     return snapshotAt (current).song;
 }
 
@@ -200,9 +200,9 @@ core::Expected<void> SongHistory::writeSnapshot (std::int64_t number, const Snap
     return {};
 }
 
-core::Expected<void> SongHistory::writeIndex() const
+core::Expected<void> SongHistory::writeIndex (std::int64_t oldestStep, std::int64_t newestStep, std::int64_t currentStep) const
 {
-    const nlohmann::json index { { "oldest", oldest }, { "newest", newest }, { "current", current } };
+    const nlohmann::json index { { "oldest", oldestStep }, { "newest", newestStep }, { "current", currentStep } };
     if (auto written = writeJsonAtomically (directory.getChildFile ("index.json"), index, beforeRename); ! written.has_value())
         return std::unexpected (written.error());
     return {};

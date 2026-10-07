@@ -16,15 +16,20 @@
 // A Song on disk: the always-saved `.overdub` package with persisted undo history (ADR 0004).
 //
 //   <name>.overdub/
-//     song.json                  the current Song, written debounced and atomically (temp + rename)
+//     song.json                  the current Song, written atomically (temp + rename)
 //     history/NNNNNN.json        { "label", "song" }: one whole-Song snapshot per step (SongHistory.h)
 //     history/index.json         { "oldest", "newest", "current" }
 //     plugins/<sha256>.state     plugin state blobs, content-addressed, written once
 //     audio/ backing/ video/     media, written by later slices; never touched here
 //
-// There is no Save. Two change paths: edit() adds an undo step; changeWithoutHistory() does not
-// (Armed, input channels, plugin parameters, pre-roll, camera, playhead, export choice). Both
-// schedule the song.json write; history files and index.json are written at once.
+// There is no Save. Two change paths:
+// - edit(), undo() and redo() write a history step and song.json at once, in this order:
+//   snapshot file (edit only), index.json, song.json. index.json commits the step. A crash
+//   before it reopens the previous step; a crash after it reopens the new step, because open()
+//   takes the undoable content from history's current snapshot and only the state outside
+//   history from song.json (keepStateOutsideHistory), then repairs song.json.
+// - changeWithoutHistory() (Armed, input channels, plugin parameters, pre-roll, camera, playhead,
+//   export choice) writes no history; its song.json write is debounced by saveDelay.
 //
 // Single-threaded: every call comes from one thread (the message thread in the app).
 namespace overdub::song
@@ -73,10 +78,12 @@ public:
     const Song& song() const { return currentSong; }
     const juce::File& location() const { return root; }
 
-    // An undoable change: one history step named `label` ("Import Band Mix.mp3").
+    // An undoable change: one history step named `label` ("Import Band Mix.mp3"), then song.json.
+    // An Error from the history write leaves everything unchanged. An Error from the song.json
+    // write comes after the step is committed: the change stays applied and the write pending.
     core::Expected<void> edit (Song changed, std::string label, Clock::time_point now = Clock::now());
 
-    // A change that is saved but not undoable.
+    // A change that is saved (debounced) but not undoable.
     void changeWithoutHistory (Song changed, Clock::time_point now = Clock::now());
 
     bool canUndo() const { return history.canUndo(); }
@@ -84,8 +91,8 @@ public:
     std::string undoLabel() const { return history.undoLabel(); }
     std::string redoLabel() const { return history.redoLabel(); }
 
-    // Restore the neighbouring snapshot, keeping state outside history (keepStateOutsideHistory).
-    // Errors: song.history_empty (nothing to undo/redo), plus index.json write errors.
+    // Restore the neighbouring snapshot, keeping state outside history (keepStateOutsideHistory),
+    // then write song.json. Failures behave as in edit().
     core::Expected<void> undo (Clock::time_point now = Clock::now());
     core::Expected<void> redo (Clock::time_point now = Clock::now());
 
@@ -109,6 +116,8 @@ public:
 private:
     SongPackage (juce::File root, Song song, SongHistory history, PackageOptions options);
 
+    core::Expected<void> restoreSnapshot (core::Expected<Song> snapshot, Clock::time_point now);
+    core::Expected<void> writeCommittedStep (Clock::time_point now);
     void scheduleWrite (Clock::time_point now);
     core::Expected<void> writeSongJson();
 

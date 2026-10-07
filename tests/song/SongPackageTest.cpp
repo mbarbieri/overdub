@@ -4,6 +4,7 @@
 #include "FullSong.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -113,24 +114,147 @@ TEST_CASE ("opening a folder that is not a Song is an Error", "[song][package]")
     CHECK (opened.error().code == "song.package_not_found");
 }
 
-TEST_CASE ("a change reaches song.json only when its save delay has passed", "[song][package]")
+TEST_CASE ("a change without history reaches song.json only when its save delay has passed", "[song][package]")
+{
+    TempDirectory temp;
+    auto song = overdub::song::testing::fullyPopulatedSong();
+    auto package = createPackage (temp.package(), song, PackageOptions { .saveDelay = 500ms });
+    const auto start = SongPackage::Clock::time_point {};
+
+    song.playhead = 7;
+    package->changeWithoutHistory (song, start);
+    CHECK (package->hasPendingWrite());
+
+    REQUIRE (package->writeIfDue (start + 499ms).has_value());
+    CHECK (songOnDisk (temp.package()).playhead == 132300);
+
+    ScopedLogCapture capture;
+    REQUIRE (package->writeIfDue (start + 500ms).has_value());
+    CHECK (songOnDisk (temp.package()).playhead == 7);
+    CHECK_FALSE (package->hasPendingWrite());
+    CHECK (firstEvent (capture, "song.saved").at ("lvl") == "debug");
+}
+
+TEST_CASE ("an edit, undo or redo writes song.json at once, pending changes included", "[song][package][history]")
 {
     TempDirectory temp;
     const auto song = overdub::song::testing::fullyPopulatedSong();
     auto package = createPackage (temp.package(), song, PackageOptions { .saveDelay = 500ms });
-    const auto start = SongPackage::Clock::time_point {};
 
-    REQUIRE (package->edit (renamedFirstTrack (song, "Lead"), "Rename Track", start).has_value());
-    CHECK (package->hasPendingWrite());
+    auto moved = song;
+    moved.playhead = 7;
+    package->changeWithoutHistory (moved);
+    REQUIRE (package->edit (renamedFirstTrack (moved, "Lead"), "Rename Track").has_value());
+    CHECK_FALSE (package->hasPendingWrite());
+    CHECK (songOnDisk (temp.package()) == renamedFirstTrack (moved, "Lead"));
 
-    REQUIRE (package->writeIfDue (start + 499ms).has_value());
-    CHECK (songOnDisk (temp.package()).tracks.at (0).name == "Guitar");
+    REQUIRE (package->undo().has_value());
+    CHECK_FALSE (package->hasPendingWrite());
+    CHECK (songOnDisk (temp.package()) == moved);
+
+    REQUIRE (package->redo().has_value());
+    CHECK_FALSE (package->hasPendingWrite());
+    CHECK (songOnDisk (temp.package()) == renamedFirstTrack (moved, "Lead"));
+}
+
+namespace
+{
+// Simulates a crash: the first write to a file named `crashAt` fails before its rename, and so
+// does every write after it.
+struct CrashInjector
+{
+    std::shared_ptr<std::string> crashAt = std::make_shared<std::string>();
+    std::shared_ptr<bool> crashed = std::make_shared<bool> (false);
+
+    PackageOptions options() const
+    {
+        PackageOptions options;
+        options.beforeRename = [target = crashAt, done = crashed] (const juce::File& destination) -> std::optional<overdub::core::Error>
+        {
+            if (*done || destination.getFileName().toStdString() == *target)
+            {
+                *done = true;
+                return overdub::core::Error { "song.test_crash", "injected crash", {} };
+            }
+            return std::nullopt;
+        };
+        return options;
+    }
+};
+} // namespace
+
+TEST_CASE ("an edit, undo or redo interrupted at any file reopens consistently", "[song][package][history]")
+{
+    TempDirectory temp;
+    auto song = overdub::song::testing::fullyPopulatedSong();
+    const auto lead = renamedFirstTrack (song, "Lead");
+    CrashInjector crash;
+    auto package = createPackage (temp.package(), song, crash.options());
+
+    // The step is committed once index.json is renamed; song.json follows. A crash after the
+    // commit reopens the step from history.
+    SECTION ("edit")
+    {
+        const std::string crashFile = GENERATE ("000001.json", "index.json", "song.json");
+        const bool committed = crashFile == "song.json";
+        *crash.crashAt = crashFile;
+        CHECK_FALSE (package->edit (lead, "Rename Track").has_value());
+        package.reset();
+
+        const auto reopened = openPackage (temp.package());
+        CHECK (reopened.package->song() == (committed ? lead : song));
+        CHECK (reopened.package->canUndo() == committed);
+    }
+
+    SECTION ("undo")
+    {
+        const std::string crashFile = GENERATE ("index.json", "song.json");
+        const bool committed = crashFile == "song.json";
+        REQUIRE (package->edit (lead, "Rename Track").has_value());
+        *crash.crashAt = crashFile;
+        CHECK_FALSE (package->undo().has_value());
+        package.reset();
+
+        const auto reopened = openPackage (temp.package());
+        CHECK (reopened.package->song() == (committed ? song : lead));
+        CHECK (reopened.package->canRedo() == committed);
+    }
+
+    SECTION ("redo")
+    {
+        const std::string crashFile = GENERATE ("index.json", "song.json");
+        const bool committed = crashFile == "song.json";
+        REQUIRE (package->edit (lead, "Rename Track").has_value());
+        REQUIRE (package->undo().has_value());
+        *crash.crashAt = crashFile;
+        CHECK_FALSE (package->redo().has_value());
+        package.reset();
+
+        const auto reopened = openPackage (temp.package());
+        CHECK (reopened.package->song() == (committed ? lead : song));
+        CHECK (reopened.package->canUndo() == committed);
+    }
+}
+
+TEST_CASE ("reopening after a crash before song.json keeps the state outside history it holds", "[song][package][history]")
+{
+    TempDirectory temp;
+    auto song = overdub::song::testing::fullyPopulatedSong();
+    CrashInjector crash;
+    {
+        auto package = createPackage (temp.package(), song, crash.options());
+        song.playhead = 7;
+        package->changeWithoutHistory (song);
+        REQUIRE (package->flush().has_value());
+        *crash.crashAt = "song.json";
+        CHECK_FALSE (package->edit (renamedFirstTrack (song, "Lead"), "Rename Track").has_value());
+    }
 
     ScopedLogCapture capture;
-    REQUIRE (package->writeIfDue (start + 500ms).has_value());
-    CHECK (songOnDisk (temp.package()).tracks.at (0).name == "Lead");
-    CHECK_FALSE (package->hasPendingWrite());
-    CHECK (firstEvent (capture, "song.saved").at ("lvl") == "debug");
+    const auto reopened = openPackage (temp.package());
+    CHECK (reopened.package->song() == renamedFirstTrack (song, "Lead"));
+    CHECK (songOnDisk (temp.package()) == renamedFirstTrack (song, "Lead")); // repaired on open
+    CHECK (firstEvent (capture, "song.restored_from_history").at ("lvl") == "warn");
 }
 
 TEST_CASE ("later changes do not push back a pending write", "[song][package]")
@@ -189,13 +313,13 @@ TEST_CASE ("a failure injected before the rename leaves the previous song.json i
     {
         auto package = createPackage (temp.package(), song, options);
         REQUIRE (package->edit (renamedFirstTrack (song, "Lead"), "Rename Track").has_value());
-        REQUIRE (package->flush().has_value());
 
         *failSongJson = true;
-        REQUIRE (package->edit (renamedFirstTrack (song, "Rhythm"), "Rename Track").has_value());
-        const auto written = package->flush();
-        REQUIRE_FALSE (written.has_value());
-        CHECK (written.error().code == "song.test_injected_failure");
+        const auto edited = package->edit (renamedFirstTrack (song, "Rhythm"), "Rename Track");
+        REQUIRE_FALSE (edited.has_value());
+        CHECK (edited.error().code == "song.test_injected_failure");
+        CHECK (package->hasPendingWrite()); // retried by writeIfDue, flush and the destructor
+        CHECK (package->flush().error().code == "song.test_injected_failure");
     } // the destructor's retry fails the same way
 
     CHECK (songOnDisk (temp.package()).tracks.at (0).name == "Lead");

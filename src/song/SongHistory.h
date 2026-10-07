@@ -39,7 +39,8 @@ public:
     // Deletes `directory` and starts it over with `baseline` as the only snapshot.
     static core::Expected<SongHistory> startFresh (const juce::File& directory, const Song& baseline, BeforeRenameHook beforeRename);
 
-    // Adds a step after the current one, deleting any redo branch and anything over the cap.
+    // Adds a step after the current one, deleting any redo branch and anything over the cap. The
+    // step is committed once index.json is written; on an Error nothing changed in memory.
     core::Expected<void> push (const Song& song, const std::string& label);
 
     bool canUndo() const { return current > oldest; }
@@ -47,9 +48,14 @@ public:
     std::string undoLabel() const; // the label of the step undo would revert; "" if none
     std::string redoLabel() const; // the label of the step redo would apply; "" if none
 
-    // Move one step and return the snapshot that is now current. Error song.history_empty.
+    // Move one step and return the snapshot that is now current. The move is committed once
+    // index.json is written; on an Error nothing changed. Errors: song.history_empty, plus
+    // writeJsonAtomically's.
     core::Expected<Song> undo();
     core::Expected<Song> redo();
+
+    // The current step's snapshot: the Song's undoable content as history last committed it.
+    const Song& currentSong() const;
 
     // Every plugin state hash any snapshot references.
     std::set<std::string> pluginStateHashes() const;
@@ -68,7 +74,8 @@ private:
     const Snapshot& snapshotAt (std::int64_t number) const;
     juce::File snapshotFile (std::int64_t number) const;
     core::Expected<void> writeSnapshot (std::int64_t number, const Snapshot& snapshot) const;
-    core::Expected<void> writeIndex() const;
+    core::Expected<void> writeIndex (std::int64_t oldestStep, std::int64_t newestStep, std::int64_t currentStep) const;
+    core::Expected<Song> moveTo (std::int64_t step);
     void deleteSnapshotFilesOutsideRange() const;
 
     juce::File directory;
