@@ -45,7 +45,7 @@ LiveEngine::LiveEngine()
     auto* device = deviceManager.getCurrentAudioDevice();
     if (device == nullptr)
     {
-        core::logEvent (core::Level::error, "engine.device_unavailable", {}, "no audio output device could be opened; the app runs silent");
+        core::logEvent (core::Level::error, "app.device_unavailable", {}, "no audio output device could be opened; the app runs silent");
         return;
     }
 
@@ -73,7 +73,7 @@ void LiveEngine::openDevice()
 
     const auto defaultError = deviceManager.initialise (inputChannelsNeeded, outputChannelsNeeded, nullptr, true);
     if (defaultError.isNotEmpty())
-        core::logEvent (core::Level::warn, "engine.device_open_failed", { { "choice", "default" }, { "reason", defaultError.toStdString() } });
+        core::logEvent (core::Level::warn, "app.device_open_failed", { { "choice", "default" }, { "reason", defaultError.toStdString() } });
 
     const auto savedChoice = saved.has_value() ? *saved : std::optional<engine::DeviceSettings> {};
     if (savedChoice.has_value())
@@ -85,7 +85,7 @@ void LiveEngine::openDevice()
         auto fields = settingsFields (*savedChoice);
         fields["choice"] = "saved";
         fields["reason"] = error.toStdString();
-        core::logEvent (core::Level::warn, "engine.device_open_failed", fields);
+        core::logEvent (core::Level::warn, "app.device_open_failed", fields);
         deviceManager.initialiseWithDefaultDevices (inputChannelsNeeded, outputChannelsNeeded);
         return;
     }
