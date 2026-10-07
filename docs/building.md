@@ -22,7 +22,7 @@ Use `release` in place of `debug` for an optimised build. The first build compil
 ## Layout
 
 - `src/<area>/`: one folder per feature area from ADR 0006 (`engine`, `plugin`, `song`, `capture`, `video`, `export`, `ui`, `app`), created when a slice needs it. Includes are rooted at `src/`: `#include "core/BuildInfo.h"`.
-- `src/core/` → `overdub_core`: shared infrastructure every area links (logging, errors, RT event ring). It is not an event area.
+- `src/core/` → `overdub_core`: shared infrastructure every area links (logging, errors, RT event ring). It is not an ADR 0006 event area and has no `core.*` events: the events it emits use the areas of the callers it serves, `app.*` for launch logging (e.g. `app.log_open_failed`, `app.log_prune_failed`, `app.juce_message`) and `engine.*` for the RT event path (e.g. `engine.rt_events_dropped`).
 - `src/app/` → `Overdub` (`Overdub.app`): entry point and main window.
 - `external/` → `overdub_juce`: the JUCE modules, compiled once. Our targets get JUCE through `overdub_core`, never by linking `juce::juce_*` modules directly (that would compile JUCE again and duplicate symbols).
 - `tests/<area>/` → `overdub_tests`: one Catch2 executable. Each `TEST_CASE` becomes one ctest test.

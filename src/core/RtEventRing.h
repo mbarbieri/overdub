@@ -52,14 +52,14 @@ public:
     // Consumer (drain thread) only. Returns false when the ring is empty.
     bool pop (RtEvent& event) noexcept;
 
-    // Drops since the last takeDropped().
     std::uint64_t dropped() const noexcept;
     std::uint64_t takeDropped() noexcept;
 
 private:
     std::vector<RtEvent> slots; // capacity + 1: one slot stays empty to tell full from empty
-    std::atomic<std::size_t> readIndex { 0 };
-    std::atomic<std::size_t> writeIndex { 0 };
+    // Each index on its own cache line so producer and consumer do not falsely share one.
+    alignas (64) std::atomic<std::size_t> readIndex { 0 };
+    alignas (64) std::atomic<std::size_t> writeIndex { 0 };
     std::atomic<std::uint64_t> droppedCount { 0 };
 };
 

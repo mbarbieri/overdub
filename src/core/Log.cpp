@@ -1,7 +1,9 @@
 #include "core/Log.h"
 
 #include <array>
+#include <cstdio>
 #include <ctime>
+#include <string>
 #include <time.h>
 
 namespace overdub::core
@@ -282,6 +284,9 @@ std::vector<nlohmann::json> ScopedLogCapture::events() const
 
 void JuceLoggerBridge::logMessage (const juce::String& message)
 {
+    if (currentThreadRole() == ThreadRole::audio)
+        return;
+
     logEvent (Level::info, "app.juce_message", {}, message.toStdString());
 }
 } // namespace overdub::core

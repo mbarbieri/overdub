@@ -134,7 +134,6 @@ private:
 // The one process-wide logger: a deliberate exception to "no globals" (ADR 0006).
 Logger& processLogger();
 
-// Logs an event now, on the calling thread's role.
 void logEvent (Level level, std::string_view event, const Fields& fields = {}, std::string_view msg = {});
 
 // Logs an event captured earlier (RT events): host_ns and thread are the capture's, and `t` is
@@ -157,7 +156,7 @@ public:
     ScopedLogCapture& operator= (const ScopedLogCapture&) = delete;
 
     std::vector<std::string> lines() const;
-    std::vector<nlohmann::json> events() const; // each line parsed
+    std::vector<nlohmann::json> events() const;
 
 private:
     std::shared_ptr<MemoryLogSink> memorySink;
@@ -166,6 +165,9 @@ private:
 };
 
 // Installed with juce::Logger::setCurrentLogger so JUCE's own messages become `app.juce_message`.
+// Known constraint: JUCE and AU internals may call juce::Logger from the audio thread, and logging
+// formats, allocates and locks. Messages on a thread whose role is `audio` are therefore dropped;
+// an audio thread that has not set its role is not protected.
 class JuceLoggerBridge final : public juce::Logger
 {
 protected:

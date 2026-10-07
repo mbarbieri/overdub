@@ -104,3 +104,18 @@ TEST_CASE ("JUCE's own log messages become log events once the bridge is install
     CHECK (events[0]["lvl"] == "info");
     CHECK (events[0]["msg"] == "from juce");
 }
+
+TEST_CASE ("the JUCE log bridge drops messages written on an audio-role thread", "[core][log]")
+{
+    ScopedLogCapture capture;
+    overdub::core::JuceLoggerBridge bridge;
+    juce::Logger::setCurrentLogger (&bridge);
+
+    {
+        const overdub::core::ScopedThreadRole audioThread (overdub::core::ThreadRole::audio);
+        juce::Logger::writeToLog ("from the audio thread");
+    }
+    juce::Logger::setCurrentLogger (nullptr);
+
+    CHECK (capture.lines().empty());
+}
