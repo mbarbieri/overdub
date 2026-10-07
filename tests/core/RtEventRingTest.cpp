@@ -1,5 +1,6 @@
 #include "core/Log.h"
 #include "core/RtEventRing.h"
+#include "support/RealtimeGuardCatch.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -57,6 +58,15 @@ TEST_CASE ("RT events drain in push order with their capture-time sample and hos
     CHECK (events[1]["host_ns"] == 5'000'100'000ULL);
     CHECK (events[1]["channel"] == 1.0);
     CHECK (events[1]["peak"] == 1.25);
+}
+
+TEST_CASE ("pushing RT events, including into a full ring, neither allocates nor locks", "[core][rt]")
+{
+    RtEventRing ring { 1 };
+    const auto event = makeEvent (xrun, 1, 1);
+
+    REQUIRE_REALTIME_SAFE (ring.push (event); ring.push (event));
+    CHECK (ring.dropped() == 1);
 }
 
 TEST_CASE ("a drained ring is empty until the next push", "[core][rt]")
