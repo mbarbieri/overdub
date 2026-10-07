@@ -42,13 +42,20 @@ namespace
         return backing != song.backingTracks.end() ? "backing/" + backing->id + ".wav" : std::string {};
     }
 
-    void logUnusable (const song::ClipSource& source, const juce::File& file, const char* reason, core::Fields extra = core::Fields::object())
+    // Every Clip source that plays silence is logged here: `event` with the source's kind, id and
+    // path, plus any event-specific fields.
+    void logSilentSource (const char* event, const song::ClipSource& source, const juce::File& file, const char* message, core::Fields extra = core::Fields::object())
     {
         extra["source_kind"] = sourceKindName (source.kind);
         extra["source_id"] = source.id;
         extra["path"] = file.getFullPathName().toStdString();
+        core::logEvent (core::Level::warn, event, extra, message);
+    }
+
+    void logUnusable (const song::ClipSource& source, const juce::File& file, const char* reason, core::Fields extra = core::Fields::object())
+    {
         extra["reason"] = reason;
-        core::logEvent (core::Level::warn, "engine.clip_source_unusable", extra, "Clip source plays silence");
+        logSilentSource ("engine.clip_source_unusable", source, file, "Clip source plays silence", std::move (extra));
     }
 
     // Decodes a 32-bit float WAV at the Song rate, mono or stereo. Anything else plays silence.
@@ -56,12 +63,7 @@ namespace
     {
         if (! file.existsAsFile())
         {
-            core::logEvent (core::Level::warn,
-                            "engine.clip_source_missing",
-                            { { "source_kind", sourceKindName (source.kind) },
-                              { "source_id", source.id },
-                              { "path", file.getFullPathName().toStdString() } },
-                            "Clip source file is missing; it plays silence");
+            logSilentSource ("engine.clip_source_missing", source, file, "Clip source file is missing; it plays silence");
             return nullptr;
         }
 

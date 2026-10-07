@@ -209,4 +209,5 @@ TEST_CASE ("a Clip whose source file is missing plays silence and still hides th
     CHECK ((*missing)["lvl"] == "warn");
     CHECK ((*missing)["source_kind"] == "take");
     CHECK ((*missing)["source_id"] == "take-missing");
+    CHECK ((*missing)["path"] == package.root.getChildFile (missingTake.file).getFullPathName().toStdString());
 }
