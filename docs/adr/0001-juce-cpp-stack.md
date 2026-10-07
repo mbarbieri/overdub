@@ -1,6 +1,6 @@
-# JUCE 9 + C++20, with Objective-C++ only for AVFoundation
+# JUCE 9 + C++23, with Objective-C++ only for AVFoundation
 
-Overdub is written in C++20 on JUCE 9.0.3, built with CMake + Ninja, not in Swift/SwiftUI. The hard parts of v1 are AU hosting, plugin delay compensation and latency-aligned dry Takes. JUCE solves those (`AudioPluginFormatManager`, `AudioProcessorGraph`'s automatic PDC, the JUCE 9 CoreAudio latency reporting), and it has about 25x more public plugin-hosting code than Swift does, which matters because every line is AI-written. Camera capture, the synced video preview and MP4 export would call AVFoundation directly in any stack, so they live in a few `.mm` files behind plain C++ headers.
+Overdub is written in C++23 on JUCE 9.0.3, built with CMake + Ninja, not in Swift/SwiftUI. The hard parts of v1 are AU hosting, plugin delay compensation and latency-aligned dry Takes. JUCE solves those (`AudioPluginFormatManager`, `AudioProcessorGraph`'s automatic PDC, the JUCE 9 CoreAudio latency reporting), and it has about 25x more public plugin-hosting code than Swift does, which matters because every line is AI-written. Camera capture, the synced video preview and MP4 export would call AVFoundation directly in any stack, so they live in a few `.mm` files behind plain C++ headers.
 
 ## Considered Options
 
@@ -16,3 +16,4 @@ Overdub is written in C++20 on JUCE 9.0.3, built with CMake + Ninja, not in Swif
 - One `AudioProcessorGraph` per Song: Track nodes → Insert Chain plugin nodes → Master chain.
 - The UI is JUCE `Component`s. Plugin editors open in their own `DocumentWindow`. The video preview is an `AVSampleBufferDisplayLayer` in an `NSViewComponent`, timed by the interface's `CMAudioDeviceClock`.
 - The app is signed with a stable local identity and no hardened runtime, so camera and mic permissions survive rebuilds and AUs need no entitlements.
+- The language standard is C++23 (raised from C++20 for `std::expected`, ADR 0006). The AU spike, JUCE included, builds cleanly with Apple clang 21 at `-std=gnu++23`.
