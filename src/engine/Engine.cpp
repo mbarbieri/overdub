@@ -106,6 +106,7 @@ void Engine::housekeeping (std::uint64_t nowHostNs)
     const auto samples = loadSamples.exchange (0);
     const auto callbacks = loadCallbacks.exchange (0);
     const auto peakNs = loadPeakCallbackNs.exchange (0);
+    const auto silencedNodes = silencedNodeBlocks.exchange (0);
     const auto sampleRate = currentSampleRate.load();
 
     if (! isPlaying() || callbacks == 0 || samples == 0 || sampleRate <= 0)
@@ -117,7 +118,8 @@ void Engine::housekeeping (std::uint64_t nowHostNs)
                     "engine.load",
                     { { "load", (double) busyNs / audioNs },
                       { "peak_callback_us", (double) peakNs / 1000.0 },
-                      { "callbacks", callbacks } });
+                      { "callbacks", callbacks },
+                      { "silenced_node_blocks", silencedNodes } });
 }
 
 void Engine::freeRetiredPlans()
@@ -151,7 +153,8 @@ void Engine::process (const float* const*,
         // Render-ahead (ADR 0003 amendment): the graph delays every path by its latency L, so the
         // Track nodes read L samples ahead and output sample n of the block is Song sample
         // playPosition + n. Song samples 0..L-1 after a start are never heard.
-        currentPlan->render (outputs, numSamples, playPosition + currentPlan->latencySamples(), playing);
+        const auto silencedNodes = currentPlan->render (outputs, numSamples, playPosition + currentPlan->latencySamples(), playing);
+        reportSilencedNodes (silencedNodes, hostTimeNs);
         silenceStaleOutput (outputs, numOutputChannels, numSamples);
         rejectedShape = {};
     }
@@ -226,6 +229,19 @@ void Engine::silenceStaleOutput (float* const* outputs, int numOutputChannels, i
     for (int channel = 0; channel < numOutputChannels; ++channel)
         std::memset (outputs[channel], 0, sizeof (float) * (std::size_t) count);
     staleOutputSamples -= count;
+}
+
+void Engine::reportSilencedNodes (std::uint64_t silencedNodes, std::uint64_t hostTimeNs) noexcept
+{
+    // ADR 0006: counted every block for engine.load; an RT event only when a busy streak starts.
+    const auto busy = silencedNodes > 0;
+    if (busy)
+    {
+        silencedNodeBlocks.fetch_add (silencedNodes, std::memory_order_relaxed);
+        if (! nodesBusyLastBlock)
+            pushEvent (nodesSilenced, hostTimeNs, (double) silencedNodes);
+    }
+    nodesBusyLastBlock = busy;
 }
 
 void Engine::reportRejectedBlock (int numSamples, int numOutputChannels, std::uint64_t hostTimeNs) noexcept

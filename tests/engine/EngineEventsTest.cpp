@@ -2,10 +2,15 @@
 #include "engine/EngineEvents.h"
 
 #include "EngineFixture.h"
+#include "TestProcessors.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
+#include <chrono>
+#include <optional>
 #include <string>
+#include <thread>
 
 using overdub::core::ScopedLogCapture;
 using overdub::engine::Engine;
@@ -27,6 +32,36 @@ void drain (Engine& engine)
 {
     overdub::core::drainRtEvents (engine.rtEvents(), overdub::engine::engineRtCatalog);
 }
+
+// Holds a processor's callback lock on another thread from construction until destruction, as
+// a host thread calling suspendProcessing or a plugin's own state call would.
+class CallbackLockHeldElsewhere
+{
+public:
+    explicit CallbackLockHeldElsewhere (juce::AudioProcessor& processor)
+        : holder ([this, &processor]
+                  {
+                      const juce::ScopedLock lock { processor.getCallbackLock() };
+                      held.store (true);
+                      while (! released.load())
+                          std::this_thread::sleep_for (std::chrono::microseconds (100));
+                  })
+    {
+        while (! held.load())
+            std::this_thread::sleep_for (std::chrono::microseconds (100));
+    }
+
+    ~CallbackLockHeldElsewhere()
+    {
+        released.store (true);
+        holder.join();
+    }
+
+private:
+    std::atomic<bool> held { false };
+    std::atomic<bool> released { false };
+    std::thread holder;
+};
 
 overdub::song::Song oneTrackSong (const TempPackage& package)
 {
@@ -138,6 +173,54 @@ TEST_CASE ("rejected blocks are reported once when the rejection starts or chang
     CHECK (rejected[1]["num_samples"] == 512.0);
     CHECK (rejected[2]["sample"] == 2432);
     CHECK (rejected[2]["num_samples"] == 256.0);
+}
+
+TEST_CASE ("a node whose callback lock is busy is silenced and reported, not waited for", "[engine][rt][events]")
+{
+    ScopedLogCapture capture;
+    TempPackage package;
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    juce::AudioProcessor* gainNode = nullptr;
+    engine.loadSong (oneTrackSong (package), package.root, insertOnTrack ("track-a", [&gainNode]
+                                                                          {
+                                                                              auto gain = std::make_unique<GainProcessor> (1.0f);
+                                                                              gainNode = gain.get();
+                                                                              return gain;
+                                                                          }));
+    REQUIRE (gainNode != nullptr);
+    engine.play();
+    DeviceDriver device { 2, 256 };
+    device.hostTimeNs = 3'000'000'000;
+    constexpr std::uint64_t second = 1'000'000'000;
+    engine.housekeeping (100 * second);
+
+    std::optional<CallbackLockHeldElsewhere> held;
+    held.emplace (*gainNode);
+    const auto firstBusyHostNs = device.hostTimeNs;
+    const auto busy = device.render (engine, 2); // Song samples 0..511: the impulse at 10 is lost
+    held.reset();
+    device.render (engine, 1); // 512..767: the lock is free again
+    held.emplace (*gainNode);
+    const auto secondBusyHostNs = device.hostTimeNs;
+    device.render (engine, 1); // 768..1023: busy again
+    held.reset();
+
+    engine.housekeeping (101 * second);
+    drain (engine);
+
+    CHECK (nonZeroSamples (busy.channels[0]).empty());
+    const auto silenced = eventsNamed (capture, "engine.nodes_silenced");
+    REQUIRE (silenced.size() == 2);
+    CHECK (silenced[0]["lvl"] == "warn");
+    CHECK (silenced[0]["sample"] == 0);
+    CHECK (silenced[0]["host_ns"] == firstBusyHostNs);
+    CHECK (silenced[0]["node_blocks"] == 1.0);
+    CHECK (silenced[1]["sample"] == 768);
+    CHECK (silenced[1]["host_ns"] == secondBusyHostNs);
+
+    const auto load = eventsNamed (capture, "engine.load");
+    REQUIRE (load.size() == 1);
+    CHECK (load[0]["silenced_node_blocks"] == 3);
 }
 
 TEST_CASE ("engine RT events beyond the ring's capacity are counted and reported once", "[engine][rt][events]")

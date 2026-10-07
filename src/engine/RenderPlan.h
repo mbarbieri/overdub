@@ -50,7 +50,9 @@ public:
 
     // Audio thread. outputs has config.numOutputChannels channels of numSamples <= maxBlockSize.
     // renderSample is the render position of the first sample (song position + latency).
-    void render (float* const* outputs, int numSamples, std::int64_t renderSample, bool playing) noexcept;
+    // Returns how many nodes rendered silence this block because another thread held their
+    // callback lock (the patched graph never waits for it, ADR 0001 amendment).
+    std::uint64_t render (float* const* outputs, int numSamples, std::int64_t renderSample, bool playing) noexcept;
 
     int sampleRate() const { return songSampleRate; }
     int numOutputChannels() const { return config.numOutputChannels; }

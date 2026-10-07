@@ -198,13 +198,19 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
                       { "max_block_size", config.maxBlockSize } });
 }
 
-void RenderPlan::render (float* const* outputs, int numSamples, std::int64_t renderSample, bool playing) noexcept
+std::uint64_t RenderPlan::render (float* const* outputs, int numSamples, std::int64_t renderSample, bool playing) noexcept
 {
     playHead.renderSample = renderSample;
     playHead.playing = playing;
 
+    // The patched graph counts busy nodes process-wide (patches/juce-graph-realtime-safe.patch);
+    // only the audio thread renders, so the difference across this call is this block's count.
+    const auto busyBefore = juce::getAudioProcessorGraphBusyNodeBlockCount();
+
     // References the device's buffers (no allocation for fewer than 32 channels).
     juce::AudioBuffer<float> block { outputs, config.numOutputChannels, numSamples };
     graph.processBlock (block, midi);
+
+    return juce::getAudioProcessorGraphBusyNodeBlockCount() - busyBefore;
 }
 } // namespace overdub::engine

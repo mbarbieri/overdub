@@ -97,6 +97,7 @@ private:
     void applyTransportCommands (std::uint64_t hostTimeNs) noexcept;
     void restartStaleOutput() noexcept;
     void silenceStaleOutput (float* const* outputs, int numOutputChannels, int numSamples) noexcept;
+    void reportSilencedNodes (std::uint64_t silencedNodes, std::uint64_t hostTimeNs) noexcept;
     void reportRejectedBlock (int numSamples, int numOutputChannels, std::uint64_t hostTimeNs) noexcept;
     void publishAnchor (std::uint64_t hostTimeNs) noexcept;
     void recordLoad (std::uint64_t callbackNs, int numSamples) noexcept;
@@ -132,6 +133,10 @@ private:
     };
     BlockShape rejectedShape;
 
+    // Whether the previous rendered block had a node silenced by a busy callback lock (audio
+    // thread only); engine.nodes_silenced is pushed when a block has one and the previous did not.
+    bool nodesBusyLastBlock = false;
+
     // Transport: requests in, audio-thread state, published state out.
     std::atomic<bool> playRequested { false };
     std::atomic<SampleCount> seekRequest { noSeek };
@@ -154,6 +159,7 @@ private:
     std::atomic<std::uint64_t> loadSamples { 0 };
     std::atomic<std::uint64_t> loadCallbacks { 0 };
     std::atomic<std::uint64_t> loadPeakCallbackNs { 0 };
+    std::atomic<std::uint64_t> silencedNodeBlocks { 0 };
 
     std::mutex nonRealtimeMutex; // serialises loadSong and housekeeping; never taken by process()
     std::optional<std::uint64_t> lastLoadSummaryNs;

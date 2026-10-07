@@ -4,7 +4,8 @@ set(OVERDUB_JUCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/JUCE")
 # Every patch applied to JUCE, each with the ADR that requires it:
 #   juce-force-auv2-oop.patch       ADR 0002: AUv2 loads out-of-process.
 #   juce-graph-realtime-safe.patch  ADR 0001/0005: AudioProcessorGraph neither locks nor allocates
-#                                   on the audio thread (try-lock per node, no output-buffer realloc).
+#                                   on the audio thread (try-lock per node, busy nodes silenced and
+#                                   counted, no output-buffer realloc).
 set(OVERDUB_JUCE_PATCHES
     "${PROJECT_SOURCE_DIR}/patches/juce-force-auv2-oop.patch"
     "${PROJECT_SOURCE_DIR}/patches/juce-graph-realtime-safe.patch")

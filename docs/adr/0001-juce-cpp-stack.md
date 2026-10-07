@@ -17,3 +17,12 @@ Overdub is written in C++23 on JUCE 9.0.3, built with CMake + Ninja, not in Swif
 - The UI is JUCE `Component`s. Plugin editors open in their own `DocumentWindow`. The video preview is an `AVSampleBufferDisplayLayer` in an `NSViewComponent`, timed by the interface's `CMAudioDeviceClock`.
 - The app is signed with a stable local identity and no hardened runtime, so camera and mic permissions survive rebuilds and AUs need no entitlements.
 - The language standard is C++23 (raised from C++20 for `std::expected`, ADR 0006). The AU spike, JUCE included, builds cleanly with Apple clang 21 at `-std=gnu++23`.
+
+## Amendment: the realtime-safe graph patch changes what a busy node does (issue #24)
+
+Unpatched, `AudioProcessorGraph` takes each node's callback lock with a blocking `ScopedLock` on every block, and reallocates its output buffer when the block size changes. Both fail ADR 0005's realtime guard, so `patches/juce-graph-realtime-safe.patch` changes them. This is a behaviour change, not just a performance fix: when another thread holds a node's callback lock (`suspendProcessing`, or a plugin's own state calls), the patched graph does not wait for it. That node outputs **silence** for the block and the rest of the graph plays on. Unpatched JUCE would block the audio thread until the lock was free, which risks a dropout across the whole output. We chose silence because one node's gap is local and audible only on its path, while a blocked audio thread is global.
+
+- The patch counts every such node block in a process-wide counter, `juce::getAudioProcessorGraphBusyNodeBlockCount()` (lock-free, any thread). `RenderPlan::render` returns the count for its block. The engine pushes `engine.nodes_silenced` (warn, RT path) when a block has a silenced node and the previous block did not, and sums every one into `engine.load`'s `silenced_node_blocks`. So the gap is never silent in the logs.
+- The counter is process-wide, so the engine assumes only its own audio thread renders graphs. A second engine rendering at the same time would mix its counts into the first one's.
+- The output buffer is resized with `avoidReallocating`, so a block no larger than the prepared size never allocates.
+- Bumping JUCE means re-applying both edits by hand (`docs/building.md`, "Re-applying the JUCE patch").
