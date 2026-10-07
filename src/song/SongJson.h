@@ -8,7 +8,7 @@
 // The song.json form of a Song (issue #8, ADR 0004). Keys are camelCase; the document carries
 // `formatVersion`. All conversion is explicit (no NLOHMANN_DEFINE_* macros) and lives in
 // SongJson.cpp. Reading never throws: a malformed document becomes an Error `song.json_invalid`
-// whose `path` field names the offending JSON path (e.g. "$.tracks[0].clips[2].gainDb").
+// whose `json_path` field names the offending JSON path (e.g. "$.tracks[0].clips[2].gainDb").
 namespace overdub::song
 {
 nlohmann::json songToJson (const Song& song);

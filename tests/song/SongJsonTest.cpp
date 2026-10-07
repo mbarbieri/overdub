@@ -131,7 +131,7 @@ TEST_CASE ("a malformed song.json is an Error naming the JSON path", "[song][jso
 
     REQUIRE_FALSE (result.has_value());
     CHECK (result.error().code == "song.json_invalid");
-    CHECK (result.error().fields.at ("path") == "$.tracks[1].clips[0].gainDb");
+    CHECK (result.error().fields.at ("json_path") == "$.tracks[1].clips[0].gainDb");
 }
 
 TEST_CASE ("a missing field is an Error naming the JSON path", "[song][json]")
@@ -143,7 +143,7 @@ TEST_CASE ("a missing field is an Error naming the JSON path", "[song][json]")
 
     REQUIRE_FALSE (result.has_value());
     CHECK (result.error().code == "song.json_invalid");
-    CHECK (result.error().fields.at ("path") == "$.takes[0].origin");
+    CHECK (result.error().fields.at ("json_path") == "$.takes[0].origin");
 }
 
 TEST_CASE ("an unknown Clip source kind is an Error naming the JSON path", "[song][json]")
@@ -154,7 +154,20 @@ TEST_CASE ("an unknown Clip source kind is an Error naming the JSON path", "[son
     const auto result = songFromJson (document);
 
     REQUIRE_FALSE (result.has_value());
-    CHECK (result.error().fields.at ("path") == "$.tracks[0].clips[0].source.kind");
+    CHECK (result.error().fields.at ("json_path") == "$.tracks[0].clips[0].source.kind");
+}
+
+TEST_CASE ("a document that is not an object, or holds a wrong-shaped list, is an Error naming the JSON path", "[song][json]")
+{
+    CHECK (songFromJson (nlohmann::json::array()).error().fields.at ("json_path") == "$");
+
+    auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
+    document["tracks"][1]["inputChannels"] = { 0, "left" };
+    CHECK (songFromJson (document).error().fields.at ("json_path") == "$.tracks[1].inputChannels[1]");
+
+    document["passes"] = "none";
+    const auto result = songFromJson (document);
+    CHECK (result.error().fields.at ("json_path") == "$.tracks[1].inputChannels[1]"); // the first problem in reading order
 }
 
 TEST_CASE ("text that is not JSON is an Error, not an exception", "[song][json]")

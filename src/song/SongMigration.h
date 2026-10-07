@@ -24,9 +24,9 @@ struct MigratedDocument
 };
 
 // steps[i] migrates version i + 1 to i + 2, so the newest version is steps.size() + 1.
-// Errors: song.json_invalid (no integer formatVersion, path "$.formatVersion"),
-// song.format_too_new (versionFound, versionSupported), song.migration_failed (fromVersion,
-// stepError: the failing step's code).
+// Errors: song.json_invalid (no integer formatVersion, json_path "$.formatVersion"),
+// song.format_too_new (version_found, version_supported), song.migration_failed (from_version,
+// step_error: the failing step's code).
 core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::span<const MigrationStep> steps);
 
 // This build's steps: none yet at v1. Add one per new formatVersion and bump songFormatVersion.

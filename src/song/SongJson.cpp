@@ -1,21 +1,24 @@
 #include "song/SongJson.h"
 
 #include <array>
+#include <optional>
 #include <string_view>
 #include <utility>
 
 // Writing builds the document field by field. Reading goes through Reader, which tracks the JSON
-// path and throws InvalidSongJson on the first problem; songFromJson catches it (and any
-// nlohmann exception) at this file's boundary and returns an Error. No exception leaves this file.
+// path and records the first problem it finds. Reading does not stop there: later reads return
+// placeholder values and record nothing new, so the read functions stay flat field lists, and
+// songFromJson discards the result and returns the problem as an Error. Nothing here throws:
+// every nlohmann call used is guarded by a type check first.
 namespace overdub::song
 {
 namespace
 {
 using nlohmann::json;
 
-struct InvalidSongJson
+struct Problem
 {
-    std::string path;
+    std::string jsonPath;
     std::string reason;
 };
 
@@ -23,89 +26,62 @@ struct InvalidSongJson
 class Reader
 {
 public:
-    Reader (const json& objectNode, std::string objectPath)
+    Reader (const json& objectNode, std::string objectPath, std::optional<Problem>& firstProblem)
         : node (objectNode),
-          path (std::move (objectPath))
+          path (std::move (objectPath)),
+          problem (firstProblem)
     {
         if (! node.is_object())
-            throw InvalidSongJson { path, "expected an object" };
-    }
-
-    const json& value (std::string_view key) const
-    {
-        const auto found = node.find (key);
-        if (found == node.end())
-            throw InvalidSongJson { childPath (key), "missing" };
-        return *found;
+            report (path, "expected an object");
     }
 
     std::string childPath (std::string_view key) const { return path + "." + std::string (key); }
 
+    // Records a problem unless an earlier one is already recorded.
+    void report (std::string atPath, std::string reason) const
+    {
+        if (! problem.has_value())
+            problem = Problem { std::move (atPath), std::move (reason) };
+    }
+
+    // The value at `key`, or nullptr (problem recorded) when this is not an object or it is missing.
+    const json* value (std::string_view key) const
+    {
+        if (! node.is_object())
+            return nullptr;
+        const auto found = node.find (key);
+        if (found == node.end())
+        {
+            report (childPath (key), "missing");
+            return nullptr;
+        }
+        return &*found;
+    }
+
     std::string string (std::string_view key) const
     {
-        const auto& found = value (key);
-        if (! found.is_string())
-            throw InvalidSongJson { childPath (key), "expected a string" };
-        return found.get<std::string>();
+        const auto* found = valueWhere (key, &json::is_string, "expected a string");
+        return found != nullptr ? found->get<std::string>() : std::string();
     }
 
     std::int64_t integer (std::string_view key) const
     {
-        const auto& found = value (key);
-        if (! found.is_number_integer())
-            throw InvalidSongJson { childPath (key), "expected an integer" };
-        return found.get<std::int64_t>();
+        const auto* found = valueWhere (key, &json::is_number_integer, "expected an integer");
+        return found != nullptr ? found->get<std::int64_t>() : 0;
     }
 
     int smallInteger (std::string_view key) const { return static_cast<int> (integer (key)); }
 
     double number (std::string_view key) const
     {
-        const auto& found = value (key);
-        if (! found.is_number())
-            throw InvalidSongJson { childPath (key), "expected a number" };
-        return found.get<double>();
+        const auto* found = valueWhere (key, &json::is_number, "expected a number");
+        return found != nullptr ? found->get<double>() : 0.0;
     }
 
     bool boolean (std::string_view key) const
     {
-        const auto& found = value (key);
-        if (! found.is_boolean())
-            throw InvalidSongJson { childPath (key), "expected a boolean" };
-        return found.get<bool>();
-    }
-
-    Reader object (std::string_view key) const { return Reader (value (key), childPath (key)); }
-
-    // Reads every element of the array at `key` with readElement (const Reader&).
-    template <typename Element, typename ReadElement>
-    std::vector<Element> array (std::string_view key, ReadElement readElement) const
-    {
-        const auto& found = value (key);
-        if (! found.is_array())
-            throw InvalidSongJson { childPath (key), "expected an array" };
-
-        std::vector<Element> elements;
-        elements.reserve (found.size());
-        for (std::size_t index = 0; index < found.size(); ++index)
-            elements.push_back (readElement (Reader (found[index], childPath (key) + "[" + std::to_string (index) + "]")));
-        return elements;
-    }
-
-    std::vector<int> integers (std::string_view key) const
-    {
-        const auto& found = value (key);
-        if (! found.is_array())
-            throw InvalidSongJson { childPath (key), "expected an array" };
-
-        std::vector<int> elements;
-        for (std::size_t index = 0; index < found.size(); ++index)
-        {
-            if (! found[index].is_number_integer())
-                throw InvalidSongJson { childPath (key) + "[" + std::to_string (index) + "]", "expected an integer" };
-            elements.push_back (found[index].get<int>());
-        }
-        return elements;
+        const auto* found = valueWhere (key, &json::is_boolean, "expected a boolean");
+        return found != nullptr && found->get<bool>();
     }
 
     // A channel count: 1 (mono) or 2 (stereo).
@@ -113,22 +89,89 @@ public:
     {
         const int count = smallInteger (key);
         if (count != 1 && count != 2)
-            throw InvalidSongJson { childPath (key), "expected 1 or 2" };
+            report (childPath (key), "expected 1 or 2");
         return count;
     }
 
+    Reader object (std::string_view key) const
+    {
+        const auto* found = value (key);
+        return Reader (found != nullptr ? *found : nullNode(), childPath (key), problem);
+    }
+
+    // Reads every element of the array of objects at `key` with readElement (const Reader&).
+    template <typename Element, typename ReadElement>
+    std::vector<Element> objects (std::string_view key, ReadElement readElement) const
+    {
+        return elements<Element> (key,
+                                  [&] (const json& element, std::string elementPath)
+                                  { return readElement (Reader (element, std::move (elementPath), problem)); });
+    }
+
+    std::vector<int> integers (std::string_view key) const
+    {
+        return elements<int> (key,
+                              [&] (const json& element, std::string elementPath)
+                              {
+                                  if (element.is_number_integer())
+                                      return element.get<int>();
+                                  report (std::move (elementPath), "expected an integer");
+                                  return 0;
+                              });
+    }
+
 private:
+    static const json& nullNode()
+    {
+        static const json null;
+        return null;
+    }
+
+    const json* valueWhere (std::string_view key, bool (json::*hasType) () const noexcept, const char* reason) const
+    {
+        const auto* found = value (key);
+        if (found == nullptr)
+            return nullptr;
+        if (! (found->*hasType)())
+        {
+            report (childPath (key), reason);
+            return nullptr;
+        }
+        return found;
+    }
+
+    // Reads every element of the array at `key` with readElement (const json&, elementPath).
+    template <typename Element, typename ReadElement>
+    std::vector<Element> elements (std::string_view key, ReadElement readElement) const
+    {
+        const auto* found = valueWhere (key, &json::is_array, "expected an array");
+        if (found == nullptr)
+            return {};
+
+        std::vector<Element> result;
+        result.reserve (found->size());
+        for (std::size_t index = 0; index < found->size(); ++index)
+            result.push_back (readElement ((*found)[index], childPath (key) + "[" + std::to_string (index) + "]"));
+        return result;
+    }
+
     const json& node;
     std::string path;
+    std::optional<Problem>& problem;
 };
 
-// ---- Pre-roll: whole seconds {0, 1, 2, 4} ----
+// ---- Enum tables: one row per value, used both ways ----
 
 constexpr std::array<std::pair<PreRoll, int>, 4> preRollSeconds { {
     { PreRoll::off, 0 },
     { PreRoll::oneSecond, 1 },
     { PreRoll::twoSeconds, 2 },
     { PreRoll::fourSeconds, 4 },
+} };
+
+constexpr std::array<std::pair<ClipSourceKind, std::string_view>, 2> clipSourceKindNames { {
+    { ClipSourceKind::take, "take" },
+    { ClipSourceKind::backing, "backing" },
 } };
 
 int preRollToSeconds (PreRoll preRoll)
@@ -145,31 +188,56 @@ PreRoll readPreRoll (const Reader& reader, std::string_view key)
     for (const auto& [value, valueSeconds] : preRollSeconds)
         if (valueSeconds == seconds)
             return value;
-    throw InvalidSongJson { reader.childPath (key), "expected 0, 1, 2 or 4" };
+    reader.report (reader.childPath (key), "expected 0, 1, 2 or 4");
+    return PreRoll::off;
+}
+
+std::string clipSourceKindToName (ClipSourceKind kind)
+{
+    for (const auto& [value, name] : clipSourceKindNames)
+        if (value == kind)
+            return std::string (name);
+    return std::string (clipSourceKindNames.front().second);
+}
+
+ClipSourceKind readClipSourceKind (const Reader& reader, std::string_view key)
+{
+    const auto name = reader.string (key);
+    for (const auto& [value, valueName] : clipSourceKindNames)
+        if (valueName == name)
+            return value;
+    reader.report (reader.childPath (key), "expected \"take\" or \"backing\"");
+    return ClipSourceKind::take;
 }
 
 // ---- Writing ----
 
-json insertChainToJson (const std::vector<InsertSlot>& insertChain)
+json insertSlotToJson (const InsertSlot& slot)
 {
-    json slots = json::array();
-    for (const auto& slot : insertChain)
-        slots.push_back ({
-            { "id", slot.id },
-            { "component", { { "type", slot.component.type }, { "subtype", slot.component.subtype }, { "manufacturer", slot.component.manufacturer } } },
-            { "name", slot.name },
-            { "version", slot.version },
-            { "bypassed", slot.bypassed },
-            { "stateHash", slot.stateHash },
-        });
-    return slots;
+    return {
+        { "id", slot.id },
+        { "component", { { "type", slot.component.type }, { "subtype", slot.component.subtype }, { "manufacturer", slot.component.manufacturer } } },
+        { "name", slot.name },
+        { "version", slot.version },
+        { "bypassed", slot.bypassed },
+        { "stateHash", slot.stateHash },
+    };
+}
+
+template <typename Element, typename ToJson>
+json arrayToJson (const std::vector<Element>& elements, ToJson toJson)
+{
+    json array = json::array();
+    for (const auto& element : elements)
+        array.push_back (toJson (element));
+    return array;
 }
 
 json clipToJson (const Clip& clip)
 {
     return {
         { "id", clip.id },
-        { "source", { { "kind", clip.source.kind == ClipSourceKind::take ? "take" : "backing" }, { "id", clip.source.id } } },
+        { "source", { { "kind", clipSourceKindToName (clip.source.kind) }, { "id", clip.source.id } } },
         { "timelineStart", clip.timelineStart },
         { "sourceOffset", clip.sourceOffset },
         { "length", clip.length },
@@ -181,10 +249,6 @@ json clipToJson (const Clip& clip)
 
 json trackToJson (const Track& track)
 {
-    json clips = json::array();
-    for (const auto& clip : track.clips)
-        clips.push_back (clipToJson (clip));
-
     return {
         { "id", track.id },
         { "name", track.name },
@@ -194,9 +258,14 @@ json trackToJson (const Track& track)
         { "solo", track.solo },
         { "armed", track.armed },
         { "inputChannels", track.inputChannels },
-        { "insertChain", insertChainToJson (track.insertChain) },
-        { "clips", clips },
+        { "insertChain", arrayToJson (track.insertChain, insertSlotToJson) },
+        { "clips", arrayToJson (track.clips, clipToJson) },
     };
+}
+
+json passToJson (const Pass& pass)
+{
+    return { { "id", pass.id }, { "startSample", pass.startSample }, { "recordedAt", pass.recordedAt } };
 }
 
 json takeToJson (const Take& take)
@@ -241,15 +310,6 @@ json videoTakeToJson (const VideoTake& videoTake)
     };
 }
 
-template <typename Element, typename ToJson>
-json arrayToJson (const std::vector<Element>& elements, ToJson toJson)
-{
-    json array = json::array();
-    for (const auto& element : elements)
-        array.push_back (toJson (element));
-    return array;
-}
-
 // ---- Reading ----
 
 InsertSlot readInsertSlot (const Reader& reader)
@@ -265,19 +325,12 @@ InsertSlot readInsertSlot (const Reader& reader)
     };
 }
 
-ClipSource readClipSource (const Reader& reader)
-{
-    const auto kind = reader.string ("kind");
-    if (kind != "take" && kind != "backing")
-        throw InvalidSongJson { reader.childPath ("kind"), "expected \"take\" or \"backing\"" };
-    return ClipSource { .kind = kind == "take" ? ClipSourceKind::take : ClipSourceKind::backing, .id = reader.string ("id") };
-}
-
 Clip readClip (const Reader& reader)
 {
+    const auto source = reader.object ("source");
     return Clip {
         .id = reader.string ("id"),
-        .source = readClipSource (reader.object ("source")),
+        .source = { .kind = readClipSourceKind (source, "kind"), .id = source.string ("id") },
         .timelineStart = reader.integer ("timelineStart"),
         .sourceOffset = reader.integer ("sourceOffset"),
         .length = reader.integer ("length"),
@@ -298,8 +351,8 @@ Track readTrack (const Reader& reader)
         .solo = reader.boolean ("solo"),
         .armed = reader.boolean ("armed"),
         .inputChannels = reader.integers ("inputChannels"),
-        .insertChain = reader.array<InsertSlot> ("insertChain", readInsertSlot),
-        .clips = reader.array<Clip> ("clips", readClip),
+        .insertChain = reader.objects<InsertSlot> ("insertChain", readInsertSlot),
+        .clips = reader.objects<Clip> ("clips", readClip),
     };
 }
 
@@ -350,35 +403,42 @@ VideoTake readVideoTake (const Reader& reader)
     };
 }
 
+std::optional<Id> readOptionalId (const Reader& reader, std::string_view key)
+{
+    const auto* found = reader.value (key);
+    if (found == nullptr || found->is_null())
+        return std::nullopt;
+    if (! found->is_string())
+    {
+        reader.report (reader.childPath (key), "expected a string or null");
+        return std::nullopt;
+    }
+    return found->get<std::string>();
+}
+
 Song readSong (const Reader& reader)
 {
-    const auto formatVersion = reader.integer ("formatVersion");
-    if (formatVersion != songFormatVersion)
-        throw InvalidSongJson { reader.childPath ("formatVersion"), "expected " + std::to_string (songFormatVersion) };
+    if (reader.integer ("formatVersion") != songFormatVersion)
+        reader.report (reader.childPath ("formatVersion"), "expected " + std::to_string (songFormatVersion));
 
     Song song;
     song.sampleRate = reader.smallInteger ("sampleRate");
     if (song.sampleRate <= 0)
-        throw InvalidSongJson { reader.childPath ("sampleRate"), "expected a positive rate" };
+        reader.report (reader.childPath ("sampleRate"), "expected a positive rate");
 
-    song.tracks = reader.array<Track> ("tracks", readTrack);
+    song.tracks = reader.objects<Track> ("tracks", readTrack);
     const auto master = reader.object ("master");
-    song.master = Master { .volumeDb = master.number ("volumeDb"), .insertChain = master.array<InsertSlot> ("insertChain", readInsertSlot) };
-    song.passes = reader.array<Pass> ("passes", readPass);
-    song.takes = reader.array<Take> ("takes", readTake);
-    song.backingTracks = reader.array<BackingTrack> ("backingTracks", readBackingTrack);
-    song.videoTakes = reader.array<VideoTake> ("videoTakes", readVideoTake);
+    song.master = Master { .volumeDb = master.number ("volumeDb"), .insertChain = master.objects<InsertSlot> ("insertChain", readInsertSlot) };
+    song.passes = reader.objects<Pass> ("passes", readPass);
+    song.takes = reader.objects<Take> ("takes", readTake);
+    song.backingTracks = reader.objects<BackingTrack> ("backingTracks", readBackingTrack);
+    song.videoTakes = reader.objects<VideoTake> ("videoTakes", readVideoTake);
 
     song.preRoll = readPreRoll (reader, "preRollSeconds");
     song.cameraArmed = reader.boolean ("cameraArmed");
     song.cameraDeviceId = reader.string ("cameraDeviceId");
     song.playhead = reader.integer ("playhead");
-
-    const auto& exportChoice = reader.value ("exportVideoTakeId");
-    if (exportChoice.is_string())
-        song.exportVideoTakeId = exportChoice.get<std::string>();
-    else if (! exportChoice.is_null())
-        throw InvalidSongJson { reader.childPath ("exportVideoTakeId"), "expected a string or null" };
+    song.exportVideoTakeId = readOptionalId (reader, "exportVideoTakeId");
     return song;
 }
 } // namespace
@@ -389,9 +449,8 @@ nlohmann::json songToJson (const Song& song)
         { "formatVersion", songFormatVersion },
         { "sampleRate", song.sampleRate },
         { "tracks", arrayToJson (song.tracks, trackToJson) },
-        { "master", { { "volumeDb", song.master.volumeDb }, { "insertChain", insertChainToJson (song.master.insertChain) } } },
-        { "passes", arrayToJson (song.passes, [] (const Pass& pass) -> json
-                                 { return { { "id", pass.id }, { "startSample", pass.startSample }, { "recordedAt", pass.recordedAt } }; }) },
+        { "master", { { "volumeDb", song.master.volumeDb }, { "insertChain", arrayToJson (song.master.insertChain, insertSlotToJson) } } },
+        { "passes", arrayToJson (song.passes, passToJson) },
         { "takes", arrayToJson (song.takes, takeToJson) },
         { "backingTracks", arrayToJson (song.backingTracks, backingTrackToJson) },
         { "videoTakes", arrayToJson (song.videoTakes, videoTakeToJson) },
@@ -405,26 +464,15 @@ nlohmann::json songToJson (const Song& song)
 
 core::Expected<Song> songFromJson (const nlohmann::json& document)
 {
-    try
-    {
-        return readSong (Reader (document, "$"));
-    }
-    catch (const InvalidSongJson& invalid)
-    {
+    std::optional<Problem> problem;
+    auto song = readSong (Reader (document, "$", problem));
+    if (problem.has_value())
         return std::unexpected (core::Error {
             "song.json_invalid",
-            "song document is invalid at " + invalid.path + ": " + invalid.reason,
-            { { "path", invalid.path }, { "reason", invalid.reason } },
+            "song document is invalid at " + problem->jsonPath + ": " + problem->reason,
+            { { "json_path", problem->jsonPath }, { "reason", problem->reason } },
         });
-    }
-    catch (const nlohmann::json::exception& exception)
-    {
-        return std::unexpected (core::Error {
-            "song.json_invalid",
-            "song document could not be read",
-            { { "path", "$" }, { "reason", exception.what() } },
-        });
-    }
+    return song;
 }
 
 core::Expected<nlohmann::json> parseJsonText (const std::string& text)

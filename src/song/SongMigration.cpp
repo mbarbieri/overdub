@@ -9,7 +9,7 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
         return std::unexpected (core::Error {
             "song.json_invalid",
             "song document has no integer formatVersion",
-            { { "path", "$.formatVersion" }, { "reason", "expected an integer" } },
+            { { "json_path", "$.formatVersion" }, { "reason", "expected an integer" } },
         });
 
     const int fromVersion = version->get<int>();
@@ -18,13 +18,13 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
         return std::unexpected (core::Error {
             "song.format_too_new",
             "song was written by a newer Overdub (format " + std::to_string (fromVersion) + ")",
-            { { "versionFound", fromVersion }, { "versionSupported", newestVersion } },
+            { { "version_found", fromVersion }, { "version_supported", newestVersion } },
         });
     if (fromVersion < 1)
         return std::unexpected (core::Error {
             "song.json_invalid",
             "song formatVersion is not a known version",
-            { { "path", "$.formatVersion" }, { "reason", "expected 1 or more" } },
+            { { "json_path", "$.formatVersion" }, { "reason", "expected 1 or more" } },
         });
 
     for (int stepVersion = fromVersion; stepVersion < newestVersion; ++stepVersion)
@@ -34,7 +34,7 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
             return std::unexpected (core::Error {
                 "song.migration_failed",
                 "could not migrate song from format " + std::to_string (stepVersion),
-                { { "fromVersion", stepVersion }, { "stepError", migrated.error().code } },
+                { { "from_version", stepVersion }, { "step_error", migrated.error().code } },
             });
         document = std::move (*migrated);
         document["formatVersion"] = stepVersion + 1;

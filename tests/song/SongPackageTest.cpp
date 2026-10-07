@@ -567,7 +567,7 @@ TEST_CASE ("a newer formatVersion is refused with an Error and the package is le
 
     REQUIRE_FALSE (opened.has_value());
     CHECK (opened.error().code == "song.format_too_new");
-    CHECK (opened.error().fields.at ("versionFound") == 2);
+    CHECK (opened.error().fields.at ("version_found") == 2);
     CHECK (songJson.loadFileAsString().toStdString() == document.dump());
     CHECK (leftoverTemp.existsAsFile());
 }

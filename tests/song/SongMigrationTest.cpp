@@ -52,8 +52,8 @@ TEST_CASE ("a newer formatVersion is refused with an Error that names the versio
 
     REQUIRE_FALSE (migrated.has_value());
     CHECK (migrated.error().code == "song.format_too_new");
-    CHECK (migrated.error().fields.at ("versionFound") == 7);
-    CHECK (migrated.error().fields.at ("versionSupported") == 1);
+    CHECK (migrated.error().fields.at ("version_found") == 7);
+    CHECK (migrated.error().fields.at ("version_supported") == 1);
 }
 
 TEST_CASE ("a document without an integer formatVersion is refused", "[song][migration]")
@@ -62,7 +62,7 @@ TEST_CASE ("a document without an integer formatVersion is refused", "[song][mig
 
     REQUIRE_FALSE (migrated.has_value());
     CHECK (migrated.error().code == "song.json_invalid");
-    CHECK (migrated.error().fields.at ("path") == "$.formatVersion");
+    CHECK (migrated.error().fields.at ("json_path") == "$.formatVersion");
 }
 
 TEST_CASE ("a failing step stops migration with an Error naming the version it started from", "[song][migration]")
@@ -73,6 +73,6 @@ TEST_CASE ("a failing step stops migration with an Error naming the version it s
 
     REQUIRE_FALSE (migrated.has_value());
     CHECK (migrated.error().code == "song.migration_failed");
-    CHECK (migrated.error().fields.at ("fromVersion") == 1);
-    CHECK (migrated.error().fields.at ("stepError") == "song.test_step_failed");
+    CHECK (migrated.error().fields.at ("from_version") == 1);
+    CHECK (migrated.error().fields.at ("step_error") == "song.test_step_failed");
 }
