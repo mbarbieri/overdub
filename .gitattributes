@@ -1,0 +1,2 @@
+# Patches must keep their exact bytes (JUCE sources use CRLF line endings).
+patches/*.patch -text
