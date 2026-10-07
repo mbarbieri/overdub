@@ -190,25 +190,38 @@ input[type=range]{accent-color:var(--accent)}
 .modes button.on{background:var(--accent);color:#fff}
 .c-body{flex:1;min-height:0;display:flex;flex-direction:column}
 .c-rec{flex:1;display:flex;gap:12px;padding:12px;min-height:0}
-.c-cards{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;align-content:start;overflow:auto}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
-.card.armed{border-color:var(--rec)}
-.card .big-arm{font-size:13px;padding:6px}
+.c-stage{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.c-stage .screen{flex:1;min-height:0;aspect-ratio:auto;border-radius:10px}
+.c-stage .vid{font-size:14px;padding:12px}
+.c-stage .vid .fig{transform-origin:bottom;scale:2.2}
+.c-side{width:320px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;overflow:auto}
+.armrow{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px;display:flex;flex-direction:column;gap:5px}
+.armrow.armed{border-color:var(--rec)}
 .chain{display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:10px;color:var(--dim)}
 .chain button{font-size:10px;padding:1px 6px;background:#33405a;border:0}
-.c-cam{width:420px;display:flex;flex-direction:column;gap:8px}
+.c-look{flex-shrink:0;border-top:1px solid var(--line);background:#16171a;padding:6px 12px 8px}
+.c-look .look-head{display:flex;justify-content:space-between;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.look{position:relative;height:110px;background:#1d1e24;border-radius:6px;overflow:hidden}
+.look svg{position:absolute;inset:0;width:100%;height:100%}
+.look .lt{position:absolute;top:0;bottom:0;border-left:1px solid #ffffff14;font-size:9px;color:var(--dim);padding:2px 3px}
+.look .past{position:absolute;left:0;top:0;bottom:0;background:#0006}
+.look .lph{position:absolute;top:0;bottom:0;width:2px;background:#fff}
+.look .lph.rec{background:var(--rec)}
+.look .recspan{position:absolute;top:0;bottom:0;background:#ff453a22;border-left:1px solid var(--rec)}
+.look .next{position:absolute;right:8px;top:6px;font-size:11px;background:#000a;padding:2px 7px;border-radius:4px}
 .passes{background:var(--panel);border-radius:8px;padding:8px;overflow:auto;flex:1}
 .passes h4{margin:0 0 6px;font-size:10px;color:var(--dim);text-transform:uppercase}
 .pass{display:block;width:100%;text-align:left;margin-bottom:3px}
-.c-overview{height:120px;flex-shrink:0;border-top:1px solid var(--line);position:relative;background:#1a1b1e;cursor:text;padding:6px 0}
-.ov-row{position:relative;height:16px;margin:2px 0}
+.c-overview{height:auto;flex-shrink:0;border-top:1px solid var(--line);position:relative;background:#1a1b1e;cursor:text;padding:6px 0}
+.ov-row{position:relative;height:8px;margin:1px 0}
 .ov-clip{position:absolute;top:2px;bottom:2px;border-radius:2px}
 .ov-ph{position:absolute;top:0;bottom:0;width:1px;background:#fff}
 .c-edit{flex:1;display:flex;flex-direction:column;min-height:0}
 .c-cliptools{display:flex;gap:10px;align-items:center;padding:5px 10px;background:var(--panel2);border-bottom:1px solid var(--line);font-size:11px;min-height:32px}
-.c-mix{flex:1;display:flex;gap:8px;padding:12px;overflow-x:auto}
-.c-mix .strip{width:150px}
-.c-mix .vfader{height:220px}
+.c-edit-tl{flex:1;min-height:0}
+.c-edit-mix{height:44%;flex-shrink:0;display:flex;gap:6px;padding:8px;overflow-x:auto;border-top:2px solid var(--line);background:#202125}
+.c-edit-mix .strip .inserts{min-height:60px}
+.c-edit-mix .fader-wrap{min-height:60px}
 .c-export{flex:1;display:flex;justify-content:center;padding:30px;overflow:auto}
 .c-export .export{width:560px}
 
@@ -232,7 +245,7 @@ const SONG_LEN = 210;
 const INPUTS = ['In 1', 'In 2', 'In 3', 'In 4', 'In 1+2 (stereo)', 'In 3+4 (stereo)'];
 const CAMERAS = ['FaceTime HD Camera', 'iPhone (Continuity Camera)', 'USB Webcam'];
 const AUS = ['AUNBandEQ', 'AUDynamicsProcessor', 'AUPeakLimiter', 'AUDistortion', 'AUDelay', 'AUMatrixReverb', 'AUGraphicEQ', 'Third-party Amp Sim (AUv3)', 'Third-party Reverb (AUv2, Intel-only)'];
-const VARIANTS = [['A', 'Arrange + drawer'], ['B', 'Wide rows'], ['C', 'Modes']];
+const VARIANTS = [['A', 'Arrange + drawer'], ['B', 'Wide rows'], ['C', 'Modes (revised)']];
 let uid = 100;
 const newId = (p) => p + (uid++);
 
@@ -278,7 +291,7 @@ const owner = (id) => (id === 'master' ? S.master : track(id));
 const findClip = (id) => { for (const t of S.tracks) { const c = t.clips.find((c) => c.id === id); if (c) return { t, c }; } return null; };
 const songEnd = () => Math.max(...S.tracks.flatMap((t) => t.clips.map((c) => c.start + c.length)), 0);
 function toast(text) { S.ui.toast = { text, at: Date.now() }; }
-function currentVariant() { const v = new URLSearchParams(location.search).get('variant'); return VARIANTS.some((x) => x[0] === v) ? v : 'A'; }
+function currentVariant() { const v = new URLSearchParams(location.search).get('variant'); return VARIANTS.some((x) => x[0] === v) ? v : 'C'; }
 
 // ---------- undo: whole-Song snapshots (mirrors ADR 0004). Arm and input stay outside undo. ----------
 function snapshot() { return JSON.stringify({ tracks: S.tracks, master: S.master, videoTakes: S.videoTakes, passes: S.passes }); }
@@ -417,10 +430,14 @@ function amp(seed, t) {
   const j = Math.abs(Math.sin(Math.floor(t * 12) * 91.7 + seed * 13.1) * 43758.5) % 1;
   return 0.12 + 0.5 * v + 0.35 * j * v;
 }
+// Fixture only: the imported song has sections and a silent break, so the Record look-ahead has something to warn about.
+const BACKING_SECTIONS = [[0, 10, 0.3], [10, 50, 0.6], [50, 80, 1], [80, 88, 0], [88, 92, 0.25], [92, 130, 0.6], [130, 165, 1], [165, 172, 0], [172, 200, 0.4]];
+function backingLevel(t) { const s = BACKING_SECTIONS.find((x) => t >= x[0] && t < x[1]); return s ? s[2] : 0; }
+function clipAmp(c, srcT) { return amp(c.seed, srcT) * (c.source === 'backing' ? backingLevel(srcT) : 1); }
 function wavePath(c, w, h) {
   const g = Math.pow(10, c.gain / 20); let d = '';
   for (let x = 1; x < w; x += 3) {
-    const a = Math.min(1, amp(c.seed, c.offset + x / S.zoom) * g) * (h / 2 - 1);
+    const a = Math.min(1, clipAmp(c, c.offset + x / S.zoom) * g) * (h / 2 - 1);
     d += `M${x} ${(h / 2 - a).toFixed(1)}V${(h / 2 + a).toFixed(1)}`;
   }
   return d;
@@ -607,25 +624,55 @@ function renderB() {
     <div class="b-transport">${transportHtml(true)}<span class="dim">Space play · R record · S split · ⌫ delete · ⌘Z undo</span></div></div>`;
 }
 
-// ---------- Variant C: Modes ----------
-function cardC(t) {
+// ---------- Variant C: Modes (Record / Edit / Export) ----------
+const C_MODES = ['record', 'edit', 'export'];
+const LOOK_SPAN = 30, LOOK_PH = 0.2; // look-ahead window in seconds; playhead sits at 20% of it
+function armRowC(t) {
   const chain = t.inserts.map((p) => `→ <button data-act="open-plugin" data-owner="${t.id}" data-ins="${p.id}" style="${p.bypass ? 'opacity:.4' : ''}">${p.name}</button>`).join(' ');
-  return `<div class="card ${t.armed ? 'armed' : ''}">
-    <div class="h-row"><span class="tname" style="font-size:14px">${t.name}</span><span class="spacer"></span>${muteBtn(t)}${soloBtn(t)}</div>
-    <button data-act="arm" data-track="${t.id}" class="arm big-arm ${t.armed ? 'on' : ''}">${t.armed ? '● Armed' : '○ Arm'}</button>
-    <div class="h-row">${inputSelect(t)}${monHtml(t)}</div>${meterHtml(t.id, 'big')}
-    <div class="chain"><span>${t.input}</span> ${chain} → <span>${t.name}</span> <select data-input="add-ins" data-owner="${t.id}"><option value="">+</option>${AUS.map((a) => `<option>${a}</option>`).join('')}</select></div></div>`;
+  return `<div class="armrow ${t.armed ? 'armed' : ''}">
+    <div class="h-row">${armBtn(t)}<span class="tname">${t.name}</span><span class="spacer"></span>${muteBtn(t)}${soloBtn(t)}</div>
+    <div class="h-row">${inputSelect(t)}${meterHtml(t.id)}${monHtml(t)}</div>
+    <div class="chain"><span>${t.input}</span> ${chain} <select data-input="add-ins" data-owner="${t.id}"><option value="">+</option>${AUS.map((a) => `<option>${a}</option>`).join('')}</select></div></div>`;
+}
+function backingClips() { return S.tracks.flatMap((t) => t.clips.filter((c) => c.source === 'backing')); }
+function backingEnvelopeAt(time) {
+  // The real app would use a precomputed RMS envelope of the Backing Track file.
+  let a = 0;
+  for (const c of backingClips()) if (time >= c.start && time < c.start + c.length) a = Math.max(a, backingLevel(c.offset + time - c.start));
+  return a;
+}
+function nextChangeText() {
+  const sounding = backingEnvelopeAt(S.playhead) > 0.05;
+  for (let dt = 0.1; dt <= LOOK_SPAN * (1 - LOOK_PH); dt += 0.1) {
+    if ((backingEnvelopeAt(S.playhead + dt) > 0.05) !== sounding) return sounding ? `Silence in ${dt.toFixed(1)} s` : `Music back in ${dt.toFixed(1)} s`;
+  }
+  return sounding ? 'Music continues' : 'Silence';
+}
+function lookaheadInner() {
+  const t0 = S.playhead - LOOK_SPAN * LOOK_PH, W = 1000, H = 100, clips = backingClips();
+  let d = '';
+  for (let x = 1; x < W; x += 3) {
+    const t = t0 + (x / W) * LOOK_SPAN; let a = 0;
+    for (const c of clips) if (t >= c.start && t < c.start + c.length) a = Math.max(a, Math.min(1, clipAmp(c, c.offset + t - c.start) * Math.pow(10, c.gain / 20)));
+    if (a > 0) d += `M${x} ${(H / 2 - a * (H / 2 - 2)).toFixed(1)}V${(H / 2 + a * (H / 2 - 2)).toFixed(1)}`;
+  }
+  let ticks = '';
+  for (let s = Math.ceil(t0 / 5) * 5; s < t0 + LOOK_SPAN; s += 5) if (s >= 0) ticks += `<div class="lt" style="left:${((s - t0) / LOOK_SPAN) * 100}%">${fmt(s).replace(/\.0$/, '')}</div>`;
+  const r = S.recording;
+  const rec = r ? `<div class="recspan" style="left:${Math.max(0, ((r.start - t0) / LOOK_SPAN) * 100)}%;right:${(1 - LOOK_PH) * 100}%"></div>` : '';
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path d="${d}" stroke="#a9b0ff" stroke-width="2"/></svg>${ticks}
+    <div class="past" style="width:${LOOK_PH * 100}%"></div>${rec}<div class="lph ${r ? 'rec' : ''}" style="left:${LOOK_PH * 100}%"></div><div class="next">${nextChangeText()}</div>`;
 }
 function overviewHtml() {
   const rows = S.tracks.map((t) => `<div class="ov-row">${[...t.clips].sort((a, b) => a.layer - b.layer).map((c) => `<div class="ov-clip" style="left:${(c.start / SONG_LEN) * 100}%;width:${(c.length / SONG_LEN) * 100}%;background:var(--${c.source === 'take' ? 'take' : 'backing'});z-index:${c.layer}"></div>`).join('')}</div>`).join('');
   const vids = `<div class="ov-row">${S.videoTakes.map((v) => `<div class="ov-clip" style="left:${(v.start / SONG_LEN) * 100}%;width:${(v.length / SONG_LEN) * 100}%;background:var(--video)"></div>`).join('')}</div>`;
-  return `<div class="c-overview" data-overview>${rows}${vids}<div class="ov-ph" data-live="ov-ph" style="left:${(S.playhead / SONG_LEN) * 100}%"></div></div>`;
+  return `<div class="c-overview" data-overview title="Whole Song: click to move the playhead">${rows}${vids}<div class="ov-ph" data-live="ov-ph" style="left:${(S.playhead / SONG_LEN) * 100}%"></div></div>`;
 }
 const headerC = (t) => `<div class="h-row">${armBtn(t)}${muteBtn(t)}${soloBtn(t)}<span class="tname">${t.name}</span></div>`;
 const camHeaderC = () => `<div class="h-row"><button data-act="cam-arm" class="arm ${S.camera.armed ? 'on' : ''}">●</button><span class="tname">Camera</span></div>`;
 function renderC() {
   const m = S.ui.mode;
-  const modes = ['record', 'edit', 'mix', 'export'].map((k, i) => `<button data-act="mode" data-mode="${k}" class="${m === k ? 'on' : ''}" title="${i + 1}">${k[0].toUpperCase() + k.slice(1)}</button>`).join('');
+  const modes = C_MODES.map((k, i) => `<button data-act="mode" data-mode="${k}" class="${m === k ? 'on' : ''}" title="${i + 1}">${k[0].toUpperCase() + k.slice(1)}</button>`).join('');
   let body = '';
   if (m === 'record') {
     const passes = [...S.passes].reverse().map((p) => {
@@ -633,16 +680,17 @@ function renderC() {
       const vid = S.videoTakes.some((v) => v.passId === p.id);
       return `<button class="pass" data-act="jump" data-t="${p.start}">Pass ${p.id} · ${fmt(p.start)} – ${fmt(p.start + p.length)} · ${names}${vid ? ' + 🎞' : ''}</button>`;
     }).join('');
-    body = `<div class="c-rec"><div class="c-cards" data-scroll="cards">${S.tracks.map(cardC).join('')}</div>
-      <div class="c-cam"><div class="h-row">${cameraArmHtml()}</div>${screenHtml()}<div class="passes"><h4>Passes</h4>${passes}</div></div></div>${overviewHtml()}`;
+    body = `<div class="c-rec"><div class="c-stage"><div class="h-row">${cameraArmHtml()}</div>${screenHtml()}</div>
+        <div class="c-side" data-scroll="cside">${S.tracks.map(armRowC).join('')}<div class="passes"><h4>Passes</h4>${passes}</div></div></div>
+      <div class="c-look"><div class="look-head"><span>Backing Track · what's coming</span><span>next ${LOOK_SPAN * (1 - LOOK_PH)} s</span></div><div class="look" data-live="look">${lookaheadInner()}</div></div>
+      ${overviewHtml()}`;
   } else if (m === 'edit') {
     const f = S.sel.clip && findClip(S.sel.clip);
     const tools = f ? `<b>${f.c.label}</b><span class="dim">on ${f.t.name}</span><span>start ${fmt(f.c.start)}</span><span>length ${fmt(f.c.length)}</span><span>fades ${f.c.fadeIn.toFixed(2)} / ${f.c.fadeOut.toFixed(2)} s</span><span>${fmtDb(f.c.gain)}</span><button data-act="split">Split (S)</button><button data-act="delete">Delete</button>`
       : `<span class="dim">Select a Clip. Drag to move, edges to trim, top corners for fades, the dB tag for gain. S splits at the playhead.</span>`;
     body = `<div class="c-edit"><div class="c-cliptools">${tools}<span class="spacer"></span>${zoomHtml()}<button data-act="toggle-preview" class="${S.ui.previewOpen ? 'on' : ''}">Video</button></div>
-      ${timelineHtml({ headerW: 150, laneH: 84, camera: 'top', header: headerC, cameraHeader: camHeaderC })}</div>`;
-  } else if (m === 'mix') {
-    body = `<div class="c-mix" data-scroll="mix">${S.tracks.map((t) => stripHtml(t)).join('')}<div class="spacer"></div>${stripHtml(S.master, true)}</div>`;
+      <div class="c-edit-tl">${timelineHtml({ headerW: 150, laneH: 76, camera: 'top', header: headerC, cameraHeader: camHeaderC })}</div>
+      <div class="c-edit-mix" data-scroll="mix">${S.tracks.map((t) => stripHtml(t)).join('')}<div class="spacer"></div>${stripHtml(S.master, true)}</div></div>`;
   } else {
     body = `<div class="c-export">${exportHtml(false)}</div>`;
   }
@@ -652,7 +700,7 @@ function renderC() {
 // ---------- render ----------
 function floatingHtml(v) {
   let h = S.ui.pluginWindows.map(pluginWindowHtml).join('');
-  const previewFloats = (v === 'A' || (v === 'C' && (S.ui.mode === 'edit' || S.ui.mode === 'mix'))) && S.ui.previewOpen;
+  const previewFloats = (v === 'A' || (v === 'C' && S.ui.mode === 'edit')) && S.ui.previewOpen;
   if (previewFloats) h += previewWindowHtml();
   if (v === 'A' && S.ui.exportOpen) h += `<div class="sheet-backdrop"><div class="sheet">${exportHtml(true)}</div></div>`;
   if (S.ui.toast) h += `<div class="toast">${S.ui.toast.text}</div>`;
@@ -808,7 +856,7 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'Enter') S.playhead = 0;
   else if (k === 'x' || k === 'X') S.ui.mixerOpen = !S.ui.mixerOpen;
   else if (k === 'Escape') { S.sel.clip = null; S.ui.exportOpen = false; }
-  else if (currentVariant() === 'C' && '1234'.includes(k)) S.ui.mode = ['record', 'edit', 'mix', 'export'][+k - 1];
+  else if (currentVariant() === 'C' && '123'.includes(k)) S.ui.mode = C_MODES[+k - 1];
   else return;
   render();
 });
@@ -819,7 +867,7 @@ function audible(t) { const anySolo = S.tracks.some((x) => x.solo); return !t.mu
 function levelFor(t) {
   let l = 0;
   if (t.armed) l = 0.35 + Math.random() * 0.35; // live input while Monitoring
-  if (S.playing && audible(t)) { const c = topClipAt(t, S.playhead); if (c) l = Math.max(l, amp(c.seed, c.offset + S.playhead - c.start) * Math.pow(10, (c.gain + t.vol) / 20)); }
+  if (S.playing && audible(t)) { const c = topClipAt(t, S.playhead); if (c) l = Math.max(l, clipAmp(c, c.offset + S.playhead - c.start) *Math.pow(10, (c.gain + t.vol) / 20)); }
   return clamp(l, 0, 1);
 }
 function tick(now) {
@@ -837,6 +885,7 @@ function tick(now) {
     if (S.playing && sc && x > sc.scrollLeft + sc.clientWidth - 40) sc.scrollLeft = x - +el.dataset.hw - 40;
   });
   document.querySelectorAll('[data-live=ov-ph]').forEach((el) => { el.style.left = (S.playhead / SONG_LEN) * 100 + '%'; });
+  document.querySelectorAll('[data-live=look]').forEach((el) => { el.innerHTML = lookaheadInner(); });
   if (now - lastScreen > 80) { lastScreen = now; document.querySelectorAll('[data-live=screen]').forEach((el) => { el.innerHTML = screenInner(); }); }
   const levels = {};
   S.tracks.forEach((t) => { levels[t.id] = levelFor(t); });
