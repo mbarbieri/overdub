@@ -23,6 +23,7 @@ constexpr std::array codeTable {
     CodeEntry { "capture.nothing_armed", Tier::notice, "Arm a Track and pick its input to record." },
     CodeEntry { "capture.pass_empty", Tier::notice, "The Pass stopped before any audio was recorded." },
     CodeEntry { "ui.no_audio_device", Tier::notice, "No audio device is open. Pick one in Settings." },
+    CodeEntry { "ui.stop_recording_first", Tier::notice, "Stop recording first." },
 
     // Alerts: an action failed or data may be lost.
     CodeEntry { "capture.take_write_failed", Tier::alert, "A Take could not be written to disk; this Pass was not added." },
@@ -40,6 +41,7 @@ constexpr std::array codeTable {
     CodeEntry { "song.format_too_new", Tier::alert, "This Song was made by a newer version of Overdub." },
     CodeEntry { "song.migration_failed", Tier::alert, "This Song could not be upgraded to the current format." },
     CodeEntry { "song.duplicate_failed", Tier::alert, "The Song could not be duplicated there." },
+    CodeEntry { "engine.device_settings_write_failed", Tier::alert, "The audio device choice could not be saved for next time." },
 };
 
 const CodeEntry* entryFor (std::string_view code)
@@ -90,10 +92,5 @@ std::vector<UserMessage> UserMessageQueue::takeReady (bool passRunning)
     }
     queued = std::move (kept);
     return ready;
-}
-
-bool UserMessageQueue::hasDeferredAlerts() const
-{
-    return std::ranges::any_of (queued, [] (const UserMessage& message) { return message.tier == Tier::alert; });
 }
 } // namespace overdub::ui

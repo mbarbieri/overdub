@@ -24,6 +24,12 @@ void chooseFilesWithNativeDialog (std::function<void (std::vector<juce::File>)> 
     });
 }
 
+// The fields of the ui.* events that name a message.
+core::Fields messageFields (const UserMessage& message)
+{
+    return { { "code", message.code }, { "tier", tierName (message.tier) } };
+}
+
 void showAlertWithNativeDialog (const juce::String& sentence)
 {
     juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOk (juce::MessageBoxIconType::WarningIcon, "Overdub", sentence), nullptr);
@@ -37,23 +43,23 @@ MainComponent::MainComponent()
 
     topBar.onCommand = [this] (Command command) { perform (command); };
     recordPage.onArm = [this] (const song::Id& trackId, bool armed) {
-        if (songSession != nullptr)
-            songSession->setArmed (trackId, armed);
+        if (openSong != nullptr)
+            openSong->setArmed (trackId, armed);
         refresh();
     };
     recordPage.onInput = [this] (const song::Id& trackId, std::vector<int> channels) {
-        if (songSession != nullptr)
-            songSession->setInputChannels (trackId, std::move (channels));
+        if (openSong != nullptr)
+            openSong->setInputChannels (trackId, std::move (channels));
         refresh();
         takeKeyboardFocus();
     };
     recordPage.onMonitoring = [this] (const song::Id& trackId, bool on) {
-        if (songSession != nullptr)
-            songSession->setMonitoring (trackId, on);
+        if (openSong != nullptr)
+            openSong->setMonitoring (trackId, on);
         refresh();
     };
     recordPage.onImport = [this] {
-        if (songSession == nullptr || songSession->isRecording() || ! chooseFilesToImport)
+        if (openSong == nullptr || openSong->isRecording() || ! chooseFilesToImport)
             return;
         chooseFilesToImport ([safeThis = juce::Component::SafePointer<MainComponent> (this)] (std::vector<juce::File> files) {
             if (safeThis != nullptr)
@@ -87,9 +93,9 @@ MainComponent::~MainComponent()
     stopTimer();
 }
 
-void MainComponent::setSession (SongSession* session)
+void MainComponent::setOpenSong (OpenSong* song)
 {
-    songSession = session;
+    openSong = song;
     refresh();
 }
 
@@ -100,26 +106,25 @@ void MainComponent::perform (Command command)
         showMode (*mode);
         return;
     }
-    if (songSession == nullptr)
+    if (openSong == nullptr)
         return;
 
     switch (command)
     {
         case Command::record:
-            if (auto started = songSession->record(); ! started.has_value())
+            if (auto started = openSong->record(); ! started.has_value())
                 handleError (started.error());
             break;
-        case Command::playOrStop: songSession->playOrStop(); break;
-        case Command::stop: songSession->stop(); break;
-        case Command::rewind: songSession->rewind(); break;
+        case Command::playOrStop: openSong->playOrStop(); break;
+        case Command::rewind: openSong->rewind(); break;
         case Command::undo:
-            if (songSession->package().canUndo())
-                if (auto undone = songSession->undo(); ! undone.has_value())
+            if (openSong->package().canUndo())
+                if (auto undone = openSong->undo(); ! undone.has_value())
                     handleError (undone.error());
             break;
         case Command::redo:
-            if (songSession->package().canRedo())
-                if (auto redone = songSession->redo(); ! redone.has_value())
+            if (openSong->package().canRedo())
+                if (auto redone = openSong->redo(); ! redone.has_value())
                     handleError (redone.error());
             break;
         case Command::showRecord:
@@ -140,9 +145,9 @@ void MainComponent::showMode (Mode mode)
 
 void MainComponent::importFiles (const std::vector<juce::File>& files)
 {
-    if (songSession == nullptr || files.empty())
+    if (openSong == nullptr || files.empty())
         return;
-    for (const auto& result : songSession->importFiles (files))
+    for (const auto& result : openSong->importFiles (files))
         if (! result.has_value())
             handleError (result.error());
     refresh();
@@ -169,27 +174,25 @@ void MainComponent::handleErrors (const std::vector<core::Error>& errors)
 
 void MainComponent::post (UserMessage message)
 {
-    const auto passRunning = songSession != nullptr && songSession->isRecording();
-    if (message.tier == Tier::alert && passRunning)
-        core::logEvent (core::Level::info, "ui.alert_deferred", { { "code", message.code }, { "tier", tierName (message.tier) } });
+    if (message.tier == Tier::alert && passRunning())
+        core::logEvent (core::Level::info, "ui.alert_deferred", messageFields (message));
     messages.post (std::move (message));
     presentMessages();
 }
 
 void MainComponent::presentMessages()
 {
-    const auto passRunning = songSession != nullptr && songSession->isRecording();
-    for (const auto& message : messages.takeReady (passRunning))
+    for (const auto& message : messages.takeReady (passRunning()))
     {
         const auto sentence = juce::String::fromUTF8 (sentenceFor (message.code).c_str());
         if (message.tier == Tier::notice)
         {
-            core::logEvent (core::Level::info, "ui.notice_shown", { { "code", message.code }, { "tier", tierName (message.tier) } });
+            core::logEvent (core::Level::info, "ui.notice_shown", messageFields (message));
             noticeLine.show (sentence);
         }
         else
         {
-            core::logEvent (core::Level::info, "ui.alert_shown", { { "code", message.code }, { "tier", tierName (message.tier) } });
+            core::logEvent (core::Level::info, "ui.alert_shown", messageFields (message));
             if (showAlert)
                 showAlert (sentence);
         }
@@ -198,8 +201,8 @@ void MainComponent::presentMessages()
 
 void MainComponent::tick()
 {
-    if (songSession != nullptr)
-        handleErrors (songSession->poll());
+    if (openSong != nullptr)
+        handleErrors (openSong->poll());
     refresh();
     presentMessages();
 }
@@ -208,16 +211,16 @@ void MainComponent::refresh()
 {
     TopBarState state;
     state.mode = currentMode;
-    state.songOpen = songSession != nullptr;
-    if (songSession != nullptr)
+    state.songOpen = openSong != nullptr;
+    if (openSong != nullptr)
     {
-        const auto& song = songSession->song();
-        const auto& package = songSession->package();
-        const auto recording = songSession->isRecording();
-        state.playing = songSession->isPlaying();
+        const auto& song = openSong->song();
+        const auto& package = openSong->package();
+        const auto recording = openSong->isRecording();
+        state.playing = openSong->isPlaying();
         state.recording = recording;
-        state.clock = clockText (songSession->position(), song.sampleRate);
-        state.status = statusText (TransportStatus { state.playing, recording, songSession->recordingPassNumber() });
+        state.clock = clockText (openSong->position(), song.sampleRate);
+        state.status = statusText (TransportStatus { state.playing, recording, openSong->recordingPassNumber() });
         state.undoText = undoButtonText (package.canUndo() ? package.undoLabel() : "");
         state.redoText = redoButtonText (package.canRedo() ? package.redoLabel() : "");
         state.canUndo = package.canUndo() && ! recording;
@@ -225,13 +228,13 @@ void MainComponent::refresh()
 
         recordPage.show (recordPageStateFor (
             song,
-            songSession->audio().inputChannelNames,
-            [this] (const song::Id& trackId) { return songSession->isMonitoring (trackId); },
+            openSong->audio().inputChannelNames,
+            [this] (const song::Id& trackId) { return openSong->isMonitoring (trackId); },
             recording));
     }
     topBar.show (state);
 
-    const auto songOpen = songSession != nullptr;
+    const auto songOpen = openSong != nullptr;
     noSongPage.setVisible (! songOpen);
     recordPage.setVisible (songOpen && currentMode == Mode::record);
     editPage.setVisible (songOpen && currentMode == Mode::edit);

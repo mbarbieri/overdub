@@ -36,4 +36,5 @@ TEST_CASE ("command-Z undoes and shift-command-Z redoes; modified digits and let
     CHECK (commandForKey (KeyChord { 'r', true, false }) == std::nullopt);
     CHECK (commandForKey (KeyChord { '1', true, false }) == std::nullopt);
     CHECK (commandForKey (KeyChord { ' ', false, true }) == std::nullopt);
+    CHECK (commandForKey (KeyChord { 'R', false, true }) == std::nullopt);
 }

@@ -78,9 +78,9 @@ TEST_CASE ("R in any mode records a Pass and Space stops it, as one labelled und
     REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
     f.runBlocks (1);
 
-    CHECK (! f.session->isRecording());
+    CHECK (! f.openSong->isRecording());
     CHECK (f.song().passes.size() == 1);
-    CHECK (f.session->package().undoLabel() == "Record Pass 1");
+    CHECK (f.openSong->package().undoLabel() == "Record Pass 1");
     CHECK (text (window.topBar.undoButton) == "Undo Record Pass 1");
     CHECK (window.topBar.clock.statusText() == "STOP");
     CHECK (f.trackNamed ("Guitar").clips.size() == 1);
@@ -92,10 +92,10 @@ TEST_CASE ("the record and stop buttons record a Pass like R and Space", "[ui][m
     MainWindowFixture f;
     click (f.window->topBar.recordButton);
     f.runBlocks (10);
-    CHECK (f.session->isRecording());
+    CHECK (f.openSong->isRecording());
     click (f.window->topBar.playStopButton);
     f.runBlocks (1);
-    CHECK (f.session->package().undoLabel() == "Record Pass 1");
+    CHECK (f.openSong->package().undoLabel() == "Record Pass 1");
 }
 
 TEST_CASE ("Undo and Redo buttons show the step labels and step through them", "[ui][main][history]")
@@ -124,7 +124,7 @@ TEST_CASE ("Undo and Redo buttons show the step labels and step through them", "
 TEST_CASE ("arm and the input picker change the Song without a history step", "[ui][main][rows]")
 {
     MainWindowFixture f;
-    const auto stepBefore = f.session->package().undoLabel();
+    const auto stepBefore = f.openSong->package().undoLabel();
     auto& guitar = f.rowNamed ("Guitar");
     CHECK (guitar.nameLabel.getText() == "Guitar");
     CHECK (guitar.armButton.getToggleState());
@@ -140,11 +140,11 @@ TEST_CASE ("arm and the input picker change the Song without a history step", "[
     CHECK (f.rowNamed ("Guitar").inputPicker.getText() == "In 3 + In 4");
 
     click (f.rowNamed ("Guitar").monitoringButton);
-    CHECK (f.session->isMonitoring (f.trackNamed ("Guitar").id));
+    CHECK (f.openSong->isMonitoring (f.trackNamed ("Guitar").id));
     CHECK (f.rowNamed ("Guitar").monitoringButton.getToggleState());
 
-    CHECK (f.session->package().undoLabel() == stepBefore);
-    CHECK (f.session->package().hasPendingWrite());
+    CHECK (f.openSong->package().undoLabel() == stepBefore);
+    CHECK (f.openSong->package().hasPendingWrite());
 }
 
 TEST_CASE ("an injected import adds a Track row named after the file", "[ui][main][import]")
@@ -216,7 +216,7 @@ TEST_CASE ("R with nothing Armed shows a Notice and starts no Pass", "[ui][main]
     ScopedLogCapture capture;
     REQUIRE (pressKey (*f.window, 'r'));
 
-    CHECK (! f.session->isRecording());
+    CHECK (! f.openSong->isRecording());
     const auto notices = eventsNamed (capture, "ui.notice_shown");
     REQUIRE (notices.size() == 1);
     CHECK (notices[0].at ("code") == "capture.nothing_armed");
@@ -238,4 +238,40 @@ TEST_CASE ("with no Song open the window offers New Song and Open", "[ui][main]"
 
     click (window.noSongPage.newSongButton);
     CHECK (newSongs == 1);
+}
+
+TEST_CASE ("a Pass stopped before any audio arrived shows a Notice", "[ui][main][messages]")
+{
+    MainWindowFixture f;
+    ScopedLogCapture capture;
+    REQUIRE (pressKey (*f.window, 'r'));
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+
+    CHECK (! f.openSong->isRecording());
+    const auto notices = eventsNamed (capture, "ui.notice_shown");
+    REQUIRE (notices.size() == 1);
+    CHECK (notices[0].at ("code") == "capture.pass_empty");
+    CHECK (notices[0].at ("tier") == "notice");
+    CHECK (f.alertsShown.empty());
+}
+
+TEST_CASE ("R without an audio device shows a Notice", "[ui][main][messages]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto fixture = overdub::song::testing::threeTrackFixture();
+    {
+        overdub::ui::OpenSong song { std::move (fixture->package), overdub::ui::AudioBinding {} };
+        overdub::ui::MainComponent window;
+        layOut (window, windowWidth, windowHeight);
+        window.setOpenSong (&song);
+
+        ScopedLogCapture capture;
+        REQUIRE (pressKey (window, 'r'));
+        const auto notices = eventsNamed (capture, "ui.notice_shown");
+        REQUIRE (notices.size() == 1);
+        CHECK (notices[0].at ("code") == "ui.no_audio_device");
+        CHECK (notices[0].at ("tier") == "notice");
+        window.setOpenSong (nullptr);
+    }
 }

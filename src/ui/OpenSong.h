@@ -16,9 +16,9 @@
 // the package, keeps the engine playing the current Song (reloaded after every change), and runs
 // at most one Pass (capture/PassRecorder.h).
 //
-// Invariant: every Pass this session starts is finished by it. stop() asks the audio thread to
+// Invariant: every Pass it starts is finished by it. stop() asks the audio thread to
 // end the Pass; poll() (from the window's timer) finishes it once the audio thread has; detaching
-// the audio or destroying the session waits for the audio thread and finishes it there.
+// the audio or destroying it waits for the audio thread and finishes it there.
 //
 // While a Pass runs, only stop, play/stop and rewind act: undo, redo, import, arm, input and
 // Monitoring are ignored, so the Song and the engine's plan stay as the Pass started.
@@ -26,7 +26,7 @@
 // Message thread only.
 namespace overdub::ui
 {
-// The audio a session plays and records through. A null engine means no device is open.
+// The audio an OpenSong plays and records through. A null engine means no device is open.
 struct AudioBinding
 {
     engine::Engine* engine = nullptr;
@@ -35,16 +35,16 @@ struct AudioBinding
     std::vector<std::string> inputChannelNames;
 };
 
-class SongSession
+class OpenSong
 {
 public:
     // Loads the Song into the engine, with Monitoring on for no Track, at the Song's playhead.
-    SongSession (std::unique_ptr<song::SongPackage> package, AudioBinding audio);
+    OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio);
     // detachAudio() (errors logged), then the package writes what is pending as it closes.
-    ~SongSession();
+    ~OpenSong();
 
-    SongSession (const SongSession&) = delete;
-    SongSession& operator= (const SongSession&) = delete;
+    OpenSong (const OpenSong&) = delete;
+    OpenSong& operator= (const OpenSong&) = delete;
 
     const song::Song& song() const { return package_->song(); }
     song::SongPackage& package() { return *package_; }

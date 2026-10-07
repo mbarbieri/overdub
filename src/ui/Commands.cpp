@@ -23,7 +23,7 @@ std::optional<Command> commandForKey (KeyChord key)
         return std::nullopt;
     }
     if (key.shift)
-        return character == U'r' ? std::optional { Command::record } : std::nullopt;
+        return std::nullopt;
 
     switch (character)
     {
@@ -45,7 +45,6 @@ std::optional<Mode> modeFor (Command command)
         case Command::showExport: return Mode::exportSong;
         case Command::record:
         case Command::playOrStop:
-        case Command::stop:
         case Command::rewind:
         case Command::undo:
         case Command::redo:

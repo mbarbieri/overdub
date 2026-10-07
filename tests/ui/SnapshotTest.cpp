@@ -4,7 +4,7 @@
 
 using namespace overdub::ui::testing;
 
-// Renders each surface of this slice for a session to look at (ADR 0005 UI amendment):
+// Renders each surface of this slice for a openSong to look at (ADR 0005 UI amendment):
 // build/ui-snapshots/slice-06/*.png. Nothing here asserts on pixels.
 TEST_CASE ("snapshots of Record mode, idle and recording, and the Edit and Export placeholders", "[ui][snapshot]")
 {
@@ -17,11 +17,11 @@ TEST_CASE ("snapshots of Record mode, idle and recording, and the Edit and Expor
 
     REQUIRE (pressKey (window, 'r'));
     f.runBlocks (400); // about 2.1 s at 48 kHz
-    REQUIRE (f.session->isRecording());
+    REQUIRE (f.openSong->isRecording());
     CHECK (writeSnapshot (window, slice, "record-recording").existsAsFile());
     REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
     f.runBlocks (1);
-    REQUIRE (! f.session->isRecording());
+    REQUIRE (! f.openSong->isRecording());
 
     REQUIRE (pressKey (window, '2'));
     CHECK (writeSnapshot (window, slice, "edit-placeholder").existsAsFile());

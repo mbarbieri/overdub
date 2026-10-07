@@ -11,10 +11,13 @@ TEST_CASE ("situations the user need not decide on are Notices; lost data and fa
     CHECK (tierFor ("capture.nothing_armed") == Tier::notice);
     CHECK (tierFor ("capture.pass_empty") == Tier::notice);
     CHECK (tierFor ("ui.no_audio_device") == Tier::notice);
+    CHECK (tierFor ("ui.stop_recording_first") == Tier::notice);
 
     CHECK (tierFor ("capture.take_write_failed") == Tier::alert);
     CHECK (tierFor ("song.import_unreadable") == Tier::alert);
     CHECK (tierFor ("song.write_failed") == Tier::alert);
+    CHECK (tierFor ("capture.stop_timeout") == Tier::alert);
+    CHECK (tierFor ("engine.device_settings_write_failed") == Tier::alert);
     CHECK (tierFor ("song.some_future_code") == Tier::alert);
 }
 
@@ -35,7 +38,6 @@ TEST_CASE ("Alerts wait while a Pass runs; Notices show at once", "[ui][messages
     REQUIRE (duringPass.size() == 1);
     CHECK (duringPass[0].code == "capture.nothing_armed");
     CHECK (duringPass[0].tier == Tier::notice);
-    CHECK (queue.hasDeferredAlerts());
 
     CHECK (queue.takeReady (true).empty());
 
@@ -43,6 +45,5 @@ TEST_CASE ("Alerts wait while a Pass runs; Notices show at once", "[ui][messages
     REQUIRE (afterPass.size() == 1);
     CHECK (afterPass[0].code == "capture.take_write_failed");
     CHECK (afterPass[0].tier == Tier::alert);
-    CHECK (! queue.hasDeferredAlerts());
     CHECK (queue.takeReady (false).empty());
 }

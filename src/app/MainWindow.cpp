@@ -2,6 +2,7 @@
 
 #include "core/Log.h"
 #include "ui/Layout.h"
+#include "ui/SongFiles.h"
 
 namespace overdub::app
 {
@@ -17,17 +18,9 @@ enum MenuItem
     redoItem
 };
 
-constexpr int fallbackSampleRate = 48000;
-
 juce::File defaultSongFolder()
 {
     return juce::File::getSpecialLocation (juce::File::userMusicDirectory);
-}
-
-// A chosen package path always ends in .overdub.
-juce::File asPackage (const juce::File& chosen)
-{
-    return chosen.hasFileExtension ("overdub") ? chosen : chosen.withFileExtension ("overdub");
 }
 
 // The settings window: the device picker, hidden (not destroyed) when closed.
@@ -44,6 +37,14 @@ public:
 
     void closeButtonPressed() override { setVisible (false); }
 };
+
+juce::PopupMenu::Item historyItem (int id, const juce::String& verb, bool enabled, const std::string& label, const char* shortcut)
+{
+    juce::PopupMenu::Item item { enabled ? verb + " " + juce::String::fromUTF8 (label.c_str()) : verb };
+    item.setID (id).setEnabled (enabled);
+    item.shortcutKeyDescription = juce::String (juce::CharPointer_UTF8 (shortcut));
+    return item;
+}
 } // namespace
 
 MainWindow::MainWindow (const juce::String& name, std::unique_ptr<LiveEngine> liveEngine)
@@ -54,7 +55,7 @@ MainWindow::MainWindow (const juce::String& name, std::unique_ptr<LiveEngine> li
       live (std::move (liveEngine))
 {
     content.onNewSong = [this] { newSong(); };
-    content.onOpenSong = [this] { openSong(); };
+    content.onOpenSong = [this] { chooseSongToOpen(); };
 
     setUsingNativeTitleBar (true);
     setContentNonOwned (&content, false);
@@ -68,11 +69,14 @@ MainWindow::MainWindow (const juce::String& name, std::unique_ptr<LiveEngine> li
 
     setVisible (true);
     content.grabKeyboardFocus();
+    if (live->engine() == nullptr)
+        content.showNotice ("ui.no_audio_device");
 }
 
 MainWindow::~MainWindow()
 {
     juce::MenuBarModel::setMacMainMenu (nullptr);
+    settingsPanel = nullptr;
     settingsWindow.reset();
     closeSong();
     clearContentComponent();
@@ -85,7 +89,15 @@ void MainWindow::closeButtonPressed()
 
 bool MainWindow::passRunning() const
 {
-    return session != nullptr && session->isRecording();
+    return openSong != nullptr && openSong->isRecording();
+}
+
+bool MainWindow::idleOrNotice()
+{
+    if (! passRunning())
+        return true;
+    content.showNotice ("ui.stop_recording_first");
+    return false;
 }
 
 //==============================================================================
@@ -104,23 +116,21 @@ juce::PopupMenu MainWindow::getMenuForIndex (int topLevelMenuIndex, const juce::
     {
         menu.addItem (newSongItem, "New Song...", idle);
         menu.addItem (openSongItem, "Open...", idle);
-        menu.addItem (duplicateSongItem, "Duplicate...", idle && session != nullptr);
+        menu.addItem (duplicateSongItem, "Duplicate...", idle && openSong != nullptr);
         menu.addSeparator();
         menu.addItem (settingsItem, "Settings...", idle);
+        return menu;
     }
-    else
+
+    if (openSong == nullptr)
     {
-        const auto canUndo = idle && session != nullptr && session->package().canUndo();
-        const auto canRedo = idle && session != nullptr && session->package().canRedo();
-        juce::PopupMenu::Item undo { canUndo ? "Undo " + juce::String (session->package().undoLabel()) : juce::String ("Undo") };
-        undo.setID (undoItem).setEnabled (canUndo);
-        undo.shortcutKeyDescription = juce::String (juce::CharPointer_UTF8 ("\xe2\x8c\x98Z"));
-        juce::PopupMenu::Item redo { canRedo ? "Redo " + juce::String (session->package().redoLabel()) : juce::String ("Redo") };
-        redo.setID (redoItem).setEnabled (canRedo);
-        redo.shortcutKeyDescription = juce::String (juce::CharPointer_UTF8 ("\xe2\x87\xa7\xe2\x8c\x98Z"));
-        menu.addItem (undo);
-        menu.addItem (redo);
+        menu.addItem (historyItem (undoItem, "Undo", false, {}, "\xe2\x8c\x98Z"));
+        menu.addItem (historyItem (redoItem, "Redo", false, {}, "\xe2\x87\xa7\xe2\x8c\x98Z"));
+        return menu;
     }
+    const auto& package = openSong->package();
+    menu.addItem (historyItem (undoItem, "Undo", idle && package.canUndo(), package.undoLabel(), "\xe2\x8c\x98Z"));
+    menu.addItem (historyItem (redoItem, "Redo", idle && package.canRedo(), package.redoLabel(), "\xe2\x87\xa7\xe2\x8c\x98Z"));
     return menu;
 }
 
@@ -129,7 +139,7 @@ void MainWindow::menuItemSelected (int menuItemID, int)
     switch (menuItemID)
     {
         case newSongItem: newSong(); break;
-        case openSongItem: openSong(); break;
+        case openSongItem: chooseSongToOpen(); break;
         case duplicateSongItem: duplicateSong(); break;
         case settingsItem: showSettings(); break;
         case undoItem: content.perform (ui::Command::undo); break;
@@ -139,65 +149,62 @@ void MainWindow::menuItemSelected (int menuItemID, int)
 }
 
 //==============================================================================
-// Songs
+// Songs. Each dialog's callback checks again: a Pass may have started while it was open.
 
 void MainWindow::newSong()
 {
-    if (passRunning())
+    if (! idleOrNotice())
         return;
     chooser = std::make_unique<juce::FileChooser> ("New Song", defaultSongFolder().getChildFile ("Untitled.overdub"), "*.overdub");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& finished) {
         const auto chosen = finished.getResult();
-        if (chosen == juce::File())
+        if (chosen == juce::File() || ! idleOrNotice())
             return;
-        const auto sampleRate = live->sampleRate() > 0 ? live->sampleRate() : fallbackSampleRate;
-        auto created = song::SongPackage::create (asPackage (chosen), song::makeEmptySong (sampleRate));
+        auto created = ui::createSongAt (chosen, live->sampleRate());
         if (! created.has_value())
             return content.handleError (created.error());
         showSong (std::move (*created), {});
     });
 }
 
-void MainWindow::openSong()
+void MainWindow::chooseSongToOpen()
 {
-    if (passRunning())
+    if (! idleOrNotice())
         return;
     chooser = std::make_unique<juce::FileChooser> ("Open Song", defaultSongFolder(), "*.overdub");
     const auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories | juce::FileBrowserComponent::canSelectFiles;
     chooser->launchAsync (flags, [this] (const juce::FileChooser& finished) {
-        auto chosen = finished.getResult();
-        if (chosen == juce::File())
+        const auto chosen = finished.getResult();
+        if (chosen == juce::File() || ! idleOrNotice())
             return;
-        if (chosen.existsAsFile()) // song.json (or another file) inside the package
-            chosen = chosen.getParentDirectory();
-        openSongAt (chosen);
+        openSongFrom (chosen);
     });
 }
 
 void MainWindow::duplicateSong()
 {
-    if (passRunning() || session == nullptr)
+    if (openSong == nullptr || ! idleOrNotice())
         return;
-    const auto current = session->package().location();
+    const auto current = openSong->package().location();
     chooser = std::make_unique<juce::FileChooser> ("Duplicate Song", current.getSiblingFile (current.getFileNameWithoutExtension() + " copy.overdub"), "*.overdub");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& finished) {
         const auto chosen = finished.getResult();
-        if (chosen == juce::File() || session == nullptr)
+        if (chosen == juce::File() || openSong == nullptr || ! idleOrNotice())
             return;
-        const auto destination = asPackage (chosen);
-        if (auto duplicated = session->package().duplicateTo (destination); ! duplicated.has_value())
+        auto duplicated = ui::duplicateSongTo (openSong->package(), chosen);
+        if (! duplicated.has_value())
             return content.handleError (duplicated.error());
         // The duplicate becomes the open Song; the original stays as it was.
-        openSongAt (destination);
+        openSongFrom (*duplicated);
     });
 }
 
-void MainWindow::openSongAt (const juce::File& location)
+void MainWindow::openSongFrom (const juce::File& chosen)
 {
     // A package is never open twice: opening the open Song again changes nothing.
-    if (session != nullptr && session->package().location() == location)
+    if (openSong != nullptr && openSong->package().location() == ui::packageLocationOpened (chosen))
         return;
-    auto opened = song::SongPackage::open (location);
+    auto opened = ui::openSongAt (chosen);
     if (! opened.has_value())
         return content.handleError (opened.error());
     showSong (std::move (opened->package), opened->notices);
@@ -206,31 +213,36 @@ void MainWindow::openSongAt (const juce::File& location)
 void MainWindow::showSong (std::unique_ptr<song::SongPackage> package, const std::vector<song::Notice>& notices)
 {
     closeSong();
-    session = std::make_unique<ui::SongSession> (std::move (package), live->audioBinding());
-    content.setSession (session.get());
+    openSong = std::make_unique<ui::OpenSong> (std::move (package), live->audioBinding());
+    content.setOpenSong (openSong.get());
     for (const auto& notice : notices)
         content.showNotice (notice.code);
     updateTitle();
     content.grabKeyboardFocus();
 }
 
+void MainWindow::detachAudio()
+{
+    if (openSong == nullptr)
+        return;
+    for (const auto& error : openSong->detachAudio())
+        content.handleError (error);
+}
+
 void MainWindow::closeSong()
 {
-    content.setSession (nullptr);
-    if (session == nullptr)
-        return;
-    for (const auto& error : session->detachAudio())
-        content.handleError (error);
-    session.reset();
+    detachAudio();
+    content.setOpenSong (nullptr);
+    openSong.reset();
     updateTitle();
 }
 
 void MainWindow::updateTitle()
 {
-    if (session == nullptr)
+    if (openSong == nullptr)
         setName (appName);
     else
-        setName (appName + juce::String (juce::CharPointer_UTF8 (" \xe2\x80\x94 ")) + session->package().location().getFileNameWithoutExtension());
+        setName (appName + juce::String (juce::CharPointer_UTF8 (" \xe2\x80\x94 ")) + openSong->package().location().getFileNameWithoutExtension());
 }
 
 //==============================================================================
@@ -238,42 +250,39 @@ void MainWindow::updateTitle()
 
 void MainWindow::showSettings()
 {
-    if (passRunning())
+    if (! idleOrNotice())
         return;
     if (settingsWindow == nullptr)
     {
         auto panel = std::make_unique<ui::DeviceSettingsPanel>();
         panel->onApply = [this] (const engine::DeviceSettings& settings) { applyDeviceSettings (settings); };
+        settingsPanel = panel.get();
         settingsWindow = std::make_unique<SettingsWindow> (std::move (panel));
     }
-    if (auto* panel = dynamic_cast<ui::DeviceSettingsPanel*> (settingsWindow->getContentComponent()))
-        panel->show (live->deviceChoices());
+    settingsPanel->show (live->deviceChoices());
     settingsWindow->setVisible (true);
     settingsWindow->toFront (true);
 }
 
 void MainWindow::applyDeviceSettings (const engine::DeviceSettings& settings)
 {
-    if (passRunning())
+    if (! idleOrNotice())
         return;
     core::logEvent (core::Level::info, "app.device_choice_changed", engine::deviceSettingsFields (settings));
 
     // The engine's shape is fixed per device (engine/Engine.h), so a new choice builds a new
     // LiveEngine, which opens the saved choice (or falls back to the default and logs why).
-    if (session != nullptr)
-        for (const auto& error : session->detachAudio())
-            content.handleError (error);
+    detachAudio();
     live.reset();
     if (auto written = engine::writeDeviceSettings (engine::defaultDeviceSettingsFile(), settings); ! written.has_value())
         content.handleError (written.error());
     live = std::make_unique<LiveEngine>();
-    if (session != nullptr)
-        session->attachAudio (live->audioBinding());
+    if (openSong != nullptr)
+        openSong->attachAudio (live->audioBinding());
     content.refresh();
 
-    if (settingsWindow != nullptr)
-        if (auto* panel = dynamic_cast<ui::DeviceSettingsPanel*> (settingsWindow->getContentComponent()))
-            panel->show (live->deviceChoices());
+    if (settingsPanel != nullptr)
+        settingsPanel->show (live->deviceChoices());
     if (live->engine() == nullptr)
         content.showNotice ("ui.no_audio_device");
 }

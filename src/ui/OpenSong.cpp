@@ -1,22 +1,22 @@
-#include "ui/SongSession.h"
+#include "ui/OpenSong.h"
 
 #include "ui/TrackRowEdits.h"
 
 namespace overdub::ui
 {
-SongSession::SongSession (std::unique_ptr<song::SongPackage> package, AudioBinding audio)
+OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio)
     : package_ (std::move (package))
 {
     attachAudio (std::move (audio));
 }
 
-SongSession::~SongSession()
+OpenSong::~OpenSong()
 {
     for (const auto& error : detachAudio())
         core::logError (error);
 }
 
-void SongSession::attachAudio (AudioBinding audio)
+void OpenSong::attachAudio (AudioBinding audio)
 {
     binding = std::move (audio);
     if (binding.engine == nullptr)
@@ -27,7 +27,7 @@ void SongSession::attachAudio (AudioBinding audio)
     binding.engine->seek (song().playhead);
 }
 
-std::vector<core::Error> SongSession::detachAudio()
+std::vector<core::Error> OpenSong::detachAudio()
 {
     std::vector<core::Error> errors;
     if (recorder != nullptr)
@@ -44,17 +44,17 @@ std::vector<core::Error> SongSession::detachAudio()
     return errors;
 }
 
-bool SongSession::isPlaying() const
+bool OpenSong::isPlaying() const
 {
     return binding.engine != nullptr && binding.engine->isPlaying();
 }
 
-song::SampleCount SongSession::position() const
+song::SampleCount OpenSong::position() const
 {
     return binding.engine != nullptr ? binding.engine->position() : song().playhead;
 }
 
-core::Expected<void> SongSession::record()
+core::Expected<void> OpenSong::record()
 {
     if (recorder != nullptr)
         return {};
@@ -73,7 +73,7 @@ core::Expected<void> SongSession::record()
     return {};
 }
 
-void SongSession::stop()
+void OpenSong::stop()
 {
     if (binding.engine == nullptr)
         return;
@@ -82,7 +82,7 @@ void SongSession::stop()
     binding.engine->stop();
 }
 
-void SongSession::playOrStop()
+void OpenSong::playOrStop()
 {
     if (binding.engine == nullptr)
         return;
@@ -92,7 +92,7 @@ void SongSession::playOrStop()
         binding.engine->play();
 }
 
-void SongSession::rewind()
+void OpenSong::rewind()
 {
     if (binding.engine == nullptr)
         return;
@@ -101,7 +101,7 @@ void SongSession::rewind()
     binding.engine->seek (0);
 }
 
-core::Expected<void> SongSession::undo()
+core::Expected<void> OpenSong::undo()
 {
     if (recorder != nullptr)
         return {};
@@ -110,7 +110,7 @@ core::Expected<void> SongSession::undo()
     return result;
 }
 
-core::Expected<void> SongSession::redo()
+core::Expected<void> OpenSong::redo()
 {
     if (recorder != nullptr)
         return {};
@@ -119,7 +119,7 @@ core::Expected<void> SongSession::redo()
     return result;
 }
 
-void SongSession::setArmed (const song::Id& trackId, bool armed)
+void OpenSong::setArmed (const song::Id& trackId, bool armed)
 {
     if (recorder != nullptr)
         return;
@@ -127,7 +127,7 @@ void SongSession::setArmed (const song::Id& trackId, bool armed)
     reloadEngine();
 }
 
-void SongSession::setInputChannels (const song::Id& trackId, std::vector<int> inputChannels)
+void OpenSong::setInputChannels (const song::Id& trackId, std::vector<int> inputChannels)
 {
     if (recorder != nullptr)
         return;
@@ -135,7 +135,7 @@ void SongSession::setInputChannels (const song::Id& trackId, std::vector<int> in
     reloadEngine();
 }
 
-void SongSession::setMonitoring (const song::Id& trackId, bool on)
+void OpenSong::setMonitoring (const song::Id& trackId, bool on)
 {
     if (recorder != nullptr)
         return;
@@ -146,7 +146,7 @@ void SongSession::setMonitoring (const song::Id& trackId, bool on)
     reloadEngine();
 }
 
-std::vector<core::Expected<song::Id>> SongSession::importFiles (const std::vector<juce::File>& files)
+std::vector<core::Expected<song::Id>> OpenSong::importFiles (const std::vector<juce::File>& files)
 {
     if (recorder != nullptr)
         return {};
@@ -155,7 +155,7 @@ std::vector<core::Expected<song::Id>> SongSession::importFiles (const std::vecto
     return results;
 }
 
-std::vector<core::Error> SongSession::poll (song::SongPackage::Clock::time_point now)
+std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point now)
 {
     std::vector<core::Error> errors;
     if (recorder != nullptr && recorder->hasStopped())
@@ -177,7 +177,7 @@ std::vector<core::Error> SongSession::poll (song::SongPackage::Clock::time_point
     return errors;
 }
 
-std::vector<core::Error> SongSession::finishPass (core::Expected<capture::RecordedPass> finished)
+std::vector<core::Error> OpenSong::finishPass (core::Expected<capture::RecordedPass> finished)
 {
     recorder.reset();
     recordingPass = 0;
@@ -187,7 +187,7 @@ std::vector<core::Error> SongSession::finishPass (core::Expected<capture::Record
     return {};
 }
 
-void SongSession::reloadEngine()
+void OpenSong::reloadEngine()
 {
     if (binding.engine != nullptr)
         binding.engine->loadSong (songForEngine (song(), monitored), package_->location());

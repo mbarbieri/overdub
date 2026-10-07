@@ -18,7 +18,7 @@
 // - ComboBox: choosing an item calls setSelectedItemIndex with a synchronous notification,
 //   because its popup menu needs a peer to open.
 // Snapshots: createComponentSnapshot renders without a peer; PNGs go to
-// build/ui-snapshots/<slice>/ for a session to look at, and nothing asserts on pixels.
+// build/ui-snapshots/<slice>/ for the slice's reviewer to look at, and nothing asserts on pixels.
 namespace overdub::ui::testing
 {
 // Sizes the Component and makes it visible (its own flag; there is no window).

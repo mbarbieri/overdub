@@ -47,8 +47,6 @@ public:
     // Takes every queued Notice, and every queued Alert unless a Pass is running, in posting order.
     std::vector<UserMessage> takeReady (bool passRunning);
 
-    bool hasDeferredAlerts() const;
-
 private:
     std::vector<UserMessage> queued;
 };

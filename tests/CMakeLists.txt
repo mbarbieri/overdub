@@ -32,8 +32,9 @@ target_sources(overdub_tests PRIVATE
     ui/DeviceSettingsPanelTest.cpp
     ui/LayoutTest.cpp
     ui/MainComponentTest.cpp
+    ui/OpenSongTest.cpp
     ui/SnapshotTest.cpp
-    ui/SongSessionTest.cpp
+    ui/SongFilesTest.cpp
     ui/TrackRowEditsTest.cpp
     ui/TransportTextTest.cpp
     ui/UserMessagesTest.cpp)

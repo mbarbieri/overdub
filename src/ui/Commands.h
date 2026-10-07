@@ -21,7 +21,6 @@ enum class Command
     showExport,
     record,
     playOrStop,
-    stop,
     rewind,
     undo,
     redo

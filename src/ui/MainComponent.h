@@ -2,9 +2,9 @@
 
 #include "core/Error.h"
 #include "ui/Commands.h"
+#include "ui/OpenSong.h"
 #include "ui/Pages.h"
 #include "ui/RecordPage.h"
-#include "ui/SongSession.h"
 #include "ui/TopBar.h"
 #include "ui/UserMessages.h"
 
@@ -16,10 +16,10 @@
 
 // The main window's content (issue #27, issue #9 resolution): the top bar over the current mode's
 // page (Record, or the Edit and Export placeholders), the Notice line, and Alerts. It translates
-// keys and clicks into Commands and SongSession calls; the logic lives in the pure functions and
-// in SongSession.
+// keys and clicks into Commands and OpenSong calls; the logic lives in the pure functions and
+// in OpenSong.
 //
-// Every 30 ms (and from tick() in tests) it polls the session, which finishes a stopped Pass,
+// Every 30 ms (and from tick() in tests) it polls the open Song, which finishes a stopped Pass,
 // refreshes the top bar and the page, and presents queued messages: Notices at once, Alerts only
 // when no Pass runs (ADR 0006). Logs ui.mode_changed (debug), ui.notice_shown, ui.alert_shown and
 // ui.alert_deferred (info), each with `code` and `tier` where it names a message.
@@ -34,8 +34,8 @@ public:
     ~MainComponent() override;
 
     // The open Song, or null for none. Not owned; it must outlive its use here.
-    void setSession (SongSession* session);
-    SongSession* session() const { return songSession; }
+    void setOpenSong (OpenSong* song);
+    OpenSong* currentSong() const { return openSong; }
 
     Mode mode() const { return currentMode; }
 
@@ -49,7 +49,7 @@ public:
 
     // One poll: finish a stopped Pass, write a due song.json, refresh, present messages.
     void tick();
-    // Shows the session's current state.
+    // Shows the open Song's current state.
     void refresh();
 
     bool keyPressed (const juce::KeyPress& key) override;
@@ -82,8 +82,9 @@ private:
     void presentMessages();
     void handleErrors (const std::vector<core::Error>& errors);
     void takeKeyboardFocus();
+    bool passRunning() const { return openSong != nullptr && openSong->isRecording(); }
 
-    SongSession* songSession = nullptr;
+    OpenSong* openSong = nullptr;
     Mode currentMode = Mode::record;
     UserMessageQueue messages;
 

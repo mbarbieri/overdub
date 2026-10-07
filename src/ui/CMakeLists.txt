@@ -10,9 +10,10 @@ target_sources(overdub_ui PRIVATE
     DeviceSettingsPanel.cpp
     Layout.cpp
     MainComponent.cpp
+    OpenSong.cpp
     Pages.cpp
     RecordPage.cpp
-    SongSession.cpp
+    SongFiles.cpp
     TopBar.cpp
     TrackRowEdits.cpp
     TransportText.cpp

@@ -5,7 +5,7 @@
 #include "engine/DeviceBinding.h"
 #include "engine/Engine.h"
 #include "ui/DeviceSettingsPanel.h"
-#include "ui/SongSession.h"
+#include "ui/OpenSong.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_events/juce_events.h>
@@ -47,7 +47,7 @@ public:
     // buffer_size. Empty without a device.
     core::Fields deviceFields();
 
-    // What a SongSession plays and records through: the engine (null without a device), the
+    // What a OpenSong plays and records through: the engine (null without a device), the
     // record latency and the active input channel names, in process() order.
     ui::AudioBinding audioBinding();
 
