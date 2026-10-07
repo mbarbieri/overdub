@@ -31,7 +31,8 @@ bool reportFailedCheck (const char* condition, const char* event, const char* fi
 
 // OVERDUB_CHECK (cond, "area.event", {"key", value}, ...) evaluates to cond as a bool. When cond is
 // false it logs an `error` event with the fields plus `condition` and `where` (file:line) in every
-// build, asserts in debug builds, and lets the caller recover in release:
+// build (a caller field named `condition` or `where` is written as field_<key>), asserts in debug
+// builds, and lets the caller recover in release:
 //     if (! OVERDUB_CHECK (count > 0, "song.empty_lane", {"lane", laneId})) return;
 #define OVERDUB_CHECK(cond, event, ...)                                                                        \
     (static_cast<bool> (cond)                                                                                  \

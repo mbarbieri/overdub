@@ -70,3 +70,17 @@ TEST_CASE ("a failing OVERDUB_CHECK logs one error with its fields and file:line
     CHECK (events[0]["condition"] == "frames == 8");
     CHECK (events[0]["where"].get<std::string>().find ("ErrorTest.cpp:") != std::string::npos);
 }
+
+TEST_CASE ("a failing OVERDUB_CHECK keeps caller fields named condition or where as field_<key>", "[core][error]")
+{
+    ScopedLogCapture capture;
+
+    OVERDUB_CHECK (false, "song.clash", { "condition", "mine" }, { "where", "here" });
+
+    const auto events = capture.events();
+    REQUIRE (events.size() == 1);
+    CHECK (events[0]["condition"] == "false");
+    CHECK (events[0]["field_condition"] == "mine");
+    CHECK (events[0]["field_where"] == "here");
+    CHECK (events[0]["where"].get<std::string>().find ("ErrorTest.cpp:") != std::string::npos);
+}
