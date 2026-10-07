@@ -23,6 +23,7 @@ Use `release` in place of `debug` for an optimised build. The first build compil
 
 - `src/<area>/`: one folder per feature area from ADR 0006 (`engine`, `plugin`, `song`, `capture`, `video`, `export`, `ui`, `app`), created when a slice needs it. Includes are rooted at `src/`: `#include "core/BuildInfo.h"`.
 - `src/core/` → `overdub_core`: shared infrastructure every area links (logging, errors, RT event ring). It is not an ADR 0006 event area and has no `core.*` events: the events it emits use the areas of the callers it serves, `app.*` for launch logging (e.g. `app.log_open_failed`, `app.log_prune_failed`, `app.juce_message`) and `engine.*` for the RT event path (e.g. `engine.rt_events_dropped`).
+- `src/engine/` → `overdub_engine`: the headless engine (ADR 0005). `Engine::process (inputs, numIn, outputs, numOut, numSamples, hostTimeNs)` is the one duplex callback the device and tests call; it owns the transport, the per-callback anchor (ADR 0003) and the `engine.*` RT event ring (catalog `engine/EngineEvents.h`). Each Song snapshot becomes a `RenderPlan`: one `AudioProcessorGraph` (Track nodes → Track processors → Master → outputs, ADR 0001) built, prepared and warmed up off the audio thread, then handed over through an atomic pointer; the replaced plan is freed by `loadSong` or `housekeeping`, never on the audio thread. The transport renders `latency` samples ahead, so after PDC output sample n is Song sample n. Test-only processors (gain, N-sample delay, silence) live in `tests/engine/TestProcessors.h`.
 - `src/app/` → `Overdub` (`Overdub.app`): entry point and main window.
 - `external/` → `overdub_juce`: the JUCE modules, compiled once. Our targets get JUCE through `overdub_core`, never by linking `juce::juce_*` modules directly (that would compile JUCE again and duplicate symbols).
 - `tests/<area>/` → `overdub_tests`: one Catch2 executable. Each `TEST_CASE` becomes one ctest test.
@@ -39,16 +40,20 @@ jq -c 'select(.lvl == "error")' "$(ls -1 ~/Library/Logs/Overdub/overdub-*.jsonl 
 
 In code: `core::logEvent` (`core/Log.h`) off the audio thread; `core::RtEventRing` + an `RtEventSpec` catalog (`core/RtEventRing.h`) on it; `core::Expected<T>`, `core::logError` and `OVERDUB_CHECK` (`core/Error.h`) for failures. Tests use `core::ScopedLogCapture` and never read the log file.
 
-## The JUCE patch
+## The JUCE patches
 
-`patches/juce-force-auv2-oop.patch` makes JUCE load AUv2 plugins out-of-process through `AUHostingService`, as it already does for AUv3 (ADR 0002). Configuring applies it to `external/JUCE` idempotently: if it is already applied nothing happens, if it applies cleanly it is applied, otherwise configure stops with an error. `external/JUCE` shows as modified inside the submodule; `.gitmodules` sets `ignore = dirty` so the superproject stays clean.
+- `patches/juce-force-auv2-oop.patch` makes JUCE load AUv2 plugins out-of-process through `AUHostingService`, as it already does for AUv3 (ADR 0002).
+- `patches/juce-graph-realtime-safe.patch` makes `AudioProcessorGraph::processBlock` pass the realtime guard (ADR 0001, ADR 0005). Unpatched, each node's `processBlock` runs under a blocking `ScopedLock` on its callback lock (one `pthread_mutex_lock` per node per block), and the graph reallocates its output buffer whenever the block size changes. The patch takes the callback lock with `ScopedTryLock` (a node whose lock is held elsewhere outputs silence for that block) and resizes the output buffer with `avoidReallocating`. Without it the `[engine][rt]` tests fail.
+
+Configuring applies each patch listed in `external/CMakeLists.txt` to `external/JUCE` idempotently: if it is already applied nothing happens, if it applies cleanly it is applied, otherwise configure stops with an error. `external/JUCE` shows as modified inside the submodule; `.gitmodules` sets `ignore = dirty` so the superproject stays clean.
 
 ### Re-applying the JUCE patch (after bumping JUCE)
 
 1. `git -C external/JUCE checkout -- . && git -C external/JUCE checkout <new-tag>`
-2. `cmake --preset debug`. If the patch still applies, you are done.
-3. If configure fails, edit `createAudioUnit` in `external/JUCE/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatImpl.h` by hand so the `AudioComponentInstantiate(..., kAudioComponentInstantiation_LoadOutOfProcess, ...)` branch runs for every AU, then regenerate the patch: `git -C external/JUCE diff > patches/juce-force-auv2-oop.patch`. JUCE sources use CRLF line endings; `.gitattributes` keeps the patch bytes exact.
-4. Commit the new submodule commit and the patch together.
+2. `cmake --preset debug`. If the patches still apply, you are done.
+3. If configure fails on `juce-graph-realtime-safe.patch`, redo its two `OVERDUB PATCH` edits in `juce_AudioProcessorGraph.cpp` (`GraphRenderSequence::perform` and `ProcessOp::processWithBuffer`) and regenerate it from that file alone: `git -C external/JUCE diff -- modules/juce_audio_processors_headless/processors/juce_AudioProcessorGraph.cpp > patches/juce-graph-realtime-safe.patch`.
+4. If configure fails on `juce-force-auv2-oop.patch`, edit `createAudioUnit` in `external/JUCE/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatImpl.h` by hand so the `AudioComponentInstantiate(..., kAudioComponentInstantiation_LoadOutOfProcess, ...)` branch runs for every AU, then regenerate the patch from that file alone: `git -C external/JUCE diff -- modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatImpl.h > patches/juce-force-auv2-oop.patch`. JUCE sources use CRLF line endings; `.gitattributes` keeps the patch bytes exact.
+5. Commit the new submodule commit and the patches together.
 
 ## Code signing
 
