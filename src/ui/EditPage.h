@@ -16,14 +16,6 @@
 // keys; drags arrive from the Timeline as a changed Song and its label.
 namespace overdub::ui
 {
-struct EditPageState
-{
-    song::Song song;
-    song::SampleCount playhead = 0;
-    bool playing = false;
-    bool editable = true; // false while a Pass runs
-};
-
 struct ClipToolbarState
 {
     bool hasClip = false;
@@ -93,7 +85,8 @@ class EditPage final : public juce::Component
 public:
     EditPage();
 
-    void show (const EditPageState& state);
+    // The Song and transport the timeline and the Clip toolbar show.
+    void show (const TimelineState& state);
     void resized() override;
     void paint (juce::Graphics& g) override;
 
@@ -115,7 +108,7 @@ public:
 private:
     void showToolbar();
 
-    EditPageState current;
+    TimelineState current;
     bool mixerVisible = true;
     int mixerHeightRequested = defaultMixerHeight;
 

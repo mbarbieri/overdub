@@ -32,6 +32,9 @@ struct SampleSpan
     bool operator== (const SampleSpan&) const = default;
 };
 
+// The song.clip_not_found Error (clip_id) the operations return for an unknown Clip id.
+core::Error clipNotFound (const Id& clipId);
+
 // The Clip with this id on any Track, or null.
 const Clip* findClip (const Song& song, const Id& clipId);
 // The Track holding the Clip with this id, or null.
@@ -48,7 +51,7 @@ core::Expected<Song> moveClip (Song song, const Id& clipId, SampleCount newTimel
 core::Expected<Song> trimClipStart (Song song, const Id& clipId, SampleCount newTimelineStart);
 
 // The Clip's end edge moved to `newTimelineEnd`, its start kept. Clamped so the length stays >= 1
-// and the Clip does not read past its source's end.
+// and the Clip does not read past its source's end (a source the Song lacks: no longer than now).
 core::Expected<Song> trimClipEnd (Song song, const Id& clipId, SampleCount newTimelineEnd);
 
 // Splits the Clip at Song sample `at`, strictly inside it. The left half keeps the id and fade-in,

@@ -179,10 +179,10 @@ EditPage::EditPage()
     showToolbar();
 }
 
-void EditPage::show (const EditPageState& state)
+void EditPage::show (const TimelineState& state)
 {
     current = state;
-    timeline.show (TimelineState { current.song, current.playhead, current.playing, current.editable });
+    timeline.show (current);
     showToolbar();
 }
 

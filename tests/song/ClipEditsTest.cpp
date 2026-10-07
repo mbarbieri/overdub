@@ -201,3 +201,17 @@ TEST_CASE ("covered spans are where a higher Clip hides a lower one", "[song][cl
     song.tracks[0].clips = { song.tracks[0].clips[0] };
     CHECK (coveredSpans (song.tracks[0]).empty());
 }
+
+TEST_CASE ("trimming the end of a Clip whose source the Song lacks can shorten it but not lengthen it", "[song][clip_edits]")
+{
+    auto song = twoLayerSong();
+    song.takes.clear();
+
+    const auto shorter = trimClipEnd (song, "high", 4000);
+    REQUIRE (shorter.has_value());
+    CHECK (clipNamed (*shorter, "high").length == 2000);
+
+    const auto longer = trimClipEnd (song, "high", 9000);
+    REQUIRE (longer.has_value());
+    CHECK (clipNamed (*longer, "high").length == 3000);
+}

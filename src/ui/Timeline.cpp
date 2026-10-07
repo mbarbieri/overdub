@@ -27,6 +27,12 @@ double rulerStepSeconds (song::SampleCount samplesPerPixel, int sampleRate)
     return steps.back();
 }
 
+// A Clip's rectangle in its lane: its columns, inset 3 pixels from the lane's top and bottom.
+juce::Rectangle<int> clipRectangle (juce::Rectangle<int> lane, ClipColumns columns)
+{
+    return { columns.left, lane.getY() + 3, columns.right - columns.left, lane.getHeight() - 6 };
+}
+
 std::string rulerLabel (double seconds)
 {
     return std::format ("{:g} s", seconds); // "0.25 s", "1.5 s", "10 s"
@@ -197,9 +203,7 @@ juce::Rectangle<int> Timeline::clipBounds (const song::Id& clipId) const
             if (clip.id != clipId)
                 continue;
             const auto lane = layout.trackLanes[i];
-            const auto columns = clipColumns (timelineView, clip);
-            const juce::Rectangle<int> area { columns.left, lane.getY() + 3, columns.right - columns.left, lane.getHeight() - 6 };
-            return area.getIntersection (lane).getIntersection (lanesArea());
+            return clipRectangle (lane, clipColumns (timelineView, clip)).getIntersection (lanesArea());
         }
     }
     return {};
@@ -392,7 +396,7 @@ void Timeline::paintLane (juce::Graphics& g, const song::Track& track, juce::Rec
         const auto columns = clipColumns (timelineView, clip);
         if (columns.right <= lane.getX() || columns.left >= lane.getRight())
             continue;
-        paintClip (g, clip, { columns.left, lane.getY() + 3, columns.right - columns.left, lane.getHeight() - 6 });
+        paintClip (g, clip, clipRectangle (lane, columns));
     }
     paintCoveredSpans (g, track, lane);
 }

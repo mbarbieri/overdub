@@ -67,7 +67,7 @@ core::Expected<song::Song> songForDrag (const song::Song& songAtDown, const Clip
 {
     const auto* clip = song::findClip (songAtDown, drag.clipId);
     if (clip == nullptr)
-        return std::unexpected (core::Error { "song.clip_not_found", "the dragged Clip is not in the Song", { { "clip_id", drag.clipId } } });
+        return std::unexpected (song::clipNotFound (drag.clipId));
 
     const auto delta = (SampleCount) (x - drag.downX) * view.samplesPerPixel;
     switch (drag.part)

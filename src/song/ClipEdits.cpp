@@ -22,17 +22,17 @@ std::optional<ClipPosition> locateClip (const Song& song, const Id& clipId)
     return std::nullopt;
 }
 
-core::Error clipNotFound (const Id& clipId)
-{
-    return core::Error { "song.clip_not_found", "no Clip with this id in the Song", { { "clip_id", clipId } } };
-}
-
 void clampFades (Clip& clip)
 {
     clip.fadeInLength = std::clamp<SampleCount> (clip.fadeInLength, 0, clip.length);
     clip.fadeOutLength = std::clamp<SampleCount> (clip.fadeOutLength, 0, clip.length - clip.fadeInLength);
 }
 } // namespace
+
+core::Error clipNotFound (const Id& clipId)
+{
+    return core::Error { "song.clip_not_found", "no Clip with this id in the Song", { { "clip_id", clipId } } };
+}
 
 const Clip* findClip (const Song& song, const Id& clipId)
 {
@@ -91,7 +91,9 @@ core::Expected<Song> trimClipEnd (Song song, const Id& clipId, SampleCount newTi
         return std::unexpected (clipNotFound (clipId));
     auto& clip = song.tracks[position->track].clips[position->clip];
 
-    const auto longest = std::max<SampleCount> (1, sourceLength (song, clip.source) - clip.sourceOffset);
+    // A source the Song lacks has no known end: the Clip may shrink but not grow.
+    const auto knownLength = sourceLength (song, clip.source);
+    const auto longest = knownLength > 0 ? std::max<SampleCount> (1, knownLength - clip.sourceOffset) : clip.length;
     clip.length = std::clamp<SampleCount> (newTimelineEnd - clip.timelineStart, 1, longest);
     clampFades (clip);
     return song;

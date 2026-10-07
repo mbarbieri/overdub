@@ -296,7 +296,7 @@ void MainComponent::refresh()
             [this] (const song::Id& trackId) { return openSong->isMonitoring (trackId); },
             recording));
         if (currentMode == Mode::edit)
-            editPage.show (EditPageState { song, openSong->position(), state.playing, ! recording });
+            editPage.show (TimelineState { song, openSong->position(), state.playing, ! recording });
     }
     topBar.show (state);
 
