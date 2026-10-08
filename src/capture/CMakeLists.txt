@@ -11,6 +11,7 @@ target_sources(overdub_capture PRIVATE
     AvCamera.mm
     CameraCalibration.cpp
     ClapMeasurement.cpp
+    ClapSelftest.cpp
     LoopbackMeasurement.cpp
     MovieFrames.mm
     MovieWriter.mm

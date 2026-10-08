@@ -9,6 +9,7 @@ add_executable(overdub_tests)
 target_sources(overdub_tests PRIVATE
     capture/CameraCalibrationTest.cpp
     capture/ClapMeasurementTest.cpp
+    capture/ClapSelftestTest.cpp
     capture/LoopbackMeasurementTest.cpp
     capture/MovieRoundTripTest.cpp
     capture/PassRecorderTest.cpp
