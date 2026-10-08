@@ -278,3 +278,21 @@ TEST_CASE ("an imported Backing Track plays from sample 0, and plays silence onc
     DeviceDriver silentDevice { 2, 256 };
     CHECK (nonZeroSamples (silentDevice.render (silentEngine, 4).channels[0]).empty());
 }
+
+TEST_CASE ("a loaded plan is pending until the next callback takes it", "[engine][plan]")
+{
+    TempPackage package;
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    CHECK (! engine.hasPendingPlan());
+
+    engine.loadSong (overdub::song::makeEmptySong (testSampleRate), package.root);
+    CHECK (engine.hasPendingPlan());
+    DeviceDriver driver { 2, 256 };
+    driver.processOneBlock (engine);
+    CHECK (! engine.hasPendingPlan());
+
+    engine.loadSong (overdub::song::makeEmptySong (testSampleRate), package.root);
+    CHECK (engine.hasPendingPlan());
+    driver.processOneBlock (engine);
+    CHECK (! engine.hasPendingPlan());
+}

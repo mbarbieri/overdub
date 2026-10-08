@@ -4,22 +4,10 @@
 
 #include <functional>
 
-// The simple pages and the notice line (issue #27): the Export placeholder (its real page is
-// slice 16), the page shown when no Song is open, and the Notice one-liner.
+// The simple pages and the notice line (issue #27): the page shown when no Song is open and the
+// Notice one-liner. (Export mode's page is ui/ExportPage.h.)
 namespace overdub::ui
 {
-// A page with one centred line of text.
-class PlaceholderPage final : public juce::Component
-{
-public:
-    explicit PlaceholderPage (const juce::String& text);
-
-    void resized() override;
-    void paint (juce::Graphics& g) override;
-
-    juce::Label message;
-};
-
 // Shown with no Song open: New Song and Open.
 class NoSongPage final : public juce::Component
 {

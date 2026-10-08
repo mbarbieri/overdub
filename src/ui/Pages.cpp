@@ -4,25 +4,6 @@
 
 namespace overdub::ui
 {
-PlaceholderPage::PlaceholderPage (const juce::String& text)
-{
-    message.setText (text, juce::dontSendNotification);
-    message.setJustificationType (juce::Justification::centred);
-    message.setColour (juce::Label::textColourId, colours::dimText);
-    message.setFont (juce::FontOptions (16.0f));
-    addAndMakeVisible (message);
-}
-
-void PlaceholderPage::resized()
-{
-    message.setBounds (getLocalBounds());
-}
-
-void PlaceholderPage::paint (juce::Graphics& g)
-{
-    g.fillAll (colours::background);
-}
-
 NoSongPage::NoSongPage()
 {
     message.setText ("No Song open", juce::dontSendNotification);

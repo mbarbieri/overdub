@@ -4,6 +4,7 @@
 #include "capture/PassRecorder.h"
 #include "core/Error.h"
 #include "engine/Engine.h"
+#include "export/MixExport.h"
 #include "plugin/AudioUnitLoader.h"
 #include "plugin/InsertHost.h"
 #include "song/SongPackage.h"
@@ -46,9 +47,24 @@
 // each history step and debounced write; a parameter change schedules that write. Undo keeps a
 // surviving slot's plugin as it is and loads a slot it brings back with the snapshot's state.
 //
+// Export (issue #37): startExport stops the transport and hands the engine an empty Song, so the
+// plan that runs the Song's plugins stops rendering; once the audio thread has taken the empty
+// plan (Engine::hasPendingPlan, checked by poll()), the export renders the Song through its own
+// plan of the same graph, sharing the plugins, on a worker thread (exporting::ExportJob). While it
+// runs, record and play are refused (ui.export_running), and edits change the Song but not the
+// engine; when it ends, poll() reloads the engine with the current Song. Without audio the export
+// starts at once. Detaching the audio stops a running export (logged as ui.export_stopped).
+//
 // Message thread only.
 namespace overdub::ui
 {
+enum class ExportPhase
+{
+    idle,
+    waitingForAudio, // the audio thread still renders the Song's plan
+    rendering
+};
+
 // The audio an OpenSong plays and records through. A null engine means no device is open.
 struct AudioBinding
 {
@@ -150,6 +166,16 @@ public:
     std::optional<plugin::InsertStatus> insertStatus (const song::Id& slotId) const { return inserts.status (slotId); }
     plugin::InsertHost& insertHost() { return inserts; }
 
+    // Starts exporting the mix to the request's file (see the header comment). Ignored while an
+    // export runs. Errors: ui.stop_recording_first while a Pass runs, export.format_unavailable.
+    core::Expected<void> startExport (exporting::ExportRequest request);
+    ExportPhase exportPhase() const;
+    bool isExporting() const { return exportPhase() != ExportPhase::idle; }
+    // The fraction of the running export written, 0..1 (0 while it waits for the audio).
+    double exportProgress() const;
+    // The file the last export wrote, once it finished; none before (or after one failed).
+    const std::optional<juce::File>& lastExportedFile() const { return lastExport; }
+
     // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
     // Ignored while a Pass runs.
     void setPreRoll (song::PreRoll preRoll);
@@ -179,14 +205,19 @@ public:
     // One Backing Track import per file (SongPackage::importBackingTracks); empty during a Pass.
     std::vector<core::Expected<song::Id>> importFiles (const std::vector<juce::File>& files);
 
-    // Call regularly (window timer): finishes a Pass the audio thread has ended, rebuilds the plan
+    // Call regularly (window timer): advances an export (starts it once the audio has let go of the
+    // plugins; reloads the engine and returns its Error once it ends), finishes a Pass the audio thread has ended, rebuilds the plan
     // when a plugin loaded or changed its latency (not during a Pass), schedules a write when a
     // plugin parameter changed, saves the playhead once the transport is stopped, and writes a due
     // song.json. Returns the errors, not logged.
     std::vector<core::Error> poll (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
 
 private:
+    // Does nothing while an export runs (the engine keeps its empty Song); after it, poll() reloads.
     void reloadEngine();
+    void startExportOnceAudioLetGo();
+    std::vector<core::Error> advanceExport();
+    void stopExport (const char* reason);
     // After a history change: setMix when only the mix changed since `before`, else reloadEngine.
     void updateEngine (const song::Song& before);
     std::vector<core::Error> finishPass (core::Expected<capture::RecordedPass> finished);
@@ -210,5 +241,8 @@ private:
     int recordingPass = 0;
     std::optional<song::SampleCount> preRollPoint; // the running Pass's record point, when it used pre-roll
     video::VideoPlayback playback;
+    std::optional<exporting::ExportRequest> exportWaiting; // until the audio thread takes the empty plan
+    std::unique_ptr<exporting::ExportJob> exportJob;
+    std::optional<juce::File> lastExport;
 };
 } // namespace overdub::ui
