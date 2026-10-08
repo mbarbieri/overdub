@@ -466,3 +466,40 @@ TEST_CASE ("process() neither allocates nor locks while a Pass waits for its rec
     CHECK (session.startSongSample() == 2 * blockSize + 50);
     CHECK (session.capturedFrames() == 5 * blockSize - (2 * blockSize + 50));
 }
+
+TEST_CASE ("Monitoring goes through the Armed Track's Insert Chain while its Take stays dry", "[engine][monitoring][record][inserts]")
+{
+    TempPackage package;
+    auto song = emptySong();
+    song.tracks.push_back (armedTrack ("track-guitar", { 1 }));
+    static constexpr int pdc = 64;
+
+    Engine engine { stereoConfig() };
+    // Gain and a delaying processor on the Armed Track: Monitoring is heard through both.
+    engine.loadSong (song, package.root, [] (const overdub::song::Id& trackId, const std::vector<overdub::song::InsertSlot>&) {
+        std::vector<std::unique_ptr<juce::AudioProcessor>> inserts;
+        if (trackId == "track-guitar")
+        {
+            inserts.push_back (std::make_unique<GainProcessor> (0.5f));
+            inserts.push_back (std::make_unique<DelayProcessor> (pdc));
+        }
+        return inserts;
+    });
+
+    LoopbackDevice device { 2, blockSize, 8 * blockSize };
+    device.extraInput[1] = impulse (8 * blockSize, 3 * blockSize + 10, 0.8f);
+    engine.setMonitoring (true);
+    RecordSession session { { RecordInput { "track-guitar", { 1 } } }, testSampleRate };
+    engine.startRecording (session);
+    engine.play();
+    device.run (engine, 6);
+    engine.stopRecording (session);
+    device.run (engine, 1);
+
+    // Heard through the chain: halved and delayed by the chain's latency.
+    CHECK (nonZeroSamples (device.outputHistory[0]) == std::vector<std::int64_t> { 3 * blockSize + 10 + pdc });
+    CHECK_THAT (device.outputHistory[0][3 * blockSize + 10 + pdc], Catch::Matchers::WithinULP (0.4f * centrePanGain, 0));
+    // Captured dry: the input exactly as it came in.
+    const auto drained = drainAll (session);
+    CHECK (drained[0][0] == slice (device.inputHistory[1], 0, 6 * blockSize));
+}

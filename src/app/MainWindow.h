@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/LiveEngine.h"
+#include "plugin/AudioUnitLoader.h"
 #include "song/SongPackage.h"
 #include "ui/DeviceSettingsPanel.h"
 #include "ui/MainComponent.h"
@@ -50,6 +51,8 @@ private:
     void updateTitle();
 
     juce::String appName;
+    // Creates every open Song's AUs out-of-process (issue #33); outlives them.
+    plugin::AudioUnitLoader pluginLoader;
     // Invariant: declared before `openSong`, so the device keeps running while a Pass finishes.
     std::unique_ptr<LiveEngine> live;
     std::unique_ptr<ui::OpenSong> openSong;

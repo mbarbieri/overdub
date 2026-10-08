@@ -87,8 +87,14 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row)
 {
     TrackRowLayout layout;
     auto area = row.reduced (6, 6);
-    layout.arm = area.removeFromLeft (44);
+    const auto armColumn = area.removeFromLeft (44);
+    layout.arm = armColumn.withHeight (28);
     area.removeFromLeft (gap);
+    auto bottom = area.removeFromBottom (22);
+    area.removeFromBottom (4);
+    layout.insertButton = bottom.removeFromLeft (72);
+    bottom.removeFromLeft (gap);
+    layout.inserts = bottom;
     layout.monitoring = area.removeFromRight (86);
     area.removeFromRight (gap);
     layout.input = area.removeFromRight (150);

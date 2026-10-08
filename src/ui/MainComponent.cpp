@@ -29,6 +29,19 @@ void chooseFilesWithNativeDialog (std::function<void (std::vector<juce::File>)> 
     });
 }
 
+// A pop-up menu of the plugins by name ("AUDelay (Apple)"); none picked when dismissed.
+void choosePluginFromMenu (const std::vector<plugin::AvailableAudioUnit>& plugins, std::function<void (std::optional<std::size_t>)> whenChosen)
+{
+    juce::PopupMenu menu;
+    if (plugins.empty())
+        menu.addItem (-1, "No AU effects installed", false);
+    for (std::size_t i = 0; i < plugins.size(); ++i)
+        menu.addItem ((int) i + 1, juce::String::fromUTF8 ((plugins[i].name + " (" + plugins[i].manufacturer + ")").c_str()));
+    menu.showMenuAsync (juce::PopupMenu::Options(), [done = std::move (whenChosen)] (int picked) {
+        done (picked > 0 ? std::optional<std::size_t> ((std::size_t) picked - 1) : std::nullopt);
+    });
+}
+
 // The fields of the ui.* events that name a message.
 core::Fields messageFields (const UserMessage& message)
 {
@@ -44,6 +57,7 @@ void showAlertWithNativeDialog (const juce::String& sentence)
 MainComponent::MainComponent()
 {
     chooseFilesToImport = chooseFilesWithNativeDialog;
+    chooseInsertPlugin = choosePluginFromMenu;
     showAlert = showAlertWithNativeDialog;
 
     topBar.onCommand = [this] (Command command) { perform (command); };
@@ -84,6 +98,7 @@ MainComponent::MainComponent()
         static const song::Peaks none;
         return openSong != nullptr ? openSong->peaks (source) : none;
     };
+    recordPage.onInsert = [this] (const song::Id& trackId) { chooseInsert (trackId); };
     recordPage.onImport = [this] {
         if (openSong == nullptr || openSong->isRecording() || ! chooseFilesToImport)
             return;
@@ -272,6 +287,20 @@ void MainComponent::importFiles (const std::vector<juce::File>& files)
     takeKeyboardFocus();
 }
 
+void MainComponent::chooseInsert (const song::Id& trackId)
+{
+    if (openSong == nullptr || openSong->isRecording() || ! chooseInsertPlugin)
+        return;
+    auto plugins = listInsertPlugins ? listInsertPlugins() : std::vector<plugin::AvailableAudioUnit> {};
+    chooseInsertPlugin (plugins, [safeThis = juce::Component::SafePointer<MainComponent> (this), trackId, plugins] (std::optional<std::size_t> picked) {
+        if (safeThis == nullptr || ! picked.has_value() || *picked >= plugins.size() || safeThis->openSong == nullptr)
+            return;
+        if (auto added = safeThis->openSong->addInsert (trackId, plugins[*picked]); ! added.has_value())
+            safeThis->handleError (added.error());
+        safeThis->refresh();
+    });
+}
+
 void MainComponent::handleError (const core::Error& error)
 {
     const auto message = userMessageFor (error.code);
@@ -359,7 +388,8 @@ void MainComponent::refresh()
             song,
             openSong->audio().inputChannelNames,
             [this] (const song::Id& trackId) { return openSong->isMonitoring (trackId); },
-            recording));
+            recording,
+            [this] (const song::Id& slotId) { return openSong->insertStatus (slotId); }));
         if (currentMode == Mode::record)
             recordPage.showSong (song, RecordTransport { position, openSong->runningPassStart(), recordPoint }, ! recording);
         if (currentMode == Mode::edit)

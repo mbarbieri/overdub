@@ -14,6 +14,7 @@ target_sources(overdub_engine PRIVATE
     MixStrip.cpp
     RecordSession.cpp
     RenderPlan.cpp
+    SharedInsertNode.cpp
     TrackPlayer.cpp)
 
 target_link_libraries(overdub_engine

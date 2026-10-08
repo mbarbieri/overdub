@@ -9,6 +9,7 @@
 #include <juce_core/juce_core.h>
 
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -34,6 +35,7 @@
 //   history from song.json (keepStateOutsideHistory), then repairs song.json.
 // - changeWithoutHistory() (Armed, input channels, plugin parameters, pre-roll, camera, playhead,
 //   export choice) writes no history; its song.json write is debounced by saveDelay.
+// Both capture the live plugin state first (setPluginStateCapture, issue #33).
 //
 // Single-threaded: every call comes from one thread (the message thread in the app).
 namespace overdub::song
@@ -114,6 +116,16 @@ public:
     // Writes song.json now if a change is pending. Errors: as writeIfDue.
     core::Expected<void> flush();
 
+    // Captures the live plugins' state into a Song's Insert Chain slots (stateHash), storing the
+    // blobs through storePluginState (plugin::InsertHost::captureStates, issue #33). The package
+    // calls it on the Song of every history step (edit, and the current Song before an undo or
+    // redo) and on the current Song before each debounced or flushed song.json write, so the
+    // plugin state saved always matches what was heard. A capture that fails logs and still lets
+    // the change through. Empty (the default): nothing is captured. The capture must not outlive
+    // what it reads: clear it before destroying that.
+    using PluginStateCapture = std::function<void (Song& song)>;
+    void setPluginStateCapture (PluginStateCapture capture) { pluginStateCapture = std::move (capture); }
+
     // Stores plugin state as plugins/<sha256>.state (once per distinct content) and returns the
     // hash to put in an InsertSlot. Errors: song.write_failed.
     core::Expected<std::string> storePluginState (const juce::MemoryBlock& state);
@@ -169,12 +181,14 @@ private:
     core::Expected<void> writeCommittedStep (Clock::time_point now);
     void scheduleWrite (Clock::time_point now);
     core::Expected<void> writeSongJson();
+    void capturePluginState (Song& song);
 
     juce::File root;
     Song currentSong;
     SongHistory history;
     PackageOptions options;
     std::optional<Clock::time_point> writeDeadline;
+    PluginStateCapture pluginStateCapture;
 };
 
 struct SongPackage::Opened

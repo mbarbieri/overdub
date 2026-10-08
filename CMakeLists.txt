@@ -30,6 +30,9 @@ add_subdirectory(src/song)
 # The headless engine: process() callback, transport, render graph, Clip playback (ADR 0005).
 add_subdirectory(src/engine)
 
+# Insert Chain plugins: out-of-process AUs, kept alive across render plans (issue #33).
+add_subdirectory(src/plugin)
+
 # Recording Passes and the loopback latency measurement (issue #26).
 add_subdirectory(src/capture)
 

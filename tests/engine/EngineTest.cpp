@@ -200,7 +200,7 @@ TEST_CASE ("an Insert Chain shapes only its own Track", "[engine][pdc]")
     song.tracks.push_back (trackWith ("track-a", { clipOf ("clip-a", takeA, 0, 0, 2000) }));
     song.tracks.push_back (trackWith ("track-b", { clipOf ("clip-b", takeB, 0, 0, 2000) }));
 
-    const auto renderWith = [&] (const overdub::engine::TrackInsertFactory& inserts) {
+    const auto renderWith = [&] (const overdub::engine::InsertFactory& inserts) {
         Engine engine { stereoConfig() };
         engine.loadSong (song, package.root, inserts);
         engine.play();

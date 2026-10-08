@@ -14,10 +14,30 @@ int preRollChoiceIndex (song::PreRoll preRoll)
     return (int) std::distance (preRollChoices.begin(), std::ranges::find (preRollChoices, preRoll));
 }
 
+std::string insertChainText (const std::vector<song::InsertSlot>& chain, const InsertStatusLookup& statusOf)
+{
+    if (chain.empty())
+        return "No Inserts";
+    std::string text;
+    for (const auto& slot : chain)
+    {
+        if (! text.empty())
+            text += " \xC2\xB7 ";
+        text += slot.name;
+        const auto status = statusOf ? statusOf (slot.id) : std::optional { plugin::InsertStatus::ready };
+        if (status == plugin::InsertStatus::loading)
+            text += " (loading)";
+        else if (status != plugin::InsertStatus::ready)
+            text += " (missing)";
+    }
+    return text;
+}
+
 RecordPageState recordPageStateFor (const song::Song& song,
                                     const std::vector<std::string>& inputChannelNames,
                                     const std::function<bool (const song::Id&)>& isMonitoring,
-                                    bool passRunning)
+                                    bool passRunning,
+                                    const InsertStatusLookup& insertStatus)
 {
     RecordPageState state;
     state.canImport = ! passRunning;
@@ -35,6 +55,7 @@ RecordPageState recordPageStateFor (const song::Song& song,
             .choices = choices,
             .selectedChoice = choiceIndexFor (choices, track.inputChannels),
             .monitoring = isMonitoring (track.id),
+            .inserts = insertChainText (track.insertChain, insertStatus),
             .enabled = ! passRunning,
         });
     }
@@ -60,6 +81,12 @@ TrackRow::TrackRow()
         if (onMonitoring)
             onMonitoring (! current.monitoring);
     };
+    insertButton.onClick = [this] {
+        if (onInsert)
+            onInsert();
+    };
+    insertsLabel.setColour (juce::Label::textColourId, colours::dimText);
+    insertsLabel.setFont (juce::FontOptions (12.0f));
     inputPicker.onChange = [this] {
         const auto index = inputPicker.getSelectedItemIndex();
         if (index < 0 || (std::size_t) index >= current.choices.size() || ! onInput)
@@ -69,7 +96,7 @@ TrackRow::TrackRow()
         onInput (current.choices[(std::size_t) index].channels);
     };
 
-    for (auto* button : { &armButton, &monitoringButton })
+    for (auto* button : { &armButton, &monitoringButton, &insertButton })
         button->setWantsKeyboardFocus (false);
     inputPicker.setWantsKeyboardFocus (false);
 
@@ -79,6 +106,8 @@ TrackRow::TrackRow()
     addAndMakeVisible (soloButton);
     addAndMakeVisible (inputPicker);
     addAndMakeVisible (monitoringButton);
+    addAndMakeVisible (insertButton);
+    addAndMakeVisible (insertsLabel);
 }
 
 void TrackRow::show (const TrackRowState& state)
@@ -91,6 +120,7 @@ void TrackRow::show (const TrackRowState& state)
     monitoringButton.setToggleState (state.monitoring, juce::dontSendNotification);
     muteButton.setToggleState (state.mute, juce::dontSendNotification);
     soloButton.setToggleState (state.solo, juce::dontSendNotification);
+    insertsLabel.setText (juce::String::fromUTF8 (state.inserts.c_str()), juce::dontSendNotification);
 
     if (choicesChanged)
     {
@@ -103,7 +133,7 @@ void TrackRow::show (const TrackRowState& state)
     else
         inputPicker.setSelectedId (0, juce::dontSendNotification);
 
-    for (auto* control : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &inputPicker, &monitoringButton })
+    for (auto* control : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &inputPicker, &monitoringButton, &insertButton })
         control->setEnabled (state.enabled);
     repaint();
 }
@@ -117,6 +147,8 @@ void TrackRow::resized()
     soloButton.setBounds (layout.solo);
     inputPicker.setBounds (layout.input);
     monitoringButton.setBounds (layout.monitoring);
+    insertButton.setBounds (layout.insertButton);
+    insertsLabel.setBounds (layout.inserts);
 }
 
 void TrackRow::paint (juce::Graphics& g)
@@ -209,6 +241,10 @@ void RecordPage::show (const RecordPageState& state)
             row->onSolo = [this, trackId] (bool solo) {
                 if (onSolo)
                     onSolo (trackId, solo);
+            };
+            row->onInsert = [this, trackId] {
+                if (onInsert)
+                    onInsert (trackId);
             };
             addAndMakeVisible (*row);
             rows.push_back (std::move (row));

@@ -13,7 +13,8 @@
 #include <vector>
 
 // One Song snapshot made playable: its AudioProcessorGraph (Track nodes -> Insert Chain nodes ->
-// Track Mixer strip -> Master strip -> device outputs, ADR 0001, issue #31) built, prepared and
+// Track Mixer strip -> Master Insert Chain -> Master strip -> device outputs, ADR 0001, issues
+// #31, #33) built, prepared and
 // warmed up off the audio thread, so the audio thread only ever calls render(). The engine swaps
 // whole plans; after it is built, a plan's graph never changes: only its strips' gains do
 // (applyMix, through atomics).
@@ -26,9 +27,11 @@ struct EngineConfig
     int maxBlockSize = 512;
 };
 
-// Extra processors placed on a Track's path, in order, before Master. Slice 12 builds AU Insert
-// Chains here; tests insert the test-only processors (ADR 0005). Returns none by default.
-using TrackInsertFactory = std::function<std::vector<std::unique_ptr<juce::AudioProcessor>> (const song::Track&)>;
+// The processors of one Insert Chain, in order: a Track's (trackId set) or the Master's (trackId
+// empty), from that chain's slots. Test-only processors (ADR 0005) are made per plan, and the
+// graph prepares them; plugins are shared across plans as engine::SharedInsertNodes made by
+// plugin::InsertHost (issue #33). Returns none by default.
+using InsertFactory = std::function<std::vector<std::unique_ptr<juce::AudioProcessor>> (const song::Id& trackId, const std::vector<song::InsertSlot>& chain)>;
 
 // Tells every Track node where the render is: time in samples = render position of the block's
 // first sample, playing = transport running. Written and read on the audio thread only.
@@ -54,7 +57,7 @@ public:
     // Builds and prepares the graph; logs `engine.plan_built` and one warning per Clip source it
     // cannot play (`engine.clip_source_missing`, `engine.clip_source_unusable`). Never fails:
     // an unplayable source plays silence (ADR 0004).
-    RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& config, const TrackInsertFactory& makeInserts);
+    RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& config, const InsertFactory& makeInserts);
 
     RenderPlan (const RenderPlan&) = delete;
     RenderPlan& operator= (const RenderPlan&) = delete;
@@ -70,7 +73,13 @@ public:
     int numOutputChannels() const { return config.numOutputChannels; }
     int maxBlockSize() const { return config.maxBlockSize; }
     // The graph's total latency: the longest Track path, which PDC delays every other path to.
+    // Includes every Insert Chain plugin's reported latency (PDC, issue #33).
     int latencySamples() const { return graphLatency; }
+    // The longest tail any path adds after its input falls silent: the sum of its Track's and the
+    // Master's Insert Chain tails (AudioProcessor::getTailLengthSeconds), in samples. The engine
+    // keeps rendering while stopped, so tails ring out at stop; export renders this much past the
+    // Song's end.
+    int tailSamples() const { return graphTail; }
     int numTracks() const { return trackCount; }
 
     // Non-audio thread. Whether `song` has exactly this plan's Tracks (ids, in order), so its mix
@@ -86,6 +95,7 @@ private:
     EngineConfig config;
     int songSampleRate = 0;
     int graphLatency = 0;
+    int graphTail = 0;
     int trackCount = 0;
     std::vector<song::Id> trackIds;
     // The strips' controls, read by the strip nodes: declared before the graph, so they outlive it.

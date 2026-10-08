@@ -9,6 +9,7 @@ target_sources(overdub_song PRIVATE
     AudioFileDecode.cpp
     BackingTrackImport.cpp
     ClipEdits.cpp
+    InsertEdits.cpp
     MixEdits.cpp
     TakeEdits.cpp
     Peaks.cpp

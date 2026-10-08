@@ -480,6 +480,47 @@ TEST_CASE ("undo and redo keep the current plugin state of every Insert Chain sl
     CHECK (redone.master.insertChain.at (0).stateHash == "eeee");
 }
 
+TEST_CASE ("live plugin state is captured into every history step and every debounced write", "[song][package][plugins]")
+{
+    TempDirectory temp;
+    const auto song = overdub::song::testing::fullyPopulatedSong();
+    auto package = createPackage (temp.package(), song, PackageOptions { .saveDelay = 500ms });
+
+    // Stands in for plugin::InsertHost::captureStates: the live state is "live-N" at capture N.
+    int captures = 0;
+    package->setPluginStateCapture ([&captures] (Song& captured) {
+        ++captures;
+        captured.tracks.at (0).insertChain.at (0).stateHash = "live-" + std::to_string (captures);
+    });
+
+    // A history step holds the state captured as it was made.
+    REQUIRE (package->edit (renamedFirstTrack (package->song(), "Bass"), "Rename").has_value());
+    CHECK (captures == 1);
+    CHECK (package->song().tracks.at (0).insertChain.at (0).stateHash == "live-1");
+    CHECK (songOnDisk (temp.package()).tracks.at (0).insertChain.at (0).stateHash == "live-1");
+
+    // A debounced write captures again, just before it writes song.json.
+    const auto start = SongPackage::Clock::now();
+    auto armed = package->song();
+    armed.tracks.at (0).armed = ! armed.tracks.at (0).armed;
+    package->changeWithoutHistory (armed, start);
+    CHECK (captures == 1);
+    REQUIRE (package->writeIfDue (start + 500ms).has_value());
+    CHECK (captures == 2);
+    CHECK (songOnDisk (temp.package()).tracks.at (0).insertChain.at (0).stateHash == "live-2");
+
+    // Undo keeps the slot's live state, captured as the undo happens.
+    REQUIRE (package->undo().has_value());
+    CHECK (captures == 3);
+    CHECK (package->song().tracks.at (0).name == song.tracks.at (0).name);
+    CHECK (package->song().tracks.at (0).insertChain.at (0).stateHash == "live-3");
+
+    // Nothing pending: flush writes nothing and captures nothing.
+    REQUIRE (package->flush().has_value());
+    CHECK (captures == 3);
+    package->setPluginStateCapture ({});
+}
+
 TEST_CASE ("step 201 drops the oldest step", "[song][package][history]")
 {
     TempDirectory temp;
