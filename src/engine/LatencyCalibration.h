@@ -5,6 +5,7 @@
 
 #include <juce_core/juce_core.h>
 
+#include <optional>
 #include <string>
 
 // The per-machine loopback calibration offsets (ADR 0002): one offset in samples per input
@@ -29,6 +30,10 @@ juce::File defaultLatencyCalibrationFile();
 // The stored offset for this key; 0 when the file or the key does not exist.
 // Errors: engine.calibration_unreadable (path, reason).
 core::Expected<song::SampleCount> readCalibrationOffset (const juce::File& file, const CalibrationKey& key);
+
+// The stored offset for this key; none when the file or the key does not exist (the device was
+// never calibrated at this rate). Errors: engine.calibration_unreadable (path, reason).
+core::Expected<std::optional<song::SampleCount>> findCalibrationOffset (const juce::File& file, const CalibrationKey& key);
 
 // Stores (or replaces) the offset for this key, keeping every other key. Creates the folder.
 // Errors: engine.calibration_unreadable (the existing file), engine.calibration_write_failed (path).

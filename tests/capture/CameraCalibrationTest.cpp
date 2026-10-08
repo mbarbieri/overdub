@@ -3,7 +3,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+using overdub::capture::calibratedCameraOffsetMs;
 using overdub::capture::CameraCalibrationKey;
+using overdub::capture::findCameraCalibration;
 using overdub::capture::readCameraCalibration;
 using overdub::capture::writeCameraCalibration;
 
@@ -73,4 +75,22 @@ TEST_CASE ("a camera calibration in ms becomes whole samples at the Song's rate"
     CHECK (overdub::capture::calibrationSamples (10.0, 48000) == 480);
     CHECK (overdub::capture::calibrationSamples (-2.5, 44100) == -110); // -110.25 rounds to -110
     CHECK (overdub::capture::calibrationSamples (0.0, 48000) == 0);
+}
+
+TEST_CASE ("a camera that was never calibrated is told apart from one calibrated to 0 ms", "[capture][video][calibration]")
+{
+    TempFolder folder;
+    const auto file = folder.root.getChildFile ("camera-calibration.json");
+
+    CHECK_FALSE (findCameraCalibration (file, faceTimeOnSpeakers).value().has_value());
+    REQUIRE (writeCameraCalibration (file, faceTimeOnSpeakers, 0.0).has_value());
+    CHECK (findCameraCalibration (file, faceTimeOnSpeakers).value() == std::optional<double> { 0.0 });
+}
+
+TEST_CASE ("a clap measurement adds its mean offset to the calibration the Video Take was placed with", "[capture][video][calibration]")
+{
+    // Placed with 480 samples (10 ms at 48 kHz) and still 25 ms late: the camera is 35 ms late.
+    CHECK (calibratedCameraOffsetMs (480, 48000, 25.0) == Catch::Approx (35.0));
+    // Placed without calibration and 12 ms early.
+    CHECK (calibratedCameraOffsetMs (0, 44100, -12.0) == Catch::Approx (-12.0));
 }

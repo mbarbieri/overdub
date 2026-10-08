@@ -72,6 +72,14 @@ juce::File defaultCameraCalibrationFile()
 
 core::Expected<double> readCameraCalibration (const juce::File& file, const CameraCalibrationKey& key)
 {
+    const auto found = findCameraCalibration (file, key);
+    if (! found.has_value())
+        return std::unexpected (found.error());
+    return found->value_or (0.0);
+}
+
+core::Expected<std::optional<double>> findCameraCalibration (const juce::File& file, const CameraCalibrationKey& key)
+{
     const auto offsets = readOffsets (file);
     if (! offsets.has_value())
         return std::unexpected (offsets.error());
@@ -79,7 +87,12 @@ core::Expected<double> readCameraCalibration (const juce::File& file, const Came
     for (const auto& entry : *offsets)
         if (matches (entry, key))
             return entry.at ("offset_ms").get<double>();
-    return 0.0;
+    return std::optional<double> {};
+}
+
+double calibratedCameraOffsetMs (song::SampleCount appliedSamples, int sampleRate, double meanOffsetMs)
+{
+    return 1000.0 * (double) appliedSamples / sampleRate + meanOffsetMs;
 }
 
 core::Expected<void> writeCameraCalibration (const juce::File& file, const CameraCalibrationKey& key, double offsetMs)

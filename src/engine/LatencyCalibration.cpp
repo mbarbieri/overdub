@@ -71,6 +71,14 @@ juce::File defaultLatencyCalibrationFile()
 
 core::Expected<song::SampleCount> readCalibrationOffset (const juce::File& file, const CalibrationKey& key)
 {
+    const auto found = findCalibrationOffset (file, key);
+    if (! found.has_value())
+        return std::unexpected (found.error());
+    return found->value_or (0);
+}
+
+core::Expected<std::optional<song::SampleCount>> findCalibrationOffset (const juce::File& file, const CalibrationKey& key)
+{
     const auto offsets = readOffsets (file);
     if (! offsets.has_value())
         return std::unexpected (offsets.error());
@@ -78,7 +86,7 @@ core::Expected<song::SampleCount> readCalibrationOffset (const juce::File& file,
     for (const auto& entry : *offsets)
         if (matches (entry, key))
             return entry.at ("offset_samples").get<song::SampleCount>();
-    return song::SampleCount { 0 };
+    return std::optional<song::SampleCount> {};
 }
 
 core::Expected<void> writeCalibrationOffset (const juce::File& file, const CalibrationKey& key, song::SampleCount offsetSamples)
