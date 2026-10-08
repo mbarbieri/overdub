@@ -31,6 +31,12 @@ double heardSongSample (const PlaybackClock& clock, std::uint64_t nowHostNs, std
     return (double) clock.anchor->songSample + elapsedNs * (double) clock.sampleRate / 1.0e9 - (double) clock.outputLatencySamples;
 }
 
+SampleCount videoTakeEnd (const song::VideoTake& videoTake, const MovieTiming& timing)
+{
+    const auto length = (SampleCount) std::llround (timing.durationSeconds * videoTake.songSamplesPerMovieSecond);
+    return videoTake.startSample + std::max<SampleCount> (0, length);
+}
+
 std::vector<VideoTakeSpan> videoTakeSpans (const song::Song& song, const TimingLookup& timingOf)
 {
     std::vector<VideoTakeSpan> spans;
@@ -39,12 +45,11 @@ std::vector<VideoTakeSpan> videoTakeSpans (const song::Song& song, const TimingL
     {
         const auto* timing = timingOf ? timingOf (videoTake) : nullptr;
         const auto readable = timing != nullptr && ! timing->frameSeconds.empty();
-        const auto length = readable ? (SampleCount) std::llround (timing->durationSeconds * videoTake.songSamplesPerMovieSecond) : 0;
         spans.push_back (VideoTakeSpan {
             .videoTakeId = videoTake.id,
             .title = "Pass " + std::to_string (song::passNumber (song, videoTake.passId)),
             .start = videoTake.startSample,
-            .end = videoTake.startSample + std::max<SampleCount> (0, length),
+            .end = readable ? videoTakeEnd (videoTake, *timing) : videoTake.startSample,
             .readable = readable,
         });
     }

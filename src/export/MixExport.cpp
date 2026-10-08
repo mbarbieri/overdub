@@ -2,6 +2,7 @@
 
 #include "core/Log.h"
 #include "export/MixFileWriter.h"
+#include "export/MovieExport.h"
 
 #include <algorithm>
 
@@ -9,15 +10,6 @@ namespace overdub::exporting
 {
 namespace
 {
-core::Error folderFailed (const juce::File& folder, const juce::Result& result)
-{
-    return core::Error {
-        "export.write_failed",
-        "could not create the export folder",
-        { { "path", folder.getFullPathName().toStdString() }, { "step", "folder" }, { "detail", result.getErrorMessage().toStdString() } },
-    };
-}
-
 // Where the file is written until it is complete: a hidden sibling, so no reader sees it half-made.
 juce::File partialFileFor (const juce::File& destination)
 {
@@ -25,23 +17,78 @@ juce::File partialFileFor (const juce::File& destination)
 }
 } // namespace
 
+core::Expected<void> createExportFolder (const juce::File& destination)
+{
+    const auto folder = destination.getParentDirectory();
+    if (const auto made = folder.createDirectory(); made.failed())
+        return std::unexpected (core::Error {
+            "export.write_failed",
+            "could not create the export folder",
+            { { "path", folder.getFullPathName().toStdString() }, { "step", "folder" }, { "detail", made.getErrorMessage().toStdString() } },
+        });
+    return {};
+}
+
+core::Expected<void> moveExportIntoPlace (const juce::File& partial, const juce::File& destination)
+{
+    if (partial.moveFileTo (destination))
+        return {};
+    partial.deleteFile();
+    return std::unexpected (core::Error {
+        "export.write_failed",
+        "could not move the exported file into place",
+        { { "path", destination.getFullPathName().toStdString() }, { "step", "rename" }, { "from", partial.getFullPathName().toStdString() } },
+    });
+}
+
+core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop)
+{
+    const auto total = render.totalSamples();
+    auto writer = MixFileWriter::create (file, format, render.sampleRate(), MixRender::numChannels);
+    if (! writer.has_value())
+    {
+        file.deleteFile(); // the file may exist when a step after creating it failed
+        return std::unexpected (writer.error());
+    }
+
+    juce::AudioBuffer<float> block { MixRender::numChannels, render.maxBlockSize() };
+    while (true)
+    {
+        if (shouldStop && shouldStop())
+        {
+            (*writer).reset();
+            file.deleteFile();
+            return std::unexpected (core::Error { "export.cancelled", "the export was stopped", { { "samples_written", render.renderedSamples() } } });
+        }
+        const auto count = render.renderNext (block.getArrayOfWritePointers(), block.getNumSamples());
+        if (count == 0)
+            break;
+        if (auto written = (*writer)->write (block.getArrayOfReadPointers(), count); ! written.has_value())
+        {
+            (*writer).reset();
+            file.deleteFile();
+            return std::unexpected (written.error());
+        }
+        if (progress && total > 0)
+            progress ((double) render.renderedSamples() / (double) total);
+    }
+
+    if (auto closed = (*writer)->close(); ! closed.has_value())
+    {
+        file.deleteFile();
+        return std::unexpected (closed.error());
+    }
+    return {};
+}
+
 core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& request, const ProgressFn& progress, const ShouldStopFn& shouldStop)
 {
     const auto total = render.totalSamples();
     if (total <= 0)
         return std::unexpected (core::Error { "export.nothing_to_export", "the Song has no Clips to export", {} });
 
-    const auto folder = request.destination.getParentDirectory();
-    if (const auto made = folder.createDirectory(); made.failed())
-        return std::unexpected (folderFailed (folder, made));
-
-    const auto partial = partialFileFor (request.destination);
-    auto writer = MixFileWriter::create (partial, request.format, render.sampleRate(), MixRender::numChannels);
-    if (! writer.has_value())
-    {
-        partial.deleteFile(); // the file may exist when a step after creating it failed
-        return std::unexpected (writer.error());
-    }
+    if (auto folder = createExportFolder (request.destination); ! folder.has_value())
+        return std::unexpected (folder.error());
 
     core::logEvent (core::Level::info,
                     "export.started",
@@ -54,42 +101,11 @@ core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& 
                       { "sample_rate", render.sampleRate() } });
     const auto startNs = core::hostTimeNowNs();
 
-    juce::AudioBuffer<float> block { MixRender::numChannels, render.maxBlockSize() };
-    while (true)
-    {
-        if (shouldStop && shouldStop())
-        {
-            (*writer).reset();
-            partial.deleteFile();
-            return std::unexpected (core::Error { "export.cancelled", "the export was stopped", { { "samples_written", render.renderedSamples() } } });
-        }
-        const auto count = render.renderNext (block.getArrayOfWritePointers(), block.getNumSamples());
-        if (count == 0)
-            break;
-        if (auto written = (*writer)->write (block.getArrayOfReadPointers(), count); ! written.has_value())
-        {
-            (*writer).reset();
-            partial.deleteFile();
-            return std::unexpected (written.error());
-        }
-        if (progress)
-            progress ((double) render.renderedSamples() / (double) total);
-    }
-
-    if (auto closed = (*writer)->close(); ! closed.has_value())
-    {
-        partial.deleteFile();
-        return std::unexpected (closed.error());
-    }
-    if (! partial.moveFileTo (request.destination))
-    {
-        partial.deleteFile();
-        return std::unexpected (core::Error {
-            "export.write_failed",
-            "could not move the exported mix into place",
-            { { "path", request.destination.getFullPathName().toStdString() }, { "step", "rename" }, { "from", partial.getFullPathName().toStdString() } },
-        });
-    }
+    const auto partial = partialFileFor (request.destination);
+    if (auto written = writeMixFile (render, request.format, partial, progress, shouldStop); ! written.has_value())
+        return std::unexpected (written.error());
+    if (auto moved = moveExportIntoPlace (partial, request.destination); ! moved.has_value())
+        return std::unexpected (moved.error());
 
     const auto elapsedSeconds = (double) (core::hostTimeNowNs() - startNs) / 1.0e9;
     const auto audioSeconds = (double) total / render.sampleRate();
@@ -105,6 +121,12 @@ core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& 
 
 ExportJob::ExportJob (std::unique_ptr<MixRender> mixRender, ExportRequest request)
     : juce::Thread ("Overdub export"), render (std::move (mixRender)), exportRequest (std::move (request))
+{
+    startThread();
+}
+
+ExportJob::ExportJob (std::unique_ptr<MixRender> mixRender, ExportRequest request, MovieSource movie)
+    : juce::Thread ("Overdub export"), render (std::move (mixRender)), exportRequest (std::move (request)), movieSource (std::make_unique<MovieSource> (std::move (movie)))
 {
     startThread();
 }
@@ -127,11 +149,10 @@ std::optional<core::Expected<ExportResult>> ExportJob::takeResult()
 void ExportJob::run()
 {
     const core::ScopedThreadRole role { core::ThreadRole::io };
-    auto finished = exportMix (
-        *render,
-        exportRequest,
-        [this] (double fraction) { fractionDone.store (std::clamp (fraction, 0.0, 1.0)); },
-        [this] { return threadShouldExit(); });
+    const auto progress = [this] (double fraction) { fractionDone.store (std::clamp (fraction, 0.0, 1.0)); };
+    const auto shouldStop = [this] { return threadShouldExit(); };
+    auto finished = movieSource != nullptr ? exportMovie (*render, exportRequest, *movieSource, progress, shouldStop)
+                                           : exportMix (*render, exportRequest, progress, shouldStop);
     result = std::move (finished);
     done.store (true);
 }

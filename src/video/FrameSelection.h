@@ -63,6 +63,10 @@ struct VideoTakeSpan
     bool operator== (const VideoTakeSpan&) const = default;
 };
 
+// Where a Video Take's movie ends on the Song clock: its start plus the movie's duration through
+// the drift ratio, rounded to the nearest sample.
+SampleCount videoTakeEnd (const song::VideoTake& videoTake, const MovieTiming& timing);
+
 // One span per Video Take of the Song, in the Song's order.
 std::vector<VideoTakeSpan> videoTakeSpans (const song::Song& song, const TimingLookup& timingOf);
 

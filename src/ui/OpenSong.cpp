@@ -172,6 +172,15 @@ void OpenSong::setPreRoll (song::PreRoll preRoll)
     package_->changeWithoutHistory (std::move (changed));
 }
 
+void OpenSong::setExportVideoTake (const song::Id& videoTakeId)
+{
+    if (song().exportVideoTakeId == videoTakeId || ! std::ranges::contains (song().videoTakes, videoTakeId, &song::VideoTake::id))
+        return;
+    auto changed = song();
+    changed.exportVideoTakeId = videoTakeId;
+    package_->changeWithoutHistory (std::move (changed));
+}
+
 void OpenSong::stop()
 {
     if (binding.engine == nullptr)
@@ -465,8 +474,15 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request)
         return std::unexpected (core::Error { "ui.stop_recording_first", "a Pass is running", {} });
     if (isExporting())
         return {};
-    if (auto available = exporting::checkAvailable (request.format); ! available.has_value())
-        return available;
+    std::optional<exporting::MovieSource> movie;
+    if (request.format == exporting::ExportFormat::mp4)
+    {
+        const auto& videoTakes = song().videoTakes;
+        const auto found = request.videoTakeId.has_value() ? std::ranges::find (videoTakes, *request.videoTakeId, &song::VideoTake::id) : videoTakes.end();
+        if (found == videoTakes.end())
+            return std::unexpected (core::Error { "ui.no_video_take", "an MP4 needs a Video Take of the Song", { { "video_take_id", request.videoTakeId.value_or ("") } } });
+        movie = exporting::MovieSource { package_->location().getChildFile (found->file), *found };
+    }
 
     lastExport.reset();
     if (binding.engine != nullptr)
@@ -474,8 +490,15 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request)
         binding.engine->stop();
         binding.engine->loadSong (song::makeEmptySong (song().sampleRate), package_->location());
     }
-    core::logEvent (core::Level::info, "ui.export_requested", { { "format", exporting::formatName (request.format) }, { "path", request.destination.getFullPathName().toStdString() }, { "audio", binding.engine != nullptr } });
+    core::Fields fields { { "format", exporting::formatName (request.format) }, { "path", request.destination.getFullPathName().toStdString() }, { "audio", binding.engine != nullptr } };
+    if (movie.has_value())
+    {
+        fields["video_take_id"] = movie->videoTake.id;
+        fields["length"] = exporting::videoLengthName (request.videoLength);
+    }
+    core::logEvent (core::Level::info, "ui.export_requested", fields);
     exportWaiting = std::move (request);
+    movieWaiting = std::move (movie);
     // Without audio nothing else renders the plugins: the export starts now.
     startExportOnceAudioLetGo();
     return {};
@@ -500,8 +523,12 @@ void OpenSong::startExportOnceAudioLetGo()
     // The audio thread renders the empty plan now: the export may run the plugins.
     inserts.sync (song());
     auto render = std::make_unique<exporting::MixRender> (song(), package_->location(), blockSizeOf (binding), inserts.insertFactory());
-    exportJob = std::make_unique<exporting::ExportJob> (std::move (render), std::move (*exportWaiting));
+    if (movieWaiting.has_value())
+        exportJob = std::make_unique<exporting::ExportJob> (std::move (render), std::move (*exportWaiting), std::move (*movieWaiting));
+    else
+        exportJob = std::make_unique<exporting::ExportJob> (std::move (render), std::move (*exportWaiting));
     exportWaiting.reset();
+    movieWaiting.reset();
 }
 
 std::vector<core::Error> OpenSong::advanceExport()
@@ -527,6 +554,7 @@ void OpenSong::stopExport (const char* reason)
         return;
     core::logEvent (core::Level::info, "ui.export_stopped", { { "reason", reason }, { "phase", exportJob != nullptr ? "rendering" : "waiting_for_audio" } });
     exportWaiting.reset();
+    movieWaiting.reset();
     exportJob.reset(); // stops the worker and waits for it
 }
 } // namespace overdub::ui

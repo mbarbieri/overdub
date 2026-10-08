@@ -88,7 +88,7 @@ TEST_CASE ("the format choice and the destination flow into the export request",
     page.onChooseDestination = [&askedFrom] (juce::File current) { askedFrom.push_back (current); };
 
     CHECK (page.wavButton.getToggleState());
-    CHECK (! page.mp4Button.isEnabled()); // slice 17
+    CHECK (page.mp4Button.isEnabled()); // issue #38
     click (page.exportButton);
     REQUIRE (requests.size() == 1);
     CHECK (requests[0] == ExportRequest { ExportFormat::wav, juce::File ("/Users/someone/Music/Overdub/My Song.wav") });

@@ -5,6 +5,7 @@
 #include "core/Error.h"
 #include "engine/Engine.h"
 #include "export/MixExport.h"
+#include "export/MovieExport.h"
 #include "plugin/AudioUnitLoader.h"
 #include "plugin/InsertHost.h"
 #include "song/SongPackage.h"
@@ -169,8 +170,10 @@ public:
     std::optional<plugin::InsertStatus> insertStatus (const song::Id& slotId) const { return inserts.status (slotId); }
     plugin::InsertHost& insertHost() { return inserts; }
 
-    // Starts exporting the mix to the request's file (see the header comment). Ignored while an
-    // export runs. Errors: ui.stop_recording_first while a Pass runs, export.format_unavailable.
+    // Starts exporting the mix (with the request's Video Take for an MP4, issue #38) to the
+    // request's file (see the header comment). Ignored while an export runs.
+    // Errors: ui.stop_recording_first while a Pass runs, ui.no_video_take (an MP4 without a
+    // Video Take of the Song).
     core::Expected<void> startExport (exporting::ExportRequest request);
     ExportPhase exportPhase() const;
     bool isExporting() const { return exportPhase() != ExportPhase::idle; }
@@ -178,6 +181,10 @@ public:
     double exportProgress() const;
     // The file the last export wrote, once it finished; none before (or after one failed).
     const std::optional<juce::File>& lastExportedFile() const { return lastExport; }
+
+    // The Video Take an MP4 export shows: a Song setting outside history (song.json, no undo
+    // step), the Export page's default. Ignored for an id that is not a Video Take of the Song.
+    void setExportVideoTake (const song::Id& videoTakeId);
 
     // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
     // Ignored while a Pass runs.
@@ -246,6 +253,7 @@ private:
     std::optional<song::SampleCount> preRollPoint; // the running Pass's record point, when it used pre-roll
     video::VideoPlayback playback;
     std::optional<exporting::ExportRequest> exportWaiting; // until the audio thread takes the empty plan
+    std::optional<exporting::MovieSource> movieWaiting;    // with exportWaiting, for an MP4
     std::unique_ptr<exporting::ExportJob> exportJob;
     std::optional<juce::File> lastExport;
 };

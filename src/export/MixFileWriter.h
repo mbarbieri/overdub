@@ -13,7 +13,8 @@
 // priming so decoders trim it).
 //
 // Errors: export.write_failed (path, step: create | client_format | bit_rate | write | close,
-// os_status), export.format_unavailable (format) for a format this build cannot write.
+// os_status), export.format_unavailable (format) for a format that is not
+// an audio file (MP4 is export/MovieExport.h's).
 namespace overdub::exporting
 {
 inline constexpr int aacBitRate = 256'000;

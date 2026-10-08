@@ -18,7 +18,6 @@ namespace
 const juce::Colour coveredColour { 0xffb8c4ff };
 const juce::Colour cameraLaneColour { 0xff1c171c };
 const juce::Colour takeLaneColour { 0xff18181a };
-const juce::Colour videoTakeColour { 0xff8a5a8a };
 
 // "▸ 3 Takes" folded, "▾ 3 Takes" unfolded.
 juce::String takesToggleText (int numTakes, bool unfolded)
@@ -577,7 +576,7 @@ void Timeline::paintCameraLane (juce::Graphics& g) const
         const auto block = videoTakeBounds (span.videoTakeId);
         if (block.isEmpty())
             continue;
-        g.setColour (span.readable ? videoTakeColour : videoTakeColour.withAlpha (0.4f));
+        g.setColour (span.readable ? colours::videoTake : colours::videoTake.withAlpha (0.4f));
         g.fillRoundedRectangle (block.toFloat(), 4.0f);
         g.setColour (juce::Colours::black.withAlpha (0.4f));
         g.drawRoundedRectangle (block.toFloat().reduced (0.5f), 4.0f, 1.0f);

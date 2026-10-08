@@ -170,6 +170,11 @@ MainComponent::MainComponent()
     };
     exportPage.onExport = [this] (exporting::ExportRequest request) { startExport (request); };
     exportPage.onChooseDestination = [this] (juce::File current) { chooseExportFile (current); };
+    exportPage.onVideoTakeChosen = [this] (const song::Id& videoTakeId) {
+        if (openSong != nullptr)
+            openSong->setExportVideoTake (videoTakeId);
+        refresh();
+    };
     exportPage.onReveal = [this] (juce::File file) {
         if (revealInFinder)
             revealInFinder (file);
@@ -610,6 +615,8 @@ void MainComponent::refresh()
             .rendering = exportPhase == ExportPhase::rendering,
             .progress = openSong->exportProgress(),
             .finishedFile = openSong->lastExportedFile(),
+            .videoTakes = openSong->videoPlayback().spans (song),
+            .storedVideoTakeId = song.exportVideoTakeId,
         });
     }
     topBar.show (state);
