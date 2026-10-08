@@ -64,9 +64,10 @@ public:
     const std::vector<RecordInput>& inputs() const { return recordInputs; }
 
     // Pre-roll (issue #32): the Pass starts at this Song sample instead of at the first playing
-    // block. Set it before Engine::startRecording, off the audio thread; the engine then takes the
-    // session at the block that plays this sample and captures from it (from the block start if
-    // the transport is already past it).
+    // block. Set it before Engine::startRecording (publication makes it visible to the audio
+    // thread; setting it later is a data race), off the audio thread. The Pass then begins at the
+    // block that plays this sample and captures from it (from the block start if the transport is
+    // already past it).
     void startAt (SampleCount songSample) { requestedRecordPoint = songSample; }
     std::optional<SampleCount> recordPoint() const { return requestedRecordPoint; }
 
@@ -78,7 +79,8 @@ public:
     void begin (SampleCount songSample, int planLatency) noexcept;
     // Queues one block of every input from frame `firstFrame` on (a missing device channel records
     // silence) and the block's anchor. firstFrame > 0 only on the block the Pass begins in, when
-    // its record point falls inside the block.
+    // its record point falls inside the block; that block's anchor still names the block start
+    // (the callback's Song position and host time), not the Pass start.
     void capture (const float* const* deviceInputs, int numDeviceInputs, int numSamples, Anchor anchor, int firstFrame = 0) noexcept;
     void end (RecordStopReason reason) noexcept;
 

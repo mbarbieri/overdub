@@ -20,6 +20,7 @@ target_sources(overdub_ui PRIVATE
     RecordPage.cpp
     RecordView.cpp
     SongFiles.cpp
+    SongOverview.cpp
     TakeLanes.cpp
     Timeline.cpp
     TimelineGeometry.cpp

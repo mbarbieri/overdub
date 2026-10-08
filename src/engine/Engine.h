@@ -77,10 +77,10 @@ public:
 
     // Recording (issue #26), any non-audio thread. The session must stay alive until its state()
     // is `stopped`. It starts at the first block that plays after this call: that block's first
-    // input sample is attributed to the block's Song position (RecordSession::begin). A session
-    // with a record point (RecordSession::startAt, pre-roll, issue #32) is taken at the first
-    // playing block too but begins at the block that plays that Song sample, capturing from that
-    // sample on; isRecording() turns true then. Until it begins it ends like a running one. It ends at
+    // input sample is attributed to the block's Song position (RecordSession::begin). A Pass with
+    // a record point (RecordSession::startAt, pre-roll, issue #32) is taken at the first playing
+    // block too but begins at the block that plays that Song sample, capturing from that sample
+    // on; isRecording() turns true then. Until it begins it ends like a running Pass. It ends at
     // the first block after stopRecording (session), or when the transport stops or seeks. A
     // session the audio thread has not taken yet is cancelled by stopRecording (state `stopped`
     // at once), and so is one still pending when another session is started.
@@ -192,7 +192,7 @@ private:
 
     // Recording: the non-audio thread publishes a session; the audio thread takes it into
     // activeRecord on a playing block, begins it then (or, with a record point, at the block that
-    // plays it) and drops it after RecordSession::end(). A taken session that has not begun ends
+    // plays it) and drops it after RecordSession::end(). A taken Pass that has not begun ends
     // like a running one (stop, transport stop, seek), having captured nothing.
     std::atomic<RecordSession*> pendingRecord { nullptr };
     std::atomic<RecordSession*> recordStopRequestedFor { nullptr };

@@ -271,7 +271,9 @@ void PassRecorder::drainOnce()
 void PassRecorder::logPassStartedOnce()
 {
     const auto state = session->state();
-    if (passStartedLogged || state == engine::RecordState::waiting || session->stopReason() == engine::RecordStopReason::cancelled)
+    // A Pass that ended before it began (cancelled, or stopped during pre-roll) captured nothing.
+    const auto neverBegan = state == engine::RecordState::stopped && session->capturedFrames() == 0;
+    if (passStartedLogged || state == engine::RecordState::waiting || neverBegan)
         return;
 
     passStartedLogged = true;

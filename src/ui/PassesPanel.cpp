@@ -34,9 +34,10 @@ void PassesPanel::Row::resized()
     bringBackButton.setBounds (layout.bringBack);
 }
 
-void PassesPanel::Row::mouseUp (const juce::MouseEvent&)
+void PassesPanel::Row::mouseUp (const juce::MouseEvent& event)
 {
-    if (panel.onSelect)
+    // A press dragged off the row is not a click.
+    if (panel.onSelect && getLocalBounds().contains (event.getPosition()))
         panel.onSelect (passId);
 }
 

@@ -4,6 +4,7 @@
 #include "ui/LookAheadStrip.h"
 #include "ui/PassesPanel.h"
 #include "ui/RecordView.h"
+#include "ui/SongOverview.h"
 #include "ui/TrackRowEdits.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>

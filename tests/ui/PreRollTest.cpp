@@ -14,6 +14,7 @@
 #include <vector>
 
 using overdub::capture::RecordLatency;
+using overdub::core::ScopedLogCapture;
 using overdub::engine::Engine;
 using overdub::engine::EngineConfig;
 using overdub::song::PreRoll;
@@ -194,6 +195,7 @@ TEST_CASE ("stopping during the pre-roll ends the Pass with nothing recorded", "
     PreRollFixture f { {} };
     f.openSong->setPreRoll (PreRoll::oneSecond);
     f.openSong->seek (2 * testSampleRate);
+    ScopedLogCapture capture;
     REQUIRE (f.openSong->record().has_value());
     f.device.run (f.engine, 20);
     f.openSong->stop();
@@ -204,6 +206,15 @@ TEST_CASE ("stopping during the pre-roll ends the Pass with nothing recorded", "
     CHECK (errors[0].code == "capture.pass_empty");
     CHECK (f.song().passes.empty());
     CHECK_FALSE (f.openSong->isRecording());
+
+    // Logged as a pre-roll that never reached its record point: no capture.pass_started.
+    const auto events = capture.events();
+    const auto preRoll = std::ranges::find_if (events, [] (const auto& event) { return event.at ("event") == "ui.pre_roll_started"; });
+    REQUIRE (preRoll != events.end());
+    CHECK (preRoll->at ("record_point") == 2 * testSampleRate);
+    CHECK (preRoll->at ("play_from") == testSampleRate);
+    CHECK_FALSE (std::ranges::any_of (events, [] (const auto& event) { return event.at ("event") == "capture.pass_started"; }));
+    CHECK (std::ranges::any_of (events, [] (const auto& event) { return event.at ("event") == "capture.pass_stopped" && event.at ("outcome") == "empty"; }));
 }
 
 TEST_CASE ("changing pre-roll writes the Song without a history step, and not while a Pass runs", "[ui][open_song][pre_roll]")
