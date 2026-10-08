@@ -11,6 +11,7 @@ target_sources(overdub_tests PRIVATE
     capture/ClapMeasurementTest.cpp
     capture/ClapSelftestTest.cpp
     capture/LoopbackMeasurementTest.cpp
+    capture/LoopbackRunTest.cpp
     capture/MovieRoundTripTest.cpp
     capture/PassRecorderTest.cpp
     capture/PassRecorderVideoTest.cpp
