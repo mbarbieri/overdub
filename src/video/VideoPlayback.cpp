@@ -49,22 +49,25 @@ void VideoPlayback::noteShown (const std::optional<song::Id>& videoTakeId)
     core::logEvent (core::Level::debug, "video.video_take_shown", { { "video_take_id", videoTakeId.has_value() ? nlohmann::json (*videoTakeId) : nlohmann::json (nullptr) } });
 }
 
+void VideoPlayback::noteFailed (const song::VideoTake& videoTake, core::Error error)
+{
+    failedVideoTakes.insert (videoTake.id);
+    error.fields["video_take_id"] = videoTake.id;
+    core::logError (error, core::Level::warn);
+}
+
 FrameDecoder* VideoPlayback::decoderFor (const song::VideoTake& videoTake, const MovieTiming& movieTiming)
 {
-    if (decoder != nullptr && decoderVideoTakeId == videoTake.id)
-        return decoder.get();
+    if (decoderVideoTakeId == videoTake.id)
+        return decoder.get(); // null: it could not be opened, and is not retried
+    if (failedVideoTakes.contains (videoTake.id))
+        return nullptr;
     decoder.reset();
     decoderVideoTakeId = videoTake.id;
     auto opened = FrameDecoder::open (root.getChildFile (videoTake.file), movieTiming);
     if (! opened.has_value())
     {
-        if (! decodeFailureLogged[videoTake.id])
-        {
-            auto error = opened.error();
-            error.fields["video_take_id"] = videoTake.id;
-            core::logError (error, core::Level::warn);
-            decodeFailureLogged[videoTake.id] = true;
-        }
+        noteFailed (videoTake, opened.error());
         return nullptr;
     }
     decoder = std::move (*opened);
@@ -87,13 +90,8 @@ VideoPlayback::Shown VideoPlayback::frameAt (const song::Song& song, double hear
     auto decoded = frameDecoder->decode (shown.choice.movieSeconds);
     if (! decoded.has_value())
     {
-        if (! decodeFailureLogged[videoTake->id])
-        {
-            auto error = decoded.error();
-            error.fields["video_take_id"] = videoTake->id;
-            core::logError (error, core::Level::warn);
-            decodeFailureLogged[videoTake->id] = true;
-        }
+        noteFailed (*videoTake, decoded.error());
+        decoder.reset(); // decoderVideoTakeId stays: the failed Video Take is not reopened
         return shown;
     }
     shown.sampleBuffer = decoded->sampleBuffer;

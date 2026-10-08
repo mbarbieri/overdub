@@ -18,9 +18,10 @@
 
 // Edit mode's timeline (issue #28, issue #9 resolution, variant C): a ruler, the Camera lane
 // (issue #36: one block per Video Take, from its start to the end of its movie on the audio clock,
-// titled with its Pass; a Video Take whose movie cannot be read is a narrow block), and one lane per Track with a compact header (arm, name). Clips
-// are drawn in layer order with waveforms from the peaks cache, a hatched strip marks where a
-// Clip covers an older one, and the playhead crosses every lane.
+// titled with its Pass; a Video Take whose movie cannot be read is a narrow block), and one lane
+// per Track with a compact header (arm, name). Clips are drawn in layer order with waveforms from
+// the peaks cache, a hatched strip marks where a Clip covers an older one, and the playhead
+// crosses every lane.
 //
 // Each Clip shows its fades (shaded, with a line from silence to full level), a fade handle at each
 // fade's inner end in its top row, and its gain as a dB tag in its top-right corner (issue #29).

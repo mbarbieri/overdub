@@ -34,7 +34,9 @@ struct PlaybackClock
 
 // The Song sample (fractional) heard at the display refresh after `nowHostNs`, `refreshNs` from
 // now. While playing, from the latest anchor as above; while stopped, or playing before the first
-// anchor, the position (a seek or scrub shows its frame at once).
+// anchor, the position (a seek or scrub shows its frame at once). When the audio stalls (no anchor
+// for longer than maxExtrapolationNs) the picture stops with it, at the anchor plus that long.
+inline constexpr std::uint64_t maxExtrapolationNs = 250'000'000;
 double heardSongSample (const PlaybackClock& clock, std::uint64_t nowHostNs, std::uint64_t refreshNs);
 
 // A movie's frame times, read from its file (video/MovieFile.h).

@@ -33,7 +33,7 @@
 //
 // The camera (issue #35): the camera arm asks for camera access first (askCameraAccess), then arms
 // the Song's camera (OpenSong::setCameraArmed); the picker chooses the camera. Neither is an undo
-// step. The stage shows the live feed while the camera is Armed. A camera that cannot open, and a
+// step. The stage shows the live feed while the camera is Armed and a Pass runs or the transport is stopped (issue #36). A camera that cannot open, and a
 // Pass's movie problems, are presented by their tier.
 //
 // Video Take playback (issue #36): on each display refresh (a VBlankAttachment; tests call

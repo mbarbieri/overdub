@@ -66,6 +66,15 @@ TEST_CASE ("the heard Song sample is the latest anchor plus elapsed host time an
     CHECK (heard == Catch::Approx (96'000.0 + 480.0 + 800.0 - 480.0).margin (0.01));
 }
 
+TEST_CASE ("when the audio stalls the heard Song sample stops 250 ms after the latest anchor", "[video][frames]")
+{
+    PlaybackClock clock { .playing = true, .position = 48'000, .anchor = Anchor { 48'000, 5'000'000'000 }, .outputLatencySamples = 0, .sampleRate = sampleRate };
+    // 2 s without a callback: 48000 + (250 ms + one refresh) * 48 kHz, wherever `now` is.
+    const auto expected = 48'000.0 + 12'000.0 + 800.0;
+    CHECK (heardSongSample (clock, 7'000'000'000, refreshNs) == Catch::Approx (expected).margin (0.01));
+    CHECK (heardSongSample (clock, 9'000'000'000, refreshNs) == Catch::Approx (expected).margin (0.01));
+}
+
 TEST_CASE ("stopped, the heard Song sample is the playhead, wherever the last anchor was", "[video][frames]")
 {
     PlaybackClock clock;

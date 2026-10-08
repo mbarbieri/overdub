@@ -6,7 +6,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <expected>
 #include <optional>
+#include <string>
 #include <vector>
 
 // Compiled with ARC (src/video/CMakeLists.txt).
@@ -119,8 +121,8 @@ struct FrameDecoder::Native
         currentSeconds = seconds;
     }
 
-    // Starts a reader at this movie time (the whole movie from the start for 0).
-    core::Expected<void> startReader (double fromSeconds, const char* failureCode)
+    // Starts a reader at this movie time (the whole movie from the start for 0). On failure, why.
+    std::expected<void, std::string> startReader (double fromSeconds)
     {
         [reader cancelReading];
         reader = nil;
@@ -128,29 +130,38 @@ struct FrameDecoder::Native
         NSError* error = nil;
         auto* started = [[AVAssetReader alloc] initWithAsset:asset error:&error];
         if (started == nil)
-            return std::unexpected (failure (failureCode, fromSeconds, describe (error, "no reader")));
+            return std::unexpected (describe (error, "no reader"));
         if (fromSeconds > 0.0)
             started.timeRange = CMTimeRangeMake (CMTimeAdd (firstPts, CMTimeMakeWithSeconds (fromSeconds, 1'000'000'000)), kCMTimePositiveInfinity);
         NSDictionary* settings = @{
             (id) kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA),
-            (id) kCVPixelBufferIOSurfacePropertiesKey : @{},
+            (id) kCVPixelBufferIOSurfacePropertiesKey : @ {},
         };
         auto* trackOutput = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:track outputSettings:settings];
         trackOutput.alwaysCopiesSampleData = NO;
         [started addOutput:trackOutput];
         if (! [started startReading])
-            return std::unexpected (failure (failureCode, fromSeconds, describe (started.error, "startReading failed")));
+            return std::unexpected (describe (started.error, "startReading failed"));
         reader = started;
         output = trackOutput;
         return {};
     }
 
-    core::Error failure (const char* code, double movieSeconds, const std::string& reason) const
+    // The next decoded picture (retained), skipping samples without one; null at the end.
+    CMSampleBufferRef nextPicture()
     {
-        const auto path = movie.getFullPathName().toStdString();
-        if (std::string_view (code) == "video.movie_unreadable")
-            return unreadable (movie, reason);
-        return core::Error { code, "the movie's frame could not be decoded", { { "path", path }, { "movie_seconds", movieSeconds }, { "reason", reason } } };
+        while (CMSampleBufferRef sample = [output copyNextSampleBuffer])
+        {
+            if (CMSampleBufferGetImageBuffer (sample) != nullptr)
+                return sample;
+            CFRelease (sample);
+        }
+        return nullptr;
+    }
+
+    core::Error frameUnavailable (double movieSeconds, const std::string& reason) const
+    {
+        return core::Error { "video.frame_unavailable", "the movie's frame could not be decoded", { { "path", movie.getFullPathName().toStdString() }, { "movie_seconds", movieSeconds }, { "reason", reason } } };
     }
 };
 
@@ -177,13 +188,14 @@ core::Expected<std::unique_ptr<FrameDecoder>> FrameDecoder::open (const juce::Fi
     native->timing = std::move (timing);
     native->asset = opened->asset;
     native->track = opened->track;
-    if (auto started = native->startReader (0.0, "video.movie_unreadable"); ! started.has_value())
-        return std::unexpected (started.error());
+    if (auto started = native->startReader (0.0); ! started.has_value())
+        return std::unexpected (unreadable (movie, started.error()));
 
-    // The first decoded frame fixes movie time 0, and is the current frame.
-    CMSampleBufferRef first = [native->output copyNextSampleBuffer];
+    // The first decoded picture fixes movie time 0, and is the current frame.
+    CMSampleBufferRef first = native->nextPicture();
     if (first == nullptr)
         return std::unexpected (unreadable (movie, describe (native->reader.error, "no frames")));
+    native->firstPts = CMSampleBufferGetPresentationTimeStamp (first);
     native->setCurrent (first, 0.0);
     return std::unique_ptr<FrameDecoder> (new FrameDecoder (std::move (native)));
 }
@@ -204,17 +216,12 @@ core::Expected<DecodedFrame> FrameDecoder::decode (double movieSeconds)
     if (restart)
     {
         n.setCurrent (nullptr, std::nullopt);
-        if (auto started = n.startReader (std::max (0.0, target - restartLeadSeconds), "video.frame_unavailable"); ! started.has_value())
-            return std::unexpected (started.error());
+        if (auto started = n.startReader (std::max (0.0, target - restartLeadSeconds)); ! started.has_value())
+            return std::unexpected (n.frameUnavailable (movieSeconds, started.error()));
     }
 
-    while (CMSampleBufferRef sample = [n.output copyNextSampleBuffer])
+    while (CMSampleBufferRef sample = n.nextPicture())
     {
-        if (CMSampleBufferGetImageBuffer (sample) == nullptr)
-        {
-            CFRelease (sample);
-            continue;
-        }
         const auto seconds = CMTimeGetSeconds (CMTimeSubtract (CMSampleBufferGetPresentationTimeStamp (sample), n.firstPts));
         n.setCurrent (sample, seconds);
         if (seconds > target - sameFrameSeconds)
@@ -223,6 +230,6 @@ core::Expected<DecodedFrame> FrameDecoder::decode (double movieSeconds)
     const auto reason = n.reader.status == AVAssetReaderStatusFailed ? describe (n.reader.error, "reading failed") : std::string ("past the last frame");
     if (n.currentSeconds.has_value())
         return DecodedFrame { *n.currentSeconds, n.current, restart };
-    return std::unexpected (n.failure ("video.frame_unavailable", movieSeconds, reason));
+    return std::unexpected (n.frameUnavailable (movieSeconds, reason));
 }
 } // namespace overdub::video

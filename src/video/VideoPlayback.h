@@ -9,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <vector>
 
 // The open Song's Video Take playback (ADR 0003, issue #36): reads each Video Take's movie timing
@@ -17,7 +18,8 @@
 //
 // Logs (video area): video.movie_unreadable (warn, once per Video Take: video_take_id, path,
 // reason), video.video_take_shown (debug, when the Video Take shown changes: video_take_id, or
-// null for none), video.frame_unavailable (warn, once per Video Take).
+// null for none), video.frame_unavailable (warn, once per Video Take). A Video Take whose movie
+// could not be opened or decoded is not tried again: it shows black.
 //
 // Message thread only.
 namespace overdub::video
@@ -51,6 +53,8 @@ public:
 
 private:
     void noteShown (const std::optional<song::Id>& videoTakeId);
+    // Logs the Error (warn) once and stops trying this Video Take's movie.
+    void noteFailed (const song::VideoTake& videoTake, core::Error error);
     FrameDecoder* decoderFor (const song::VideoTake& videoTake, const MovieTiming& timing);
 
     juce::File root;
@@ -59,6 +63,6 @@ private:
     std::unique_ptr<FrameDecoder> decoder;
     std::optional<song::Id> lastShown;
     bool anyShown = false;
-    std::map<song::Id, bool> decodeFailureLogged;
+    std::set<song::Id> failedVideoTakes;
 };
 } // namespace overdub::video

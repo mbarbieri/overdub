@@ -61,7 +61,9 @@ void VideoScreen::show (const video::FrameChoice& choice, void* sampleBuffer)
         displayed = choice;
         ++displayedCount;
     }
-    display.setVisible (showsVideo() && displayView != nullptr);
+    // A frame of another Video Take (this one's could not be decoded) is never shown: black.
+    const auto holdsThisVideoTake = displayed.has_value() && displayed->videoTakeId == shown.videoTakeId;
+    display.setVisible (showsVideo() && displayView != nullptr && holdsThisVideoTake);
     if (wasShowingVideo != showsVideo())
         repaint();
 }

@@ -37,9 +37,9 @@ public:
     FrameDecoder& operator= (const FrameDecoder&) = delete;
 
     // The frame shown at this movie time: the last one at or before it (frameIndexAt; the first
-    // before the first). Reads forward from the frame decoded last; a step back, or a jump of more than
-    // `seekAheadFrames` frames (a camera stall is one frame), restarts the reader there instead. The sample buffer stays valid until the
-    // next decode() or the decoder's end.
+    // before the first). Reads forward from the frame decoded last; a step back, or a jump of more
+    // than `seekAheadFrames` frames (a camera stall is one frame), restarts the reader there
+    // instead. The sample buffer stays valid until the next decode() or the decoder's end.
     // Errors: video.frame_unavailable (path, movie_seconds, reason).
     core::Expected<DecodedFrame> decode (double movieSeconds);
 

@@ -26,7 +26,8 @@ double heardSongSample (const PlaybackClock& clock, std::uint64_t nowHostNs, std
     if (! clock.playing || ! clock.anchor.has_value())
         return (double) clock.position;
     // Signed: `now` may be read just before the audio thread published a newer anchor.
-    const auto elapsedNs = (double) (std::int64_t) (nowHostNs - clock.anchor->hostTimeNs) + (double) refreshNs;
+    const auto sinceAnchorNs = std::min ((double) (std::int64_t) (nowHostNs - clock.anchor->hostTimeNs), (double) maxExtrapolationNs);
+    const auto elapsedNs = sinceAnchorNs + (double) refreshNs;
     return (double) clock.anchor->songSample + elapsedNs * (double) clock.sampleRate / 1.0e9 - (double) clock.outputLatencySamples;
 }
 

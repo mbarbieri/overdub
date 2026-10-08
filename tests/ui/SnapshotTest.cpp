@@ -1,6 +1,6 @@
 #include "ui/MainWindowFixture.h"
-#include "video/SyntheticMovie.h"
 #include "ui/MixerGeometry.h"
+#include "video/SyntheticMovie.h"
 
 #include <catch2/catch_test_macros.hpp>
 
