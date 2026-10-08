@@ -1,6 +1,5 @@
 #include "capture/ClapSelftest.h"
 
-#include "capture/ClapMeasurement.h"
 #include "capture/MovieFrames.h"
 #include "song/AudioFileDecode.h"
 #include "song/SongMigration.h"
@@ -25,7 +24,56 @@ core::Expected<song::Song> readSong (const juce::File& package)
         return std::unexpected (stored.error());
     return std::move (stored->song);
 }
+
+// The Video Take of the newest Pass that has one; null when none has.
+const song::VideoTake* newestVideoTake (const song::Song& song)
+{
+    for (const auto& pass : std::views::reverse (song.passes))
+    {
+        const auto found = std::ranges::find (song.videoTakes, pass.id, &song::VideoTake::passId);
+        if (found != song.videoTakes.end())
+            return &*found;
+    }
+    return nullptr;
+}
 } // namespace
+
+core::Expected<VideoTakeClaps> measureNewestVideoTake (const song::Song& song, const juce::File& packageRoot)
+{
+    const auto* videoTake = newestVideoTake (song);
+    if (videoTake == nullptr)
+        return std::unexpected (core::Error { "capture.clap_no_video_take", "the Song has no Pass with a Video Take", {} });
+
+    const auto take = std::ranges::find (song.takes, videoTake->passId, &song::Take::passId);
+    if (take == song.takes.end())
+        return std::unexpected (core::Error { "capture.clap_no_take", "the Video Take's Pass has no Take", { { "pass_id", videoTake->passId } } });
+
+    const auto audio = song::readWavFile (packageRoot.getChildFile (take->file));
+    if (! audio.has_value())
+        return std::unexpected (audio.error());
+    const auto frames = readMovieFrames (packageRoot.getChildFile (videoTake->file));
+    if (! frames.has_value())
+        return std::unexpected (frames.error());
+
+    const auto* channel = audio->getReadPointer (0);
+    const std::vector<float> samples (channel, channel + audio->getNumSamples());
+    const ClapPlacement placement {
+        .sampleRate = song.sampleRate,
+        .takeOrigin = take->origin,
+        .videoStartSample = videoTake->startSample,
+        .songSamplesPerMovieSecond = videoTake->songSamplesPerMovieSecond,
+    };
+    return VideoTakeClaps {
+        .report = measureClaps (samples, placement, *frames),
+        .passId = videoTake->passId,
+        .takeId = take->id,
+        .videoTakeId = videoTake->id,
+        .cameraId = videoTake->cameraId,
+        .appliedCalibrationSamples = videoTake->calibrationOffsetSamples,
+        .sampleRate = song.sampleRate,
+        .frames = frames->size(),
+    };
+}
 
 core::Fields runClapSelftest (const juce::File& package)
 {
@@ -33,48 +81,19 @@ core::Fields runClapSelftest (const juce::File& package)
     if (! song.has_value())
         return failed (package, song.error());
 
-    // The newest Pass with a Video Take.
-    const song::VideoTake* videoTake = nullptr;
-    for (const auto& pass : std::views::reverse (song->passes))
-    {
-        const auto found = std::ranges::find (song->videoTakes, pass.id, &song::VideoTake::passId);
-        if (found != song->videoTakes.end())
-        {
-            videoTake = &*found;
-            break;
-        }
-    }
-    if (videoTake == nullptr)
-        return failed (package, core::Error { "capture.clap_no_video_take", "the Song has no Pass with a Video Take", {} });
+    const auto measured = measureNewestVideoTake (*song, package);
+    if (! measured.has_value())
+        return failed (package, measured.error());
 
-    const auto take = std::ranges::find (song->takes, videoTake->passId, &song::Take::passId);
-    if (take == song->takes.end())
-        return failed (package, core::Error { "capture.clap_no_take", "the Video Take's Pass has no Take", { { "pass_id", videoTake->passId } } });
-
-    const auto audio = song::readWavFile (package.getChildFile (take->file));
-    if (! audio.has_value())
-        return failed (package, audio.error());
-    const auto frames = readMovieFrames (package.getChildFile (videoTake->file));
-    if (! frames.has_value())
-        return failed (package, frames.error());
-
-    const auto* channel = audio->getReadPointer (0);
-    const std::vector<float> samples (channel, channel + audio->getNumSamples());
-    const ClapPlacement placement {
-        .sampleRate = song->sampleRate,
-        .takeOrigin = take->origin,
-        .videoStartSample = videoTake->startSample,
-        .songSamplesPerMovieSecond = videoTake->songSamplesPerMovieSecond,
-    };
-    auto report = clapReportFields (measureClaps (samples, placement, *frames));
+    auto report = clapReportFields (measured->report);
     report["selftest"] = "clap";
     report["package"] = package.getFullPathName().toStdString();
-    report["pass_id"] = videoTake->passId;
-    report["take_id"] = take->id;
-    report["video_take_id"] = videoTake->id;
-    report["camera_id"] = videoTake->cameraId;
-    report["calibration_offset_samples"] = videoTake->calibrationOffsetSamples;
-    report["frames"] = frames->size();
+    report["pass_id"] = measured->passId;
+    report["take_id"] = measured->takeId;
+    report["video_take_id"] = measured->videoTakeId;
+    report["camera_id"] = measured->cameraId;
+    report["calibration_offset_samples"] = measured->appliedCalibrationSamples;
+    report["frames"] = measured->frames;
     return report;
 }
 } // namespace overdub::capture
