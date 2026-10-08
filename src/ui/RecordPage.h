@@ -10,6 +10,7 @@
 #include "ui/RecordView.h"
 #include "ui/SongOverview.h"
 #include "ui/TrackRowEdits.h"
+#include "ui/VideoScreen.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -22,7 +23,9 @@
 
 // Record mode (issues #27, #32, #35, issue #9 resolution, variant C), the performing view. Left: the
 // pre-roll picker (Off / 1 s / 2 s / 4 s), the camera arm and the camera picker over the camera
-// stage, which shows the camera's live feed while the camera is Armed (ui/CameraStage.h).
+// stage. The stage shows the camera's live feed (ui/CameraStage.h) while the camera is Armed and a
+// Pass runs or the transport is stopped (to frame the shot); otherwise it shows Video Take
+// playback (issue #36, ui/VideoScreen.h, stageShowsLiveFeed).
 // Right column: one row per Track (arm, name, M and S (issue #31), input picker, Monitoring), the
 // Import button, then the Passes list (heard status and ↺ Bring back; clicking a row jumps to the
 // Pass's start). Along the bottom: the Backing Track look-ahead strip and the whole-Song overview
@@ -72,6 +75,10 @@ CameraControlsState cameraControlsStateFor (const song::Song& song, const std::v
 
 // The stage's line when it shows no feed.
 std::string cameraStageMessage (bool armed);
+
+// Whether the Record stage shows the camera's live feed (true) or Video Take playback (false,
+// issue #36): the feed while the camera is Armed and a Pass runs or the transport is stopped.
+bool stageShowsLiveFeed (bool cameraArmed, bool passRunning, bool playing);
 
 // The pre-roll picker's items in order, and the item for a setting.
 inline constexpr std::array<song::PreRoll, 4> preRollChoices { song::PreRoll::off, song::PreRoll::oneSecond, song::PreRoll::twoSeconds, song::PreRoll::fourSeconds };
@@ -131,6 +138,9 @@ public:
     void showSong (const song::Song& song, const RecordTransport& transport, bool editable);
     // The camera arm and picker, and the stage's live feed (a CALayer*, or null).
     void showCamera (const CameraControlsState& state, void* previewLayer);
+    // The stage shows the camera (cameraStage) or Video Take playback (stageVideo).
+    void showStagePlayback (bool playback);
+    bool showsStagePlayback() const { return stageVideo.isVisible(); }
     void resized() override;
     void paint (juce::Graphics& g) override;
 
@@ -161,6 +171,7 @@ public:
     juce::TextButton cameraArmButton { "Camera" };
     juce::ComboBox cameraPicker;
     CameraStage cameraStage;
+    VideoScreen stageVideo;
     PassesPanel passesList { "Passes \xC2\xB7 newest first \xC2\xB7 click one to jump to its start" };
     LookAheadStrip lookAheadStrip;
     SongOverview overview;

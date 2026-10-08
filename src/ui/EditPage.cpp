@@ -99,6 +99,8 @@ ClipToolbar::ClipToolbar()
 
     mixerButton.setClickingTogglesState (false);
     mixerButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
+    videoButton.setClickingTogglesState (false);
+    videoButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
 
     splitButton.onClick = [this] {
         if (onSplit)
@@ -120,7 +122,11 @@ ClipToolbar::ClipToolbar()
         if (onToggleMixer)
             onToggleMixer();
     };
-    for (auto* button : { &splitButton, &deleteButton, &zoomOutButton, &zoomInButton, &mixerButton })
+    videoButton.onClick = [this] {
+        if (onToggleVideo)
+            onToggleVideo();
+    };
+    for (auto* button : { &splitButton, &deleteButton, &zoomOutButton, &zoomInButton, &videoButton, &mixerButton })
     {
         button->setWantsKeyboardFocus (false);
         addAndMakeVisible (button);
@@ -154,7 +160,7 @@ ClipToolbar::ClipToolbar()
     setUpField (*this, gainField, onGainEntered);
 }
 
-void ClipToolbar::show (const ClipToolbarState& state, bool mixerVisible)
+void ClipToolbar::show (const ClipToolbarState& state, bool mixerVisible, bool videoPreviewShown)
 {
     details.setText (juce::String::fromUTF8 (state.details.c_str()), juce::dontSendNotification);
     details.setColour (juce::Label::textColourId, state.hasClip ? colours::text : colours::dimText);
@@ -167,6 +173,7 @@ void ClipToolbar::show (const ClipToolbarState& state, bool mixerVisible)
     fadeOutField.setEnabled (state.canEditFadesAndGain);
     gainField.setEnabled (state.canEditFadesAndGain);
     mixerButton.setToggleState (mixerVisible, juce::dontSendNotification);
+    videoButton.setToggleState (videoPreviewShown, juce::dontSendNotification);
 }
 
 void ClipToolbar::resized()
@@ -183,6 +190,7 @@ void ClipToolbar::resized()
     deleteButton.setBounds (layout.deleteClip);
     zoomOutButton.setBounds (layout.zoomOut);
     zoomInButton.setBounds (layout.zoomIn);
+    videoButton.setBounds (layout.videoToggle);
     mixerButton.setBounds (layout.mixerToggle);
 }
 
@@ -232,6 +240,10 @@ EditPage::EditPage()
     toolbar.onZoomIn = [this] { timeline.zoomIn(); };
     toolbar.onZoomOut = [this] { timeline.zoomOut(); };
     toolbar.onToggleMixer = [this] { setMixerVisible (! mixerVisible); };
+    toolbar.onToggleVideo = [this] {
+        if (onToggleVideo)
+            onToggleVideo();
+    };
     toolbar.onFadeInEntered = [this] (const std::string& text) {
         const auto samples = parseSeconds (text, current.song.sampleRate);
         editSelectedClip ([&] (const song::Song& song, const song::Id& clipId) -> core::Expected<song::Song> {
@@ -354,7 +366,13 @@ void EditPage::bringBackPass (const song::Id& passId)
 
 void EditPage::showToolbar()
 {
-    toolbar.show (clipToolbarStateFor (current.song, timeline.selectedClip(), current.playhead, current.editable), mixerVisible);
+    toolbar.show (clipToolbarStateFor (current.song, timeline.selectedClip(), current.playhead, current.editable), mixerVisible, videoPreviewShown);
+}
+
+void EditPage::setVideoPreviewShown (bool shown)
+{
+    videoPreviewShown = shown;
+    showToolbar();
 }
 
 void EditPage::editSelectedClip (const std::function<core::Expected<song::Song> (const song::Song&, const song::Id&)>& change, const char* label)

@@ -21,7 +21,8 @@ OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding aud
       inserts (std::move (instantiate),
                [this] (const std::string& hash) { return package_->loadPluginState (hash); },
                package_->song().sampleRate,
-               blockSizeOf (audio))
+               blockSizeOf (audio)),
+      playback (package_->location())
 {
     package_->setPluginStateCapture ([this] (song::Song& song) { capturePluginState (song); });
     inserts.sync (song());
@@ -90,6 +91,20 @@ bool OpenSong::isPlaying() const
 song::SampleCount OpenSong::position() const
 {
     return binding.engine != nullptr ? binding.engine->position() : song().playhead;
+}
+
+video::PlaybackClock OpenSong::playbackClock() const
+{
+    video::PlaybackClock clock;
+    clock.sampleRate = song().sampleRate;
+    clock.position = position();
+    clock.outputLatencySamples = binding.latency.outputLatencySamples;
+    if (binding.engine != nullptr)
+    {
+        clock.playing = binding.engine->isPlaying();
+        clock.anchor = binding.engine->latestAnchor();
+    }
+    return clock;
 }
 
 core::Expected<void> OpenSong::record()

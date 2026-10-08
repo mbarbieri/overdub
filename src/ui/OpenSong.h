@@ -7,6 +7,8 @@
 #include "plugin/AudioUnitLoader.h"
 #include "plugin/InsertHost.h"
 #include "song/SongPackage.h"
+#include "video/FrameSelection.h"
+#include "video/VideoPlayback.h"
 
 #include <juce_core/juce_core.h>
 
@@ -33,6 +35,9 @@
 // camera is Armed it is open (its live feed shows on the Record stage) and each Pass also records a
 // Video Take, placed with this machine's calibration for that camera and the output device
 // (capture/CameraCalibration.h). Closing the Song closes the camera.
+//
+// Video Take playback (issue #36): playbackClock() is what the engine says about the transport now
+// (ADR 0003's pull model); videoPlayback() reads the Song's movies and decodes the frame shown.
 //
 // Insert Chains (issue #33): it hosts the Song's plugins in a plugin::InsertHost, created through
 // the Instantiator it is given (out-of-process AUs in the app). The engine plays each plugin once
@@ -87,6 +92,11 @@ public:
     int recordingPassNumber() const { return recordingPass; }
     bool isPlaying() const;
     song::SampleCount position() const;
+    // The transport as the video sees it: playing, position, the latest anchor and the device's
+    // output latency (stopped at the Song's playhead without audio).
+    video::PlaybackClock playbackClock() const;
+    // The Song's Video Take playback (movie timings, the frame decoder).
+    video::VideoPlayback& videoPlayback() { return playback; }
 
     // Starts a Pass from the playhead (and the transport, if stopped). Does nothing while a Pass
     // runs. With the transport stopped and the Song's pre-roll on (issue #32), playback starts that
@@ -199,5 +209,6 @@ private:
     std::unique_ptr<capture::PassRecorder> recorder;
     int recordingPass = 0;
     std::optional<song::SampleCount> preRollPoint; // the running Pass's record point, when it used pre-roll
+    video::VideoPlayback playback;
 };
 } // namespace overdub::ui

@@ -30,13 +30,16 @@ target_sources(overdub_ui PRIVATE
     TopBar.cpp
     TrackRowEdits.cpp
     TransportText.cpp
-    UserMessages.cpp)
+    UserMessages.cpp
+    VideoPreviewWindow.cpp
+    VideoScreen.mm)
 
-set_source_files_properties(CameraStage.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+set_source_files_properties(CameraStage.mm VideoScreen.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 
 target_link_libraries(overdub_ui
     PUBLIC
         overdub_capture
         overdub_plugin
+        overdub_video
     PRIVATE
         juce::juce_recommended_warning_flags)

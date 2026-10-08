@@ -1,6 +1,7 @@
 #include "ui/MainComponent.h"
 
 #include "capture/AvCamera.h"
+#include "core/Log.h"
 #include "plugin/PluginKind.h"
 #include "song/ClipEdits.h"
 #include "song/InsertEdits.h"
@@ -12,6 +13,7 @@
 #include "ui/TransportText.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 
 namespace overdub::ui
@@ -146,6 +148,7 @@ MainComponent::MainComponent()
         if (openSong != nullptr)
             openSong->previewMix (preview);
     };
+    editPage.onToggleVideo = [this] { setVideoPreviewWanted (! videoPreviewWanted); };
     editPage.onSplit = [this] { perform (Command::splitClip); };
     editPage.onDelete = [this] { perform (Command::deleteClip); };
     editPage.timeline.peaksFor = [this] (const song::ClipSource& source) -> const song::Peaks& {
@@ -172,11 +175,66 @@ MainComponent::MainComponent()
     setSize (1200, 800);
     refresh();
     startTimer (pollIntervalMs);
+    vblank = juce::VBlankAttachment (this, [this] (double timestampSeconds) { onVBlank (timestampSeconds); });
 }
 
 MainComponent::~MainComponent()
 {
+    vblank = {};
     stopTimer();
+}
+
+void MainComponent::onVBlank (double timestampSeconds)
+{
+    // One refresh is the interval between vertical blanks (60 Hz until two have been seen).
+    auto refreshNs = defaultRefreshNs;
+    if (lastVBlankSeconds.has_value())
+    {
+        const auto interval = timestampSeconds - *lastVBlankSeconds;
+        if (interval > 1.0 / 240.0 && interval < 1.0 / 20.0)
+            refreshNs = (std::uint64_t) std::llround (interval * 1.0e9);
+    }
+    lastVBlankSeconds = timestampSeconds;
+    refreshVideo (core::hostTimeNowNs(), refreshNs);
+}
+
+void MainComponent::refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs)
+{
+    if (openSong == nullptr)
+        return;
+    const auto previewShows = isVideoPreviewShown();
+    const auto stageShows = currentMode == Mode::record && recordPage.showsStagePlayback();
+    if (! previewShows && ! stageShows)
+        return;
+    const auto heard = video::heardSongSample (openSong->playbackClock(), nowHostNs, refreshNs);
+    const auto frame = openSong->videoPlayback().frameAt (openSong->song(), heard);
+    if (previewShows)
+        videoPreview->screen().show (frame.choice, frame.sampleBuffer);
+    if (stageShows)
+        recordPage.stageVideo.show (frame.choice, frame.sampleBuffer);
+}
+
+void MainComponent::setVideoPreviewWanted (bool wanted)
+{
+    if (wanted == videoPreviewWanted)
+        return;
+    videoPreviewWanted = wanted;
+    core::logEvent (core::Level::info, "ui.video_preview_toggled", { { "shown", wanted } });
+    syncVideoPreview();
+}
+
+void MainComponent::syncVideoPreview()
+{
+    const auto shown = videoPreviewWanted && openSong != nullptr && currentMode == Mode::edit;
+    editPage.setVideoPreviewShown (videoPreviewWanted);
+    if (shown && videoPreview == nullptr)
+    {
+        videoPreview = std::make_unique<VideoPreviewWindow> (showVideoPreviewOnDesktop);
+        // Closed from its own close button: the toggle goes off.
+        videoPreview->onClose = [this] { setVideoPreviewWanted (false); };
+    }
+    if (videoPreview != nullptr)
+        videoPreview->setShown (shown);
 }
 
 void MainComponent::setOpenSong (OpenSong* song)
@@ -498,10 +556,11 @@ void MainComponent::refresh()
             recording,
             [this] (const song::Id& slotId) { return openSong->insertStatus (slotId); }));
         recordPage.showCamera (cameraControlsStateFor (song, openSong->cameraDevices(), recording), openSong->cameraPreviewLayer());
+        recordPage.showStagePlayback (! stageShowsLiveFeed (song.cameraArmed, recording, state.playing));
         if (currentMode == Mode::record)
             recordPage.showSong (song, RecordTransport { position, openSong->runningPassStart(), recordPoint }, ! recording);
         if (currentMode == Mode::edit)
-            editPage.show (TimelineState { song, openSong->position(), state.playing, ! recording });
+            editPage.show (TimelineState { song, openSong->position(), state.playing, ! recording, openSong->videoPlayback().spans (song) });
     }
     topBar.show (state);
     syncPluginWindows();
@@ -511,6 +570,7 @@ void MainComponent::refresh()
     recordPage.setVisible (songOpen && currentMode == Mode::record);
     editPage.setVisible (songOpen && currentMode == Mode::edit);
     exportPage.setVisible (songOpen && currentMode == Mode::exportSong);
+    syncVideoPreview();
 }
 
 bool MainComponent::keyPressed (const juce::KeyPress& key)

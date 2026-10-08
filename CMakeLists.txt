@@ -36,6 +36,9 @@ add_subdirectory(src/plugin)
 # Recording Passes and the loopback latency measurement (issue #26).
 add_subdirectory(src/capture)
 
+# Video Take playback: frame selection on the audio clock and the frame decoder (issue #36).
+add_subdirectory(src/video)
+
 # The main window's Components and the pure UI logic under them (issue #27).
 add_subdirectory(src/ui)
 

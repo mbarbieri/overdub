@@ -34,6 +34,11 @@ CameraControlsState cameraControlsStateFor (const song::Song& song, const std::v
     return state;
 }
 
+bool stageShowsLiveFeed (bool cameraArmed, bool passRunning, bool playing)
+{
+    return cameraArmed && (passRunning || ! playing);
+}
+
 std::string cameraStageMessage (bool armed)
 {
     return armed ? "Camera Armed: waiting for its picture." : "Arm the camera to record a Video Take with each Pass.";
@@ -228,6 +233,7 @@ RecordPage::RecordPage()
     addAndMakeVisible (cameraArmButton);
     addAndMakeVisible (cameraPicker);
     addAndMakeVisible (cameraStage);
+    addChildComponent (stageVideo);
     addAndMakeVisible (passesList);
     addAndMakeVisible (lookAheadStrip);
     addAndMakeVisible (overview);
@@ -300,6 +306,12 @@ void RecordPage::showSong (const song::Song& song, const RecordTransport& newTra
     overview.show (song, transport.playhead);
 }
 
+void RecordPage::showStagePlayback (bool playback)
+{
+    cameraStage.setVisible (! playback);
+    stageVideo.setVisible (playback);
+}
+
 void RecordPage::showCamera (const CameraControlsState& state, void* previewLayer)
 {
     if (state.devices != shownCamera.devices)
@@ -330,6 +342,7 @@ void RecordPage::resized()
 {
     const auto layout = recordPageLayout (getLocalBounds(), (int) rows.size());
     cameraStage.setBounds (layout.stage);
+    stageVideo.setBounds (layout.stage.reduced (1));
     cameraArmButton.setBounds (layout.cameraArm);
     cameraPicker.setBounds (layout.cameraPicker);
     for (std::size_t i = 0; i < rows.size(); ++i)

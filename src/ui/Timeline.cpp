@@ -18,6 +18,7 @@ namespace
 const juce::Colour coveredColour { 0xffb8c4ff };
 const juce::Colour cameraLaneColour { 0xff1c171c };
 const juce::Colour takeLaneColour { 0xff18181a };
+const juce::Colour videoTakeColour { 0xff8a5a8a };
 
 // "▸ 3 Takes" folded, "▾ 3 Takes" unfolded.
 juce::String takesToggleText (int numTakes, bool unfolded)
@@ -173,7 +174,8 @@ Timeline::~Timeline()
 void Timeline::show (const TimelineState& state)
 {
     const auto songChanged = state.song != current.song;
-    const auto changed = songChanged || state.playhead != current.playhead || state.playing != current.playing || state.editable != current.editable;
+    const auto changed = songChanged || state.playhead != current.playhead || state.playing != current.playing || state.editable != current.editable
+                      || state.videoTakes != current.videoTakes;
     current = state;
     if (! changed)
         return;
@@ -342,6 +344,17 @@ juce::Rectangle<int> Timeline::clipBounds (const song::Id& clipId) const
         }
     }
     return {};
+}
+
+juce::Rectangle<int> Timeline::videoTakeBounds (const song::Id& videoTakeId) const
+{
+    const auto span = std::ranges::find (current.videoTakes, videoTakeId, &video::VideoTakeSpan::videoTakeId);
+    if (span == current.videoTakes.end())
+        return {};
+    const auto left = xForSample (timelineView, span->start);
+    const auto right = span->readable ? std::max (left + 1, xForSample (timelineView, span->end)) : left + unreadableVideoTakeWidth;
+    const auto lane = layout.cameraLane;
+    return juce::Rectangle<int> (left, lane.getY() + 4, right - left, lane.getHeight() - 8).getIntersection (lane);
 }
 
 juce::Rectangle<int> Timeline::handleBounds (const song::Id& clipId, ClipPart part) const
@@ -554,11 +567,31 @@ void Timeline::paintCameraLane (juce::Graphics& g) const
     g.fillRect (layout.cameraHeader);
     g.setColour (cameraLaneColour);
     g.fillRect (layout.cameraLane);
-    g.setColour (colours::dimText);
-    g.setFont (juce::FontOptions (11.0f));
-    g.drawText ("Video Takes appear here in a later version.", layout.cameraLane.reduced (8, 0), juce::Justification::centredLeft);
     g.setColour (colours::line);
     g.drawHorizontalLine (layout.cameraLane.getBottom() - 1, (float) layout.cameraHeader.getX(), (float) layout.cameraLane.getRight());
+    g.setFont (juce::FontOptions (11.0f));
+    juce::Graphics::ScopedSaveState clipToLane (g);
+    g.reduceClipRegion (layout.cameraLane);
+    for (const auto& span : current.videoTakes)
+    {
+        const auto block = videoTakeBounds (span.videoTakeId);
+        if (block.isEmpty())
+            continue;
+        g.setColour (span.readable ? videoTakeColour : videoTakeColour.withAlpha (0.4f));
+        g.fillRoundedRectangle (block.toFloat(), 4.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.4f));
+        g.drawRoundedRectangle (block.toFloat().reduced (0.5f), 4.0f, 1.0f);
+        g.setColour (colours::text);
+        if (span.readable)
+            g.drawText (juce::String::fromUTF8 (span.title.c_str()), block.reduced (6, 0), juce::Justification::centredLeft, true);
+        else
+            g.drawText (juce::String::fromUTF8 ((span.title + " (movie missing)").c_str()), block.withX (block.getRight() + 4).withWidth (200), juce::Justification::centredLeft, true);
+    }
+    if (current.videoTakes.empty())
+    {
+        g.setColour (colours::dimText);
+        g.drawText ("Arm the camera to record a Video Take with each Pass.", layout.cameraLane.reduced (8, 0), juce::Justification::centredLeft);
+    }
 }
 
 void Timeline::paintLane (juce::Graphics& g, const song::Track& track, juce::Rectangle<int> lane) const
