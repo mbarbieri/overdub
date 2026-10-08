@@ -10,6 +10,7 @@ target_sources(overdub_tests PRIVATE
     capture/CameraCalibrationTest.cpp
     capture/LoopbackMeasurementTest.cpp
     capture/PassRecorderTest.cpp
+    capture/PassRecorderVideoTest.cpp
     capture/VideoPlacementTest.cpp
     core/BuildInfoTest.cpp
     core/ErrorTest.cpp
