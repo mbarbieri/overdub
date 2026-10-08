@@ -116,7 +116,7 @@ public:
     // slot has no state (gone from the Song) or whose processor is no longer the slot's (null:
     // not ready). `stateOf` and `processorOf` answer by slot id.
     void sync (const std::function<std::optional<PluginWindowState> (const song::Id&)>& stateOf,
-               const std::function<juce::AudioProcessor* (const song::Id&)>& processorOf);
+               const std::function<juce::AudioProcessor*(const song::Id&)>& processorOf);
 
     PluginWindow* find (const song::Id& slotId) const;
     std::size_t size() const { return windows.size(); }

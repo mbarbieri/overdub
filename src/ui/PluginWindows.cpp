@@ -204,7 +204,7 @@ void PluginWindows::closeAll()
 }
 
 void PluginWindows::sync (const std::function<std::optional<PluginWindowState> (const song::Id&)>& stateOf,
-                          const std::function<juce::AudioProcessor* (const song::Id&)>& processorOf)
+                          const std::function<juce::AudioProcessor*(const song::Id&)>& processorOf)
 {
     std::vector<song::Id> gone;
     for (auto& [slotId, window] : windows)
