@@ -102,6 +102,7 @@ EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int
         layout.mixerDivider = area.removeFromBottom (mixerDividerHeight);
     }
     layout.timeline = area;
+    layout.passesButton = juce::Rectangle<int> (area.getX(), area.getY(), laneHeaderWidth, rulerHeight).reduced (4, 2);
     return layout;
 }
 
@@ -139,7 +140,7 @@ ClipToolbarLayout clipToolbarLayout (juce::Rectangle<int> bar)
     return layout;
 }
 
-TimelineLayout timelineLayout (juce::Rectangle<int> area, int numTracks)
+TimelineLayout timelineLayout (juce::Rectangle<int> area, const std::vector<int>& takeLanesPerTrack)
 {
     TimelineLayout layout;
     auto rest = area;
@@ -155,11 +156,25 @@ TimelineLayout timelineLayout (juce::Rectangle<int> area, int numTracks)
     layout.cameraHeader = cameraRow.removeFromLeft (laneHeaderWidth);
     layout.cameraLane = cameraRow;
 
-    for (int i = 0; i < numTracks; ++i)
+    auto y = rest.getY();
+    for (const auto takeLanes : takeLanesPerTrack)
     {
-        auto row = juce::Rectangle<int> (rest.getX(), rest.getY() + i * trackLaneHeight, rest.getWidth(), trackLaneHeight);
+        auto row = juce::Rectangle<int> (rest.getX(), y, rest.getWidth(), trackLaneHeight);
+        y += trackLaneHeight;
         layout.trackHeaders.push_back (row.removeFromLeft (laneHeaderWidth));
         layout.trackLanes.push_back (row);
+
+        std::vector<juce::Rectangle<int>> headers;
+        std::vector<juce::Rectangle<int>> lanes;
+        for (int i = 0; i < takeLanes; ++i)
+        {
+            auto laneRow = juce::Rectangle<int> (rest.getX(), y, rest.getWidth(), takeLaneHeight);
+            y += takeLaneHeight;
+            headers.push_back (laneRow.removeFromLeft (laneHeaderWidth));
+            lanes.push_back (laneRow);
+        }
+        layout.takeLaneHeaders.push_back (std::move (headers));
+        layout.takeLanes.push_back (std::move (lanes));
     }
     return layout;
 }
@@ -168,9 +183,40 @@ TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header)
 {
     TrackHeaderLayout layout;
     auto area = header.reduced (6, 6);
-    layout.arm = area.removeFromLeft (40).withSizeKeepingCentre (40, 24);
-    area.removeFromLeft (gap);
-    layout.name = area;
+    auto top = area.removeFromTop (28);
+    layout.arm = top.removeFromLeft (40).withSizeKeepingCentre (40, 24);
+    top.removeFromLeft (gap);
+    layout.name = top;
+    area.removeFromTop (rowGap);
+    layout.takesToggle = area.removeFromTop (22).removeFromLeft (96);
+    return layout;
+}
+
+juce::Rectangle<int> passesPanelBounds (juce::Rectangle<int> page, juce::Rectangle<int> passesButton, int numRows)
+{
+    const auto wanted = juce::Rectangle<int> (passesButton.getX(), passesButton.getBottom() + 2, passesPanelWidth, passesPanelHeaderHeight + numRows * passRowHeight + 6);
+    return wanted.constrainedWithin (page).getIntersection (page);
+}
+
+PassesPanelLayout passesPanelLayout (juce::Rectangle<int> panel, int numRows)
+{
+    PassesPanelLayout layout;
+    auto area = panel.reduced (6, 0);
+    layout.heading = area.removeFromTop (passesPanelHeaderHeight);
+    for (int i = 0; i < numRows; ++i)
+        layout.rows.push_back (area.removeFromTop (passRowHeight));
+    return layout;
+}
+
+PassRowLayout passRowLayout (juce::Rectangle<int> row)
+{
+    PassRowLayout layout;
+    auto area = row.reduced (0, 3);
+    layout.bringBack = area.removeFromRight (110);
+    area.removeFromRight (gap);
+    layout.status = area.removeFromRight (90);
+    area.removeFromRight (gap);
+    layout.title = area;
     return layout;
 }
 } // namespace overdub::ui

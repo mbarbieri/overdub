@@ -4,6 +4,7 @@
 #include "song/AtomicWrite.h"
 #include "song/PackageFolders.h"
 #include "song/Peaks.h"
+#include "song/TakeEdits.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -121,25 +122,6 @@ const char* stopReasonName (engine::RecordStopReason reason)
             return "cancelled";
     }
     return "unknown";
-}
-
-// The Clip that plays a new Take: from the record point (or the Take's origin, if later) to the
-// end of the Take, reading the Take where that Song sample belongs.
-std::optional<song::Clip> clipForTake (const song::Take& take, SampleCount passStart)
-{
-    const auto timelineStart = std::max (passStart, take.origin);
-    const auto sourceOffset = timelineStart - take.origin;
-    const auto length = take.lengthSamples - sourceOffset;
-    if (length <= 0)
-        return std::nullopt;
-
-    song::Clip clip;
-    clip.id = song::makeId();
-    clip.source = song::ClipSource { song::ClipSourceKind::take, take.id };
-    clip.timelineStart = timelineStart;
-    clip.sourceOffset = sourceOffset;
-    clip.length = length;
-    return clip;
 }
 } // namespace
 
@@ -425,7 +407,7 @@ core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::tim
         const auto track = std::ranges::find (changed.tracks, writer->trackId, &song::Track::id);
         if (track == changed.tracks.end())
             continue; // deleted during the Pass: the Take stays, unheard
-        if (auto clip = clipForTake (take, pass.startSample))
+        if (auto clip = song::clipAsRecorded (take, pass.startSample, song::makeId()))
             track->clips.push_back (std::move (*clip));
     }
 

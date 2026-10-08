@@ -2,6 +2,7 @@
 
 #include "core/Error.h"
 #include "song/ClipEdits.h"
+#include "song/TakeEdits.h"
 #include "ui/Colours.h"
 
 #include <algorithm>
@@ -17,6 +18,14 @@ const juce::Colour takeClipColour { 0xff3d5a80 };
 const juce::Colour backingClipColour { 0xff4a6b4a };
 const juce::Colour coveredColour { 0xffb8c4ff };
 const juce::Colour cameraLaneColour { 0xff1c171c };
+const juce::Colour takeLaneColour { 0xff18181a };
+
+// "▸ 3 Takes" folded, "▾ 3 Takes" unfolded.
+juce::String takesToggleText (int numTakes, bool unfolded)
+{
+    const auto arrow = unfolded ? "\xE2\x96\xBE" : "\xE2\x96\xB8";
+    return juce::String::fromUTF8 (std::format ("{} {} {}", arrow, numTakes, numTakes == 1 ? "Take" : "Takes").c_str());
+}
 
 // Seconds between labelled ruler ticks: the first that puts them at least 70 pixels apart.
 double rulerStepSeconds (song::SampleCount samplesPerPixel, int sampleRate)
@@ -92,17 +101,27 @@ TrackHeader::TrackHeader()
     nameLabel.setColour (juce::Label::textColourId, colours::text);
     nameLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
     nameLabel.setInterceptsMouseClicks (false, false);
+    takesButton.setWantsKeyboardFocus (false);
+    takesButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
+    takesButton.onClick = [this] {
+        if (onToggleTakes)
+            onToggleTakes();
+    };
     addAndMakeVisible (armButton);
     addAndMakeVisible (nameLabel);
+    addChildComponent (takesButton);
 }
 
-void TrackHeader::show (const song::Track& track, bool enabled)
+void TrackHeader::show (const song::Track& track, bool enabled, int numTakes, bool unfolded)
 {
     id = track.id;
     armed = track.armed;
     nameLabel.setText (juce::String::fromUTF8 (track.name.c_str()), juce::dontSendNotification);
     armButton.setToggleState (track.armed, juce::dontSendNotification);
     armButton.setEnabled (enabled);
+    takesButton.setVisible (numTakes > 0);
+    takesButton.setButtonText (takesToggleText (numTakes, unfolded));
+    takesButton.setToggleState (unfolded, juce::dontSendNotification);
 }
 
 void TrackHeader::resized()
@@ -110,6 +129,7 @@ void TrackHeader::resized()
     const auto headerLayout = trackHeaderLayout (getLocalBounds());
     armButton.setBounds (headerLayout.arm);
     nameLabel.setBounds (headerLayout.name);
+    takesButton.setBounds (headerLayout.takesToggle);
 }
 
 void TrackHeader::paint (juce::Graphics& g)
@@ -153,9 +173,9 @@ void Timeline::show (const TimelineState& state)
         if (selected.has_value() && song::findClip (current.song, *selected) == nullptr)
             selectClip (std::nullopt);
         rebuildHeaders();
+        refreshTakeLanes();
     }
-    for (std::size_t i = 0; i < headers.size(); ++i)
-        headers[i]->show (current.song.tracks[i], current.editable);
+    showHeaders();
 
     // While playing, page forward when the playhead leaves the visible lanes.
     const auto lanes = lanesArea();
@@ -164,6 +184,78 @@ void Timeline::show (const TimelineState& state)
 
     updateScrollBar();
     repaint();
+}
+
+void Timeline::showHeaders()
+{
+    for (std::size_t i = 0; i < headers.size(); ++i)
+    {
+        const auto& track = current.song.tracks[i];
+        const auto numTakes = (int) song::laneTakes (current.song, track.id).size();
+        headers[i]->show (track, current.editable, numTakes, areTakeLanesUnfolded (track.id));
+    }
+}
+
+void Timeline::refreshTakeLanes()
+{
+    takeLanes.clear();
+    for (const auto& track : current.song.tracks)
+        takeLanes.push_back (areTakeLanesUnfolded (track.id) ? takeLaneRows (current.song, track.id) : std::vector<TakeLaneRow> {});
+    resized();
+    repaint();
+}
+
+void Timeline::setTakeLanesUnfolded (const song::Id& trackId, bool unfolded)
+{
+    if (unfolded)
+        unfoldedTracks.insert (trackId);
+    else
+        unfoldedTracks.erase (trackId);
+    core::logEvent (core::Level::debug, "ui.take_lanes_toggled", { { "track_id", trackId }, { "unfolded", unfolded } });
+    refreshTakeLanes();
+    showHeaders();
+}
+
+std::vector<TakeLaneRow> Timeline::takeLanesShown (const song::Id& trackId) const
+{
+    const auto& tracks = current.song.tracks;
+    for (std::size_t i = 0; i < tracks.size() && i < takeLanes.size(); ++i)
+        if (tracks[i].id == trackId)
+            return takeLanes[i];
+    return {};
+}
+
+juce::Rectangle<int> Timeline::takeLaneBounds (const song::Id& takeId) const
+{
+    for (std::size_t i = 0; i < takeLanes.size() && i < layout.takeLanes.size(); ++i)
+        for (std::size_t j = 0; j < takeLanes[i].size() && j < layout.takeLanes[i].size(); ++j)
+            if (takeLanes[i][j].takeId == takeId)
+                return layout.takeLanes[i][j].getIntersection (lanesArea());
+    return {};
+}
+
+bool Timeline::clickTakeLane (juce::Point<int> position)
+{
+    for (std::size_t i = 0; i < takeLanes.size() && i < layout.takeLanes.size(); ++i)
+    {
+        for (std::size_t j = 0; j < takeLanes[i].size() && j < layout.takeLanes[i].size(); ++j)
+        {
+            if (! layout.takeLanes[i][j].contains (position))
+                continue;
+            const auto at = sampleForX (timelineView, position.x);
+            auto edit = laneEditAt (current.song, takeLanes[i][j].takeId, at, song::makeId());
+            core::logEvent (core::Level::debug, "ui.take_lane_clicked", { { "take_id", takeLanes[i][j].takeId }, { "at", at }, { "changes_song", edit.has_value() } });
+            if (! edit.has_value())
+                return true;
+            const auto clipId = edit->clipId;
+            if (onEdit)
+                onEdit (std::move (edit->song), std::move (edit->label));
+            if (song::findClip (current.song, clipId) != nullptr)
+                selectClip (clipId);
+            return true;
+        }
+    }
+    return false;
 }
 
 void Timeline::rebuildHeaders()
@@ -183,6 +275,7 @@ void Timeline::rebuildHeaders()
             if (onArm)
                 onArm (trackId, armed);
         };
+        header->onToggleTakes = [this, trackId] { setTakeLanesUnfolded (trackId, ! areTakeLanesUnfolded (trackId)); };
         addAndMakeVisible (*header);
         headers.push_back (std::move (header));
     }
@@ -280,6 +373,9 @@ void Timeline::mouseDown (const juce::MouseEvent& event)
         return;
     }
 
+    if (lanesArea().contains (position) && clickTakeLane (position))
+        return;
+
     const auto lane = laneAt (position);
     if (! lane.has_value() || *lane >= current.song.tracks.size())
         return;
@@ -366,7 +462,10 @@ void Timeline::updateScrollBar()
 
 void Timeline::resized()
 {
-    layout = timelineLayout (getLocalBounds(), (int) headers.size());
+    std::vector<int> takeLanesPerTrack;
+    for (std::size_t i = 0; i < headers.size(); ++i)
+        takeLanesPerTrack.push_back (i < takeLanes.size() ? (int) takeLanes[i].size() : 0);
+    layout = timelineLayout (getLocalBounds(), takeLanesPerTrack);
     timelineView.laneX = layout.ruler.getX();
     cameraHeader.setBounds (layout.cameraHeader.reduced (8, 0));
     scrollBar.setBounds (layout.scrollBar);
@@ -390,6 +489,16 @@ void Timeline::paint (juce::Graphics& g)
         g.reduceClipRegion (lanesArea());
         for (std::size_t i = 0; i < song.tracks.size() && i < layout.trackLanes.size(); ++i)
             paintLane (g, song.tracks[i], layout.trackLanes[i]);
+        for (std::size_t i = 0; i < takeLanes.size() && i < layout.takeLanes.size(); ++i)
+            for (std::size_t j = 0; j < takeLanes[i].size() && j < layout.takeLanes[i].size(); ++j)
+                paintTakeLane (g, takeLanes[i][j], layout.takeLanes[i][j]);
+    }
+    {
+        juce::Graphics::ScopedSaveState saved (g);
+        g.reduceClipRegion (getLocalBounds().withTop (layout.cameraLane.getBottom()).withBottom (layout.scrollBar.getY()));
+        for (std::size_t i = 0; i < takeLanes.size() && i < layout.takeLaneHeaders.size(); ++i)
+            for (std::size_t j = 0; j < takeLanes[i].size() && j < layout.takeLaneHeaders[i].size(); ++j)
+                paintTakeLaneHeader (g, takeLanes[i][j], layout.takeLaneHeaders[i][j]);
     }
     paintPlayhead (g);
 }
@@ -554,5 +663,51 @@ void Timeline::paintPlayhead (juce::Graphics& g) const
         return;
     g.setColour (current.editable ? juce::Colours::white : colours::rec);
     g.drawVerticalLine (x, (float) layout.ruler.getY(), (float) layout.scrollBar.getY());
+}
+
+void Timeline::paintTakeLane (juce::Graphics& g, const TakeLaneRow& row, juce::Rectangle<int> lane) const
+{
+    g.setColour (takeLaneColour);
+    g.fillRect (lane);
+    g.setColour (colours::line);
+    g.drawHorizontalLine (lane.getBottom() - 1, (float) lane.getX(), (float) lane.getRight());
+    if (! row.recorded.has_value())
+        return;
+
+    // The recorded span: a dim block. Where the Take is heard now: filled in.
+    const auto strip = lane.reduced (0, 3);
+    const auto spanRect = [&] (song::SampleSpan span) {
+        const auto left = xForSample (timelineView, span.start);
+        const auto right = std::max (left + 2, xForSample (timelineView, span.end));
+        return juce::Rectangle<int> (left, strip.getY(), right - left, strip.getHeight());
+    };
+    const auto block = spanRect (*row.recorded);
+    g.setColour (takeClipColour.withAlpha (0.35f));
+    g.fillRoundedRectangle (block.toFloat(), 3.0f);
+    g.setColour (takeClipColour.brighter (0.4f));
+    for (const auto& heard : row.heard)
+        g.fillRect (spanRect (heard));
+    g.setColour (takeClipColour.brighter (0.2f));
+    g.drawRoundedRectangle (block.toFloat().reduced (0.5f), 3.0f, 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.85f));
+    g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+    g.drawText (juce::String (row.title), block.reduced (4, 0), juce::Justification::centredLeft, true);
+}
+
+void Timeline::paintTakeLaneHeader (juce::Graphics& g, const TakeLaneRow& row, juce::Rectangle<int> header) const
+{
+    g.setColour (colours::panel.darker (0.15f));
+    g.fillRect (header);
+    g.setColour (colours::line);
+    g.drawHorizontalLine (header.getBottom() - 1, (float) header.getX(), (float) header.getRight());
+    g.drawVerticalLine (header.getRight() - 1, (float) header.getY(), (float) header.getBottom());
+
+    auto area = header.reduced (8, 0).withTrimmedLeft (10);
+    g.setColour (colours::text);
+    g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    g.drawText (juce::String (row.title), area.removeFromLeft (54), juce::Justification::centredLeft, true);
+    g.setColour (row.status == song::HeardStatus::notHeard ? colours::dimText : colours::text.withAlpha (0.8f));
+    g.setFont (juce::FontOptions (10.5f));
+    g.drawText (juce::String (std::string (song::toString (row.status))), area, juce::Justification::centredRight, true);
 }
 } // namespace overdub::ui

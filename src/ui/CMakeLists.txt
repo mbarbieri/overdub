@@ -15,6 +15,7 @@ target_sources(overdub_ui PRIVATE
     Pages.cpp
     RecordPage.cpp
     SongFiles.cpp
+    TakeLanes.cpp
     Timeline.cpp
     TimelineGeometry.cpp
     TopBar.cpp

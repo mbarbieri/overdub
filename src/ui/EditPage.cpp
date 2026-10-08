@@ -1,6 +1,7 @@
 #include "ui/EditPage.h"
 
 #include "song/ClipEdits.h"
+#include "song/TakeEdits.h"
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 
@@ -203,6 +204,81 @@ void ClipToolbar::paint (juce::Graphics& g)
 
 //==============================================================================
 
+PassesPanel::PassesPanel()
+{
+    heading.setColour (juce::Label::textColourId, colours::dimText);
+    heading.setFont (juce::FontOptions (11.5f));
+    heading.setInterceptsMouseClicks (false, false);
+    addAndMakeVisible (heading);
+}
+
+void PassesPanel::show (const std::vector<PassRow>& rows, bool editable)
+{
+    if (rowComponents.size() != rows.size())
+    {
+        rowComponents.clear();
+        for (std::size_t i = 0; i < rows.size(); ++i)
+        {
+            auto row = std::make_unique<Row>();
+            auto* raw = row.get();
+            for (auto* label : { &row->title, &row->status })
+            {
+                label->setInterceptsMouseClicks (false, false);
+                addAndMakeVisible (label);
+            }
+            row->title.setColour (juce::Label::textColourId, colours::text);
+            row->title.setFont (juce::FontOptions (12.0f));
+            row->status.setFont (juce::FontOptions (11.5f));
+            row->status.setJustificationType (juce::Justification::centredRight);
+            row->bringBackButton.setButtonText (juce::String::fromUTF8 ("\xE2\x86\xBA Bring back"));
+            row->bringBackButton.setWantsKeyboardFocus (false);
+            row->bringBackButton.onClick = [this, raw] {
+                if (onBringBack)
+                    onBringBack (raw->passId);
+            };
+            addAndMakeVisible (row->bringBackButton);
+            rowComponents.push_back (std::move (row));
+        }
+        resized();
+    }
+
+    for (std::size_t i = 0; i < rows.size(); ++i)
+    {
+        auto& row = *rowComponents[i];
+        row.passId = rows[i].passId;
+        row.title.setText (juce::String::fromUTF8 (rows[i].title.c_str()), juce::dontSendNotification);
+        row.status.setText (juce::String (std::string (song::toString (rows[i].status))), juce::dontSendNotification);
+        row.status.setColour (juce::Label::textColourId, rows[i].status == song::HeardStatus::notHeard ? colours::dimText : colours::text);
+        row.bringBackButton.setEnabled (editable && rows[i].canBringBack);
+    }
+    heading.setText (juce::String::fromUTF8 (rows.empty() ? "No Passes yet: press R to record one."
+                                                          : "Passes \xC2\xB7 newest first. \xE2\x86\xBA Bring back puts a whole Pass back on top, as recorded."),
+                     juce::dontSendNotification);
+    repaint();
+}
+
+void PassesPanel::resized()
+{
+    const auto layout = passesPanelLayout (getLocalBounds(), numRows());
+    heading.setBounds (layout.heading);
+    for (std::size_t i = 0; i < rowComponents.size() && i < layout.rows.size(); ++i)
+    {
+        const auto rowLayout = passRowLayout (layout.rows[i]);
+        rowComponents[i]->title.setBounds (rowLayout.title);
+        rowComponents[i]->status.setBounds (rowLayout.status);
+        rowComponents[i]->bringBackButton.setBounds (rowLayout.bringBack);
+    }
+}
+
+void PassesPanel::paint (juce::Graphics& g)
+{
+    g.fillAll (colours::panel.brighter (0.05f));
+    g.setColour (colours::line.brighter (0.3f));
+    g.drawRect (getLocalBounds());
+}
+
+//==============================================================================
+
 MixerDivider::MixerDivider()
 {
     setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
@@ -287,6 +363,12 @@ EditPage::EditPage()
     };
     timeline.onSelectionChanged = [this] { showToolbar(); };
 
+    passesButton.setButtonText (juce::String::fromUTF8 ("Passes \xE2\x96\xBE"));
+    passesButton.setWantsKeyboardFocus (false);
+    passesButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
+    passesButton.onClick = [this] { setPassesPanelOpen (! isPassesPanelOpen()); };
+    passesPanel.onBringBack = [this] (const song::Id& passId) { bringBackPass (passId); };
+
     divider.onDragTo = [this] (int top) {
         mixerHeightRequested = clampMixerHeight (getHeight() - top - mixerDividerHeight, getHeight());
         resized();
@@ -296,7 +378,10 @@ EditPage::EditPage()
     addAndMakeVisible (timeline);
     addAndMakeVisible (divider);
     addAndMakeVisible (mixer);
+    addAndMakeVisible (passesButton);
+    addChildComponent (passesPanel);
     showToolbar();
+    showPasses();
 }
 
 void EditPage::show (const TimelineState& state)
@@ -304,6 +389,39 @@ void EditPage::show (const TimelineState& state)
     current = state;
     timeline.show (current);
     showToolbar();
+    showPasses();
+}
+
+void EditPage::showPasses()
+{
+    const auto rowsBefore = passesPanel.numRows();
+    passesPanel.show (passRows (current.song), current.editable);
+    if (passesPanel.numRows() != rowsBefore)
+        resized();
+    passesButton.setToggleState (isPassesPanelOpen(), juce::dontSendNotification);
+}
+
+void EditPage::setPassesPanelOpen (bool open)
+{
+    passesPanel.setVisible (open);
+    if (open)
+        passesPanel.toFront (false);
+    resized();
+    showPasses();
+}
+
+void EditPage::bringBackPass (const song::Id& passId)
+{
+    if (! current.editable)
+        return;
+    // The button is enabled only for a Pass that can be brought back.
+    auto brought = song::bringBackPass (current.song, passId);
+    if (! OVERDUB_CHECK (brought.has_value(), "ui.bring_back_failed", { "pass_id", passId }))
+        return;
+    const auto label = song::bringBackPassLabel (current.song, passId);
+    setPassesPanelOpen (false);
+    if (onEdit)
+        onEdit (std::move (*brought), label);
 }
 
 void EditPage::showToolbar()
@@ -340,6 +458,8 @@ void EditPage::resized()
     timeline.setBounds (layout.timeline);
     divider.setBounds (layout.mixerDivider);
     mixer.setBounds (layout.mixer);
+    passesButton.setBounds (layout.passesButton);
+    passesPanel.setBounds (passesPanelBounds (getLocalBounds(), layout.passesButton, passesPanel.numRows()));
 }
 
 void EditPage::paint (juce::Graphics& g)
