@@ -9,6 +9,7 @@ add_library (overdub_plugin STATIC)
                         AudioUnitIdentifier.cpp
                             AudioUnitLoader.cpp
                                 InsertHost.cpp
+                                    PluginKind.cpp
                                     PluginState.cpp)
 
         target_link_libraries (overdub_plugin

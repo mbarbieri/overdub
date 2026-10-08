@@ -3,6 +3,7 @@
 #include "core/Error.h"
 #include "engine/RenderPlan.h"
 #include "song/Song.h"
+#include "ui/InsertChain.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -12,8 +13,9 @@
 #include <vector>
 
 // Edit mode's Mixer (issue #31, issue #9 resolution, variant C): under the timeline, one strip per
-// Track (name, pan, fader with its meter, dB value, M and S) and the Master strip (name, fader,
-// meter, value) at the right edge. Thin over ui/MixerGeometry.h and song/MixEdits.h.
+// Track (name, pan, Insert Chain, fader with its meter, dB value, M and S) and the Master strip
+// (name, Insert Chain, fader, meter, value) at the right edge. Thin over ui/MixerGeometry.h and
+// song/MixEdits.h. The Insert Chains (issue #34, ui/InsertChain.h) report through insertActions.
 //
 // A fader or pan drag is previewed while it moves (onPreview: the Song as the drag would make it,
 // heard through OpenSong::previewMix) and reported once, on mouse up, as one Song and its undo
@@ -95,6 +97,7 @@ struct MixerStripState
     double pan = 0.0;
     bool mute = false;
     bool solo = false;
+    std::vector<InsertChipState> inserts;
     bool enabled = true;
 };
 
@@ -120,6 +123,7 @@ public:
 
     juce::Label nameLabel;
     PanControl panControl;
+    InsertChainView insertChain { true };
     MixerFader fader;
     LevelMeter meter;
     juce::Label valueLabel;
@@ -151,6 +155,10 @@ public:
     std::function<void (const song::Song& preview)> onPreview;
     // A finished gesture: the changed Song and its undo label.
     std::function<void (song::Song changed, std::string label)> onEdit;
+    // The Insert Chains' gestures (every strip's, the Master's included).
+    InsertChainActions insertActions;
+    // Each slot's plugin status, for the chips; none: every plugin reads as ready.
+    InsertStatusLookup insertStatusOf;
 
     std::vector<std::unique_ptr<MixerStrip>> strips;
     MixerStrip masterStrip { true };

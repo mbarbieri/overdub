@@ -13,7 +13,8 @@
 
 // The main window's content over a fixture Song (ADR 0005 UI amendment): a real MainComponent at
 // a fixed size, bound through a real OpenSong to an Engine that a loopback fake device drives.
-// Alerts and file choosers are injected; nothing opens a window, a dialog or audio hardware.
+// Alerts and file choosers are injected; nothing opens a window, a dialog or audio hardware
+// (plugin editor windows are built off the desktop).
 namespace overdub::ui::testing
 {
 inline constexpr int windowWidth = 1200;
@@ -36,6 +37,7 @@ struct MainWindowFixture
         openSong = std::make_unique<OpenSong> (std::move (fixture->package), AudioBinding { &engine, {}, { "In 1", "In 2", "In 3", "In 4" } }, std::move (instantiate));
         window = std::make_unique<MainComponent>();
         window->showAlert = [this] (const juce::String& sentence) { alertsShown.push_back (sentence); };
+        window->pluginWindows.showOnDesktop = false; // editor windows are built, never shown
         layOut (*window, windowWidth, windowHeight);
         window->setOpenSong (openSong.get());
     }

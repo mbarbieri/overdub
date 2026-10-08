@@ -200,6 +200,7 @@ MixerStrip::MixerStrip (bool isMaster) : master (isMaster)
     };
 
     addAndMakeVisible (nameLabel);
+    addAndMakeVisible (insertChain);
     addAndMakeVisible (fader);
     addAndMakeVisible (meter);
     addAndMakeVisible (valueLabel);
@@ -219,6 +220,7 @@ void MixerStrip::show (const MixerStripState& state)
     panControl.setPan (state.pan);
     muteButton.setToggleState (state.mute, juce::dontSendNotification);
     soloButton.setToggleState (state.solo, juce::dontSendNotification);
+    insertChain.show (state.trackId, state.inserts, state.enabled);
     for (auto* control : std::initializer_list<juce::Component*> { &fader, &panControl, &muteButton, &soloButton })
         control->setEnabled (state.enabled);
     showValue();
@@ -235,6 +237,7 @@ void MixerStrip::resized()
     const auto layout = mixerStripLayout (getLocalBounds());
     nameLabel.setBounds (layout.name);
     panControl.setBounds (layout.pan);
+    insertChain.setBounds (layout.inserts);
     fader.setBounds (layout.fader);
     meter.setBounds (layout.meter);
     valueLabel.setBounds (layout.value);
@@ -255,6 +258,7 @@ void MixerStrip::paint (juce::Graphics& g)
 
 Mixer::Mixer()
 {
+    masterStrip.insertChain.actions = &insertActions;
     connectStrip (masterStrip, {});
     addAndMakeVisible (masterStrip);
 }
@@ -270,9 +274,16 @@ void Mixer::show (const song::Song& song, bool isEditable)
     for (std::size_t i = 0; i < strips.size(); ++i)
     {
         const auto& track = current.tracks[i];
-        strips[i]->show ({ .trackId = track.id, .name = track.name, .volumeDb = track.volumeDb, .pan = track.pan, .mute = track.mute, .solo = track.solo, .enabled = editable });
+        strips[i]->show ({ .trackId = track.id,
+                           .name = track.name,
+                           .volumeDb = track.volumeDb,
+                           .pan = track.pan,
+                           .mute = track.mute,
+                           .solo = track.solo,
+                           .inserts = insertChipsFor (track.insertChain, insertStatusOf),
+                           .enabled = editable });
     }
-    masterStrip.show ({ .trackId = {}, .name = "Master", .volumeDb = current.master.volumeDb, .enabled = editable });
+    masterStrip.show ({ .trackId = {}, .name = "Master", .volumeDb = current.master.volumeDb, .inserts = insertChipsFor (current.master.insertChain, insertStatusOf), .enabled = editable });
 }
 
 void Mixer::showMeters (const engine::MeterPeaks& peaks)
@@ -291,6 +302,7 @@ void Mixer::rebuildStrips()
     for (const auto& track : current.tracks)
     {
         auto strip = std::make_unique<MixerStrip> (false);
+        strip->insertChain.actions = &insertActions;
         connectStrip (*strip, track.id);
         addAndMakeVisible (*strip);
         strips.push_back (std::move (strip));

@@ -198,15 +198,22 @@ core::Expected<void> OpenSong::edit (song::Song changed, std::string label)
     return result;
 }
 
-core::Expected<void> OpenSong::addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin)
+core::Expected<song::Id> OpenSong::addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin)
 {
     if (recorder != nullptr)
-        return {};
+        return song::Id {};
     const song::InsertSlot slot { .id = song::makeId(), .component = plugin.component, .name = plugin.name, .version = plugin.version };
     auto changed = song::addInsert (song(), trackId, slot);
     if (! changed.has_value())
         return std::unexpected (changed.error());
-    return edit (std::move (*changed), song::addInsertLabel (song(), trackId, plugin.name));
+    if (auto edited = edit (std::move (*changed), song::addInsertLabel (song(), trackId, plugin.name)); ! edited.has_value())
+        return std::unexpected (edited.error());
+    return slot.id;
+}
+
+void OpenSong::notePluginStateChanged()
+{
+    package_->changeWithoutHistory (song());
 }
 
 void OpenSong::previewMix (const song::Song& candidate)

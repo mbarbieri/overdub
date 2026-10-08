@@ -1,6 +1,8 @@
 #include "ui/MainComponent.h"
 
+#include "plugin/PluginKind.h"
 #include "song/ClipEdits.h"
+#include "song/InsertEdits.h"
 #include "song/MixEdits.h"
 #include "song/TakeEdits.h"
 
@@ -98,7 +100,15 @@ MainComponent::MainComponent()
         static const song::Peaks none;
         return openSong != nullptr ? openSong->peaks (source) : none;
     };
-    recordPage.onInsert = [this] (const song::Id& trackId) { chooseInsert (trackId); };
+    const auto chainActions = insertChainActions();
+    recordPage.insertActions = chainActions;
+    editPage.mixer.insertActions = chainActions;
+    editPage.mixer.insertStatusOf = [this] (const song::Id& slotId) { return openSong != nullptr ? openSong->insertStatus (slotId) : std::nullopt; };
+    pluginWindows.onBypass = chainActions.bypass;
+    pluginWindows.onClosed = [this] (const song::Id&) {
+        if (openSong != nullptr)
+            openSong->notePluginStateChanged();
+    };
     recordPage.onImport = [this] {
         if (openSong == nullptr || openSong->isRecording() || ! chooseFilesToImport)
             return;
@@ -161,6 +171,9 @@ MainComponent::~MainComponent()
 
 void MainComponent::setOpenSong (OpenSong* song)
 {
+    // Every window edits a plugin of the Song that was open.
+    pluginWindows.closeAll();
+    pendingEditorSlot.reset();
     openSong = song;
     refresh();
 }
@@ -295,10 +308,70 @@ void MainComponent::chooseInsert (const song::Id& trackId)
     chooseInsertPlugin (plugins, [safeThis = juce::Component::SafePointer<MainComponent> (this), trackId, plugins] (std::optional<std::size_t> picked) {
         if (safeThis == nullptr || ! picked.has_value() || *picked >= plugins.size() || safeThis->openSong == nullptr)
             return;
-        if (auto added = safeThis->openSong->addInsert (trackId, plugins[*picked]); ! added.has_value())
+        auto added = safeThis->openSong->addInsert (trackId, plugins[*picked]);
+        if (! added.has_value())
             safeThis->handleError (added.error());
+        else if (! added->empty())
+            safeThis->pendingEditorSlot = *added; // its editor opens once it has loaded
         safeThis->refresh();
     });
+}
+
+InsertChainActions MainComponent::insertChainActions()
+{
+    InsertChainActions actions;
+    actions.add = [this] (const song::Id& trackId) { chooseInsert (trackId); };
+    actions.open = [this] (const song::Id& slotId) { openInsertEditor (slotId); };
+    actions.bypass = [this] (const song::Id& slotId, bool bypassed) {
+        if (openSong != nullptr)
+            applyEdit (song::setInsertBypassed (openSong->song(), slotId, bypassed), song::bypassInsertLabel (openSong->song(), slotId, bypassed));
+    };
+    actions.remove = [this] (const song::Id& slotId) {
+        if (openSong != nullptr)
+            applyEdit (song::removeInsert (openSong->song(), slotId), song::removeInsertLabel (openSong->song(), slotId));
+    };
+    actions.move = [this] (const song::Id& slotId, std::size_t toIndex) {
+        if (openSong != nullptr)
+            applyEdit (song::moveInsert (openSong->song(), slotId, toIndex), song::moveInsertLabel (openSong->song(), slotId));
+    };
+    return actions;
+}
+
+void MainComponent::openInsertEditor (const song::Id& slotId)
+{
+    if (openSong == nullptr)
+        return;
+    const auto status = openSong->insertStatus (slotId);
+    if (status == plugin::InsertStatus::failed)
+    {
+        showNotice ("ui.plugin_missing");
+        return;
+    }
+    // Loading: it opens when ready (syncPluginWindows).
+    pendingEditorSlot = slotId;
+    syncPluginWindows();
+}
+
+void MainComponent::syncPluginWindows()
+{
+    if (openSong == nullptr)
+        return;
+    const auto editable = ! openSong->isRecording();
+    const auto stateOf = [this, editable] (const song::Id& slotId) { return pluginWindowStateFor (openSong->song(), slotId, {}, editable); };
+    pluginWindows.sync (stateOf, [this] (const song::Id& slotId) { return openSong->insertHost().processor (slotId); });
+
+    if (! pendingEditorSlot.has_value())
+        return;
+    const auto slotId = *pendingEditorSlot;
+    const auto status = openSong->insertStatus (slotId);
+    if (status == plugin::InsertStatus::loading)
+        return;
+    pendingEditorSlot.reset();
+    if (status != plugin::InsertStatus::ready)
+        return; // gone from the Song, or failed to load (logged where it failed)
+    auto processor = openSong->insertHost().sharedProcessor (slotId);
+    if (const auto state = pluginWindowStateFor (openSong->song(), slotId, plugin::hostingBadge (*processor), editable))
+        pluginWindows.open (std::move (processor), *state);
 }
 
 void MainComponent::handleError (const core::Error& error)
@@ -396,6 +469,7 @@ void MainComponent::refresh()
             editPage.show (TimelineState { song, openSong->position(), state.playing, ! recording });
     }
     topBar.show (state);
+    syncPluginWindows();
 
     const auto songOpen = openSong != nullptr;
     noSongPage.setVisible (! songOpen);

@@ -156,7 +156,7 @@ engine::InsertFactory InsertHost::insertFactory()
     return [ready] (const song::Id&, const std::vector<song::InsertSlot>& chain) {
         std::vector<std::unique_ptr<juce::AudioProcessor>> nodes;
         for (const auto& slot : chain)
-            if (const auto found = ready.find (slot.id); found != ready.end())
+            if (const auto found = ready.find (slot.id); ! slot.bypassed && found != ready.end())
                 nodes.push_back (std::make_unique<engine::SharedInsertNode> (found->second));
         return nodes;
     };
@@ -172,6 +172,12 @@ juce::AudioProcessor* InsertHost::processor (const song::Id& slotId) const
 {
     const auto found = entries.find (slotId);
     return found != entries.end() ? found->second.processor.get() : nullptr;
+}
+
+std::shared_ptr<juce::AudioProcessor> InsertHost::sharedProcessor (const song::Id& slotId) const
+{
+    const auto found = entries.find (slotId);
+    return found != entries.end() ? found->second.processor : nullptr;
 }
 
 bool InsertHost::takeGraphChanged()

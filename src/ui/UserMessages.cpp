@@ -27,6 +27,8 @@ constexpr std::array codeTable {
     CodeEntry { "song.split_outside_clip", Tier::notice, "Move the playhead inside the selected Clip to split it." },
     CodeEntry { "song.clip_not_found", Tier::notice, "That Clip is no longer in the Song." },
     CodeEntry { "song.track_not_found", Tier::notice, "That Track is no longer in the Song." },
+    CodeEntry { "ui.plugin_missing", Tier::notice, "That plugin is not installed or could not be loaded." },
+    CodeEntry { "song.insert_not_found", Tier::notice, "That Insert is no longer in the Song." },
 
     // Alerts: an action failed or data may be lost.
     CodeEntry { "capture.take_write_failed", Tier::alert, "A Take could not be written to disk; this Pass was not added." },

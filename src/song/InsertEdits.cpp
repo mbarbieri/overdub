@@ -37,6 +37,27 @@ SlotPlace findSlot (const Song& song, const Id& slotId)
         return { {}, &*found };
     return {};
 }
+
+// The chain that holds the slot (a Track's or the Master's), or null.
+std::vector<InsertSlot>* chainHolding (Song& song, const Id& slotId)
+{
+    const auto holds = [&slotId] (const std::vector<InsertSlot>& chain) { return std::ranges::find (chain, slotId, &InsertSlot::id) != chain.end(); };
+    for (auto& track : song.tracks)
+        if (holds (track.insertChain))
+            return &track.insertChain;
+    if (holds (song.master.insertChain))
+        return &song.master.insertChain;
+    return nullptr;
+}
+
+// "<verb> AUDelay <preposition> Guitar", or "<verb> Insert" for an unknown slot.
+std::string slotLabel (const Song& song, const Id& slotId, const std::string& verb, const std::string& preposition)
+{
+    const auto place = findSlot (song, slotId);
+    if (place.slot == nullptr)
+        return verb + " Insert";
+    return verb + " " + place.slot->name + " " + preposition + " " + chainOwnerName (song, place.trackId);
+}
 } // namespace
 
 core::Expected<Song> addInsert (Song song, const Id& trackId, InsertSlot slot)
@@ -64,6 +85,28 @@ core::Expected<Song> removeInsert (Song song, const Id& slotId)
     return std::unexpected (insertNotFound (slotId));
 }
 
+core::Expected<Song> moveInsert (Song song, const Id& slotId, std::size_t toIndex)
+{
+    auto* chain = chainHolding (song, slotId);
+    if (chain == nullptr)
+        return std::unexpected (insertNotFound (slotId));
+    const auto from = std::ranges::find (*chain, slotId, &InsertSlot::id);
+    auto slot = std::move (*from);
+    chain->erase (from);
+    const auto to = std::min (toIndex, chain->size());
+    chain->insert (chain->begin() + (std::ptrdiff_t) to, std::move (slot));
+    return song;
+}
+
+core::Expected<Song> setInsertBypassed (Song song, const Id& slotId, bool bypassed)
+{
+    auto* chain = chainHolding (song, slotId);
+    if (chain == nullptr)
+        return std::unexpected (insertNotFound (slotId));
+    std::ranges::find (*chain, slotId, &InsertSlot::id)->bypassed = bypassed;
+    return song;
+}
+
 std::string addInsertLabel (const Song& song, const Id& trackId, const std::string& pluginName)
 {
     return "Add " + pluginName + " to " + chainOwnerName (song, trackId);
@@ -71,9 +114,16 @@ std::string addInsertLabel (const Song& song, const Id& trackId, const std::stri
 
 std::string removeInsertLabel (const Song& song, const Id& slotId)
 {
-    const auto place = findSlot (song, slotId);
-    if (place.slot == nullptr)
-        return "Remove Insert";
-    return "Remove " + place.slot->name + " from " + chainOwnerName (song, place.trackId);
+    return slotLabel (song, slotId, "Remove", "from");
+}
+
+std::string moveInsertLabel (const Song& song, const Id& slotId)
+{
+    return slotLabel (song, slotId, "Move", "in");
+}
+
+std::string bypassInsertLabel (const Song& song, const Id& slotId, bool bypassed)
+{
+    return slotLabel (song, slotId, bypassed ? "Bypass" : "Unbypass", "on");
 }
 } // namespace overdub::song

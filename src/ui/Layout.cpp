@@ -90,14 +90,11 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row)
     const auto armColumn = area.removeFromLeft (44);
     layout.arm = armColumn.withHeight (28);
     area.removeFromLeft (gap);
-    auto bottom = area.removeFromBottom (22);
+    layout.insertChain = area.removeFromBottom (insertChipHeight);
     area.removeFromBottom (4);
-    layout.insertButton = bottom.removeFromLeft (72);
-    bottom.removeFromLeft (gap);
-    layout.inserts = bottom;
-    layout.monitoring = area.removeFromRight (86);
+    layout.monitoring = area.removeFromRight (116);
     area.removeFromRight (gap);
-    layout.input = area.removeFromRight (150);
+    layout.input = area.removeFromRight (120);
     area.removeFromRight (gap);
     layout.solo = area.removeFromRight (26);
     area.removeFromRight (2);
@@ -105,6 +102,63 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row)
     area.removeFromRight (gap);
     layout.name = area;
     return layout;
+}
+
+InsertChainLayout insertChainLayout (juce::Rectangle<int> area, int numChips, bool vertical)
+{
+    InsertChainLayout layout;
+    auto rest = area;
+    if (vertical)
+        layout.addButton = rest.removeFromBottom (insertChipHeight);
+    else
+        layout.addButton = rest.removeFromLeft (insertAddButtonWidth);
+    for (int i = 0; i < numChips; ++i)
+    {
+        if (vertical)
+        {
+            // A chip needs its height plus the gap that keeps it off "+ Insert".
+            if (rest.getHeight() < insertChipHeight + insertChipGap)
+            {
+                layout.chips.emplace_back();
+                continue;
+            }
+            layout.chips.push_back (rest.removeFromTop (insertChipHeight));
+            rest.removeFromTop (insertChipGap);
+            continue;
+        }
+        if (rest.getWidth() < insertChipGap * 2 + insertChipWidth)
+        {
+            layout.chips.emplace_back();
+            continue;
+        }
+        rest.removeFromLeft (insertChipGap * 2);
+        layout.chips.push_back (rest.removeFromLeft (insertChipWidth));
+    }
+    return layout;
+}
+
+InsertChipLayout insertChipLayout (juce::Rectangle<int> chip)
+{
+    InsertChipLayout layout;
+    auto area = chip;
+    layout.remove = area.removeFromRight (16);
+    layout.bypass = area.removeFromRight (16);
+    layout.name = area;
+    return layout;
+}
+
+std::size_t insertDropIndex (const std::vector<juce::Rectangle<int>>& chips, std::size_t dragged, juce::Point<int> point, bool vertical)
+{
+    std::size_t index = 0;
+    for (std::size_t i = 0; i < chips.size(); ++i)
+    {
+        if (i == dragged || chips[i].isEmpty())
+            continue;
+        const auto centre = chips[i].getCentre();
+        if (vertical ? centre.y < point.y : centre.x < point.x)
+            ++index;
+    }
+    return index;
 }
 
 int clampMixerHeight (int requested, int pageHeight)
@@ -245,6 +299,8 @@ MixerStripLayout mixerStripLayout (juce::Rectangle<int> strip)
     layout.name = area.removeFromTop (18);
     area.removeFromTop (rowGap);
     layout.pan = area.removeFromTop (18);
+    area.removeFromTop (rowGap);
+    layout.inserts = area.removeFromTop (mixerInsertsHeight);
     area.removeFromTop (rowGap);
     auto buttons = area.removeFromBottom (22);
     area.removeFromBottom (rowGap);

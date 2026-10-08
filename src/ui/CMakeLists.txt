@@ -9,6 +9,7 @@ target_sources(overdub_ui PRIVATE
     Commands.cpp
     DeviceSettingsPanel.cpp
     EditPage.cpp
+    InsertChain.cpp
     Layout.cpp
     LookAheadStrip.cpp
     MainComponent.cpp
@@ -16,6 +17,7 @@ target_sources(overdub_ui PRIVATE
     MixerGeometry.cpp
     OpenSong.cpp
     PassesPanel.cpp
+    PluginWindows.cpp
     Pages.cpp
     RecordPage.cpp
     RecordView.cpp

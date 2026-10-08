@@ -3,6 +3,7 @@
 #include <juce_graphics/juce_graphics.h>
 
 #include <array>
+#include <cstddef>
 #include <vector>
 
 // The main window's geometry (ADR 0005 UI amendment): pure functions from a bounds rectangle to
@@ -62,12 +63,12 @@ struct RecordPageLayout
 
 RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks);
 
-// Top line, left to right: arm, name, mute, solo, input picker, Monitoring. Bottom line, under the
-// name: the "+ Insert" button and the Insert Chain's names (issue #33).
+// Top line, left to right: arm, name, mute, solo, input picker, Monitoring (with its count of
+// active Inserts). Bottom line, under the name: the Track's Insert Chain (issue #34), laid out by
+// insertChainLayout (horizontal).
 struct TrackRowLayout
 {
-    juce::Rectangle<int> insertButton;
-    juce::Rectangle<int> inserts;
+    juce::Rectangle<int> insertChain;
     juce::Rectangle<int> arm;
     juce::Rectangle<int> name;
     juce::Rectangle<int> mute;
@@ -82,8 +83,8 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row);
 // draggable divider the Mixer region (issue #31), which can be hidden.
 inline constexpr int clipToolbarHeight = 36;
 inline constexpr int mixerDividerHeight = 6;
-inline constexpr int minimumMixerHeight = 120;
-inline constexpr int defaultMixerHeight = 220;
+inline constexpr int minimumMixerHeight = 220;
+inline constexpr int defaultMixerHeight = 300;
 inline constexpr int minimumTimelineHeight = 160;
 
 struct EditPageLayout
@@ -161,9 +162,41 @@ struct TrackHeaderLayout
 
 TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header);
 
+// An Insert Chain (issue #34): "+ Insert" and one chip per slot (its name, bypass, remove).
+// Horizontal (Record rows): "+ Insert" first, then chips of insertChipWidth left to right.
+// Vertical (Mixer strips): chips of the area's width stacked from the top, "+ Insert" at the
+// bottom. Chips that do not fit are empty (cut off).
+inline constexpr int insertChipHeight = 18;
+inline constexpr int insertChipWidth = 104;
+inline constexpr int insertAddButtonWidth = 64;
+inline constexpr int insertChipGap = 2;
+// A Mixer strip's Insert Chain: three chips over "+ Insert".
+inline constexpr int mixerInsertsHeight = 4 * insertChipHeight + 3 * insertChipGap;
+
+struct InsertChainLayout
+{
+    std::vector<juce::Rectangle<int>> chips;
+    juce::Rectangle<int> addButton;
+};
+
+InsertChainLayout insertChainLayout (juce::Rectangle<int> area, int numChips, bool vertical);
+
+struct InsertChipLayout
+{
+    juce::Rectangle<int> name;
+    juce::Rectangle<int> bypass;
+    juce::Rectangle<int> remove;
+};
+
+InsertChipLayout insertChipLayout (juce::Rectangle<int> chip);
+
+// Where a dragged chip lands, as an index for song::moveInsert: the number of other shown chips
+// whose centre is before `point` (above it when vertical, left of it when horizontal).
+std::size_t insertDropIndex (const std::vector<juce::Rectangle<int>>& chips, std::size_t dragged, juce::Point<int> point, bool vertical);
+
 // The Mixer (issue #31): one strip of mixerStripWidth per Track from the left, and the Master
 // strip at the right edge. Strips that do not fit before the Master are empty (cut off).
-inline constexpr int mixerStripWidth = 92;
+inline constexpr int mixerStripWidth = 110;
 
 struct MixerLayout
 {
@@ -173,12 +206,14 @@ struct MixerLayout
 
 MixerLayout mixerLayout (juce::Rectangle<int> mixer, int numTracks);
 
-// Top to bottom: the name, the pan control, the fader with its meter on its right, the dB value,
-// then M and S side by side. The Master strip uses the same places and shows no pan, M or S.
+// Top to bottom: the name, the pan control, the Insert Chain (vertical, mixerInsertsHeight), the
+// fader with its meter on its right, the dB value, then M and S side by side. The Master strip
+// uses the same places and shows no pan, M or S.
 struct MixerStripLayout
 {
     juce::Rectangle<int> name;
     juce::Rectangle<int> pan;
+    juce::Rectangle<int> inserts;
     juce::Rectangle<int> fader;
     juce::Rectangle<int> meter;
     juce::Rectangle<int> value;
