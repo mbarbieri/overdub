@@ -36,6 +36,10 @@ using ShouldStopFn = std::function<bool()>;
 
 core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& request, const ProgressFn& progress = {}, const ShouldStopFn& shouldStop = {});
 
+// Renders the whole mix into `file` (no logging, no rename): what exportMix and exportMovie
+// share. On failure or a stop the file is deleted. Errors: as exportMix's, but folder and rename.
+core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop);
+
 // One exportMix on a worker thread. The owner polls progress() and isDone() from its own thread
 // and takes the result once done. Destroying the job stops a running export (export.cancelled)
 // and waits for its thread.
