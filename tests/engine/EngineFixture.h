@@ -19,6 +19,10 @@ namespace overdub::engine::testing
 {
 inline constexpr int testSampleRate = 48000;
 
+// A Track at the default mix (0 dB, centre pan) is heard at sqrt (1/2) on each channel: the
+// -3 dB constant-power pan law (issue #31, engine/MixLaw.h).
+inline const float centrePanGain = (float) std::sqrt (0.5);
+
 // A fresh, empty package folder under the system temp folder, deleted at the end of the test.
 struct TempPackage
 {

@@ -38,6 +38,26 @@ void Engine::loadSong (const song::Song& song, const juce::File& packageRoot, co
     freeRetiredPlans();
     // A plan the audio thread never took is replaced; it was never used, so it is freed here.
     delete pendingPlan.exchange (plan, std::memory_order_acq_rel);
+    latestPlan = plan;
+}
+
+bool Engine::setMix (const song::Song& song)
+{
+    const std::scoped_lock lock { nonRealtimeMutex };
+    if (latestPlan == nullptr || ! latestPlan->hasTracksOf (song))
+    {
+        core::logEvent (core::Level::debug, "engine.mix_refused", { { "reason", latestPlan == nullptr ? "no_plan" : "tracks_differ" }, { "song_tracks", song.tracks.size() } });
+        return false;
+    }
+    latestPlan->applyMix (song);
+    core::logEvent (core::Level::debug, "engine.mix_applied", { { "tracks", song.tracks.size() }, { "master_volume_db", song.master.volumeDb } });
+    return true;
+}
+
+MeterPeaks Engine::takeMeterPeaks()
+{
+    const std::scoped_lock lock { nonRealtimeMutex };
+    return latestPlan != nullptr ? latestPlan->takeMeterPeaks() : MeterPeaks {};
 }
 
 void Engine::play()

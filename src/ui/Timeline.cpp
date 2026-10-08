@@ -4,6 +4,7 @@
 #include "song/ClipEdits.h"
 #include "song/TakeEdits.h"
 #include "ui/Colours.h"
+#include "ui/MuteSoloButtons.h"
 
 #include <algorithm>
 #include <array>
@@ -107,9 +108,12 @@ TrackHeader::TrackHeader()
         if (onToggleTakes)
             onToggleTakes();
     };
+    setUpMuteSoloButtons (muteButton, soloButton, [this] { return muted; }, [this] { return soloed; }, onMute, onSolo);
     addAndMakeVisible (armButton);
     addAndMakeVisible (nameLabel);
     addChildComponent (takesButton);
+    addAndMakeVisible (muteButton);
+    addAndMakeVisible (soloButton);
 }
 
 void TrackHeader::show (const song::Track& track, bool enabled, int numTakes, bool unfolded)
@@ -119,6 +123,12 @@ void TrackHeader::show (const song::Track& track, bool enabled, int numTakes, bo
     nameLabel.setText (juce::String::fromUTF8 (track.name.c_str()), juce::dontSendNotification);
     armButton.setToggleState (track.armed, juce::dontSendNotification);
     armButton.setEnabled (enabled);
+    muted = track.mute;
+    soloed = track.solo;
+    muteButton.setToggleState (track.mute, juce::dontSendNotification);
+    soloButton.setToggleState (track.solo, juce::dontSendNotification);
+    muteButton.setEnabled (enabled);
+    soloButton.setEnabled (enabled);
     takesButton.setVisible (numTakes > 0);
     takesButton.setButtonText (takesToggleText (numTakes, unfolded));
     takesButton.setToggleState (unfolded, juce::dontSendNotification);
@@ -130,6 +140,8 @@ void TrackHeader::resized()
     armButton.setBounds (headerLayout.arm);
     nameLabel.setBounds (headerLayout.name);
     takesButton.setBounds (headerLayout.takesToggle);
+    muteButton.setBounds (headerLayout.mute);
+    soloButton.setBounds (headerLayout.solo);
 }
 
 void TrackHeader::paint (juce::Graphics& g)
@@ -276,6 +288,14 @@ void Timeline::rebuildHeaders()
                 onArm (trackId, armed);
         };
         header->onToggleTakes = [this, trackId] { setTakeLanesUnfolded (trackId, ! areTakeLanesUnfolded (trackId)); };
+        header->onMute = [this, trackId] (bool mute) {
+            if (onMute)
+                onMute (trackId, mute);
+        };
+        header->onSolo = [this, trackId] (bool solo) {
+            if (onSolo)
+                onSolo (trackId, solo);
+        };
         addAndMakeVisible (*header);
         headers.push_back (std::move (header));
     }

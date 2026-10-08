@@ -11,6 +11,8 @@ target_sources(overdub_ui PRIVATE
     EditPage.cpp
     Layout.cpp
     MainComponent.cpp
+    Mixer.cpp
+    MixerGeometry.cpp
     OpenSong.cpp
     Pages.cpp
     RecordPage.cpp

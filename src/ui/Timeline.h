@@ -54,7 +54,8 @@ struct TimelineState
 // Track, "Missing" when the Song lacks its source.
 std::string clipName (const song::Song& song, const song::Clip& clip);
 
-// A Track lane's compact header: arm and name, and the Take Lanes toggle when it has Takes.
+// A Track lane's compact header: arm and name, the Take Lanes toggle when it has Takes, and M and S
+// (issue #31).
 class TrackHeader final : public juce::Component
 {
 public:
@@ -69,14 +70,20 @@ public:
 
     std::function<void (bool armed)> onArm;
     std::function<void()> onToggleTakes;
+    std::function<void (bool mute)> onMute;
+    std::function<void (bool solo)> onSolo;
 
     juce::TextButton armButton { "Arm" };
     juce::Label nameLabel;
     juce::TextButton takesButton;
+    juce::TextButton muteButton { "M" };
+    juce::TextButton soloButton { "S" };
 
 private:
     song::Id id;
     bool armed = false;
+    bool muted = false;
+    bool soloed = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TrackHeader)
 };
@@ -120,6 +127,8 @@ public:
     std::function<void (song::Song changed, std::string label)> onEdit;
     std::function<void (song::SampleCount sample)> onSeek;
     std::function<void (const song::Id& trackId, bool armed)> onArm;
+    std::function<void (const song::Id& trackId, bool mute)> onMute;
+    std::function<void (const song::Id& trackId, bool solo)> onSolo;
     std::function<void()> onSelectionChanged;
     PeaksLookup peaksFor;
 

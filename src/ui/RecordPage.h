@@ -11,8 +11,8 @@
 #include <string>
 #include <vector>
 
-// Bare Record mode (issue #27): one row per Track (arm, name, input picker, Monitoring) and an
-// Import button. The camera stage, meters, M/S, Insert Chains, the Passes list and the look-ahead
+// Bare Record mode (issue #27): one row per Track (arm, name, M and S (issue #31), input picker,
+// Monitoring) and an Import button. The camera stage, meters, Insert Chains, the Passes list and the look-ahead
 // strip come in later slices. Thin: rows show a TrackRowState and report gestures by Track id.
 namespace overdub::ui
 {
@@ -21,6 +21,8 @@ struct TrackRowState
     song::Id trackId;
     std::string name;
     bool armed = false;
+    bool mute = false;
+    bool solo = false;
     std::vector<InputChoice> choices;
     std::optional<std::size_t> selectedChoice; // nullopt: the Track's channels are not offered
     bool monitoring = false;
@@ -53,9 +55,13 @@ public:
     std::function<void (bool armed)> onArm;
     std::function<void (std::vector<int> channels)> onInput;
     std::function<void (bool on)> onMonitoring;
+    std::function<void (bool mute)> onMute;
+    std::function<void (bool solo)> onSolo;
 
     juce::TextButton armButton { "Arm" };
     juce::Label nameLabel;
+    juce::TextButton muteButton { "M" };
+    juce::TextButton soloButton { "S" };
     juce::ComboBox inputPicker;
     juce::TextButton monitoringButton { "Monitoring" };
 
@@ -77,6 +83,8 @@ public:
     std::function<void (const song::Id&, bool)> onArm;
     std::function<void (const song::Id&, std::vector<int>)> onInput;
     std::function<void (const song::Id&, bool)> onMonitoring;
+    std::function<void (const song::Id&, bool)> onMute;
+    std::function<void (const song::Id&, bool)> onSolo;
     std::function<void()> onImport;
 
     std::vector<std::unique_ptr<TrackRow>> rows;

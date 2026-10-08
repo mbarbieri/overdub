@@ -306,13 +306,18 @@ TEST_CASE ("the Mixer region hides and shows with its button and resizes with it
     REQUIRE (isShown (page.mixer));
     CHECK (page.mixer.getHeight() == defaultMixerHeight);
     const auto timelineHeight = page.timeline.getHeight();
+    const auto stripHeight = page.mixer.masterStrip.getHeight();
+    const auto faderTravel = page.mixer.strips[0]->fader.travel();
 
-    // Drag the divider up by 50: the region grows by 50 and the timeline shrinks by 50.
+    // Drag the divider up by 50: the region grows by 50 and the timeline shrinks by 50; the strips
+    // and their faders grow with it.
     const juce::Point<int> grab { page.divider.getWidth() / 2, 2 };
     drag (page.divider, grab, grab.translated (0, -50));
     CHECK (page.mixer.getHeight() == defaultMixerHeight + 50);
     CHECK (page.timeline.getHeight() == timelineHeight - 50);
     CHECK (page.mixer.getBottom() == page.getHeight());
+    CHECK (page.mixer.masterStrip.getHeight() == stripHeight + 50);
+    CHECK (page.mixer.strips[0]->fader.travel() == faderTravel + 50);
 
     click (page.toolbar.mixerButton);
     CHECK (! isShown (page.mixer));

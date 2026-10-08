@@ -45,7 +45,7 @@ TEST_CASE ("an impulse in a Clip comes out at its timeline position", "[engine][
 
     CHECK (nonZeroSamples (rendered.channels[0]) == std::vector<std::int64_t> { 1200 });
     CHECK (nonZeroSamples (rendered.channels[1]) == std::vector<std::int64_t> { 1200 });
-    CHECK_THAT (rendered.channels[0][1200], Catch::Matchers::WithinULP (1.0f, 0));
+    CHECK_THAT (rendered.channels[0][1200], Catch::Matchers::WithinULP (centrePanGain, 0));
 }
 
 TEST_CASE ("after a seek the impulse comes out where the new position puts it", "[engine][transport]")
@@ -101,7 +101,7 @@ TEST_CASE ("after a seek under PDC the impulse comes out at its Song position an
     CHECK (engine.latencySamples() == delaySamples);
     CHECK (nonZeroSamples (afterSeek.channels[0]) == std::vector<std::int64_t> { 200 });
     CHECK (nonZeroSamples (afterSeek.channels[1]) == std::vector<std::int64_t> { 200 });
-    CHECK_THAT (afterSeek.channels[0][200], Catch::Matchers::WithinULP (1.0f, 0));
+    CHECK_THAT (afterSeek.channels[0][200], Catch::Matchers::WithinULP (centrePanGain, 0));
 }
 
 TEST_CASE ("a stopped transport outputs silence and holds its position", "[engine][transport]")
@@ -209,8 +209,8 @@ TEST_CASE ("an Insert Chain shapes only its own Track", "[engine][pdc]")
     };
 
     const auto halved = renderWith (insertOnTrack ("track-b", [] { return std::make_unique<GainProcessor> (0.5f); }));
-    CHECK_THAT (halved[500], Catch::Matchers::WithinULP (1.0f, 0));
-    CHECK_THAT (halved[900], Catch::Matchers::WithinULP (0.5f, 0));
+    CHECK_THAT (halved[500], Catch::Matchers::WithinULP (centrePanGain, 0));
+    CHECK_THAT (halved[900], Catch::Matchers::WithinULP (0.5f * centrePanGain, 0));
 
     const auto silenced = renderWith (insertOnTrack ("track-a", [] { return std::make_unique<SilenceProcessor>(); }));
     CHECK (nonZeroSamples (silenced) == std::vector<std::int64_t> { 900 });

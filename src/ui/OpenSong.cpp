@@ -1,5 +1,6 @@
 #include "ui/OpenSong.h"
 
+#include "song/MixEdits.h"
 #include "ui/TrackRowEdits.h"
 
 #include <algorithm>
@@ -70,6 +71,8 @@ core::Expected<void> OpenSong::record()
 
     recorder = std::move (*started);
     recordingPass = passNumber;
+    // A Mixer preview still applied (a drag the Pass interrupts) gives way to the Song's mix.
+    binding.engine->setMix (song());
     if (! binding.engine->isPlaying())
         binding.engine->play();
     return {};
@@ -122,9 +125,22 @@ core::Expected<void> OpenSong::edit (song::Song changed, std::string label)
 {
     if (recorder != nullptr)
         return {};
+    const auto before = song();
     auto result = package_->edit (std::move (changed), std::move (label));
-    reloadEngine();
+    updateEngine (before);
     return result;
+}
+
+void OpenSong::previewMix (const song::Song& candidate)
+{
+    if (recorder != nullptr || binding.engine == nullptr || ! song::differsOnlyInMix (song(), candidate))
+        return;
+    binding.engine->setMix (candidate);
+}
+
+engine::MeterPeaks OpenSong::meterPeaks()
+{
+    return binding.engine != nullptr ? binding.engine->takeMeterPeaks() : engine::MeterPeaks {};
 }
 
 const song::Peaks& OpenSong::peaks (const song::ClipSource& source)
@@ -142,8 +158,9 @@ core::Expected<void> OpenSong::undo()
 {
     if (recorder != nullptr)
         return {};
+    const auto before = song();
     auto result = package_->undo();
-    reloadEngine();
+    updateEngine (before);
     return result;
 }
 
@@ -151,8 +168,9 @@ core::Expected<void> OpenSong::redo()
 {
     if (recorder != nullptr)
         return {};
+    const auto before = song();
     auto result = package_->redo();
-    reloadEngine();
+    updateEngine (before);
     return result;
 }
 
@@ -222,6 +240,13 @@ std::vector<core::Error> OpenSong::finishPass (core::Expected<capture::RecordedP
     if (! finished.has_value())
         return { finished.error() };
     return {};
+}
+
+void OpenSong::updateEngine (const song::Song& before)
+{
+    if (binding.engine != nullptr && song::differsOnlyInMix (before, song()) && binding.engine->setMix (song()))
+        return;
+    reloadEngine();
 }
 
 void OpenSong::reloadEngine()
