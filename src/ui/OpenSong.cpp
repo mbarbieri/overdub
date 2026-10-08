@@ -465,8 +465,8 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request)
         return std::unexpected (core::Error { "ui.stop_recording_first", "a Pass is running", {} });
     if (isExporting())
         return {};
-    if (! exporting::isAvailable (request.format))
-        return std::unexpected (core::Error { "export.format_unavailable", "this format cannot be exported yet", { { "format", exporting::formatName (request.format) } } });
+    if (auto available = exporting::checkAvailable (request.format); ! available.has_value())
+        return available;
 
     lastExport.reset();
     if (binding.engine != nullptr)

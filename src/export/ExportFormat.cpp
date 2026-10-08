@@ -21,6 +21,13 @@ bool isAvailable (ExportFormat format)
     return format != ExportFormat::mp4;
 }
 
+core::Expected<void> checkAvailable (ExportFormat format)
+{
+    if (isAvailable (format))
+        return {};
+    return std::unexpected (core::Error { "export.format_unavailable", "this format cannot be exported yet", { { "format", formatName (format) } } });
+}
+
 juce::File withFormatExtension (const juce::File& file, ExportFormat format)
 {
     return file.withFileExtension (formatName (format));

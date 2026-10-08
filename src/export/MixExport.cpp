@@ -14,7 +14,7 @@ core::Error folderFailed (const juce::File& folder, const juce::Result& result)
     return core::Error {
         "export.write_failed",
         "could not create the export folder",
-        { { "path", folder.getFullPathName().toStdString() }, { "step", "folder" }, { "os_status", 0 }, { "detail", result.getErrorMessage().toStdString() } },
+        { { "path", folder.getFullPathName().toStdString() }, { "step", "folder" }, { "detail", result.getErrorMessage().toStdString() } },
     };
 }
 
@@ -38,7 +38,10 @@ core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& 
     const auto partial = partialFileFor (request.destination);
     auto writer = MixFileWriter::create (partial, request.format, render.sampleRate(), MixRender::numChannels);
     if (! writer.has_value())
+    {
+        partial.deleteFile(); // the file may exist when a step after creating it failed
         return std::unexpected (writer.error());
+    }
 
     core::logEvent (core::Level::info,
                     "export.started",
@@ -84,7 +87,7 @@ core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& 
         return std::unexpected (core::Error {
             "export.write_failed",
             "could not move the exported mix into place",
-            { { "path", request.destination.getFullPathName().toStdString() }, { "step", "rename" }, { "os_status", 0 } },
+            { { "path", request.destination.getFullPathName().toStdString() }, { "step", "rename" }, { "from", partial.getFullPathName().toStdString() } },
         });
     }
 

@@ -68,8 +68,8 @@ MixFileWriter::~MixFileWriter() = default;
 
 core::Expected<std::unique_ptr<MixFileWriter>> MixFileWriter::create (const juce::File& file, ExportFormat format, int sampleRate, int numChannels)
 {
-    if (! isAvailable (format))
-        return std::unexpected (core::Error { "export.format_unavailable", "this format cannot be exported yet", { { "format", formatName (format) } } });
+    if (auto available = checkAvailable (format); ! available.has_value())
+        return std::unexpected (available.error());
 
     AudioFileTypeID fileType = kAudioFileWAVEType;
     AudioStreamBasicDescription fileFormat = wav24 (sampleRate, numChannels);

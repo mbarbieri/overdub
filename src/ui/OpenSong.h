@@ -54,6 +54,9 @@
 // runs, record and play are refused (ui.export_running), and edits change the Song but not the
 // engine; when it ends, poll() reloads the engine with the current Song. Without audio the export
 // starts at once. Detaching the audio stops a running export (logged as ui.export_stopped).
+// Known limit: an engine whose device has stopped calling back without being detached never takes
+// the empty plan, so the export waits ("Preparing…") until the device runs or is detached. A slot
+// an edit removes during an export keeps rendering in it (the plan holds the plugin) until it ends.
 //
 // Message thread only.
 namespace overdub::ui
@@ -205,8 +208,9 @@ public:
     // One Backing Track import per file (SongPackage::importBackingTracks); empty during a Pass.
     std::vector<core::Expected<song::Id>> importFiles (const std::vector<juce::File>& files);
 
-    // Call regularly (window timer): advances an export (starts it once the audio has let go of the
-    // plugins; reloads the engine and returns its Error once it ends), finishes a Pass the audio thread has ended, rebuilds the plan
+    // Call regularly (window timer): advances an export (starts it once the audio has let go of
+    // the plugins; once it ends, reloads the engine and returns its Error), finishes a Pass the
+    // audio thread has ended, rebuilds the plan
     // when a plugin loaded or changed its latency (not during a Pass), schedules a write when a
     // plugin parameter changed, saves the playhead once the transport is stopped, and writes a due
     // song.json. Returns the errors, not logged.

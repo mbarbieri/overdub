@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Error.h"
+
 #include <juce_core/juce_core.h>
 
 #include <string>
@@ -28,6 +30,8 @@ const char* formatName (ExportFormat format);
 
 // Whether this build can write the format (mp4 arrives with slice 17).
 bool isAvailable (ExportFormat format);
+// The same as an Error: export.format_unavailable (format) when it cannot be written.
+core::Expected<void> checkAvailable (ExportFormat format);
 
 // The file with its extension replaced by the format's ("Song.wav" -> "Song.m4a"); a file without
 // an extension gains one.
