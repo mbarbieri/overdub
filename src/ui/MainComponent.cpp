@@ -1,5 +1,6 @@
 #include "ui/MainComponent.h"
 
+#include "capture/AvCamera.h"
 #include "plugin/PluginKind.h"
 #include "song/ClipEdits.h"
 #include "song/InsertEdits.h"
@@ -61,6 +62,7 @@ MainComponent::MainComponent()
     chooseFilesToImport = chooseFilesWithNativeDialog;
     chooseInsertPlugin = choosePluginFromMenu;
     showAlert = showAlertWithNativeDialog;
+    askCameraAccess = capture::requestCameraAccess;
 
     topBar.onCommand = [this] (Command command) { perform (command); };
     recordPage.onArm = [this] (const song::Id& trackId, bool armed) {
@@ -84,6 +86,14 @@ MainComponent::MainComponent()
     recordPage.onPreRoll = [this] (song::PreRoll preRoll) {
         if (openSong != nullptr)
             openSong->setPreRoll (preRoll);
+        refresh();
+    };
+    recordPage.onCameraArm = [this] (bool armed) { armCamera (armed); };
+    recordPage.onCameraDevice = [this] (const std::string& cameraId) {
+        if (openSong == nullptr)
+            return;
+        if (auto chosen = openSong->setCameraDevice (cameraId); ! chosen.has_value())
+            handleError (chosen.error());
         refresh();
     };
     recordPage.onJumpToPass = [this] (const song::Id& passId) { jumpToPass (passId); };
@@ -255,6 +265,30 @@ void MainComponent::applyEdit (core::Expected<song::Song> changed, const std::st
     if (auto edited = openSong->edit (std::move (*changed), label); ! edited.has_value())
         handleError (edited.error());
     refresh();
+}
+
+void MainComponent::armCamera (bool armed)
+{
+    if (openSong == nullptr || passRunning())
+        return;
+    const auto apply = [this] (bool arm) {
+        if (openSong == nullptr)
+            return;
+        if (auto changed = openSong->setCameraArmed (arm); ! changed.has_value())
+            handleError (changed.error());
+        refresh();
+    };
+    if (! armed || ! askCameraAccess)
+        return apply (armed);
+
+    askCameraAccess ([safeThis = juce::Component::SafePointer<MainComponent> (this), apply] (bool granted) {
+        if (safeThis == nullptr)
+            return;
+        if (granted)
+            return apply (true);
+        safeThis->handleError (core::Error { "capture.camera_access_denied", "the app may not use the camera", {} });
+        safeThis->refresh();
+    });
 }
 
 void MainComponent::setMute (const song::Id& trackId, bool mute)
@@ -463,6 +497,7 @@ void MainComponent::refresh()
             [this] (const song::Id& trackId) { return openSong->isMonitoring (trackId); },
             recording,
             [this] (const song::Id& slotId) { return openSong->insertStatus (slotId); }));
+        recordPage.showCamera (cameraControlsStateFor (song, openSong->cameraDevices(), recording), openSong->cameraPreviewLayer());
         if (currentMode == Mode::record)
             recordPage.showSong (song, RecordTransport { position, openSong->runningPassStart(), recordPoint }, ! recording);
         if (currentMode == Mode::edit)

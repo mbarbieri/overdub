@@ -23,7 +23,7 @@ namespace overdub::song::testing
 struct FixtureSong
 {
     juce::File folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                            .getNonexistentChildFile ("overdub-fixture-song", "", false);
+                            .getChildFile ("overdub-fixture-song-" + juce::Uuid().toString());
     std::unique_ptr<SongPackage> package;
 
     FixtureSong() { folder.createDirectory(); }

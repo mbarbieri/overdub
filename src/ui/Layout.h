@@ -40,8 +40,9 @@ struct TopBarLayout
 
 TopBarLayout topBarLayout (juce::Rectangle<int> bar);
 
-// Record mode (issues #27, #32, issue #9 resolution, variant C): on the left the stage bar (the
-// pre-roll picker after its caption; the camera arm comes in slice 14) over the camera stage; in a
+// Record mode (issues #27, #32, #35, issue #9 resolution, variant C): on the left the stage bar
+// (the pre-roll picker after its caption at its left end; the camera arm, then the camera picker,
+// at its right end) over the camera stage; in a
 // right column of trackColumnWidth the Track rows, the Import button under the last row, then the
 // Passes list filling the rest. Along the bottom, full width, the Backing Track look-ahead strip
 // and under it the whole-Song overview.
@@ -53,6 +54,8 @@ struct RecordPageLayout
 {
     juce::Rectangle<int> preRollCaption;
     juce::Rectangle<int> preRollPicker;
+    juce::Rectangle<int> cameraArm;
+    juce::Rectangle<int> cameraPicker;
     juce::Rectangle<int> stage;
     std::vector<juce::Rectangle<int>> rows;
     juce::Rectangle<int> importButton;

@@ -27,7 +27,7 @@ namespace
 struct TempDirectory
 {
     juce::File path = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                          .getNonexistentChildFile ("overdub-song-package-test", "", false);
+                          .getChildFile ("overdub-song-package-test-" + juce::Uuid().toString());
 
     TempDirectory() { path.createDirectory(); }
     ~TempDirectory() { path.deleteRecursively(); }

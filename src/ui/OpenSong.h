@@ -1,5 +1,6 @@
 #pragma once
 
+#include "capture/Camera.h"
 #include "capture/PassRecorder.h"
 #include "core/Error.h"
 #include "engine/Engine.h"
@@ -28,6 +29,11 @@
 // While a Pass runs (pre-roll included), only stop, play/stop and rewind act: undo, redo, edits,
 // seeks, import, arm, input, pre-roll and Monitoring are ignored, so the Song and the engine's plan stay as the Pass started.
 //
+// The camera (issue #35): the Song's camera arm and camera choice live outside history. While the
+// camera is Armed it is open (its live feed shows on the Record stage) and each Pass also records a
+// Video Take, placed with this machine's calibration for that camera and the output device
+// (capture/CameraCalibration.h). Closing the Song closes the camera.
+//
 // Insert Chains (issue #33): it hosts the Song's plugins in a plugin::InsertHost, created through
 // the Instantiator it is given (out-of-process AUs in the app). The engine plays each plugin once
 // it has loaded; a plugin that loads or changes its latency rebuilds the plan at the next poll()
@@ -45,6 +51,8 @@ struct AudioBinding
     capture::RecordLatency latency;
     // The device's active input channel names, in the order process() receives them.
     std::vector<std::string> inputChannelNames;
+    // The output device's name: with the camera's id, the key of this machine's camera calibration.
+    std::string outputDeviceName = {};
 };
 
 class OpenSong
@@ -138,6 +146,22 @@ public:
 
     void setArmed (const song::Id& trackId, bool armed);
     void setInputChannels (const song::Id& trackId, std::vector<int> inputChannels);
+    // The camera Video Takes are recorded from (not owned; it must outlive this OpenSong, or be
+    // detached with null first) and the camera calibration file. Opens the camera when the Song's
+    // camera is Armed. Errors: the camera's open() Errors (the camera is then disarmed).
+    core::Expected<void> attachCamera (capture::Camera* camera, juce::File calibrationFile);
+    // Arms (opening the Song's chosen camera, or the default one, which then becomes the choice) or
+    // disarms (closing it) the camera. Ignored while a Pass runs. Without a camera, arming does
+    // nothing. Errors: the camera's open() Errors (the camera stays disarmed).
+    core::Expected<void> setCameraArmed (bool armed);
+    // Chooses the camera (reopened when Armed). Ignored while a Pass runs.
+    // Errors: the camera's open() Errors (the camera is then disarmed).
+    core::Expected<void> setCameraDevice (const std::string& cameraId);
+    // The cameras on offer, as listed when the camera was attached, armed or chosen.
+    const std::vector<capture::CameraDevice>& cameraDevices() const { return cameras; }
+    // The live feed (a CALayer*) while the camera is Armed and open; null otherwise.
+    void* cameraPreviewLayer() const;
+
     // Monitoring is transient (not in the Song): hearing an Armed Track's live input.
     void setMonitoring (const song::Id& trackId, bool on);
     bool isMonitoring (const song::Id& trackId) const { return monitored.contains (trackId); }
@@ -157,6 +181,10 @@ private:
     void updateEngine (const song::Song& before);
     std::vector<core::Error> finishPass (core::Expected<capture::RecordedPass> finished);
     void capturePluginState (song::Song& song);
+    // Opens the Song's chosen camera when it is Armed, closes it otherwise. On failure the Song's
+    // camera is disarmed and the Error returned.
+    core::Expected<void> syncCamera();
+    capture::SampleCount cameraCalibrationSamples (const std::string& cameraId) const;
     static int blockSizeOf (const AudioBinding& audio);
 
     std::unique_ptr<song::SongPackage> package_;
@@ -165,6 +193,9 @@ private:
     AudioBinding binding;
     std::set<song::Id> monitored;
     std::map<song::Id, song::Peaks> peaksByMediaId; // media is immutable, so entries never go stale
+    capture::Camera* camera = nullptr;
+    juce::File cameraCalibrationFile;
+    std::vector<capture::CameraDevice> cameras;
     std::unique_ptr<capture::PassRecorder> recorder;
     int recordingPass = 0;
     std::optional<song::SampleCount> preRollPoint; // the running Pass's record point, when it used pre-roll

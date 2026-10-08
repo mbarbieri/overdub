@@ -29,9 +29,16 @@ constexpr std::array codeTable {
     CodeEntry { "song.track_not_found", Tier::notice, "That Track is no longer in the Song." },
     CodeEntry { "ui.plugin_missing", Tier::notice, "That plugin is not installed or could not be loaded." },
     CodeEntry { "song.insert_not_found", Tier::notice, "That Insert is no longer in the Song." },
+    CodeEntry { "capture.camera_access_denied", Tier::notice, "Allow Overdub to use the camera in System Settings, then arm the camera again." },
+    CodeEntry { "capture.camera_unavailable", Tier::notice, "The camera could not be opened." },
+    CodeEntry { "capture.video_frames_dropped", Tier::notice, "The camera dropped frames during this Pass." },
 
     // Alerts: an action failed or data may be lost.
     CodeEntry { "capture.take_write_failed", Tier::alert, "A Take could not be written to disk; this Pass was not added." },
+    CodeEntry { "capture.movie_no_frames", Tier::alert, "The camera recorded no picture; this Pass has no Video Take." },
+    CodeEntry { "capture.movie_write_failed", Tier::alert, "The camera's video could not be written; this Pass has no Video Take." },
+    CodeEntry { "capture.video_unplaced", Tier::alert, "The camera's video could not be placed; this Pass has no Video Take." },
+    CodeEntry { "capture.camera_not_open", Tier::alert, "The camera closed; this Pass has no Video Take." },
     CodeEntry { "capture.stop_timeout", Tier::alert, "The audio device stopped responding; this Pass was not added." },
     CodeEntry { "song.write_failed", Tier::alert, "The Song could not be saved to disk." },
     CodeEntry { "song.json_unserializable", Tier::alert, "The Song could not be saved to disk." },

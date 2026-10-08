@@ -1,5 +1,6 @@
 #include "capture/PassRecorder.h"
 
+#include "capture/VideoPlacement.h"
 #include "core/Log.h"
 #include "song/AtomicWrite.h"
 #include "song/PackageFolders.h"
@@ -182,6 +183,8 @@ core::Expected<std::unique_ptr<PassRecorder>> PassRecorder::start (song::SongPac
     recorder->session = std::make_unique<engine::RecordSession> (std::move (inputs), fifoFrames);
     if (options.recordPoint.has_value())
         recorder->session->startAt (*options.recordPoint);
+    if (options.camera != nullptr)
+        recorder->beginMovie();
     recorder->ioThread = std::thread ([raw = recorder.get()] { raw->runIoThread(); });
     engine.startRecording (*recorder->session);
     return recorder;
@@ -204,6 +207,7 @@ PassRecorder::~PassRecorder()
     stopIoThread();
     for (auto& writer : writers)
         writer->close();
+    discardMovie();
 }
 
 void PassRecorder::requestStop()
@@ -290,7 +294,7 @@ void PassRecorder::logPassStartedOnce()
                         { "pass_id", passIdentifier },
                         { "track_ids", trackIds },
                         { "input_channels", inputChannels },
-                        { "camera", false },
+                        { "camera", movieBegun },
                         { "start_sample", session->startSongSample() },
                         { "plan_latency_samples", session->startPlanLatency() },
                         { "input_latency_samples", latency.inputLatencySamples },
@@ -336,7 +340,8 @@ void PassRecorder::logPassStopped (const RecordedPass& pass, const char* outcome
                         { "outcome", outcome },
                         { "track_ids", trackIds },
                         { "take_ids", pass.takeIds },
-                        { "camera", false },
+                        { "camera", movieBegun },
+                        { "video_take_id", pass.videoTakeId.has_value() ? nlohmann::json (*pass.videoTakeId) : nlohmann::json (nullptr) },
                         { "start_sample", pass.startSample },
                         { "length_samples", pass.lengthSamples },
                         { "stop_reason", stopReasonName (session->stopReason()) },
@@ -371,6 +376,7 @@ core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::tim
     {
         for (auto& writer : writers)
             writer->tempFile.deleteFile();
+        discardMovie();
         logPassStopped (pass, "empty");
         return std::unexpected (core::Error { "capture.pass_empty", "the Pass captured no audio", { { "pass_id", passIdentifier } } });
     }
@@ -378,6 +384,7 @@ core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::tim
     // Every Take or none: a failed write leaves all of them as temp files, which the next open deletes.
     if (const auto failedWriter = std::ranges::find_if (writers, [] (const auto& writer) { return writer->failed; }); failedWriter != writers.end())
     {
+        discardMovie();
         logPassStopped (pass, "failed");
         return std::unexpected (failedTakeWrite (**failedWriter));
     }
@@ -386,6 +393,7 @@ core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::tim
     {
         if (auto renamed = song::renameIntoPlace (writer->tempFile, writer->destination, {}); ! renamed.has_value())
         {
+            discardMovie();
             logPassStopped (pass, "failed");
             return std::unexpected (renamed.error());
         }
@@ -400,6 +408,8 @@ core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::tim
     const auto origin = firstSampleRenderPosition - (reportedLatency + latency.calibrationOffsetSamples);
 
     auto changed = package.song();
+    if (auto videoTake = finishMovie (pass))
+        changed.videoTakes.push_back (std::move (*videoTake));
     changed.passes.push_back (song::Pass { passIdentifier, pass.startSample, recordedAt });
     for (const auto& writer : writers)
     {
@@ -434,5 +444,120 @@ core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::tim
 
     logPassStopped (pass, "recorded");
     return pass;
+}
+//==============================================================================
+// Video Take
+
+void PassRecorder::beginMovie()
+{
+    const auto openCamera = options.camera->openCamera();
+    MovieInProgress next;
+    next.videoTakeId = song::makeId();
+    next.cameraId = openCamera.has_value() ? openCamera->id : std::string {};
+    const auto videoFolder = package.location().getChildFile (song::videoFolderName);
+    next.destination = videoFolder.getChildFile (juce::String (next.videoTakeId) + ".mov");
+    next.tempFile = song::tempFileFor (next.destination);
+
+    if (const auto created = videoFolder.createDirectory(); created.failed())
+    {
+        movieBeginError = song::writeFailed (videoFolder, "create_folder", 0, created.getErrorMessage().toStdString());
+        core::logEvent (core::Level::info, "capture.video_stopped", { { "pass_id", passIdentifier }, { "outcome", "not_started" } });
+        return;
+    }
+    if (auto begun = options.camera->beginMovie (next.tempFile); ! begun.has_value())
+    {
+        movieBeginError = begun.error();
+        // The Error itself is logged where it is presented (RecordedPass::notices).
+        core::logEvent (core::Level::info, "capture.video_stopped", { { "pass_id", passIdentifier }, { "outcome", "not_started" } });
+        return;
+    }
+
+    core::logEvent (core::Level::info,
+                    "capture.video_started",
+                    { { "pass_id", passIdentifier }, { "video_take_id", next.videoTakeId }, { "camera_id", next.cameraId }, { "path", song::pathOf (next.tempFile) } });
+    movie = std::move (next);
+    movieBegun = true;
+}
+
+void PassRecorder::discardMovie()
+{
+    if (! movie.has_value())
+        return;
+    const auto inProgress = std::move (*movie);
+    movie.reset();
+    options.camera->cancelMovie();
+    inProgress.tempFile.deleteFile();
+    core::logEvent (core::Level::info, "capture.video_stopped", { { "pass_id", passIdentifier }, { "video_take_id", inProgress.videoTakeId }, { "outcome", "discarded" } });
+}
+
+std::optional<song::VideoTake> PassRecorder::finishMovie (RecordedPass& pass)
+{
+    if (movieBeginError.has_value())
+    {
+        pass.notices.push_back (*movieBeginError);
+        return std::nullopt;
+    }
+    if (! movie.has_value())
+        return std::nullopt;
+
+    const auto inProgress = std::move (*movie);
+    movie.reset();
+    const auto failed = [&] (core::Error error) -> std::optional<song::VideoTake> {
+        inProgress.tempFile.deleteFile();
+        core::logEvent (core::Level::info, "capture.video_stopped", { { "pass_id", passIdentifier }, { "video_take_id", inProgress.videoTakeId }, { "outcome", "failed" } });
+        pass.notices.push_back (std::move (error));
+        return std::nullopt;
+    };
+
+    const auto ended = options.camera->endMovie();
+    if (! ended.has_value())
+        return failed (ended.error());
+
+    const auto sampleRate = package.song().sampleRate;
+    const auto fit = fitAnchors (pass.anchors, sampleRate);
+    if (! fit.has_value())
+        return failed (core::Error { "capture.video_unplaced", "the Pass has no anchors to place its Video Take on", { { "pass_id", passIdentifier } } });
+
+    if (auto renamed = song::renameIntoPlace (inProgress.tempFile, inProgress.destination, {}); ! renamed.has_value())
+        return failed (renamed.error());
+
+    const auto placement = placeVideoTake (*fit, ended->firstFrameHostNs, latency.outputLatencySamples, options.cameraCalibrationSamples, ended->captureClockRate, sampleRate);
+    song::VideoTake videoTake;
+    videoTake.id = inProgress.videoTakeId;
+    videoTake.passId = passIdentifier;
+    videoTake.file = std::string (song::videoFolderName) + "/" + inProgress.videoTakeId + ".mov";
+    videoTake.startSample = placement.startSample;
+    videoTake.songSamplesPerMovieSecond = placement.songSamplesPerMovieSecond;
+    videoTake.cameraId = ended->cameraId.empty() ? inProgress.cameraId : ended->cameraId;
+    videoTake.calibrationOffsetSamples = options.cameraCalibrationSamples;
+    pass.videoTakeId = videoTake.id;
+
+    if (ended->droppedFrames > 0)
+        pass.notices.push_back (core::Error { "capture.video_frames_dropped",
+                                              "the camera dropped frames during the Pass",
+                                              { { "pass_id", passIdentifier }, { "video_take_id", videoTake.id }, { "dropped_frames", ended->droppedFrames } } });
+
+    core::logEvent (core::Level::info,
+                    "capture.video_stopped",
+                    {
+                        { "pass_id", passIdentifier },
+                        { "video_take_id", videoTake.id },
+                        { "outcome", "recorded" },
+                        { "camera_id", videoTake.cameraId },
+                        { "frames", ended->frames },
+                        { "dropped_frames", ended->droppedFrames },
+                        { "duration_seconds", ended->durationSeconds },
+                        { "longest_gap_seconds", ended->longestGapSeconds },
+                        { "first_frame_host_ns", ended->firstFrameHostNs },
+                        { "capture_clock_rate", ended->captureClockRate },
+                        { "start_sample", placement.startSample },
+                        { "song_samples_per_movie_second", placement.songSamplesPerMovieSecond },
+                        { "drift_ppm", placement.driftPpm },
+                        { "output_latency_samples", latency.outputLatencySamples },
+                        { "calibration_offset_samples", options.cameraCalibrationSamples },
+                        { "anchors", fit->anchorCount },
+                        { "max_anchor_residual_us", fit->maxResidualNs / 1000.0 },
+                    });
+    return videoTake;
 }
 } // namespace overdub::capture

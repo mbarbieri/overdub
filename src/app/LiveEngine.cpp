@@ -126,6 +126,7 @@ ui::AudioBinding LiveEngine::audioBinding()
     auto* device = deviceManager.getCurrentAudioDevice();
     if (device == nullptr)
         return audio;
+    audio.outputDeviceName = deviceManager.getAudioDeviceSetup().outputDeviceName.toStdString();
 
     // process() receives the active channels packed in order, so the names follow that order.
     const auto names = device->getInputChannelNames();

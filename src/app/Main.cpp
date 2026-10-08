@@ -2,6 +2,7 @@
 #include "app/LoopbackSelftest.h"
 #include "app/MainWindow.h"
 #include "app/MicrophonePermission.h"
+#include "capture/ClapSelftest.h"
 #include "core/BuildInfo.h"
 #include "core/Log.h"
 #include "core/LogFiles.h"
@@ -43,7 +44,7 @@ public:
         const auto selftestIndex = args.indexOf ("--selftest");
         if (selftestIndex >= 0)
         {
-            runSelftest (args[selftestIndex + 1]);
+            runSelftest (args[selftestIndex + 1], args[selftestIndex + 2]);
             return;
         }
 
@@ -72,8 +73,16 @@ private:
     // `overdub --selftest <name>` (ADR 0005): runs the selftest without a window, prints its JSON
     // report as one line on stdout, logs app.selftest_finished and quits with 0 (pass) or 1
     // (fail). An unknown name prints an error report and quits with 2.
-    void runSelftest (const juce::String& name)
+    // `--selftest clap <package>` reads a recorded Song (no device opens); `argument` is its path.
+    void runSelftest (const juce::String& name, const juce::String& argument)
     {
+        if (name == "clap")
+        {
+            const auto package = juce::File::getCurrentWorkingDirectory().getChildFile (argument.unquoted());
+            const auto report = capture::runClapSelftest (package);
+            finishSelftest (report, report.value ("pass", false) ? 0 : 1);
+            return;
+        }
         if (name != "loopback")
         {
             finishSelftest ({ { "selftest", name.toStdString() }, { "pass", false }, { "error", "app.selftest_unknown" } }, 2);

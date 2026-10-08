@@ -1,5 +1,6 @@
 #pragma once
 
+#include "capture/Camera.h"
 #include "core/Error.h"
 #include "engine/Engine.h"
 #include "song/SongPackage.h"
@@ -30,6 +31,15 @@
 // "Record Pass <N>", and each Take's peaks are written. Take files are never deleted once
 // renamed, even when the Song change fails.
 //
+// Video Take (issue #35, ADR 0003): with a camera, start() also begins a movie in
+// video/<video take id>.mov.tmp. On stop the movie is ended and renamed into place, and the Video
+// Take joins the Pass's undo step, placed by capture/VideoPlacement.h from the Pass's anchors, the
+// device's output latency and the camera calibration. Recording continues whenever it can (ADR
+// 0006): a movie that cannot begin or finish leaves the Pass audio-only, and that problem, like
+// dropped frames, comes back as a Notice in RecordedPass::notices. The movie runs from start() to
+// finish(), so during pre-roll it holds frames from before the record point; they are placed
+// before the Pass start like any other frame.
+//
 // Threads: start(), finish(), stop() and the destructor run on one non-audio thread (the message
 // thread in the app); the package is single-threaded and only touched there.
 namespace overdub::capture
@@ -54,6 +64,10 @@ struct PassRecorderOptions
     // Pre-roll (issue #32): the Pass, and so its Takes, start at this Song sample rather than at the
     // first playing block; nothing before it is captured (RecordSession::startAt).
     std::optional<SampleCount> recordPoint;
+    // The camera to record a Video Take from (open, not owned; it must outlive the recorder), and
+    // this machine's calibration for it and the output device, in samples (CameraCalibration.h).
+    Camera* camera = nullptr;
+    SampleCount cameraCalibrationSamples = 0;
 };
 
 // What a finished Pass produced, beyond what the Song now holds.
@@ -66,6 +80,11 @@ struct RecordedPass
     // One anchor per callback of the Pass (ADR 0003), for the Video Take's clock fit (slice 14).
     std::vector<engine::Anchor> anchors;
     std::uint64_t overrunFrames = 0;
+    // The Video Take added with the Pass, when the camera recorded one.
+    std::optional<song::Id> videoTakeId;
+    // Notice-tier problems that did not stop the Pass (the movie failed, frames were dropped);
+    // not logged here: whoever presents them logs them once.
+    std::vector<core::Error> notices;
 };
 
 class PassRecorder
@@ -113,6 +132,13 @@ public:
 
 private:
     struct TakeWriter;
+    struct MovieInProgress
+    {
+        song::Id videoTakeId;
+        juce::File destination; // video/<id>.mov
+        juce::File tempFile;    // video/<id>.mov.tmp
+        std::string cameraId;
+    };
 
     PassRecorder (song::SongPackage& package, engine::Engine& engine, RecordLatency latency, PassRecorderOptions options);
 
@@ -123,6 +149,12 @@ private:
     bool waitUntilStopped (std::chrono::milliseconds timeout) const;
     core::Error failedTakeWrite (const TakeWriter& writer) const;
     void logPassStopped (const RecordedPass& pass, const char* outcome) const;
+    void beginMovie();
+    // Ends the movie and deletes its file: the Pass will not keep it.
+    void discardMovie();
+    // Ends the movie, renames it into place and places it on the Pass's anchors. None (with the
+    // reason in pass.notices) when there is no movie to keep.
+    std::optional<song::VideoTake> finishMovie (RecordedPass& pass);
 
     song::SongPackage& package;
     engine::Engine& engine;
@@ -133,6 +165,9 @@ private:
 
     std::vector<std::unique_ptr<TakeWriter>> writers; // one per session input, same order
     std::unique_ptr<engine::RecordSession> session;
+    std::optional<MovieInProgress> movie;      // while the camera writes this Pass's movie
+    std::optional<core::Error> movieBeginError; // why the movie never began
+    bool movieBegun = false;                    // set before the io thread starts, then read-only
 
     // io thread state. anchors and the writers are written by the io thread until it is joined.
     std::vector<engine::Anchor> anchors;

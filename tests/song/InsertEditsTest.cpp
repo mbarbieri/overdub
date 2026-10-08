@@ -111,7 +111,7 @@ std::vector<std::string> chainIds (const std::vector<InsertSlot>& chain)
 // A package in a temp folder that deletes itself.
 struct TempPackage
 {
-    juce::File folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getNonexistentChildFile ("overdub-insert-edits", "", false);
+    juce::File folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("overdub-insert-edits-" + juce::Uuid().toString());
     std::unique_ptr<overdub::song::SongPackage> package;
 
     explicit TempPackage (Song song)

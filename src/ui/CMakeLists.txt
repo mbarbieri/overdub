@@ -6,6 +6,7 @@
 add_library(overdub_ui STATIC)
 
 target_sources(overdub_ui PRIVATE
+    CameraStage.mm
     Commands.cpp
     DeviceSettingsPanel.cpp
     EditPage.cpp
@@ -30,6 +31,8 @@ target_sources(overdub_ui PRIVATE
     TrackRowEdits.cpp
     TransportText.cpp
     UserMessages.cpp)
+
+set_source_files_properties(CameraStage.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 
 target_link_libraries(overdub_ui
     PUBLIC

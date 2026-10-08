@@ -7,8 +7,14 @@ add_subdirectory(support)
 add_executable(overdub_tests)
 
 target_sources(overdub_tests PRIVATE
+    capture/CameraCalibrationTest.cpp
+    capture/ClapMeasurementTest.cpp
+    capture/ClapSelftestTest.cpp
     capture/LoopbackMeasurementTest.cpp
+    capture/MovieRoundTripTest.cpp
     capture/PassRecorderTest.cpp
+    capture/PassRecorderVideoTest.cpp
+    capture/VideoPlacementTest.cpp
     core/BuildInfoTest.cpp
     core/ErrorTest.cpp
     core/LogFilesTest.cpp
@@ -50,9 +56,11 @@ target_sources(overdub_tests PRIVATE
     ui/MainComponentTest.cpp
     ui/MixerGeometryTest.cpp
     ui/MixerUiTest.cpp
+    ui/OpenSongCameraTest.cpp
     ui/OpenSongInsertsTest.cpp
     ui/OpenSongTest.cpp
     ui/PreRollTest.cpp
+    ui/RecordCameraTest.cpp
     ui/RecordInsertsTest.cpp
     ui/RecordPageTest.cpp
     ui/RecordViewTest.cpp
