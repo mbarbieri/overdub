@@ -4,6 +4,7 @@
 #include "core/RtEventRing.h"
 #include "engine/DeviceBinding.h"
 #include "engine/Engine.h"
+#include "engine/LatencyCalibration.h"
 #include "ui/DeviceSettingsPanel.h"
 #include "ui/OpenSong.h"
 
@@ -40,6 +41,16 @@ public:
     // for it (ADR 0002): what a Pass recorded now is placed with. All 0 without a device.
     capture::RecordLatency recordLatency() const { return latency; }
 
+    // The open device's key in this machine's latency calibration file (ADR 0002); empty names and
+    // rate 0 without a device.
+    const engine::CalibrationKey& calibrationKey() const { return key; }
+    // The offset stored for calibrationKey(); none when the device was never calibrated at this rate
+    // (or the file is unreadable): Takes are then placed with reported latency only.
+    std::optional<song::SampleCount> storedCalibrationOffset() const { return storedCalibration; }
+    // A calibration just stored for this device (issue #39): Passes recorded from now are placed
+    // with it. The device and the engine keep running.
+    void setCalibrationOffset (song::SampleCount offsetSamples);
+
     // The open device's sample rate in Hz; 0 without a device.
     int sampleRate() const { return deviceSampleRate; }
 
@@ -65,6 +76,8 @@ private:
     // members declared above it. deviceManager (declared last, destroyed first) calls binding;
     // drainThread reads the engine's ring; binding calls the engine; audioEngine goes last.
     capture::RecordLatency latency;
+    engine::CalibrationKey key;
+    std::optional<song::SampleCount> storedCalibration;
     int deviceSampleRate = 0;
     std::unique_ptr<engine::Engine> audioEngine;
     std::unique_ptr<engine::DeviceBinding> binding;

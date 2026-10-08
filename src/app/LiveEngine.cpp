@@ -89,18 +89,19 @@ void LiveEngine::openDevice()
 void LiveEngine::startEngine (juce::AudioIODevice& device)
 {
     const auto setup = deviceManager.getAudioDeviceSetup();
-    const engine::CalibrationKey key {
+    key = engine::CalibrationKey {
         .inputDevice = setup.inputDeviceName.toStdString(),
         .outputDevice = setup.outputDeviceName.toStdString(),
         .sampleRate = juce::roundToInt (device.getCurrentSampleRate()),
     };
-    auto calibration = engine::readCalibrationOffset (engine::defaultLatencyCalibrationFile(), key);
+    auto calibration = engine::findCalibrationOffset (engine::defaultLatencyCalibrationFile(), key);
     if (! calibration.has_value())
         core::logError (calibration.error(), core::Level::warn); // placed with reported latency only
+    storedCalibration = calibration.value_or (std::nullopt);
     latency = capture::RecordLatency {
         .inputLatencySamples = device.getInputLatencyInSamples(),
         .outputLatencySamples = device.getOutputLatencyInSamples(),
-        .calibrationOffsetSamples = calibration.value_or (0),
+        .calibrationOffsetSamples = storedCalibration.value_or (0),
     };
 
     deviceSampleRate = key.sampleRate;
@@ -111,6 +112,12 @@ void LiveEngine::startEngine (juce::AudioIODevice& device)
     // Calls binding->audioDeviceAboutToStart (logs engine.device_opened), then the callbacks begin.
     deviceManager.addAudioCallback (binding.get());
     startTimer (housekeepingIntervalMs);
+}
+
+void LiveEngine::setCalibrationOffset (song::SampleCount offsetSamples)
+{
+    storedCalibration = offsetSamples;
+    latency.calibrationOffsetSamples = offsetSamples;
 }
 
 core::Fields LiveEngine::deviceFields()

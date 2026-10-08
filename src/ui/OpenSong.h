@@ -106,6 +106,10 @@ public:
     // engine an empty Song. Returns the finishing errors, not logged.
     std::vector<core::Error> detachAudio();
 
+    // A new loopback calibration for the bound device (issue #39): the next Pass is placed with it.
+    // The engine and its plan are untouched. A running Pass keeps the latency it started with.
+    void setCalibrationOffset (song::SampleCount offsetSamples) { binding.latency.calibrationOffsetSamples = offsetSamples; }
+
     // True from record() until poll() or detachAudio() has finished the Pass.
     bool isRecording() const { return recorder != nullptr; }
     // The number of the Pass being recorded (from 1); 0 when not recording.
