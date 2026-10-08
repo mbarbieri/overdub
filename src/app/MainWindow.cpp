@@ -3,8 +3,8 @@
 #include "capture/AvCamera.h"
 #include "capture/CameraCalibration.h"
 #include "capture/ClapSelftest.h"
-#include "engine/LatencyCalibration.h"
 #include "core/Log.h"
+#include "engine/LatencyCalibration.h"
 #include "ui/Layout.h"
 #include "ui/SongFiles.h"
 
