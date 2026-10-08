@@ -71,6 +71,8 @@ core::Expected<void> OpenSong::record()
 
     recorder = std::move (*started);
     recordingPass = passNumber;
+    // A Mixer preview still applied (a drag the Pass interrupts) gives way to the Song's mix.
+    binding.engine->setMix (song());
     if (! binding.engine->isPlaying())
         binding.engine->play();
     return {};

@@ -13,9 +13,10 @@
 #include <vector>
 
 // One Song snapshot made playable: its AudioProcessorGraph (Track nodes -> Insert Chain nodes ->
-// Track Mixer strip -> Master strip -> device outputs, ADR 0001, issue #31) built, prepared and warmed up off the audio thread, so the
-// audio thread only ever calls render(). The engine swaps whole plans; a plan never changes after
-// it is built.
+// Track Mixer strip -> Master strip -> device outputs, ADR 0001, issue #31) built, prepared and
+// warmed up off the audio thread, so the audio thread only ever calls render(). The engine swaps
+// whole plans; after it is built, a plan's graph never changes: only its strips' gains do
+// (applyMix, through atomics).
 namespace overdub::engine
 {
 // The device shape a plan is prepared for. The sample rate is the Song's.

@@ -4,6 +4,7 @@
 #include "song/ClipEdits.h"
 #include "song/TakeEdits.h"
 #include "ui/Colours.h"
+#include "ui/MuteSoloButtons.h"
 
 #include <algorithm>
 #include <array>
@@ -107,19 +108,7 @@ TrackHeader::TrackHeader()
         if (onToggleTakes)
             onToggleTakes();
     };
-    muteButton.setColour (juce::TextButton::buttonOnColourId, colours::mute);
-    soloButton.setColour (juce::TextButton::buttonOnColourId, colours::solo);
-    soloButton.setColour (juce::TextButton::textColourOnId, colours::background);
-    muteButton.setWantsKeyboardFocus (false);
-    soloButton.setWantsKeyboardFocus (false);
-    muteButton.onClick = [this] {
-        if (onMute)
-            onMute (! muted);
-    };
-    soloButton.onClick = [this] {
-        if (onSolo)
-            onSolo (! soloed);
-    };
+    setUpMuteSoloButtons (muteButton, soloButton, [this] { return muted; }, [this] { return soloed; }, onMute, onSolo);
     addAndMakeVisible (armButton);
     addAndMakeVisible (nameLabel);
     addChildComponent (takesButton);

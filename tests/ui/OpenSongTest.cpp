@@ -394,6 +394,26 @@ TEST_CASE ("a Mixer preview is heard but leaves the Song and its history alone",
     CHECK (quietPeak < fullPeak / 500.0f); // -60 dB is 1/1000
 }
 
+TEST_CASE ("a Pass that starts during a Mixer preview plays the Song's own mix", "[ui][open_song][mixer]")
+{
+    OpenSongFixture f;
+    auto quieter = f.song();
+    quieter.master.volumeDb = -60.0;
+    f.openSong->previewMix (quieter);
+    REQUIRE (f.openSong->record().has_value());
+    f.device.run (f.engine, 4);
+    const auto recordingPeak = recentPeak (f.device, blockSize);
+    f.openSong->stop();
+    f.device.run (f.engine, 1);
+    f.openSong->poll();
+
+    // The same span played again at the Song's own mix (Master at 0 dB) peaks the same.
+    f.openSong->seek (0);
+    f.openSong->playOrStop();
+    f.device.run (f.engine, 4);
+    CHECK (recordingPeak > 0.5f * recentPeak (f.device, blockSize));
+}
+
 TEST_CASE ("the meters report what each Track and the Master played since the last poll", "[ui][open_song][mixer][meters]")
 {
     OpenSongFixture f;

@@ -45,8 +45,12 @@ bool Engine::setMix (const song::Song& song)
 {
     const std::scoped_lock lock { nonRealtimeMutex };
     if (latestPlan == nullptr || ! latestPlan->hasTracksOf (song))
+    {
+        core::logEvent (core::Level::debug, "engine.mix_refused", { { "reason", latestPlan == nullptr ? "no_plan" : "tracks_differ" }, { "song_tracks", song.tracks.size() } });
         return false;
+    }
     latestPlan->applyMix (song);
+    core::logEvent (core::Level::debug, "engine.mix_applied", { { "tracks", song.tracks.size() }, { "master_volume_db", song.master.volumeDb } });
     return true;
 }
 

@@ -1,5 +1,6 @@
 #include "engine/RenderPlan.h"
 
+#include "core/Error.h"
 #include "core/Log.h"
 #include "engine/ClipSchedule.h"
 #include "engine/TrackPlayer.h"
@@ -203,8 +204,10 @@ bool RenderPlan::hasTracksOf (const song::Song& song) const
 
 void RenderPlan::applyMix (const song::Song& song)
 {
+    if (! OVERDUB_CHECK (hasTracksOf (song), "engine.mix_tracks_mismatch", { "plan_tracks", trackCount }, { "song_tracks", song.tracks.size() }))
+        return;
     const auto gains = mixGains (song);
-    for (std::size_t i = 0; i < trackStrips.size() && i < gains.tracks.size(); ++i)
+    for (std::size_t i = 0; i < trackStrips.size(); ++i)
         trackStrips[i]->setGains (gains.tracks[i]);
     masterStrip.setGains ({ gains.master, gains.master });
 }

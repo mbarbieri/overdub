@@ -1,12 +1,14 @@
 #include "song/MixEdits.h"
 
+#include "song/TakeEdits.h"
+
 #include <algorithm>
 
 namespace overdub::song
 {
 namespace
 {
-Track* findTrack (Song& song, const Id& trackId)
+Track* findMutableTrack (Song& song, const Id& trackId)
 {
     const auto found = std::ranges::find (song.tracks, trackId, &Track::id);
     return found != song.tracks.end() ? &*found : nullptr;
@@ -14,22 +16,22 @@ Track* findTrack (Song& song, const Id& trackId)
 
 std::string trackName (const Song& song, const Id& trackId)
 {
-    const auto found = std::ranges::find (song.tracks, trackId, &Track::id);
-    return found != song.tracks.end() ? found->name : "Track";
+    const auto* track = findTrack (song, trackId);
+    return track != nullptr ? track->name : "Track";
 }
 
 // The Song with `change` applied to that Track, or song.track_not_found.
 template <typename Change>
 core::Expected<Song> changeTrack (Song song, const Id& trackId, Change change)
 {
-    auto* track = findTrack (song, trackId);
+    auto* track = findMutableTrack (song, trackId);
     if (track == nullptr)
         return std::unexpected (trackNotFound (trackId));
     change (*track);
     return song;
 }
 
-// The Song with every mix setting taken from `from`; the Tracks must match one to one.
+// The Song with every mix setting taken from `from`. Callers check the Track counts match first.
 Song withMixOf (Song song, const Song& from)
 {
     for (std::size_t i = 0; i < song.tracks.size() && i < from.tracks.size(); ++i)

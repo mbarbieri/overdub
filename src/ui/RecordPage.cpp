@@ -2,6 +2,7 @@
 
 #include "ui/Colours.h"
 #include "ui/Layout.h"
+#include "ui/MuteSoloButtons.h"
 
 namespace overdub::ui
 {
@@ -36,17 +37,7 @@ TrackRow::TrackRow()
 {
     armButton.setColour (juce::TextButton::buttonOnColourId, colours::rec);
     monitoringButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
-    muteButton.setColour (juce::TextButton::buttonOnColourId, colours::mute);
-    soloButton.setColour (juce::TextButton::buttonOnColourId, colours::solo);
-    soloButton.setColour (juce::TextButton::textColourOnId, colours::background);
-    muteButton.onClick = [this] {
-        if (onMute)
-            onMute (! current.mute);
-    };
-    soloButton.onClick = [this] {
-        if (onSolo)
-            onSolo (! current.solo);
-    };
+    setUpMuteSoloButtons (muteButton, soloButton, [this] { return current.mute; }, [this] { return current.solo; }, onMute, onSolo);
     nameLabel.setColour (juce::Label::textColourId, colours::text);
     nameLabel.setFont (juce::FontOptions (14.0f));
     inputPicker.setTextWhenNothingSelected ("Input?");
@@ -68,7 +59,7 @@ TrackRow::TrackRow()
         onInput (current.choices[(std::size_t) index].channels);
     };
 
-    for (auto* button : { &armButton, &monitoringButton, &muteButton, &soloButton })
+    for (auto* button : { &armButton, &monitoringButton })
         button->setWantsKeyboardFocus (false);
     inputPicker.setWantsKeyboardFocus (false);
 

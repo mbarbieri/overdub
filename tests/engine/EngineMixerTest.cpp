@@ -250,6 +250,7 @@ TEST_CASE ("a mix change during playback is heard from the next block, without r
 
 TEST_CASE ("setMix refuses a Song whose Tracks are not the loaded ones", "[engine][mixer]")
 {
+    overdub::core::ScopedLogCapture capture;
     SineTracks tracks { { 440.0, 880.0 } };
     Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = blockSize } };
     CHECK (! engine.setMix (tracks.song)); // nothing loaded yet
@@ -264,6 +265,17 @@ TEST_CASE ("setMix refuses a Song whose Tracks are not the loaded ones", "[engin
     CHECK (! engine.setMix (fewer));
 
     CHECK (engine.setMix (tracks.song));
+
+    std::vector<std::string> reasons;
+    std::size_t applied = 0;
+    for (const auto& event : capture.events())
+    {
+        if (event.at ("event") == "engine.mix_refused")
+            reasons.push_back (event.at ("reason"));
+        applied += event.at ("event") == "engine.mix_applied" ? 1 : 0;
+    }
+    CHECK (reasons == std::vector<std::string> { "no_plan", "tracks_differ", "tracks_differ" });
+    CHECK (applied == 1);
 }
 
 TEST_CASE ("the meters report each Track's post-fader peak and the Master's, then start again", "[engine][mixer][meters]")

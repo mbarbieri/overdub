@@ -4,6 +4,7 @@
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 #include "ui/MixerGeometry.h"
+#include "ui/MuteSoloButtons.h"
 
 #include <algorithm>
 
@@ -167,19 +168,7 @@ MixerStrip::MixerStrip (bool isMaster) : master (isMaster)
     valueLabel.setJustificationType (juce::Justification::centred);
     valueLabel.setInterceptsMouseClicks (false, false);
 
-    muteButton.setColour (juce::TextButton::buttonOnColourId, colours::mute);
-    soloButton.setColour (juce::TextButton::buttonOnColourId, colours::solo);
-    soloButton.setColour (juce::TextButton::textColourOnId, colours::background);
-    for (auto* button : { &muteButton, &soloButton })
-        button->setWantsKeyboardFocus (false);
-    muteButton.onClick = [this] {
-        if (onMute)
-            onMute (! current.mute);
-    };
-    soloButton.onClick = [this] {
-        if (onSolo)
-            onSolo (! current.solo);
-    };
+    setUpMuteSoloButtons (muteButton, soloButton, [this] { return current.mute; }, [this] { return current.solo; }, onMute, onSolo);
 
     fader.onDrag = [this] (double db) {
         showValue();

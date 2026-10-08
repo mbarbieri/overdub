@@ -46,7 +46,8 @@ public:
     // solos and its Master volume (engine/MixLaw.h) to the most recently loaded plan without
     // rebuilding it: heard from the next block, ramped over that block. Returns false, changing
     // nothing, when no Song is loaded or the Song's Tracks (ids, in order) are not the loaded
-    // Song's: then call loadSong.
+    // Song's: then call loadSong. Logs engine.mix_applied or engine.mix_refused (debug, `reason`
+    // no_plan or tracks_differ).
     bool setMix (const song::Song& song);
     // Any non-audio thread. Each strip's peak (post-fader, linear) since the previous call, from the
     // most recently loaded plan; empty before the first loadSong.
