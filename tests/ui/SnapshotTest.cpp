@@ -78,3 +78,53 @@ TEST_CASE ("snapshots of the Edit timeline with overlapping Clips, zoomed in and
     window.tick();
     CHECK (writeSnapshot (window, slice, "edit-mixer-hidden").existsAsFile());
 }
+
+// Clip gain and fades (issue #29): build/ui-snapshots/slice-08/*.png. A 6 s Backing Track with a
+// long fade-in, a fade-out and -6 dB set from the toolbar fields; a recorded Take with short fades
+// and +4.5 dB set by dragging its handles and dB tag; the Take's Clip selected.
+TEST_CASE ("snapshots of Clips with fades and non-zero gain", "[ui][snapshot][clip_gain]")
+{
+    const std::string slice = "slice-08";
+    MainWindowFixture f { overdub::song::testing::FixtureSongBuilder {}
+                              .backingTrack ("Band Mix", 6.0, 220.0)
+                              .track ("Guitar", true, { 0 })
+                              .build() };
+    auto& window = *f.window;
+
+    f.openSong->seek (24000);
+    f.runBlocks (0);
+    REQUIRE (pressKey (window, 'r'));
+    f.runBlocks (560);
+    REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+    REQUIRE (f.trackNamed ("Guitar").clips.size() == 1);
+
+    REQUIRE (pressKey (window, '2'));
+    auto& page = window.editPage;
+    auto& timeline = page.timeline;
+    timeline.setView (0, 512);
+    window.tick();
+
+    timeline.selectClip (f.trackNamed ("Band Mix").clips[0].id);
+    page.toolbar.fadeInField.setText ("1.5", juce::sendNotificationSync);
+    page.toolbar.fadeOutField.setText ("2", juce::sendNotificationSync);
+    page.toolbar.gainField.setText ("-6", juce::sendNotificationSync);
+
+    const auto guitarClip = f.trackNamed ("Guitar").clips[0].id;
+    const auto fadeIn = timeline.handleBounds (guitarClip, overdub::ui::ClipPart::fadeInHandle);
+    drag (timeline, fadeIn.getCentre(), fadeIn.getCentre().translated (20, 0));
+    const auto fadeOut = timeline.handleBounds (guitarClip, overdub::ui::ClipPart::fadeOutHandle);
+    drag (timeline, fadeOut.getCentre(), fadeOut.getCentre().translated (-30, 0));
+    const auto tag = timeline.handleBounds (guitarClip, overdub::ui::ClipPart::gainTag);
+    drag (timeline, tag.getCentre(), tag.getCentre().translated (0, -45));
+    REQUIRE (f.trackNamed ("Guitar").clips[0].fadeInLength > 0);
+    REQUIRE (f.trackNamed ("Guitar").clips[0].gainDb > 4.0);
+    REQUIRE (f.trackNamed ("Band Mix").clips[0].gainDb < -5.0);
+
+    window.tick();
+    CHECK (writeSnapshot (window, slice, "edit-fades-and-gain").existsAsFile());
+
+    timeline.setView (0, 128);
+    window.tick();
+    CHECK (writeSnapshot (window, slice, "edit-fades-and-gain-zoomed-in").existsAsFile());
+}

@@ -1,6 +1,7 @@
 #include "song/ClipEdits.h"
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 
 namespace overdub::song
@@ -124,6 +125,40 @@ core::Expected<Song> splitClip (Song song, const Id& clipId, SampleCount at, con
 
     clips[position->clip] = left;
     clips.insert (clips.begin() + (std::ptrdiff_t) position->clip + 1, right);
+    return song;
+}
+
+double linearGain (double gainDb)
+{
+    return std::pow (10.0, gainDb / 20.0);
+}
+
+core::Expected<Song> setClipFadeIn (Song song, const Id& clipId, SampleCount length)
+{
+    const auto position = locateClip (song, clipId);
+    if (! position.has_value())
+        return std::unexpected (clipNotFound (clipId));
+    auto& clip = song.tracks[position->track].clips[position->clip];
+    clip.fadeInLength = std::clamp<SampleCount> (length, 0, std::max<SampleCount> (0, clip.length - clip.fadeOutLength));
+    return song;
+}
+
+core::Expected<Song> setClipFadeOut (Song song, const Id& clipId, SampleCount length)
+{
+    const auto position = locateClip (song, clipId);
+    if (! position.has_value())
+        return std::unexpected (clipNotFound (clipId));
+    auto& clip = song.tracks[position->track].clips[position->clip];
+    clip.fadeOutLength = std::clamp<SampleCount> (length, 0, std::max<SampleCount> (0, clip.length - clip.fadeInLength));
+    return song;
+}
+
+core::Expected<Song> setClipGain (Song song, const Id& clipId, double gainDb)
+{
+    const auto position = locateClip (song, clipId);
+    if (! position.has_value())
+        return std::unexpected (clipNotFound (clipId));
+    song.tracks[position->track].clips[position->clip].gainDb = std::clamp (gainDb, minClipGainDb, maxClipGainDb);
     return song;
 }
 

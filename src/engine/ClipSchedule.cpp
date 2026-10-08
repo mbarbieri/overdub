@@ -1,6 +1,9 @@
 #include "engine/ClipSchedule.h"
 
+#include "song/ClipEdits.h"
+
 #include <algorithm>
+#include <cmath>
 
 namespace overdub::engine
 {
@@ -30,7 +33,41 @@ void appendUncovered (const ClipSegment& segment, SampleCount coverStart, Sample
         out.push_back (after);
     }
 }
+
+// Multiplies Song samples [from, to) of `out` (which starts at startSample) by the envelope.
+void applyEnvelope (const ClipEnvelope& envelope, SampleCount from, SampleCount to, SampleCount startSample, juce::AudioBuffer<float>& out) noexcept
+{
+    const auto fadeInEnd = envelope.clipStart + envelope.fadeInLength;
+    const auto fadeOutStart = envelope.clipStart + envelope.clipLength - envelope.fadeOutLength;
+    const auto touchesFade = from < fadeInEnd || to > fadeOutStart;
+
+    if (! touchesFade)
+    {
+        for (int channel = 0; channel < out.getNumChannels(); ++channel)
+            juce::FloatVectorOperations::multiply (out.getWritePointer (channel, (int) (from - startSample)), (float) envelope.gain, (int) (to - from));
+        return;
+    }
+
+    for (auto sample = from; sample < to; ++sample)
+    {
+        const auto amplitude = (float) envelopeAt (envelope, sample);
+        for (int channel = 0; channel < out.getNumChannels(); ++channel)
+            out.getWritePointer (channel)[sample - startSample] *= amplitude;
+    }
+}
 } // namespace
+
+double envelopeAt (const ClipEnvelope& envelope, SampleCount timelineSample) noexcept
+{
+    const auto k = timelineSample - envelope.clipStart;
+    auto amplitude = envelope.gain;
+    if (k < envelope.fadeInLength)
+        amplitude *= (double) k / (double) envelope.fadeInLength;
+    const auto fromEnd = envelope.clipLength - 1 - k;
+    if (fromEnd < envelope.fadeOutLength)
+        amplitude *= (double) fromEnd / (double) envelope.fadeOutLength;
+    return amplitude;
+}
 
 std::vector<ClipSegment> flattenClips (std::span<const LayeredClip> clipsInLayerOrder)
 {
@@ -46,6 +83,13 @@ std::vector<ClipSegment> flattenClips (std::span<const LayeredClip> clipsInLayer
             .timelineEnd = clip.timelineStart + clip.length,
             .sourceStart = clip.sourceOffset,
             .source = clip.source.get(),
+            .envelope = {
+                .clipStart = clip.timelineStart,
+                .clipLength = clip.length,
+                .gain = song::linearGain (clip.gainDb),
+                .fadeInLength = clip.fadeInLength,
+                .fadeOutLength = clip.fadeOutLength,
+            },
         };
 
         std::vector<ClipSegment> painted;
@@ -97,6 +141,7 @@ void renderSegments (std::span<const ClipSegment> segments, SampleCount startSam
                                                source.getReadPointer (sourceChannel, (int) sourceIndex),
                                                (int) (to - from));
         }
+        applyEnvelope (segment->envelope, from, to, startSample, out);
     }
 }
 } // namespace overdub::engine

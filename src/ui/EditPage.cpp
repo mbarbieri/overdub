@@ -4,6 +4,9 @@
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 
+#include <cctype>
+#include <cmath>
+#include <cstdlib>
 #include <format>
 
 namespace overdub::ui
@@ -18,13 +21,63 @@ std::string secondsText (song::SampleCount samples, int sampleRate)
     return std::format ("{}{}.{:03} s", sign, milliseconds / 1000, milliseconds % 1000);
 }
 
+namespace
+{
+std::string trimmed (const std::string& text)
+{
+    const auto first = text.find_first_not_of (" \t");
+    if (first == std::string::npos)
+        return {};
+    const auto last = text.find_last_not_of (" \t");
+    return text.substr (first, last - first + 1);
+}
+
+// The text without a trailing unit (any case) and the spaces around both; unchanged without it.
+std::string withoutUnit (const std::string& text, const std::string& unit)
+{
+    auto value = trimmed (text);
+    if (value.size() < unit.size())
+        return value;
+    const auto tail = value.substr (value.size() - unit.size());
+    for (std::size_t i = 0; i < unit.size(); ++i)
+        if (std::tolower ((unsigned char) tail[i]) != unit[i])
+            return value;
+    return trimmed (value.substr (0, value.size() - unit.size()));
+}
+
+// The whole text as a finite number, or none.
+std::optional<double> parseNumber (const std::string& text)
+{
+    if (text.empty())
+        return std::nullopt;
+    char* end = nullptr;
+    const auto value = std::strtod (text.c_str(), &end);
+    if (end != text.c_str() + text.size() || ! std::isfinite (value))
+        return std::nullopt;
+    return value;
+}
+} // namespace
+
+std::optional<song::SampleCount> parseSeconds (const std::string& text, int sampleRate)
+{
+    const auto seconds = parseNumber (withoutUnit (text, "s"));
+    if (! seconds.has_value() || *seconds < 0.0 || sampleRate <= 0)
+        return std::nullopt;
+    return (song::SampleCount) std::llround (*seconds * sampleRate);
+}
+
+std::optional<double> parseDecibels (const std::string& text)
+{
+    return parseNumber (withoutUnit (text, "db"));
+}
+
 ClipToolbarState clipToolbarStateFor (const song::Song& song, const std::optional<song::Id>& selectedClip, song::SampleCount playhead, bool editable)
 {
     ClipToolbarState state;
     const auto* clip = selectedClip.has_value() ? song::findClip (song, *selectedClip) : nullptr;
     if (clip == nullptr)
     {
-        state.details = "Select a Clip. Drag it to move, drag its edges to trim. S splits at the playhead.";
+        state.details = "Select a Clip. Drag it to move, its edges to trim, its top corners to fade, its dB tag for gain. S splits at the playhead.";
         return state;
     }
 
@@ -37,6 +90,10 @@ ClipToolbarState clipToolbarStateFor (const song::Song& song, const std::optiona
                                  secondsText (clip->length, song.sampleRate));
     state.canSplit = editable && playhead > clip->timelineStart && playhead < clip->timelineStart + clip->length;
     state.canDelete = editable;
+    state.canEditFadesAndGain = editable;
+    state.fadeInText = secondsText (clip->fadeInLength, song.sampleRate);
+    state.fadeOutText = secondsText (clip->fadeOutLength, song.sampleRate);
+    state.gainText = decibelsText (clip->gainDb);
     return state;
 }
 
@@ -76,6 +133,33 @@ ClipToolbar::ClipToolbar()
         button->setWantsKeyboardFocus (false);
         addAndMakeVisible (button);
     }
+
+    for (auto* caption : { &fadeInCaption, &fadeOutCaption, &gainCaption })
+    {
+        caption->setColour (juce::Label::textColourId, colours::dimText);
+        caption->setFont (juce::FontOptions (11.5f));
+        caption->setJustificationType (juce::Justification::centredRight);
+        caption->setInterceptsMouseClicks (false, false);
+        addAndMakeVisible (caption);
+    }
+
+    // `callback` is one of this toolbar's members, so the reference outlives the field.
+    const auto setUpField = [] (ClipToolbar& toolbar, juce::Label& field, std::function<void (const std::string&)>& callback) {
+        field.setEditable (true, false, false);
+        field.setFont (juce::FontOptions (12.0f));
+        field.setJustificationType (juce::Justification::centred);
+        field.setColour (juce::Label::textColourId, colours::text);
+        field.setColour (juce::Label::backgroundColourId, colours::background);
+        field.setColour (juce::Label::outlineColourId, colours::line);
+        field.onTextChange = [&field, &callback] {
+            if (callback)
+                callback (field.getText().toStdString());
+        };
+        toolbar.addAndMakeVisible (field);
+    };
+    setUpField (*this, fadeInField, onFadeInEntered);
+    setUpField (*this, fadeOutField, onFadeOutEntered);
+    setUpField (*this, gainField, onGainEntered);
 }
 
 void ClipToolbar::show (const ClipToolbarState& state, bool mixerVisible)
@@ -84,6 +168,12 @@ void ClipToolbar::show (const ClipToolbarState& state, bool mixerVisible)
     details.setColour (juce::Label::textColourId, state.hasClip ? colours::text : colours::dimText);
     splitButton.setEnabled (state.canSplit);
     deleteButton.setEnabled (state.canDelete);
+    fadeInField.setText (juce::String::fromUTF8 (state.fadeInText.c_str()), juce::dontSendNotification);
+    fadeOutField.setText (juce::String::fromUTF8 (state.fadeOutText.c_str()), juce::dontSendNotification);
+    gainField.setText (juce::String::fromUTF8 (state.gainText.c_str()), juce::dontSendNotification);
+    fadeInField.setEnabled (state.canEditFadesAndGain);
+    fadeOutField.setEnabled (state.canEditFadesAndGain);
+    gainField.setEnabled (state.canEditFadesAndGain);
     mixerButton.setToggleState (mixerVisible, juce::dontSendNotification);
 }
 
@@ -91,6 +181,12 @@ void ClipToolbar::resized()
 {
     const auto layout = clipToolbarLayout (getLocalBounds());
     details.setBounds (layout.details);
+    fadeInCaption.setBounds (layout.fadeInCaption);
+    fadeInField.setBounds (layout.fadeInField);
+    fadeOutCaption.setBounds (layout.fadeOutCaption);
+    fadeOutField.setBounds (layout.fadeOutField);
+    gainCaption.setBounds (layout.gainCaption);
+    gainField.setBounds (layout.gainField);
     splitButton.setBounds (layout.split);
     deleteButton.setBounds (layout.deleteClip);
     zoomOutButton.setBounds (layout.zoomOut);
@@ -152,6 +248,30 @@ EditPage::EditPage()
     toolbar.onZoomIn = [this] { timeline.zoomIn(); };
     toolbar.onZoomOut = [this] { timeline.zoomOut(); };
     toolbar.onToggleMixer = [this] { setMixerVisible (! mixerVisible); };
+    toolbar.onFadeInEntered = [this] (const std::string& text) {
+        const auto samples = parseSeconds (text, current.song.sampleRate);
+        editSelectedClip ([&] (const song::Song& song, const song::Id& clipId) -> core::Expected<song::Song> {
+            if (! samples.has_value())
+                return song;
+            return song::setClipFadeIn (song, clipId, *samples);
+        }, song::fadeInLabel);
+    };
+    toolbar.onFadeOutEntered = [this] (const std::string& text) {
+        const auto samples = parseSeconds (text, current.song.sampleRate);
+        editSelectedClip ([&] (const song::Song& song, const song::Id& clipId) -> core::Expected<song::Song> {
+            if (! samples.has_value())
+                return song;
+            return song::setClipFadeOut (song, clipId, *samples);
+        }, song::fadeOutLabel);
+    };
+    toolbar.onGainEntered = [this] (const std::string& text) {
+        const auto gainDb = parseDecibels (text);
+        editSelectedClip ([&] (const song::Song& song, const song::Id& clipId) -> core::Expected<song::Song> {
+            if (! gainDb.has_value())
+                return song;
+            return song::setClipGain (song, clipId, *gainDb);
+        }, song::clipGainLabel);
+    };
 
     timeline.onEdit = [this] (song::Song changed, std::string label) {
         if (onEdit)
@@ -189,6 +309,19 @@ void EditPage::show (const TimelineState& state)
 void EditPage::showToolbar()
 {
     toolbar.show (clipToolbarStateFor (current.song, timeline.selectedClip(), current.playhead, current.editable), mixerVisible);
+}
+
+void EditPage::editSelectedClip (const std::function<core::Expected<song::Song> (const song::Song&, const song::Id&)>& change, const char* label)
+{
+    const auto& clipId = timeline.selectedClip();
+    if (clipId.has_value() && current.editable)
+    {
+        // The fields are enabled only while the selected Clip is in the Song.
+        auto changed = change (current.song, *clipId);
+        if (OVERDUB_CHECK (changed.has_value(), "ui.clip_field_edit_failed", { "clip_id", *clipId }) && *changed != current.song && onEdit)
+            onEdit (std::move (*changed), label);
+    }
+    showToolbar();
 }
 
 void EditPage::setMixerVisible (bool visible)

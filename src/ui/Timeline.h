@@ -18,9 +18,13 @@
 // are drawn in layer order with waveforms from the peaks cache, a hatched strip marks where a
 // Clip covers an older one, and the playhead crosses every lane.
 //
+// Each Clip shows its fades (shaded, with a line from silence to full level), a fade handle at each
+// fade's inner end in its top row, and its gain as a dB tag in its top-right corner (issue #29).
+//
 // Gestures (thin over ui/TimelineGeometry.h): clicking a Clip selects it, dragging its body moves
-// it, dragging an edge trims it; the drag is previewed and reported once, on mouse up, as one
-// Song and its undo label. Clicking empty lane space clears the selection; clicking or dragging
+// it, dragging an edge trims it, dragging a fade handle sets that fade, dragging the dB tag up or
+// down sets the gain; the drag is previewed and reported once, on mouse up, as one Song and its
+// undo label. Clicking empty lane space clears the selection; clicking or dragging
 // in the ruler moves the playhead. The scroll bar and the mouse wheel scroll; zoomIn/zoomOut zoom.
 // Selection and the view are transient UI state, never in the Song.
 namespace overdub::ui
@@ -85,10 +89,14 @@ public:
     // Where a Clip of the shown Song is drawn, in this Component's coordinates (cut to its lane);
     // empty when it is not on screen.
     juce::Rectangle<int> clipBounds (const song::Id& clipId) const;
+    // Where a Clip's fade handle or dB tag (a handle part) is drawn, cut to the lanes; empty when it
+    // is not on screen, or for another part.
+    juce::Rectangle<int> handleBounds (const song::Id& clipId, ClipPart part) const;
     juce::Rectangle<int> rulerBounds() const { return layout.ruler; }
     juce::Rectangle<int> cameraLaneBounds() const { return layout.cameraLane; }
 
-    // A finished drag: the changed Song and its undo label ("Move Clip", "Trim Clip").
+    // A finished drag: the changed Song and its undo label ("Move Clip", "Trim Clip", "Fade In",
+    // "Fade Out", "Clip Gain").
     std::function<void (song::Song changed, std::string label)> onEdit;
     std::function<void (song::SampleCount sample)> onSeek;
     std::function<void (const song::Id& trackId, bool armed)> onArm;
@@ -124,6 +132,7 @@ private:
     void paintCameraLane (juce::Graphics& g) const;
     void paintLane (juce::Graphics& g, const song::Track& track, juce::Rectangle<int> lane) const;
     void paintClip (juce::Graphics& g, const song::Clip& clip, juce::Rectangle<int> clipArea) const;
+    void paintFadesAndGain (juce::Graphics& g, const song::Clip& clip, juce::Rectangle<int> clipArea) const;
     void paintCoveredSpans (juce::Graphics& g, const song::Track& track, juce::Rectangle<int> lane) const;
     void paintPlayhead (juce::Graphics& g) const;
 

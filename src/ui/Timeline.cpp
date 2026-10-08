@@ -1,5 +1,6 @@
 #include "ui/Timeline.h"
 
+#include "core/Error.h"
 #include "song/ClipEdits.h"
 #include "ui/Colours.h"
 
@@ -31,6 +32,29 @@ double rulerStepSeconds (song::SampleCount samplesPerPixel, int sampleRate)
 juce::Rectangle<int> clipRectangle (juce::Rectangle<int> lane, ClipColumns columns)
 {
     return { columns.left, lane.getY() + 3, columns.right - columns.left, lane.getHeight() - 6 };
+}
+
+PixelRect handleRect (const ClipHandleBounds& handles, ClipPart part)
+{
+    switch (part)
+    {
+        case ClipPart::fadeInHandle:
+            return handles.fadeIn;
+        case ClipPart::fadeOutHandle:
+            return handles.fadeOut;
+        case ClipPart::gainTag:
+            return handles.gainTag;
+        case ClipPart::body:
+        case ClipPart::startEdge:
+        case ClipPart::endEdge:
+            break;
+    }
+    return {};
+}
+
+juce::Rectangle<int> toRectangle (PixelRect rect)
+{
+    return { rect.x, rect.y, rect.width, rect.height };
 }
 
 std::string rulerLabel (double seconds)
@@ -209,6 +233,24 @@ juce::Rectangle<int> Timeline::clipBounds (const song::Id& clipId) const
     return {};
 }
 
+juce::Rectangle<int> Timeline::handleBounds (const song::Id& clipId, ClipPart part) const
+{
+    const auto& tracks = shownSong().tracks;
+    for (std::size_t i = 0; i < tracks.size() && i < layout.trackLanes.size(); ++i)
+    {
+        for (const auto& clip : tracks[i].clips)
+        {
+            if (clip.id != clipId)
+                continue;
+            const auto clipTop = clipRectangle (layout.trackLanes[i], clipColumns (timelineView, clip)).getY();
+            const auto handles = clipHandleBounds (timelineView, clip, clipTop);
+            const auto rect = handleRect (handles, part);
+            return toRectangle (rect).getIntersection (lanesArea());
+        }
+    }
+    return {};
+}
+
 juce::Rectangle<int> Timeline::lanesArea() const
 {
     return getLocalBounds().withTop (layout.cameraLane.getBottom()).withBottom (layout.scrollBar.getY()).withLeft (layout.ruler.getX());
@@ -242,14 +284,22 @@ void Timeline::mouseDown (const juce::MouseEvent& event)
     if (! lane.has_value() || *lane >= current.song.tracks.size())
         return;
 
-    const auto hit = hitTestClips (current.song.tracks[*lane].clips, timelineView, position.x);
+    auto hit = hitTestClips (current.song.tracks[*lane].clips, timelineView, position.x);
     if (! hit.has_value())
     {
         selectClip (std::nullopt);
         return;
     }
+    // The Clip's fade handles and dB tag win over its body and edges.
+    const auto* clip = song::findClip (current.song, hit->clipId);
+    if (! OVERDUB_CHECK (clip != nullptr, "ui.hit_clip_missing", { "clip_id", hit->clipId }))
+        return;
+    const auto clipTop = clipRectangle (layout.trackLanes[*lane], clipColumns (timelineView, *clip)).getY();
+    if (const auto handle = hitTestClipHandles (timelineView, *clip, clipTop, position.x, position.y))
+        hit->part = *handle;
+
     selectClip (hit->clipId);
-    activeDrag = ActiveDrag { ClipDrag { hit->clipId, hit->part, position.x }, current.song };
+    activeDrag = ActiveDrag { ClipDrag { hit->clipId, hit->part, position.x, position.y }, current.song };
 }
 
 void Timeline::mouseDrag (const juce::MouseEvent& event)
@@ -264,7 +314,7 @@ void Timeline::mouseDrag (const juce::MouseEvent& event)
     if (! activeDrag.has_value())
         return;
 
-    auto dragged = songForDrag (activeDrag->songAtDown, activeDrag->drag, timelineView, position.x);
+    auto dragged = songForDrag (activeDrag->songAtDown, activeDrag->drag, timelineView, position.x, position.y);
     if (dragged.has_value())
         preview = std::move (*dragged);
     repaint();
@@ -281,7 +331,7 @@ void Timeline::mouseUp (const juce::MouseEvent& event)
     preview.reset();
     repaint();
 
-    auto dragged = songForDrag (finished.songAtDown, finished.drag, timelineView, event.getPosition().x);
+    auto dragged = songForDrag (finished.songAtDown, finished.drag, timelineView, event.getPosition().x, event.getPosition().y);
     if (! dragged.has_value() || *dragged == finished.songAtDown)
         return;
     if (onEdit)
@@ -422,11 +472,12 @@ void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Recta
             const auto columns = waveformColumns (peaks, sourceStart, timelineView.samplesPerPixel, lastX - firstX);
             const auto centre = (float) waveArea.getCentreY();
             const auto halfHeight = (float) waveArea.getHeight() * 0.5f;
+            const auto gain = (float) song::linearGain (clip.gainDb);
             g.setColour (juce::Colours::white.withAlpha (0.6f));
             for (std::size_t i = 0; i < columns.size(); ++i)
             {
-                const auto top = centre - std::clamp (columns[i].maximum, -1.0f, 1.0f) * halfHeight;
-                const auto bottom = centre - std::clamp (columns[i].minimum, -1.0f, 1.0f) * halfHeight;
+                const auto top = centre - std::clamp (columns[i].maximum * gain, -1.0f, 1.0f) * halfHeight;
+                const auto bottom = centre - std::clamp (columns[i].minimum * gain, -1.0f, 1.0f) * halfHeight;
                 g.drawVerticalLine (firstX + (int) i, top, std::max (top + 1.0f, bottom));
             }
         }
@@ -434,10 +485,51 @@ void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Recta
 
     g.setColour (juce::Colours::white.withAlpha (0.85f));
     g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-    g.drawText (juce::String::fromUTF8 (clipName (song, clip).c_str()), clipArea.withHeight (14).reduced (4, 0), juce::Justification::centredLeft, true);
+    const auto nameRight = clipArea.getRight() - clipEdgeGrabWidth - gainTagWidth - 4;
+    g.drawText (juce::String::fromUTF8 (clipName (song, clip).c_str()), clipArea.withHeight (14).withRight (std::max (clipArea.getX(), nameRight)).reduced (4, 0), juce::Justification::centredLeft, true);
+
+    // Over the name, so a fade handle near the Clip's start stays visible.
+    paintFadesAndGain (g, clip, clipArea);
 
     g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.4f));
     g.drawRoundedRectangle (area.reduced (isSelected ? 1.0f : 0.5f), 4.0f, isSelected ? 2.0f : 1.0f);
+}
+
+void Timeline::paintFadesAndGain (juce::Graphics& g, const song::Clip& clip, juce::Rectangle<int> clipArea) const
+{
+    const auto area = clipArea.toFloat();
+    const auto fadeInEnd = (float) xForSample (timelineView, clip.timelineStart + clip.fadeInLength);
+    const auto fadeOutStart = (float) xForSample (timelineView, clip.timelineStart + clip.length - clip.fadeOutLength);
+
+    // Shade above each fade line, the line rising from silence (bottom) to full level (top).
+    juce::Path shade;
+    if (clip.fadeInLength > 0)
+        shade.addTriangle (area.getX(), area.getY(), fadeInEnd, area.getY(), area.getX(), area.getBottom());
+    if (clip.fadeOutLength > 0)
+        shade.addTriangle (fadeOutStart, area.getY(), area.getRight(), area.getY(), area.getRight(), area.getBottom());
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.fillPath (shade);
+    g.setColour (juce::Colours::white.withAlpha (0.9f));
+    if (clip.fadeInLength > 0)
+        g.drawLine (area.getX(), area.getBottom(), fadeInEnd, area.getY(), 1.0f);
+    if (clip.fadeOutLength > 0)
+        g.drawLine (fadeOutStart, area.getY(), area.getRight(), area.getBottom(), 1.0f);
+
+    const auto handles = clipHandleBounds (timelineView, clip, clipArea.getY());
+    const auto isSelected = selected == clip.id;
+    g.setColour (juce::Colours::white.withAlpha (isSelected ? 0.95f : 0.55f));
+    for (const auto& handle : { handles.fadeIn, handles.fadeOut })
+        g.fillRoundedRectangle (toRectangle (handle).toFloat(), 2.0f);
+
+    if (! handles.gainTag.isEmpty())
+    {
+        const auto tag = toRectangle (handles.gainTag);
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.fillRoundedRectangle (tag.toFloat(), 3.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.9f));
+        g.setFont (juce::FontOptions (9.0f));
+        g.drawText (juce::String (decibelsText (clip.gainDb)), tag, juce::Justification::centred, false);
+    }
 }
 
 void Timeline::paintCoveredSpans (juce::Graphics& g, const song::Track& track, juce::Rectangle<int> lane) const

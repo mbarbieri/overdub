@@ -17,6 +17,7 @@ target_sources(overdub_tests PRIVATE
     engine/DeviceBindingTest.cpp
     engine/DeviceSettingsTest.cpp
     engine/EngineClipEditTest.cpp
+    engine/EngineClipGainFadeTest.cpp
     engine/EngineEventsTest.cpp
     engine/EngineRealtimeTest.cpp
     engine/EngineRecordTest.cpp

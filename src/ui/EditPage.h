@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Error.h"
 #include "song/Song.h"
 #include "ui/Timeline.h"
 
@@ -9,11 +10,12 @@
 #include <optional>
 #include <string>
 
-// Edit mode's page (issue #28, issue #9 resolution, variant C): the Clip toolbar (the selected
-// Clip's name, Track, start and length; Split, Delete; zoom; the Mixer toggle) over the Timeline,
-// and under a draggable divider the Mixer region, empty until the Mixer arrives (slice 10).
-// Thin: Split and Delete are reported to the window, which runs them like the S and backspace
-// keys; drags arrive from the Timeline as a changed Song and its label.
+// Edit mode's page (issues #28, #29, issue #9 resolution, variant C): the Clip toolbar (the
+// selected Clip's name, Track, start and length; its fade-in, fade-out and gain fields; Split,
+// Delete; zoom; the Mixer toggle) over the Timeline, and under a draggable divider the Mixer
+// region, empty until the Mixer arrives (slice 10). Thin: Split and Delete are reported to the
+// window, which runs them like the S and backspace keys; drags arrive from the Timeline, and field
+// entries are made here, as a changed Song and its undo label ("Fade In", "Fade Out", "Clip Gain").
 namespace overdub::ui
 {
 struct ClipToolbarState
@@ -22,10 +24,21 @@ struct ClipToolbarState
     std::string details; // "Pass 2 on Guitar · start 1.250 s · length 3.000 s", or a hint
     bool canSplit = false;  // the playhead is strictly inside the selected Clip
     bool canDelete = false;
+    bool canEditFadesAndGain = false;
+    std::string fadeInText;  // "0.250 s"; empty with no Clip
+    std::string fadeOutText; // "0.250 s"; empty with no Clip
+    std::string gainText;    // "-3.0 dB"; empty with no Clip
 };
 
 // "1.250 s": samples as seconds with three decimals; an unknown rate (<= 0) reads "0.000 s".
 std::string secondsText (song::SampleCount samples, int sampleRate);
+
+// A toolbar entry in seconds ("0.5", "0.5 s"), as whole samples at the rate; none when it is not a
+// finite number of seconds >= 0.
+std::optional<song::SampleCount> parseSeconds (const std::string& text, int sampleRate);
+
+// A toolbar entry in decibels ("-6", "+3.5 dB"); none when it is not a finite number.
+std::optional<double> parseDecibels (const std::string& text);
 
 // The toolbar for the selected Clip (none, or one the Song no longer has: the hint).
 ClipToolbarState clipToolbarStateFor (const song::Song& song, const std::optional<song::Id>& selectedClip, song::SampleCount playhead, bool editable);
@@ -44,8 +57,18 @@ public:
     std::function<void()> onZoomIn;
     std::function<void()> onZoomOut;
     std::function<void()> onToggleMixer;
+    // The text a field was given (by typing and return, or losing focus).
+    std::function<void (const std::string& text)> onFadeInEntered;
+    std::function<void (const std::string& text)> onFadeOutEntered;
+    std::function<void (const std::string& text)> onGainEntered;
 
     juce::Label details;
+    juce::Label fadeInCaption { {}, "Fade in" };
+    juce::Label fadeInField;
+    juce::Label fadeOutCaption { {}, "Fade out" };
+    juce::Label fadeOutField;
+    juce::Label gainCaption { {}, "Gain" };
+    juce::Label gainField;
     juce::TextButton splitButton { "Split (S)" };
     juce::TextButton deleteButton { "Delete" };
     juce::TextButton zoomOutButton { "-" };
@@ -107,6 +130,9 @@ public:
 
 private:
     void showToolbar();
+    // Applies `change` to the selected Clip as one undo step with this label, if it changes the
+    // Song; then the toolbar shows the Clip's values again (a rejected or clamped entry included).
+    void editSelectedClip (const std::function<core::Expected<song::Song> (const song::Song&, const song::Id&)>& change, const char* label);
 
     TimelineState current;
     bool mixerVisible = true;

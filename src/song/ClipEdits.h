@@ -5,8 +5,8 @@
 
 #include <vector>
 
-// The Edit timeline's Clip operations (issue #28) as pure functions over the Song: move, trim
-// start, trim end, split and delete. Each returns the changed Song; the caller makes it one undo
+// The Edit timeline's Clip operations (issues #28, #29) as pure functions over the Song: move, trim
+// start, trim end, split, delete, and setting fades and gain. Each returns the changed Song; the caller makes it one undo
 // step with its label (SongPackage::edit). Integer samples throughout (ADR 0004).
 //
 // Invariants every operation keeps:
@@ -22,6 +22,16 @@ inline constexpr const char* moveClipLabel = "Move Clip";
 inline constexpr const char* trimClipLabel = "Trim Clip";
 inline constexpr const char* splitClipLabel = "Split Clip";
 inline constexpr const char* deleteClipLabel = "Delete Clip";
+inline constexpr const char* fadeInLabel = "Fade In";
+inline constexpr const char* fadeOutLabel = "Fade Out";
+inline constexpr const char* clipGainLabel = "Clip Gain";
+
+// The range of a Clip's gain (issue #29).
+inline constexpr double minClipGainDb = -24.0;
+inline constexpr double maxClipGainDb = 12.0;
+
+// A Clip gain in dB as a linear amplitude factor: 10^(gainDb / 20).
+double linearGain (double gainDb);
 
 // A Song sample range [start, end).
 struct SampleSpan
@@ -57,6 +67,15 @@ core::Expected<Song> trimClipEnd (Song song, const Id& clipId, SampleCount newTi
 // Splits the Clip at Song sample `at`, strictly inside it. The left half keeps the id and fade-in,
 // the right half gets `rightClipId` and the fade-out; gain is kept on both.
 core::Expected<Song> splitClip (Song song, const Id& clipId, SampleCount at, const Id& rightClipId);
+
+// The Clip's fade-in set to `length` samples, clamped to [0, length - fade-out]: the fade-out stays.
+core::Expected<Song> setClipFadeIn (Song song, const Id& clipId, SampleCount length);
+
+// The Clip's fade-out set to `length` samples, clamped to [0, length - fade-in]: the fade-in stays.
+core::Expected<Song> setClipFadeOut (Song song, const Id& clipId, SampleCount length);
+
+// The Clip's gain set to `gainDb`, clamped to [minClipGainDb, maxClipGainDb].
+core::Expected<Song> setClipGain (Song song, const Id& clipId, double gainDb);
 
 // Removes the Clip. Its Take or Backing Track stays in the Song (media is never deleted).
 core::Expected<Song> deleteClip (Song song, const Id& clipId);

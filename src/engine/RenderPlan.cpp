@@ -115,7 +115,7 @@ std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLo
     for (const auto& clip : track.clips)
     {
         auto audio = loader.load (clip.source);
-        layered.push_back ({ .timelineStart = clip.timelineStart, .sourceOffset = clip.sourceOffset, .length = clip.length, .source = audio });
+        layered.push_back ({ .timelineStart = clip.timelineStart, .sourceOffset = clip.sourceOffset, .length = clip.length, .gainDb = clip.gainDb, .fadeInLength = clip.fadeInLength, .fadeOutLength = clip.fadeOutLength, .source = audio });
         if (audio != nullptr)
             sources.push_back (std::move (audio));
     }
