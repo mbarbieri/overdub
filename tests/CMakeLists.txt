@@ -9,6 +9,7 @@ add_executable(overdub_tests)
 target_sources(overdub_tests PRIVATE
     capture/LoopbackMeasurementTest.cpp
     capture/PassRecorderTest.cpp
+    capture/VideoPlacementTest.cpp
     core/BuildInfoTest.cpp
     core/ErrorTest.cpp
     core/LogFilesTest.cpp

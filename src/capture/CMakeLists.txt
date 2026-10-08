@@ -6,7 +6,8 @@ add_library(overdub_capture STATIC)
 
 target_sources(overdub_capture PRIVATE
     LoopbackMeasurement.cpp
-    PassRecorder.cpp)
+    PassRecorder.cpp
+    VideoPlacement.cpp)
 
 target_link_libraries(overdub_capture
     PUBLIC
