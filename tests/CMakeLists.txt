@@ -71,7 +71,8 @@ target_sources(overdub_tests PRIVATE
     ui/TimelineGeometryTest.cpp
     ui/TrackRowEditsTest.cpp
     ui/TransportTextTest.cpp
-    ui/UserMessagesTest.cpp)
+    ui/UserMessagesTest.cpp
+    video/FrameSelectionTest.cpp)
 
 # overdub_ui links overdub_capture and overdub_plugin, which link overdub_engine, overdub_song and overdub_core publicly; listing those too
 # makes ld warn about duplicate libraries.

@@ -38,5 +38,6 @@ target_link_libraries(overdub_ui
     PUBLIC
         overdub_capture
         overdub_plugin
+        overdub_video
     PRIVATE
         juce::juce_recommended_warning_flags)
