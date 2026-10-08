@@ -1,5 +1,6 @@
 #include "ui/OpenSong.h"
 
+#include "capture/CameraCalibration.h"
 #include "core/Log.h"
 #include "song/InsertEdits.h"
 #include "song/MixEdits.h"
@@ -31,6 +32,8 @@ OpenSong::~OpenSong()
 {
     for (const auto& error : detachAudio())
         core::logError (error);
+    if (camera != nullptr)
+        camera->close();
     if (inserts.takeStateChanged())
         package_->changeWithoutHistory (song());
     if (auto written = package_->flush(); ! written.has_value())
@@ -104,6 +107,11 @@ core::Expected<void> OpenSong::record()
     capture::PassRecorderOptions options;
     if (usePreRoll)
         options.recordPoint = recordPoint;
+    if (song().cameraArmed && camera != nullptr && camera->openCamera().has_value())
+    {
+        options.camera = camera;
+        options.cameraCalibrationSamples = cameraCalibrationSamples (camera->openCamera()->id);
+    }
     auto started = capture::PassRecorder::start (*package_, *binding.engine, binding.latency, options);
     if (! started.has_value())
         return std::unexpected (started.error());
@@ -331,7 +339,88 @@ std::vector<core::Error> OpenSong::finishPass (core::Expected<capture::RecordedP
     reloadEngine(); // the Pass's Takes and Clips, when it was added
     if (! finished.has_value())
         return { finished.error() };
+    return finished->notices; // the Pass stands; its Video Take may not
+}
+
+//==============================================================================
+// Camera
+
+core::Expected<void> OpenSong::attachCamera (capture::Camera* newCamera, juce::File calibrationFile)
+{
+    if (camera != nullptr && camera != newCamera)
+        camera->close();
+    camera = newCamera;
+    cameraCalibrationFile = std::move (calibrationFile);
+    cameras = camera != nullptr ? camera->devices() : std::vector<capture::CameraDevice> {};
+    return syncCamera();
+}
+
+core::Expected<void> OpenSong::setCameraArmed (bool armed)
+{
+    if (recorder != nullptr || camera == nullptr || armed == song().cameraArmed)
+        return {};
+    auto changed = song();
+    changed.cameraArmed = armed;
+    package_->changeWithoutHistory (std::move (changed));
+    cameras = camera->devices();
+    return syncCamera();
+}
+
+core::Expected<void> OpenSong::setCameraDevice (const std::string& cameraId)
+{
+    if (recorder != nullptr || cameraId == song().cameraDeviceId)
+        return {};
+    auto changed = song();
+    changed.cameraDeviceId = cameraId;
+    package_->changeWithoutHistory (std::move (changed));
+    if (camera == nullptr)
+        return {};
+    cameras = camera->devices();
+    if (song().cameraArmed)
+        camera->close(); // reopened on the new choice
+    return syncCamera();
+}
+
+void* OpenSong::cameraPreviewLayer() const
+{
+    if (camera == nullptr || ! song().cameraArmed || ! camera->openCamera().has_value())
+        return nullptr;
+    return camera->previewLayer();
+}
+
+core::Expected<void> OpenSong::syncCamera()
+{
+    if (camera == nullptr)
+        return {};
+    if (! song().cameraArmed)
+    {
+        camera->close();
+        return {};
+    }
+    if (const auto open = camera->openCamera(); open.has_value() && open->id == song().cameraDeviceId)
+        return {};
+
+    auto opened = camera->open (song().cameraDeviceId);
+    auto changed = song();
+    if (! opened.has_value())
+    {
+        changed.cameraArmed = false;
+        package_->changeWithoutHistory (std::move (changed));
+        return std::unexpected (opened.error());
+    }
+    // The default camera opened for no (or a missing) choice becomes the choice.
+    changed.cameraDeviceId = opened->id;
+    if (changed != song())
+        package_->changeWithoutHistory (std::move (changed));
     return {};
+}
+
+capture::SampleCount OpenSong::cameraCalibrationSamples (const std::string& cameraId) const
+{
+    const auto offsetMs = capture::readCameraCalibration (cameraCalibrationFile, { cameraId, binding.outputDeviceName });
+    if (! offsetMs.has_value())
+        core::logError (offsetMs.error(), core::Level::warn); // placed without calibration
+    return capture::calibrationSamples (offsetMs.value_or (0.0), song().sampleRate);
 }
 
 void OpenSong::updateEngine (const song::Song& before)
