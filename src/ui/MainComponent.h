@@ -9,10 +9,13 @@
 #include "ui/RecordPage.h"
 #include "ui/TopBar.h"
 #include "ui/UserMessages.h"
+#include "ui/VideoPreviewWindow.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -32,6 +35,14 @@
 // the Song's camera (OpenSong::setCameraArmed); the picker chooses the camera. Neither is an undo
 // step. The stage shows the live feed while the camera is Armed. A camera that cannot open, and a
 // Pass's movie problems, are presented by their tier.
+//
+// Video Take playback (issue #36): on each display refresh (a VBlankAttachment; tests call
+// refreshVideo) the Song sample heard then picks the frame (OpenSong::videoPlayback) shown on the
+// Edit mode's floating Video Preview, which the toolbar's Video toggle shows and hides (built off
+// the desktop when showVideoPreviewOnDesktop is false), and on the Record stage when it shows
+// playback (stageShowsLiveFeed). The Video Preview floats in Edit mode only; the toggle is kept
+// across modes. The Camera lane shows the Song's Video Takes. Logs ui.video_preview_toggled (info:
+// shown).
 //
 // Insert Chains (issues #33, #34) on Record rows, Mixer strips and the Master strip: "+ Insert"
 // lists the AU effects and adds the one picked (OpenSong::addInsert), then opens its editor once
@@ -74,6 +85,17 @@ public:
 
     // One poll: finish a stopped Pass, write a due song.json, refresh, present messages.
     void tick();
+    // One display refresh: shows the frame heard `refreshNs` after `nowHostNs` on the screens
+    // that show playback.
+    void refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs = defaultRefreshNs);
+    static constexpr std::uint64_t defaultRefreshNs = 16'666'667; // 60 Hz
+
+    // The Video toggle: whether the Video Preview is wanted (it shows in Edit mode).
+    void setVideoPreviewWanted (bool wanted);
+    bool isVideoPreviewWanted() const { return videoPreviewWanted; }
+    // The Video Preview window; null until first shown.
+    VideoPreviewWindow* videoPreviewWindow() const { return videoPreview.get(); }
+    bool isVideoPreviewShown() const { return videoPreview != nullptr && videoPreview->isShown(); }
     // Shows the open Song's current state.
     void refresh();
 
@@ -107,6 +129,8 @@ public:
     NoticeLine noticeLine;
     // The plugin editor windows; tests set showOnDesktop false before opening any.
     PluginWindows pluginWindows;
+    // False in tests: the Video Preview is built, never put on the desktop.
+    bool showVideoPreviewOnDesktop = true;
 
 private:
     void timerCallback() override { tick(); }
@@ -128,6 +152,8 @@ private:
     void presentMessages();
     void handleErrors (const std::vector<core::Error>& errors);
     void takeKeyboardFocus();
+    void syncVideoPreview();
+    void onVBlank (double timestampSeconds);
     bool passRunning() const { return openSong != nullptr && openSong->isRecording(); }
 
     OpenSong* openSong = nullptr;
@@ -135,6 +161,11 @@ private:
     UserMessageQueue messages;
     // A slot whose editor opens once its plugin is ready (just added, or clicked while loading).
     std::optional<song::Id> pendingEditorSlot;
+    bool videoPreviewWanted = false;
+    std::unique_ptr<VideoPreviewWindow> videoPreview;
+    std::optional<double> lastVBlankSeconds;
+    // Last: it calls back into this object until it is destroyed.
+    juce::VBlankAttachment vblank;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

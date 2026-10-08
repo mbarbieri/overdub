@@ -5,6 +5,7 @@
 #include "ui/Layout.h"
 #include "ui/TakeLanes.h"
 #include "ui/TimelineGeometry.h"
+#include "video/FrameSelection.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -16,7 +17,8 @@
 #include <vector>
 
 // Edit mode's timeline (issue #28, issue #9 resolution, variant C): a ruler, the Camera lane
-// (a placeholder until slice 15), and one lane per Track with a compact header (arm, name). Clips
+// (issue #36: one block per Video Take, from its start to the end of its movie on the audio clock,
+// titled with its Pass; a Video Take whose movie cannot be read is a narrow block), and one lane per Track with a compact header (arm, name). Clips
 // are drawn in layer order with waveforms from the peaks cache, a hatched strip marks where a
 // Clip covers an older one, and the playhead crosses every lane.
 //
@@ -48,6 +50,7 @@ struct TimelineState
     song::SampleCount playhead = 0;
     bool playing = false;
     bool editable = true; // false while a Pass runs: no gestures
+    std::vector<video::VideoTakeSpan> videoTakes; // the Camera lane's blocks (video::videoTakeSpans)
 };
 
 // The name a Clip shows: "Pass n" for a Take (its Pass's number), the file name for a Backing
@@ -121,6 +124,10 @@ public:
     // Where the lane of this Take is drawn, cut to the lanes; empty when folded or off screen.
     juce::Rectangle<int> takeLaneBounds (const song::Id& takeId) const;
     juce::Rectangle<int> cameraLaneBounds() const { return layout.cameraLane; }
+    // Where a Video Take's block is drawn in the Camera lane, cut to it; empty when off screen or
+    // not shown.
+    juce::Rectangle<int> videoTakeBounds (const song::Id& videoTakeId) const;
+    static constexpr int unreadableVideoTakeWidth = 6;
 
     // A finished drag or lane click: the changed Song and its undo label ("Move Clip", "Trim Clip",
     // "Fade In", "Fade Out", "Clip Gain", "Use Pass 2 on Guitar", "Bring back Pass 2 on Guitar").

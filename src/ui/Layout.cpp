@@ -189,7 +189,9 @@ ClipToolbarLayout clipToolbarLayout (juce::Rectangle<int> bar)
 {
     ClipToolbarLayout layout;
     auto area = bar.reduced (margin, 5);
-    layout.mixerToggle = area.removeFromRight (76);
+    layout.mixerToggle = area.removeFromRight (64);
+    area.removeFromRight (gap);
+    layout.videoToggle = area.removeFromRight (56);
     area.removeFromRight (gap);
     layout.zoomIn = area.removeFromRight (32);
     area.removeFromRight (2);

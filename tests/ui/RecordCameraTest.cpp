@@ -34,12 +34,15 @@ struct CameraWindowFixture : MainWindowFixture
 };
 } // namespace
 
-TEST_CASE ("the camera arm and picker sit above the stage, which asks for the camera while disarmed", "[ui][record_page][camera]")
+TEST_CASE ("the camera arm and picker sit above the stage, which shows Video Take playback while disarmed", "[ui][record_page][camera]")
 {
     CameraWindowFixture f;
     CHECK (isShown (f.page().cameraArmButton));
     CHECK (isShown (f.page().cameraPicker));
-    CHECK (isShown (f.page().cameraStage));
+    // Disarmed, the stage shows playback (issue #36): no Video Take here, so its message.
+    CHECK_FALSE (isShown (f.page().cameraStage));
+    CHECK (isShown (f.page().stageVideo));
+    CHECK (f.page().stageVideo.message() == juce::String (noVideoTakeMessage));
     CHECK (f.page().cameraArmButton.getBottom() < f.page().cameraStage.getY());
     CHECK_FALSE (f.page().cameraArmButton.getToggleState());
     CHECK (f.page().cameraPicker.getNumItems() == 2);

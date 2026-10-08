@@ -106,7 +106,7 @@ int clampMixerHeight (int requested, int pageHeight);
 EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int mixerHeight);
 
 // Left: the selected Clip's details, its fade-in, fade-out and gain fields (each after its
-// caption), Split, Delete. Right: zoom out, zoom in, Mixer.
+// caption), Split, Delete. Right: zoom out, zoom in, Video (the preview toggle, issue #36), Mixer.
 struct ClipToolbarLayout
 {
     juce::Rectangle<int> details;
@@ -120,6 +120,7 @@ struct ClipToolbarLayout
     juce::Rectangle<int> deleteClip;
     juce::Rectangle<int> zoomOut;
     juce::Rectangle<int> zoomIn;
+    juce::Rectangle<int> videoToggle;
     juce::Rectangle<int> mixerToggle;
 };
 

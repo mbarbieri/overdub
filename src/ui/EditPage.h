@@ -18,7 +18,8 @@
 
 // Edit mode's page (issues #28, #29, issue #9 resolution, variant C): the Clip toolbar (the
 // selected Clip's name, Track, start and length; its fade-in, fade-out and gain fields; Split,
-// Delete; zoom; the Mixer toggle) over the Timeline, and under a draggable divider the Mixer
+// Delete; zoom; the Video toggle (issue #36: the floating Video Preview, which the window owns);
+// the Mixer toggle) over the Timeline, and under a draggable divider the Mixer
 // (ui/Mixer.h, issue #31), which the toggle hides and shows. Thin: Split and Delete are reported to the
 // window, which runs them like the S and backspace keys; drags arrive from the Timeline, and field
 // entries are made here, as a changed Song and its undo label ("Fade In", "Fade Out", "Clip Gain").
@@ -55,7 +56,7 @@ class ClipToolbar final : public juce::Component
 public:
     ClipToolbar();
 
-    void show (const ClipToolbarState& state, bool mixerVisible);
+    void show (const ClipToolbarState& state, bool mixerVisible, bool videoPreviewShown);
     void resized() override;
     void paint (juce::Graphics& g) override;
 
@@ -64,6 +65,7 @@ public:
     std::function<void()> onZoomIn;
     std::function<void()> onZoomOut;
     std::function<void()> onToggleMixer;
+    std::function<void()> onToggleVideo;
     // The text a field was given (by typing and return, or losing focus).
     std::function<void (const std::string& text)> onFadeInEntered;
     std::function<void (const std::string& text)> onFadeOutEntered;
@@ -80,6 +82,7 @@ public:
     juce::TextButton deleteButton { "Delete" };
     juce::TextButton zoomOutButton { "-" };
     juce::TextButton zoomInButton { "+" };
+    juce::TextButton videoButton { "Video" };
     juce::TextButton mixerButton { "Mixer" };
 
 private:
@@ -118,6 +121,8 @@ public:
     void setPassesPanelOpen (bool open);
     void setMixerVisible (bool visible);
     int mixerHeight() const { return mixerHeightRequested; }
+    // The Video toggle's state: whether the window shows the Video Preview.
+    void setVideoPreviewShown (bool shown);
 
     std::function<void (song::Song changed, std::string label)> onEdit;
     // The Song a Mixer gesture in progress would make (OpenSong::previewMix).
@@ -129,6 +134,8 @@ public:
     std::function<void (const song::Id& trackId, bool solo)> onSolo;
     std::function<void()> onSplit;
     std::function<void()> onDelete;
+    // The Video toggle was clicked.
+    std::function<void()> onToggleVideo;
 
     ClipToolbar toolbar;
     Timeline timeline;
@@ -147,6 +154,7 @@ private:
 
     TimelineState current;
     bool mixerVisible = true;
+    bool videoPreviewShown = false;
     int mixerHeightRequested = defaultMixerHeight;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EditPage)

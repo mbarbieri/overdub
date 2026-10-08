@@ -330,7 +330,7 @@ TEST_CASE ("the Clip toolbar puts the Clip's details, fade and gain fields, Spli
 {
     const Rectangle<int> bar { 0, 52, minimumWindowWidth, clipToolbarHeight };
     const auto layout = clipToolbarLayout (bar);
-    checkInsideAndApart (bar, { layout.details, layout.fadeInCaption, layout.fadeInField, layout.fadeOutCaption, layout.fadeOutField, layout.gainCaption, layout.gainField, layout.split, layout.deleteClip, layout.zoomOut, layout.zoomIn, layout.mixerToggle });
+    checkInsideAndApart (bar, { layout.details, layout.fadeInCaption, layout.fadeInField, layout.fadeOutCaption, layout.fadeOutField, layout.gainCaption, layout.gainField, layout.split, layout.deleteClip, layout.zoomOut, layout.zoomIn, layout.videoToggle, layout.mixerToggle });
     CHECK (layout.details.getWidth() >= 200);
     CHECK (layout.details.getRight() <= layout.fadeInCaption.getX());
     CHECK (layout.fadeInCaption.getRight() <= layout.fadeInField.getX());
@@ -342,5 +342,6 @@ TEST_CASE ("the Clip toolbar puts the Clip's details, fade and gain fields, Spli
     CHECK (layout.split.getRight() <= layout.deleteClip.getX());
     CHECK (layout.deleteClip.getRight() <= layout.zoomOut.getX());
     CHECK (layout.zoomOut.getRight() <= layout.zoomIn.getX());
-    CHECK (layout.zoomIn.getRight() <= layout.mixerToggle.getX());
+    CHECK (layout.zoomIn.getRight() <= layout.videoToggle.getX());
+    CHECK (layout.videoToggle.getRight() <= layout.mixerToggle.getX());
 }

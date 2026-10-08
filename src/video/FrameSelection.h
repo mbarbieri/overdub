@@ -71,7 +71,9 @@ double movieSecondsAt (const song::VideoTake& videoTake, double songSample);
 // the last frame); none before the first frame or without frames.
 std::optional<std::size_t> frameIndexAt (const std::vector<double>& frameSeconds, double movieSeconds);
 
-// What a screen shows for a heard Song sample.
+// What a screen shows for a heard Song sample. Equality compares stored values exactly.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wfloat-equal"
 struct FrameChoice
 {
     std::optional<song::Id> videoTakeId; // none: black, "No Video Take at the playhead"
@@ -80,6 +82,7 @@ struct FrameChoice
 
     bool operator== (const FrameChoice&) const = default;
 };
+#pragma clang diagnostic pop
 
 // The Video Take covering the heard sample (the one whose Pass is newest, by the Song's Pass
 // order, when several do) and its frame there.

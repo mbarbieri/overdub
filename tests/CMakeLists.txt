@@ -72,6 +72,7 @@ target_sources(overdub_tests PRIVATE
     ui/TrackRowEditsTest.cpp
     ui/TransportTextTest.cpp
     ui/UserMessagesTest.cpp
+    ui/VideoPreviewTest.cpp
     video/FrameSelectionTest.cpp
     video/MovieFileTest.cpp
     video/VideoPlaybackTest.cpp)
