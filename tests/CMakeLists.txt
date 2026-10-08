@@ -29,6 +29,7 @@ target_sources(overdub_tests PRIVATE
     engine/EngineTest.cpp
     plugin/AudioUnitIdentifierTest.cpp
     plugin/AudioUnitLoaderTest.cpp
+    plugin/InsertBypassTest.cpp
     plugin/InsertHostTest.cpp
     song/BackingTrackImportTest.cpp
     song/ClipEditsTest.cpp

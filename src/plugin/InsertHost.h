@@ -24,7 +24,9 @@
 //   is restored when it arrives), a slot the Song lost is released (plans that still run it keep
 //   it alive until the engine frees them, off the audio thread). A slot that failed stays failed:
 //   an inert placeholder, its Song entry and state kept.
-// - The engine plays only ready slots (insertFactory()). takeGraphChanged() says when a new plan is
+// - The engine plays only ready slots that are not bypassed (insertFactory(); issue #34: a
+//   bypassed slot is left out of the plan, latency included, and keeps its plugin and state).
+//   takeGraphChanged() says when a new plan is
 //   needed: a slot became ready, or a ready plugin's latency is not the one the last plan used.
 // - captureStates() writes every ready plugin's state into its slot (ADR 0004 blobs); the package
 //   calls it on each history step and debounced write. takeStateChanged() says a parameter moved.
@@ -60,7 +62,7 @@ public:
     void sync (const song::Song& song);
 
     // The engine's InsertFactory for the next plan: per chain, a SharedInsertNode for each ready
-    // slot, in chain order (loading and failed slots are left out). Remembers each latency it saw,
+    // slot, in chain order (loading, failed and bypassed slots are left out). Remembers each latency it saw,
     // so the plan it builds is up to date: takeGraphChanged() is false until something changes.
     engine::InsertFactory insertFactory();
 
