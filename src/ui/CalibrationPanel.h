@@ -18,7 +18,7 @@
 // sample rate (or that there is none), how to patch the loopback, and Measure. The app runs a
 // capture::LoopbackRun and hands the measurement back; a usable one (bursts found, jitter within
 // ADR 0005's limit) offers "Use This Calibration", which hands back the offset in use plus the
-// measured one: the offset to store.
+// measured one: the offset to store (a zero result is offered only to a device never calibrated).
 //
 // Camera: shows the camera calibration stored for the Song's camera and the output device, how to
 // record a clap Pass, and Measure Last Clap Pass. The app measures the open Song's newest Video

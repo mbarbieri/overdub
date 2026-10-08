@@ -36,7 +36,7 @@ std::string latencyResultText (const capture::LoopbackMeasurement& measurement, 
         return "The bursts came back unevenly (jitter " + jitter + ", at most " + std::to_string (capture::loopbackJitterLimitSamples)
              + "). Use a cable rather than speakers, then measure again.";
     if (measurement.offsetSamples == 0)
-        return "Takes land where they were heard (jitter " + jitter + "). Nothing to correct.";
+        return "Takes land where they were heard (jitter " + jitter + ").";
 
     const auto size = std::abs (measurement.offsetSamples);
     return "Takes landed " + std::to_string (size) + " samples (" + milliseconds (size, sampleRate) + ") "

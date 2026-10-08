@@ -7,6 +7,7 @@
 #include "engine/LatencyCalibration.h"
 #include "ui/Layout.h"
 #include "ui/SongFiles.h"
+#include "ui/UserMessages.h"
 
 namespace overdub::app
 {
@@ -131,7 +132,7 @@ bool MainWindow::passRunning() const
 
 bool MainWindow::idleOrNotice()
 {
-    if (latencyRun != nullptr)
+    if (latencyMeasuring())
     {
         content.showNotice ("ui.calibration_running");
         return false;
@@ -153,7 +154,7 @@ juce::StringArray MainWindow::getMenuBarNames()
 juce::PopupMenu MainWindow::getMenuForIndex (int topLevelMenuIndex, const juce::String&)
 {
     juce::PopupMenu menu;
-    const auto idle = ! passRunning() && latencyRun == nullptr;
+    const auto idle = ! passRunning() && ! latencyMeasuring();
     if (topLevelMenuIndex == 0)
     {
         menu.addItem (newSongItem, "New Song...", idle);
@@ -377,8 +378,13 @@ ui::CalibrationStatus MainWindow::calibrationStatus() const
 
 void MainWindow::refreshCalibrationPanel()
 {
-    if (calibrationPanel != nullptr && latencyRun == nullptr)
+    if (calibrationPanel != nullptr && ! latencyMeasuring())
         calibrationPanel->show (calibrationStatus());
+}
+
+bool MainWindow::latencyMeasuring() const
+{
+    return latencyRun != nullptr || latencyOutcome.has_value();
 }
 
 void MainWindow::measureLatency()
@@ -393,43 +399,47 @@ void MainWindow::measureLatency()
     detachAudio();
     const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getNonexistentChildFile ("overdub-calibration-loopback", "", false);
     auto started = capture::LoopbackRun::start (*engine, live->recordLatency(), live->sampleRate(), folder);
-    if (! started.has_value())
-    {
-        core::logError (started.error());
-        if (openSong != nullptr)
-            openSong->attachAudio (live->audioBinding());
-        return calibrationPanel->showLatencyResult (std::unexpected (started.error()));
-    }
-    latencyRun = std::move (*started);
+    if (started.has_value())
+        latencyRun = std::move (*started);
+    else
+        latencyOutcome = std::unexpected (started.error());
     calibrationPanel->showLatencyMeasuring();
     latencyRunPoll.startTimer (latencyPollIntervalMs);
 }
 
 void MainWindow::pollLatencyRun()
 {
-    if (latencyRun == nullptr)
+    if (latencyRun != nullptr)
+    {
+        auto polled = latencyRun->poll();
+        if (! polled.has_value())
+            return;
+        latencyRun.reset();
+        if (polled->has_value())
+            latencyOutcome = (*polled)->measurement;
+        else
+            latencyOutcome = std::unexpected (polled->error());
+    }
+    if (! latencyOutcome.has_value())
         return latencyRunPoll.stopTimer();
-    auto polled = latencyRun->poll();
-    if (! polled.has_value())
-        return;
 
+    // Invariant (OpenSong::attachAudio): bind the Song again only once the audio thread has taken
+    // the newest plan (the run's, or the empty one detachAudio left), so no plan renders the
+    // Song's plugins while they are prepared again.
+    if (auto* engine = live->engine(); engine != nullptr && engine->hasPendingPlan())
+        return;
     latencyRunPoll.stopTimer();
-    latencyRun.reset();
-    // Invariant (OpenSong::attachAudio): the run's plan has no plugins, and it replaced the open
-    // Song's plan seconds ago, so no plan renders the Song's plugins now.
+    const auto outcome = std::move (*latencyOutcome);
+    latencyOutcome.reset();
     if (openSong != nullptr)
         openSong->attachAudio (live->audioBinding());
     content.refresh();
 
-    if (! polled->has_value())
-    {
-        core::logError (polled->error());
-        if (calibrationPanel != nullptr)
-            calibrationPanel->showLatencyResult (std::unexpected (polled->error()));
-        return;
-    }
+    // A failed run is shown in the panel only: logged once here, at the tier of its code.
+    if (! outcome.has_value())
+        core::logError (outcome.error(), ui::tierFor (outcome.error().code) == ui::Tier::notice ? core::Level::warn : core::Level::error);
     if (calibrationPanel != nullptr)
-        calibrationPanel->showLatencyResult ((*polled)->measurement);
+        calibrationPanel->showLatencyResult (outcome);
 }
 
 void MainWindow::saveLatencyCalibration (song::SampleCount offsetSamples)
@@ -446,7 +456,7 @@ void MainWindow::saveLatencyCalibration (song::SampleCount offsetSamples)
 
 void MainWindow::measureClapPass()
 {
-    if (calibrationPanel == nullptr || openSong == nullptr)
+    if (calibrationPanel == nullptr || openSong == nullptr || ! idleOrNotice())
         return;
     auto measured = capture::measureNewestVideoTake (openSong->song(), openSong->package().location());
     if (! measured.has_value())
@@ -460,6 +470,9 @@ void MainWindow::measureClapPass()
 
 void MainWindow::saveCameraCalibration (const std::string& cameraId, double offsetMs)
 {
+    // The key needs the output device the clap Pass was heard on.
+    if (! idleOrNotice() || live->engine() == nullptr)
+        return;
     const capture::CameraCalibrationKey key { cameraId, live->calibrationKey().outputDevice };
     if (auto written = capture::writeCameraCalibration (capture::defaultCameraCalibrationFile(), key, offsetMs); ! written.has_value())
         return content.handleError (written.error());

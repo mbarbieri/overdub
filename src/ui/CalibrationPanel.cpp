@@ -110,8 +110,10 @@ void CalibrationPanel::showLatencyResult (const core::Expected<capture::Loopback
     }
 
     latencyResultLabel.setText (utf8 (latencyResultText (*result, current.sampleRate)), juce::dontSendNotification);
-    // Offsets measured with the calibration in use: storing their sum lands Takes where heard.
-    if (capture::loopbackPassed (*result) && result->offsetSamples != 0)
+    // Offsets measured with the calibration in use: storing their sum lands Takes where heard. A
+    // zero result changes nothing, except on a device never calibrated, where storing it marks the
+    // device calibrated (no more ui.latency_not_calibrated).
+    if (capture::loopbackPassed (*result) && (result->offsetSamples != 0 || ! current.latencyOffset.has_value()))
         latencyToStore = current.latencyOffset.value_or (0) + result->offsetSamples;
     saveLatencyButton.setVisible (latencyToStore.has_value());
 }

@@ -28,7 +28,7 @@ TEST_CASE ("a loopback result says how late Takes landed, or why it cannot be us
 
     auto exact = passed;
     exact.offsetSamples = 0;
-    CHECK (latencyResultText (exact, 48000) == "Takes land where they were heard (jitter 2 samples). Nothing to correct.");
+    CHECK (latencyResultText (exact, 48000) == "Takes land where they were heard (jitter 2 samples).");
 
     LoopbackMeasurement silent;
     CHECK (latencyResultText (silent, 48000) == "No bursts came back. Check the cable from output 1 to input 1 and the input level, then measure again.");

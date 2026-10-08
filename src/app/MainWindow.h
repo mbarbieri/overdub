@@ -53,6 +53,8 @@ private:
 
     ui::CalibrationStatus calibrationStatus() const;
     void refreshCalibrationPanel();
+    // True from Measure Latency until the open Song is bound to the engine again.
+    bool latencyMeasuring() const;
     void measureLatency();
     void pollLatencyRun();
     void saveLatencyCalibration (song::SampleCount offsetSamples);
@@ -81,6 +83,8 @@ private:
     std::unique_ptr<ui::OpenSong> openSong;
     // After `live` and `openSong`: destroyed first, while the device still runs to stop its Pass.
     std::unique_ptr<capture::LoopbackRun> latencyRun;
+    // The run's outcome, held until the audio thread lets go of the plans and the Song is bound again.
+    std::optional<core::Expected<capture::LoopbackMeasurement>> latencyOutcome;
     juce::TimedCallback latencyRunPoll { [this] { pollLatencyRun(); } };
     ui::MainComponent content;
     std::unique_ptr<juce::FileChooser> chooser;

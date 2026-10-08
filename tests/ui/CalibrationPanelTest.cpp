@@ -174,6 +174,27 @@ TEST_CASE ("measuring the last clap Pass offers the camera calibration it implie
     CHECK (textOf (panel.clapResultLabel) == "No Pass has a Video Take yet. Arm the camera and record a Pass clapping in frame.");
 }
 
+TEST_CASE ("a zero result is offered to a device never calibrated, so it counts as calibrated, and to no other", "[ui][calibration]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    CalibrationPanel panel;
+    layOut (panel, 460, 520);
+    std::optional<SampleCount> saved;
+    panel.onSaveLatency = [&] (SampleCount offset) { saved = offset; };
+
+    panel.show (builtInDevices());
+    panel.showLatencyResult (measured (0));
+    REQUIRE (isShown (panel.saveLatencyButton));
+    click (panel.saveLatencyButton);
+    CHECK (saved == SampleCount { 0 });
+
+    auto calibrated = builtInDevices();
+    calibrated.latencyOffset = -821;
+    panel.show (calibrated);
+    panel.showLatencyResult (measured (0));
+    CHECK_FALSE (isShown (panel.saveLatencyButton));
+}
+
 // Renders the calibration panel for a session to look at (ADR 0005 UI amendment):
 // build/ui-snapshots/slice-18/*.png. Nothing here asserts on pixels.
 TEST_CASE ("snapshots of the calibration panel, not calibrated and with results to use", "[ui][snapshot][calibration]")
