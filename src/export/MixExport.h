@@ -36,21 +36,27 @@ using ShouldStopFn = std::function<bool()>;
 
 core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& request, const ProgressFn& progress = {}, const ShouldStopFn& shouldStop = {});
 
+// The destination's folder, created if missing. Errors: export.write_failed (step folder).
+core::Expected<void> createExportFolder (const juce::File& destination);
+// Renames the complete `partial` over `destination`; on failure deletes it.
+// Errors: export.write_failed (step rename).
+core::Expected<void> moveExportIntoPlace (const juce::File& partial, const juce::File& destination);
+
 // Renders the whole mix into `file` (no logging, no rename): what exportMix and exportMovie
 // share. On failure or a stop the file is deleted. Errors: as exportMix's, but folder and rename.
 core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop);
 
-struct MovieRequest; // export/MovieExport.h
+struct MovieSource; // export/MovieExport.h
 
-// One exportMix (or, given a MovieRequest, one exportMovie) on a worker thread. The owner polls progress() and isDone() from its own thread
+// One exportMix (or, given a MovieSource, one exportMovie) on a worker thread. The owner polls progress() and isDone() from its own thread
 // and takes the result once done. Destroying the job stops a running export (export.cancelled)
 // and waits for its thread.
 class ExportJob final : private juce::Thread
 {
 public:
     ExportJob (std::unique_ptr<MixRender> render, ExportRequest request);
-    // An MP4: exportMovie with `movie` (its destination and length are the request's).
-    ExportJob (std::unique_ptr<MixRender> render, ExportRequest request, MovieRequest movie);
+    // An MP4 of `movie`: exportMovie.
+    ExportJob (std::unique_ptr<MixRender> render, ExportRequest request, MovieSource movie);
     ~ExportJob() override;
 
     ExportJob (const ExportJob&) = delete;
@@ -68,7 +74,7 @@ private:
 
     std::unique_ptr<MixRender> render;
     ExportRequest exportRequest;
-    std::unique_ptr<MovieRequest> movieRequest; // none for WAV and M4A
+    std::unique_ptr<MovieSource> movieSource; // none for WAV and M4A
     std::atomic<double> fractionDone { 0.0 };
     std::atomic<bool> done { false };
     std::optional<core::Expected<ExportResult>> result; // written by the worker before `done`

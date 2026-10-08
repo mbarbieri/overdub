@@ -43,12 +43,12 @@ core::Error movieFailed (const char* step, const std::string& detail)
     return core::Error { "export.movie_failed", "the MP4 could not be made", { { "step", step }, { "detail", detail } } };
 }
 
-core::Error unreadableVideoTake (const MovieRequest& request, const std::string& reason)
+core::Error unreadableVideoTake (const MovieSource& source, const std::string& reason)
 {
     return core::Error {
         "export.video_take_unreadable",
         "the Video Take's movie could not be read",
-        { { "path", request.movie.getFullPathName().toStdString() }, { "video_take_id", request.videoTake.id }, { "reason", reason } },
+        { { "path", source.movie.getFullPathName().toStdString() }, { "video_take_id", source.videoTake.id }, { "reason", reason } },
     };
 }
 
@@ -185,35 +185,30 @@ core::Expected<void> encode (AVAssetExportSession* session, const ProgressFn& pr
 }
 } // namespace
 
-core::Expected<ExportResult> exportMovie (MixRender& render, const MovieRequest& request, const ProgressFn& progress, const ShouldStopFn& shouldStop)
+core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest& request, const MovieSource& source, const ProgressFn& progress, const ShouldStopFn& shouldStop)
 {
-    const auto timing = video::readMovieTiming (request.movie);
+    const auto timing = video::readMovieTiming (source.movie);
     if (! timing.has_value())
-        return std::unexpected (unreadableVideoTake (request, timing.error().fields.value ("reason", "unreadable")));
-    if (timing->frameSeconds.empty() || request.videoTake.songSamplesPerMovieSecond <= 0.0)
-        return std::unexpected (unreadableVideoTake (request, "no frames"));
+        return std::unexpected (unreadableVideoTake (source, timing.error().fields.value ("reason", "unreadable")));
+    if (timing->frameSeconds.empty() || source.videoTake.songSamplesPerMovieSecond <= 0.0)
+        return std::unexpected (unreadableVideoTake (source, "no frames"));
 
     const auto sampleRate = render.sampleRate();
-    const auto videoSpan = SampleRange { request.videoTake.startSample, video::videoTakeEnd (request.videoTake, *timing) };
-    const auto range = movieExportRange (request.length, render.totalSamples(), videoSpan);
+    const auto videoSpan = SampleRange { source.videoTake.startSample, video::videoTakeEnd (source.videoTake, *timing) };
+    const auto range = movieExportRange (request.videoLength, render.totalSamples(), videoSpan);
     if (range.length() <= 0 || render.totalSamples() <= 0)
         return std::unexpected (core::Error { "export.nothing_to_export", "the Song has no Clips to export", {} });
 
-    const auto folder = request.destination.getParentDirectory();
-    if (const auto made = folder.createDirectory(); made.failed())
-        return std::unexpected (core::Error {
-            "export.write_failed",
-            "could not create the export folder",
-            { { "path", folder.getFullPathName().toStdString() }, { "step", "folder" }, { "detail", made.getErrorMessage().toStdString() } },
-        });
+    if (auto folder = createExportFolder (request.destination); ! folder.has_value())
+        return std::unexpected (folder.error());
 
     const auto path = request.destination.getFullPathName().toStdString();
     core::logEvent (core::Level::info,
                     "export.started",
                     { { "format", formatName (ExportFormat::mp4) },
                       { "path", path },
-                      { "video_take_id", request.videoTake.id },
-                      { "length", videoLengthName (request.length) },
+                      { "video_take_id", source.videoTake.id },
+                      { "length", videoLengthName (request.videoLength) },
                       { "start_sample", range.start },
                       { "end_sample", range.end },
                       { "sample_rate", sampleRate } });
@@ -230,21 +225,21 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const MovieRequest&
 
     @autoreleasepool
     {
-        auto* movieAsset = [AVURLAsset URLAssetWithURL:urlFor (request.movie) options:@{AVURLAssetPreferPreciseDurationAndTimingKey : @YES}];
+        auto* movieAsset = [AVURLAsset URLAssetWithURL:urlFor (source.movie) options:@{AVURLAssetPreferPreciseDurationAndTimingKey : @YES}];
         auto* sourceVideo = firstTrack (movieAsset, AVMediaTypeVideo);
         if (sourceVideo == nil)
-            return std::unexpected (unreadableVideoTake (request, "no video track"));
+            return std::unexpected (unreadableVideoTake (source, "no video track"));
 
-        const auto fullSong = request.length == VideoLength::fullSong;
+        const auto fullSong = request.videoLength == VideoLength::fullSong;
         // The full song's output grid: the Video Take's mean frame on the Song clock.
         const auto meanFrameMovieSeconds = timing->durationSeconds / (double) timing->frameSeconds.size();
-        const auto gridSeconds = meanFrameMovieSeconds * request.videoTake.songSamplesPerMovieSecond / sampleRate;
+        const auto gridSeconds = meanFrameMovieSeconds * source.videoTake.songSamplesPerMovieSecond / sampleRate;
         const auto leadSamples = fullSong ? (song::SampleCount) std::llround (0.5 * gridSeconds * sampleRate) : 0;
 
         auto* composition = [AVMutableComposition composition];
         if (auto audio = composeAudio (composition, mixFile.file, range.end, sampleRate); ! audio.has_value())
             return std::unexpected (audio.error());
-        auto videoTrack = composeVideo (composition, sourceVideo, request.videoTake, leadSamples, sampleRate);
+        auto videoTrack = composeVideo (composition, sourceVideo, source.videoTake, leadSamples, sampleRate);
         if (! videoTrack.has_value())
             return std::unexpected (videoTrack.error());
         AVMutableVideoComposition* blackOutside = nil;
@@ -268,12 +263,8 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const MovieRequest&
 
         if (auto encoded = encode (session, progress, shouldStop); ! encoded.has_value())
             return std::unexpected (encoded.error());
-        if (! partial.file.moveFileTo (request.destination))
-            return std::unexpected (core::Error {
-                "export.write_failed",
-                "could not move the exported movie into place",
-                { { "path", path }, { "step", "rename" }, { "from", partial.file.getFullPathName().toStdString() } },
-            });
+        if (auto moved = moveExportIntoPlace (partial.file, request.destination); ! moved.has_value())
+            return std::unexpected (moved.error());
     }
 
     if (progress)

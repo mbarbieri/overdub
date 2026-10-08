@@ -214,7 +214,7 @@ TEST_CASE ("an MP4 cannot be exported from a Song without Video Takes", "[ui][ex
     ScopedLogCapture capture;
     const auto started = f.openSong->startExport ({ ExportFormat::mp4, juce::File ("/tmp/none.mp4"), std::string ("missing"), VideoLength::fullSong });
     REQUIRE_FALSE (started.has_value());
-    CHECK (started.error().code == "export.no_video_take");
+    CHECK (started.error().code == "ui.no_video_take");
     CHECK (! f.openSong->isExporting());
 }
 

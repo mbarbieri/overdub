@@ -10,21 +10,36 @@ namespace overdub::exporting
 {
 namespace
 {
-core::Error folderFailed (const juce::File& folder, const juce::Result& result)
-{
-    return core::Error {
-        "export.write_failed",
-        "could not create the export folder",
-        { { "path", folder.getFullPathName().toStdString() }, { "step", "folder" }, { "detail", result.getErrorMessage().toStdString() } },
-    };
-}
-
 // Where the file is written until it is complete: a hidden sibling, so no reader sees it half-made.
 juce::File partialFileFor (const juce::File& destination)
 {
     return destination.getSiblingFile ("." + destination.getFileName() + ".partial");
 }
 } // namespace
+
+core::Expected<void> createExportFolder (const juce::File& destination)
+{
+    const auto folder = destination.getParentDirectory();
+    if (const auto made = folder.createDirectory(); made.failed())
+        return std::unexpected (core::Error {
+            "export.write_failed",
+            "could not create the export folder",
+            { { "path", folder.getFullPathName().toStdString() }, { "step", "folder" }, { "detail", made.getErrorMessage().toStdString() } },
+        });
+    return {};
+}
+
+core::Expected<void> moveExportIntoPlace (const juce::File& partial, const juce::File& destination)
+{
+    if (partial.moveFileTo (destination))
+        return {};
+    partial.deleteFile();
+    return std::unexpected (core::Error {
+        "export.write_failed",
+        "could not move the exported file into place",
+        { { "path", destination.getFullPathName().toStdString() }, { "step", "rename" }, { "from", partial.getFullPathName().toStdString() } },
+    });
+}
 
 core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop)
 {
@@ -72,9 +87,8 @@ core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& 
     if (total <= 0)
         return std::unexpected (core::Error { "export.nothing_to_export", "the Song has no Clips to export", {} });
 
-    const auto folder = request.destination.getParentDirectory();
-    if (const auto made = folder.createDirectory(); made.failed())
-        return std::unexpected (folderFailed (folder, made));
+    if (auto folder = createExportFolder (request.destination); ! folder.has_value())
+        return std::unexpected (folder.error());
 
     core::logEvent (core::Level::info,
                     "export.started",
@@ -90,15 +104,8 @@ core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& 
     const auto partial = partialFileFor (request.destination);
     if (auto written = writeMixFile (render, request.format, partial, progress, shouldStop); ! written.has_value())
         return std::unexpected (written.error());
-    if (! partial.moveFileTo (request.destination))
-    {
-        partial.deleteFile();
-        return std::unexpected (core::Error {
-            "export.write_failed",
-            "could not move the exported mix into place",
-            { { "path", request.destination.getFullPathName().toStdString() }, { "step", "rename" }, { "from", partial.getFullPathName().toStdString() } },
-        });
-    }
+    if (auto moved = moveExportIntoPlace (partial, request.destination); ! moved.has_value())
+        return std::unexpected (moved.error());
 
     const auto elapsedSeconds = (double) (core::hostTimeNowNs() - startNs) / 1.0e9;
     const auto audioSeconds = (double) total / render.sampleRate();
@@ -118,8 +125,8 @@ ExportJob::ExportJob (std::unique_ptr<MixRender> mixRender, ExportRequest reques
     startThread();
 }
 
-ExportJob::ExportJob (std::unique_ptr<MixRender> mixRender, ExportRequest request, MovieRequest movie)
-    : juce::Thread ("Overdub export"), render (std::move (mixRender)), exportRequest (std::move (request)), movieRequest (std::make_unique<MovieRequest> (std::move (movie)))
+ExportJob::ExportJob (std::unique_ptr<MixRender> mixRender, ExportRequest request, MovieSource movie)
+    : juce::Thread ("Overdub export"), render (std::move (mixRender)), exportRequest (std::move (request)), movieSource (std::make_unique<MovieSource> (std::move (movie)))
 {
     startThread();
 }
@@ -144,8 +151,8 @@ void ExportJob::run()
     const core::ScopedThreadRole role { core::ThreadRole::io };
     const auto progress = [this] (double fraction) { fractionDone.store (std::clamp (fraction, 0.0, 1.0)); };
     const auto shouldStop = [this] { return threadShouldExit(); };
-    auto finished = movieRequest != nullptr ? exportMovie (*render, *movieRequest, progress, shouldStop)
-                                            : exportMix (*render, exportRequest, progress, shouldStop);
+    auto finished = movieSource != nullptr ? exportMovie (*render, exportRequest, *movieSource, progress, shouldStop)
+                                           : exportMix (*render, exportRequest, progress, shouldStop);
     result = std::move (finished);
     done.store (true);
 }

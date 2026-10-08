@@ -474,14 +474,14 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request)
         return std::unexpected (core::Error { "ui.stop_recording_first", "a Pass is running", {} });
     if (isExporting())
         return {};
-    std::optional<exporting::MovieRequest> movie;
+    std::optional<exporting::MovieSource> movie;
     if (request.format == exporting::ExportFormat::mp4)
     {
         const auto& videoTakes = song().videoTakes;
         const auto found = request.videoTakeId.has_value() ? std::ranges::find (videoTakes, *request.videoTakeId, &song::VideoTake::id) : videoTakes.end();
         if (found == videoTakes.end())
-            return std::unexpected (core::Error { "export.no_video_take", "an MP4 needs a Video Take of the Song", { { "video_take_id", request.videoTakeId.value_or ("") } } });
-        movie = exporting::MovieRequest { package_->location().getChildFile (found->file), *found, request.videoLength, request.destination };
+            return std::unexpected (core::Error { "ui.no_video_take", "an MP4 needs a Video Take of the Song", { { "video_take_id", request.videoTakeId.value_or ("") } } });
+        movie = exporting::MovieSource { package_->location().getChildFile (found->file), *found };
     }
 
     lastExport.reset();
@@ -494,7 +494,7 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request)
     if (movie.has_value())
     {
         fields["video_take_id"] = movie->videoTake.id;
-        fields["length"] = exporting::videoLengthName (movie->length);
+        fields["length"] = exporting::videoLengthName (request.videoLength);
     }
     core::logEvent (core::Level::info, "ui.export_requested", fields);
     exportWaiting = std::move (request);

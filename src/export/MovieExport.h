@@ -18,7 +18,7 @@
 // AVMutableVideoComposition's black background where there is no video. The full song re-times
 // frames onto an output grid of the Video Take's mean frame duration on the Song clock; the video
 // enters the composition half a grid step early so each grid point shows the nearest source
-// frame: up to ±½ frame per frame, no offset.
+// frame: up to ±½ frame per frame (a placement's phase on the grid), no systematic offset.
 //
 // Logs export.started (format mp4, path, video_take_id, length, start_sample, end_sample,
 // sample_rate) and export.finished (format, path, samples, elapsed_ms).
@@ -28,15 +28,15 @@
 // detail), export.write_failed (as exportMix's).
 namespace overdub::exporting
 {
-struct MovieRequest
+// The Video Take an MP4 shows, and its movie file.
+struct MovieSource
 {
-    juce::File movie; // the Video Take's movie file
+    juce::File movie;
     song::VideoTake videoTake;
-    VideoLength length = VideoLength::trimToVideoTake;
-    juce::File destination;
 };
 
-// Progress: the mix render is the first half, the movie encode the second.
+// Writes request.destination at request.videoLength (the request's videoTakeId is the caller's:
+// `source` is what is shown). Progress: the mix render is the first half, the encode the second.
 // ExportResult::samples is the length of the exported range.
-core::Expected<ExportResult> exportMovie (MixRender& render, const MovieRequest& request, const ProgressFn& progress = {}, const ShouldStopFn& shouldStop = {});
+core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest& request, const MovieSource& source, const ProgressFn& progress = {}, const ShouldStopFn& shouldStop = {});
 } // namespace overdub::exporting

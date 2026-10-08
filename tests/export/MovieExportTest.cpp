@@ -17,9 +17,11 @@
 // and full-song exports; decoding the MP4 finds each flash within ±½ frame of its click, and the
 // offset moves by at most 1 ms from the first marker to the last. The Video Take's drift ratio is
 // 500 ppm off nominal, so an export that ignored it would move the last marker 5 ms.
+using overdub::exporting::ExportFormat;
+using overdub::exporting::ExportRequest;
 using overdub::exporting::ExportResult;
 using overdub::exporting::MixRender;
-using overdub::exporting::MovieRequest;
+using overdub::exporting::MovieSource;
 using overdub::exporting::SampleRange;
 using overdub::exporting::VideoLength;
 using namespace overdub::engine::testing;
@@ -91,10 +93,12 @@ struct FlashFixture
         mix.videoTakes.push_back (videoTake);
     }
 
-    MovieRequest request (VideoLength length, const juce::File& destination) const
+    ExportRequest request (VideoLength length, const juce::File& destination) const
     {
-        return MovieRequest { movie, videoTake, length, destination };
+        return ExportRequest { ExportFormat::mp4, destination, videoTake.id, length };
     }
+
+    MovieSource source() const { return MovieSource { movie, videoTake }; }
 };
 
 // The start of each flash in the decoded movie: the first bright frame after a dark one.
@@ -171,7 +175,7 @@ TEST_CASE ("an MP4 trimmed to the Video Take keeps every flash on its click", "[
 
     core::ScopedLogCapture capture;
     std::vector<double> progress;
-    const auto exported = overdub::exporting::exportMovie (render, f.request (VideoLength::trimToVideoTake, destination), [&progress] (double fraction) { progress.push_back (fraction); });
+    const auto exported = overdub::exporting::exportMovie (render, f.request (VideoLength::trimToVideoTake, destination), f.source(), [&progress] (double fraction) { progress.push_back (fraction); });
     REQUIRE (exported.has_value());
     CHECK (exported->file == destination);
     REQUIRE (destination.existsAsFile());
@@ -205,7 +209,7 @@ TEST_CASE ("a full-song MP4 keeps every flash on its click and is black outside 
     MixRender render { f.mix, f.package.root, 256, {} };
     const auto destination = f.package.root.getChildFile ("Full.mp4");
 
-    const auto exported = overdub::exporting::exportMovie (render, f.request (VideoLength::fullSong, destination));
+    const auto exported = overdub::exporting::exportMovie (render, f.request (VideoLength::fullSong, destination), f.source());
     REQUIRE (exported.has_value());
     REQUIRE (destination.existsAsFile());
     CHECK (exported->samples == mixLength);
@@ -244,7 +248,7 @@ TEST_CASE ("a stopped MP4 export leaves no file", "[export][mp4]")
     const auto destination = f.package.root.getChildFile ("exports/Stopped.mp4");
 
     int asked = 0;
-    const auto exported = overdub::exporting::exportMovie (render, f.request (VideoLength::trimToVideoTake, destination), {}, [&asked] { return ++asked > 3; });
+    const auto exported = overdub::exporting::exportMovie (render, f.request (VideoLength::trimToVideoTake, destination), f.source(), {}, [&asked] { return ++asked > 3; });
     REQUIRE_FALSE (exported.has_value());
     CHECK (exported.error().code == "export.cancelled");
     CHECK (destination.getParentDirectory().findChildFiles (juce::File::findFilesAndDirectories, false, "*", juce::File::FollowSymlinks::no).isEmpty());
@@ -255,10 +259,10 @@ TEST_CASE ("a Video Take whose movie cannot be read is an explicit error and lea
     FlashFixture f;
     MixRender render { f.mix, f.package.root, 256, {} };
     const auto destination = f.package.root.getChildFile ("exports/Missing.mp4");
-    auto request = f.request (VideoLength::fullSong, destination);
-    request.movie = f.package.root.getChildFile ("video/missing.mov");
+    auto source = f.source();
+    source.movie = f.package.root.getChildFile ("video/missing.mov");
 
-    const auto exported = overdub::exporting::exportMovie (render, request);
+    const auto exported = overdub::exporting::exportMovie (render, f.request (VideoLength::fullSong, destination), source);
     REQUIRE_FALSE (exported.has_value());
     CHECK (exported.error().code == "export.video_take_unreadable");
     CHECK (exported.error().fields.at ("video_take_id") == "video-1");

@@ -172,7 +172,7 @@ public:
 
     // Starts exporting the mix (with the request's Video Take for an MP4, issue #38) to the
     // request's file (see the header comment). Ignored while an export runs.
-    // Errors: ui.stop_recording_first while a Pass runs, export.no_video_take (an MP4 without a
+    // Errors: ui.stop_recording_first while a Pass runs, ui.no_video_take (an MP4 without a
     // Video Take of the Song).
     core::Expected<void> startExport (exporting::ExportRequest request);
     ExportPhase exportPhase() const;
@@ -253,7 +253,7 @@ private:
     std::optional<song::SampleCount> preRollPoint; // the running Pass's record point, when it used pre-roll
     video::VideoPlayback playback;
     std::optional<exporting::ExportRequest> exportWaiting; // until the audio thread takes the empty plan
-    std::optional<exporting::MovieRequest> movieWaiting;   // with exportWaiting, for an MP4
+    std::optional<exporting::MovieSource> movieWaiting;    // with exportWaiting, for an MP4
     std::unique_ptr<exporting::ExportJob> exportJob;
     std::optional<juce::File> lastExport;
 };
