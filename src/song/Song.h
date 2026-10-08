@@ -75,7 +75,8 @@ struct ClipSource
     bool operator== (const ClipSource&) const = default;
 };
 
-// A window onto a Take or Backing Track. Fade curves are always equal-power and not stored.
+// A window onto a Take or Backing Track. The one fade curve in v1 is linear in amplitude (issue #29,
+// engine/ClipSchedule.h) and is not stored. Fade-in + fade-out never exceed the length.
 struct Clip
 {
     Id id;

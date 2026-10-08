@@ -127,6 +127,37 @@ core::Expected<Song> splitClip (Song song, const Id& clipId, SampleCount at, con
     return song;
 }
 
+core::Expected<Song> setClipFadeIn (Song song, const Id& clipId, SampleCount length)
+{
+    const auto position = locateClip (song, clipId);
+    if (! position.has_value())
+        return std::unexpected (clipNotFound (clipId));
+    auto& clip = song.tracks[position->track].clips[position->clip];
+    clip.fadeInLength = std::clamp<SampleCount> (length, 0, std::max<SampleCount> (0, clip.length - clip.fadeOutLength));
+    clampFades (clip);
+    return song;
+}
+
+core::Expected<Song> setClipFadeOut (Song song, const Id& clipId, SampleCount length)
+{
+    const auto position = locateClip (song, clipId);
+    if (! position.has_value())
+        return std::unexpected (clipNotFound (clipId));
+    auto& clip = song.tracks[position->track].clips[position->clip];
+    clip.fadeOutLength = std::clamp<SampleCount> (length, 0, std::max<SampleCount> (0, clip.length - clip.fadeInLength));
+    clampFades (clip);
+    return song;
+}
+
+core::Expected<Song> setClipGain (Song song, const Id& clipId, double gainDb)
+{
+    const auto position = locateClip (song, clipId);
+    if (! position.has_value())
+        return std::unexpected (clipNotFound (clipId));
+    song.tracks[position->track].clips[position->clip].gainDb = std::clamp (gainDb, minClipGainDb, maxClipGainDb);
+    return song;
+}
+
 core::Expected<Song> deleteClip (Song song, const Id& clipId)
 {
     const auto position = locateClip (song, clipId);

@@ -27,6 +27,11 @@ Song twoLayerSong()
     return song;
 }
 
+bool sameDb (double a, double b)
+{
+    return std::abs (a - b) < 1e-12;
+}
+
 const Clip& clipNamed (const Song& song, const Id& id)
 {
     const auto* clip = findClip (song, id);
@@ -110,6 +115,100 @@ TEST_CASE ("a trim keeps the Clip's fades inside its new length", "[song][clip_e
     const auto& clip = clipNamed (*trimmed, "high");
     CHECK (clip.fadeInLength == 1000);
     CHECK (clip.fadeOutLength == 200);
+}
+
+TEST_CASE ("trimming a Clip shorter than its fades clamps them, fade-in first", "[song][clip_edits][clip_gain]")
+{
+    auto song = twoLayerSong();
+    song.tracks[0].clips[1].fadeInLength = 1000; // "high" is [2000, 5000)
+    song.tracks[0].clips[1].fadeOutLength = 1500;
+
+    const auto endTrimmed = trimClipEnd (song, "high", 2300); // 300 long
+    REQUIRE (endTrimmed.has_value());
+    CHECK (clipNamed (*endTrimmed, "high").fadeInLength == 300);
+    CHECK (clipNamed (*endTrimmed, "high").fadeOutLength == 0);
+
+    const auto startTrimmed = trimClipStart (song, "high", 4600); // 400 long
+    REQUIRE (startTrimmed.has_value());
+    CHECK (clipNamed (*startTrimmed, "high").length == 400);
+    CHECK (clipNamed (*startTrimmed, "high").fadeInLength == 400);
+    CHECK (clipNamed (*startTrimmed, "high").fadeOutLength == 0);
+
+    const auto oneSample = trimClipEnd (song, "high", 0);
+    REQUIRE (oneSample.has_value());
+    CHECK (clipNamed (*oneSample, "high").fadeInLength == 1);
+    CHECK (clipNamed (*oneSample, "high").fadeOutLength == 0);
+}
+
+TEST_CASE ("a split zeroes the fades at the cut and clamps the others into each half", "[song][clip_edits][clip_gain]")
+{
+    auto song = twoLayerSong();
+    song.tracks[0].clips[0].fadeInLength = 2000; // "low" is [0, 6000)
+    song.tracks[0].clips[0].fadeOutLength = 3000;
+
+    const auto split = splitClip (song, "low", 1500, "low-right");
+    REQUIRE (split.has_value());
+    CHECK (clipNamed (*split, "low").fadeInLength == 1500);
+    CHECK (clipNamed (*split, "low").fadeOutLength == 0);
+    CHECK (clipNamed (*split, "low-right").fadeInLength == 0);
+    CHECK (clipNamed (*split, "low-right").fadeOutLength == 3000);
+}
+
+TEST_CASE ("setting a fade keeps fade-in plus fade-out within the Clip's length", "[song][clip_edits][clip_gain]")
+{
+    auto song = twoLayerSong();
+    song.tracks[0].clips[1].fadeOutLength = 1000; // "high" is 3000 long
+
+    const auto fadeIn = setClipFadeIn (song, "high", 1200);
+    REQUIRE (fadeIn.has_value());
+    CHECK (clipNamed (*fadeIn, "high").fadeInLength == 1200);
+    CHECK (clipNamed (*fadeIn, "high").fadeOutLength == 1000);
+
+    const auto tooLongIn = setClipFadeIn (song, "high", 2500);
+    REQUIRE (tooLongIn.has_value());
+    CHECK (clipNamed (*tooLongIn, "high").fadeInLength == 2000);
+
+    const auto negativeIn = setClipFadeIn (song, "high", -50);
+    REQUIRE (negativeIn.has_value());
+    CHECK (clipNamed (*negativeIn, "high").fadeInLength == 0);
+
+    const auto tooLongOut = setClipFadeOut (*fadeIn, "high", 5000);
+    REQUIRE (tooLongOut.has_value());
+    CHECK (clipNamed (*tooLongOut, "high").fadeOutLength == 1800);
+    CHECK (clipNamed (*tooLongOut, "high").fadeInLength == 1200);
+
+    const auto noOut = setClipFadeOut (song, "high", 0);
+    REQUIRE (noOut.has_value());
+    CHECK (clipNamed (*noOut, "high").fadeOutLength == 0);
+
+    // Nothing else changes.
+    auto expected = song;
+    expected.tracks[0].clips[1].fadeInLength = 1200;
+    CHECK (*fadeIn == expected);
+}
+
+TEST_CASE ("setting a Clip's gain keeps it between the limits", "[song][clip_edits][clip_gain]")
+{
+    const auto song = twoLayerSong();
+    const auto quieter = setClipGain (song, "high", -7.5);
+    REQUIRE (quieter.has_value());
+    CHECK (sameDb (clipNamed (*quieter, "high").gainDb, -7.5));
+    CHECK (sameDb (clipNamed (*quieter, "low").gainDb, 0.0));
+
+    CHECK (sameDb (clipNamed (*setClipGain (song, "high", 40.0), "high").gainDb, 12.0));
+    CHECK (sameDb (clipNamed (*setClipGain (song, "high", -100.0), "high").gainDb, -24.0));
+    CHECK (sameDb (minClipGainDb, -24.0));
+    CHECK (sameDb (maxClipGainDb, 12.0));
+}
+
+TEST_CASE ("fade and gain changes on an unknown Clip are refused", "[song][clip_edits][clip_gain]")
+{
+    const auto song = twoLayerSong();
+    for (const auto& result : { setClipFadeIn (song, "gone", 10), setClipFadeOut (song, "gone", 10), setClipGain (song, "gone", 1.0) })
+    {
+        REQUIRE (! result.has_value());
+        CHECK (result.error().code == "song.clip_not_found");
+    }
 }
 
 TEST_CASE ("splitting a Clip makes two halves on the same layer that read the source continuously", "[song][clip_edits]")

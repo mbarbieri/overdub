@@ -115,11 +115,27 @@ ClipToolbarLayout clipToolbarLayout (juce::Rectangle<int> bar)
     area.removeFromRight (2);
     layout.zoomOut = area.removeFromRight (32);
     area.removeFromRight (gap * 2);
-    layout.details = area.removeFromLeft (std::max (0, area.getWidth() - 2 * 90 - 2 * gap));
+    constexpr int buttonWidth = 80;
+    constexpr int fieldWidth = 64;
+    constexpr int captionGap = 2;
+    constexpr int fieldsWidth = 48 + 56 + 32 + 3 * (captionGap + fieldWidth) + 2 * gap;
+    layout.details = area.removeFromLeft (std::max (0, area.getWidth() - fieldsWidth - 2 * buttonWidth - 3 * gap));
     area.removeFromLeft (gap);
-    layout.split = area.removeFromLeft (90);
+    layout.fadeInCaption = area.removeFromLeft (48);
+    area.removeFromLeft (captionGap);
+    layout.fadeInField = area.removeFromLeft (fieldWidth);
     area.removeFromLeft (gap);
-    layout.deleteClip = area.removeFromLeft (90);
+    layout.fadeOutCaption = area.removeFromLeft (56);
+    area.removeFromLeft (captionGap);
+    layout.fadeOutField = area.removeFromLeft (fieldWidth);
+    area.removeFromLeft (gap);
+    layout.gainCaption = area.removeFromLeft (32);
+    area.removeFromLeft (captionGap);
+    layout.gainField = area.removeFromLeft (fieldWidth);
+    area.removeFromLeft (gap);
+    layout.split = area.removeFromLeft (buttonWidth);
+    area.removeFromLeft (gap);
+    layout.deleteClip = area.removeFromLeft (buttonWidth);
     return layout;
 }
 

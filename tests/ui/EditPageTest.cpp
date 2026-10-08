@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -346,4 +347,145 @@ TEST_CASE ("the Clip toolbar names the Clip, its Track, start and length", "[ui]
     CHECK (! clipToolbarStateFor (song, std::string ("gone"), 100000, true).hasClip);
     CHECK (secondsText (-24, 48000) == "-0.000 s");
     CHECK (secondsText (48000 * 83 + 24, 48000) == "83.000 s");
+}
+
+TEST_CASE ("dragging a Clip's fade-in handle right sets its fade-in, as one Fade In step", "[ui][edit][clip_gain]")
+{
+    EditFixture f;
+    const auto before = f.song();
+    const auto handle = f.timeline().handleBounds (f.bandMixClip().id, ClipPart::fadeInHandle);
+    REQUIRE (! handle.isEmpty());
+
+    drag (f.timeline(), handle.getCentre(), handle.getCentre().translated (30, 0));
+
+    CHECK (f.bandMixClip().fadeInLength == 30 * f.samplesPerPixel());
+    CHECK (f.bandMixClip().fadeOutLength == 0);
+    CHECK (f.bandMixClip().timelineStart == 0);
+    CHECK (f.bandMixClip().length == bandMixLength);
+    CHECK (f.openSong->package().undoLabel() == "Fade In");
+    CHECK (f.window->topBar.undoButton.getButtonText() == "Undo Fade In");
+    f.undoRestores (before);
+}
+
+TEST_CASE ("dragging a Clip's fade-out handle left sets its fade-out, as one Fade Out step", "[ui][edit][clip_gain]")
+{
+    EditFixture f;
+    const auto before = f.song();
+    const auto handle = f.timeline().handleBounds (f.bandMixClip().id, ClipPart::fadeOutHandle);
+    REQUIRE (! handle.isEmpty());
+
+    drag (f.timeline(), handle.getCentre(), handle.getCentre().translated (-40, 0));
+
+    CHECK (f.bandMixClip().fadeOutLength == 40 * f.samplesPerPixel());
+    CHECK (f.bandMixClip().fadeInLength == 0);
+    CHECK (f.bandMixClip().length == bandMixLength);
+    CHECK (f.openSong->package().undoLabel() == "Fade Out");
+    f.undoRestores (before);
+
+    // Past the other end: the fade-out takes the whole Clip and no more.
+    drag (f.timeline(), handle.getCentre(), handle.getCentre().translated (-1000, 0));
+    CHECK (f.bandMixClip().fadeOutLength == bandMixLength);
+}
+
+TEST_CASE ("dragging a Clip's dB tag up raises its gain, as one Clip Gain step", "[ui][edit][clip_gain]")
+{
+    EditFixture f;
+    const auto before = f.song();
+    const auto tag = f.timeline().handleBounds (f.bandMixClip().id, ClipPart::gainTag);
+    REQUIRE (! tag.isEmpty());
+
+    drag (f.timeline(), tag.getCentre(), tag.getCentre().translated (0, -25));
+
+    CHECK (std::abs (f.bandMixClip().gainDb - 2.5) < 1e-9);
+    CHECK (f.bandMixClip().timelineStart == 0);
+    CHECK (f.openSong->package().undoLabel() == "Clip Gain");
+    CHECK (f.timeline().selectedClip() == f.bandMixClip().id);
+    f.undoRestores (before);
+}
+
+TEST_CASE ("the Clip toolbar's fade and gain fields edit the selected Clip, one labelled step each", "[ui][edit][clip_gain]")
+{
+    EditFixture f;
+    auto& toolbar = f.window->editPage.toolbar;
+    CHECK (! toolbar.fadeInField.isEnabled());
+    CHECK (! toolbar.gainField.isEnabled());
+
+    clickAt (f.timeline(), f.bandMixBounds().getCentre());
+    REQUIRE (toolbar.fadeInField.isEnabled());
+    CHECK (toolbar.fadeInField.getText() == "0.000 s");
+    CHECK (toolbar.gainField.getText() == "0.0 dB");
+    const auto before = f.song();
+
+    toolbar.fadeInField.setText ("0.5", juce::sendNotificationSync);
+    CHECK (f.bandMixClip().fadeInLength == 24000);
+    CHECK (f.openSong->package().undoLabel() == "Fade In");
+    CHECK (toolbar.fadeInField.getText() == "0.500 s");
+
+    toolbar.fadeOutField.setText ("0.25 s", juce::sendNotificationSync);
+    CHECK (f.bandMixClip().fadeOutLength == 12000);
+    CHECK (f.openSong->package().undoLabel() == "Fade Out");
+
+    toolbar.gainField.setText ("-6", juce::sendNotificationSync);
+    CHECK (std::abs (f.bandMixClip().gainDb + 6.0) < 1e-9);
+    CHECK (f.openSong->package().undoLabel() == "Clip Gain");
+    CHECK (toolbar.gainField.getText() == "-6.0 dB");
+
+    // Clamped: the fade-in can take only what the fade-out leaves.
+    toolbar.fadeInField.setText ("10", juce::sendNotificationSync);
+    CHECK (f.bandMixClip().fadeInLength == bandMixLength - 12000);
+    CHECK (toolbar.fadeInField.getText() == "1.750 s");
+
+    // Not a number: nothing changes and the field shows the Clip's value again.
+    const auto beforeNonsense = f.song();
+    toolbar.gainField.setText ("loud", juce::sendNotificationSync);
+    CHECK (f.song() == beforeNonsense);
+    CHECK (toolbar.gainField.getText() == "-6.0 dB");
+
+    // Four steps, each undone on its own.
+    for (int step = 0; step < 4; ++step)
+        REQUIRE (pressKey (*f.window, 'z', juce::ModifierKeys::commandModifier));
+    CHECK (f.song() == before);
+}
+
+TEST_CASE ("Clip gain and fades cannot be edited while a Pass records", "[ui][edit][clip_gain][record]")
+{
+    EditFixture f;
+    clickAt (f.timeline(), f.bandMixBounds().getCentre());
+    REQUIRE (pressKey (*f.window, 'r'));
+    f.runBlocks (10);
+    REQUIRE (f.openSong->isRecording());
+    const auto before = f.song();
+
+    const auto tag = f.timeline().handleBounds (f.bandMixClip().id, ClipPart::gainTag);
+    drag (f.timeline(), tag.getCentre(), tag.getCentre().translated (0, -25));
+    CHECK (! f.window->editPage.toolbar.gainField.isEnabled());
+    CHECK (f.song() == before);
+
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+}
+
+TEST_CASE ("the toolbar parses seconds and decibels, and shows gain with its sign", "[ui][edit][clip_gain]")
+{
+    CHECK (parseSeconds ("0.5", 48000) == 24000);
+    CHECK (parseSeconds (" 1.25 s ", 48000) == 60000);
+    CHECK (parseSeconds ("0", 48000) == 0);
+    CHECK (! parseSeconds ("", 48000).has_value());
+    CHECK (! parseSeconds ("abc", 48000).has_value());
+    CHECK (! parseSeconds ("1.5x", 48000).has_value());
+    CHECK (! parseSeconds ("-1", 48000).has_value());
+
+    const auto parsesTo = [] (const char* text, double expected) {
+        const auto parsed = parseDecibels (text);
+        return parsed.has_value() && std::abs (*parsed - expected) < 1e-12;
+    };
+    CHECK (parsesTo ("-6", -6.0));
+    CHECK (parsesTo ("+3.5 dB", 3.5));
+    CHECK (parsesTo ("2db", 2.0));
+    CHECK (! parseDecibels ("dB").has_value());
+    CHECK (! parseDecibels ("nan").has_value());
+
+    CHECK (decibelsText (0.0) == "0.0 dB");
+    CHECK (decibelsText (2.5) == "+2.5 dB");
+    CHECK (decibelsText (-12.0) == "-12.0 dB");
 }

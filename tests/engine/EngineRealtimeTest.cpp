@@ -18,13 +18,20 @@ using namespace overdub::engine::testing;
 namespace
 {
 // Two Tracks, one behind the test delay processor, so the guarded graph includes PDC delay lines.
+// Track B's Clips have gain and fades, so the guarded render runs the Clip envelope too.
 overdub::song::Song twoTrackSong (const TempPackage& package, std::int64_t impulseAt)
 {
     auto song = overdub::song::makeEmptySong (testSampleRate);
     const auto takeA = addTake (song, package, "take-a-" + std::to_string (impulseAt), impulse (8000, impulseAt));
     const auto takeB = addTake (song, package, "take-b-" + std::to_string (impulseAt), sine (8000, 220.0));
     song.tracks.push_back (trackWith ("track-a", { clipOf ("clip-a", takeA, 0, 0, 8000) }));
-    song.tracks.push_back (trackWith ("track-b", { clipOf ("clip-b1", takeB, 0, 0, 4000), clipOf ("clip-b2", takeB, 2000, 100, 4000) }));
+    auto clipB1 = clipOf ("clip-b1", takeB, 0, 0, 4000);
+    clipB1.gainDb = -4.0;
+    clipB1.fadeInLength = 300;
+    auto clipB2 = clipOf ("clip-b2", takeB, 2000, 100, 4000);
+    clipB2.fadeInLength = 700;
+    clipB2.fadeOutLength = 900;
+    song.tracks.push_back (trackWith ("track-b", { clipB1, clipB2 }));
     return song;
 }
 

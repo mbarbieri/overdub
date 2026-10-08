@@ -141,12 +141,19 @@ TEST_CASE ("a Track header puts the arm button left of the name", "[ui][layout][
     CHECK (layout.arm.getX() < layout.name.getX());
 }
 
-TEST_CASE ("the Clip toolbar puts the Clip's details, Split and Delete left, zoom and Mixer right", "[ui][layout][edit]")
+TEST_CASE ("the Clip toolbar puts the Clip's details, fade and gain fields, Split and Delete left, zoom and Mixer right", "[ui][layout][edit]")
 {
     const Rectangle<int> bar { 0, 52, minimumWindowWidth, clipToolbarHeight };
     const auto layout = clipToolbarLayout (bar);
-    checkInsideAndApart (bar, { layout.details, layout.split, layout.deleteClip, layout.zoomOut, layout.zoomIn, layout.mixerToggle });
-    CHECK (layout.details.getRight() <= layout.split.getX());
+    checkInsideAndApart (bar, { layout.details, layout.fadeInCaption, layout.fadeInField, layout.fadeOutCaption, layout.fadeOutField, layout.gainCaption, layout.gainField, layout.split, layout.deleteClip, layout.zoomOut, layout.zoomIn, layout.mixerToggle });
+    CHECK (layout.details.getWidth() >= 200);
+    CHECK (layout.details.getRight() <= layout.fadeInCaption.getX());
+    CHECK (layout.fadeInCaption.getRight() <= layout.fadeInField.getX());
+    CHECK (layout.fadeInField.getRight() <= layout.fadeOutCaption.getX());
+    CHECK (layout.fadeOutCaption.getRight() <= layout.fadeOutField.getX());
+    CHECK (layout.fadeOutField.getRight() <= layout.gainCaption.getX());
+    CHECK (layout.gainCaption.getRight() <= layout.gainField.getX());
+    CHECK (layout.gainField.getRight() <= layout.split.getX());
     CHECK (layout.split.getRight() <= layout.deleteClip.getX());
     CHECK (layout.deleteClip.getRight() <= layout.zoomOut.getX());
     CHECK (layout.zoomOut.getRight() <= layout.zoomIn.getX());
