@@ -204,6 +204,8 @@ core::Expected<Song> swapClipTake (Song song, const Id& clipId, const Id& takeId
     const auto* take = findTake (song, takeId);
     if (take == nullptr)
         return std::unexpected (takeNotFound (takeId));
+    if (take->trackId != trackOfClip (song, clipId)->id)
+        return std::unexpected (core::Error { "song.take_not_on_clip_track", "the Take was recorded on another Track than the Clip's", { { "clip_id", clipId }, { "take_id", takeId } } });
     const auto span = recordedSpan (song, takeId).value_or (SampleSpan {});
     const auto start = std::max (found->timelineStart, span.start);
     const auto end = std::min (found->timelineStart + found->length, span.end);
@@ -259,6 +261,13 @@ core::Expected<Song> bringBackPass (Song song, const Id& passId)
     if (added == 0)
         return std::unexpected (core::Error { "song.pass_has_no_takes", "the Pass has no Take on a Track that still exists", { { "pass_id", passId } } });
     return song;
+}
+
+bool canBringBackPass (const Song& song, const Id& passId)
+{
+    return std::ranges::any_of (song.takes, [&] (const Take& take) {
+        return take.passId == passId && findTrack (song, take.trackId) != nullptr && recordedSpan (song, take.id).has_value();
+    });
 }
 
 std::string useTakeLabel (const Song& song, const Take& take)

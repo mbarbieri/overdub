@@ -12,15 +12,6 @@
 
 namespace overdub::ui
 {
-std::string secondsText (song::SampleCount samples, int sampleRate)
-{
-    if (sampleRate <= 0)
-        return "0.000 s";
-    const auto sign = samples < 0 ? "-" : "";
-    const auto magnitude = samples < 0 ? -samples : samples;
-    const auto milliseconds = magnitude * 1000 / sampleRate;
-    return std::format ("{}{}.{:03} s", sign, milliseconds / 1000, milliseconds % 1000);
-}
 
 namespace
 {
@@ -386,10 +377,13 @@ EditPage::EditPage()
 
 void EditPage::show (const TimelineState& state)
 {
+    // passRows walks every Pass: rebuild the panel only when what it shows can have changed.
+    const auto passesChanged = state.song != current.song || state.editable != current.editable;
     current = state;
     timeline.show (current);
     showToolbar();
-    showPasses();
+    if (passesChanged)
+        showPasses();
 }
 
 void EditPage::showPasses()

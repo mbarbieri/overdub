@@ -4,6 +4,7 @@
 #include "song/Song.h"
 #include "ui/TakeLanes.h"
 #include "ui/Timeline.h"
+#include "ui/TransportText.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -36,9 +37,6 @@ struct ClipToolbarState
     std::string fadeOutText; // "0.250 s"; empty with no Clip
     std::string gainText;    // "-3.0 dB"; empty with no Clip
 };
-
-// "1.250 s": samples as seconds with three decimals; an unknown rate (<= 0) reads "0.000 s".
-std::string secondsText (song::SampleCount samples, int sampleRate);
 
 // A toolbar entry in seconds ("0.5", "0.5 s"), as whole samples at the rate; none when it is not a
 // finite number of seconds >= 0.

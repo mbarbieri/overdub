@@ -193,6 +193,7 @@ TEST_CASE ("Swap refuses a Take with no audio under the Clip, and unknown ids", 
     CHECK (apart.error().fields.at ("clip_id") == "c2");
     CHECK (apart.error().fields.at ("take_id") == "g3");
 
+    CHECK (swapClipTake (song, "cv", "g2").error().code == "song.take_not_on_clip_track");
     CHECK (swapClipTake (song, "nope", "g1").error().code == "song.clip_not_found");
     CHECK (swapClipTake (song, "c2", "nope").error().code == "song.take_not_found");
 }
@@ -254,6 +255,8 @@ TEST_CASE ("bringing back a Pass with no surviving Take, or an unknown Pass, is 
     const auto none = bringBackPass (song, "p1");
     REQUIRE (! none.has_value());
     CHECK (none.error().code == "song.pass_has_no_takes");
+    CHECK (! canBringBackPass (song, "p1"));
+    CHECK (canBringBackPass (threePassSong(), "p1"));
     CHECK (none.error().fields.at ("pass_id") == "p1");
     CHECK (bringBackPass (song, "nope").error().code == "song.pass_not_found");
 }

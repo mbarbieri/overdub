@@ -19,7 +19,7 @@
 // Swap, bring back and heard status all measure against that span.
 //
 // Errors: song.clip_not_found (clip_id), song.take_not_found (take_id), song.pass_not_found
-// (pass_id), song.take_not_under_clip (clip_id, take_id), song.take_track_missing (take_id,
+// (pass_id), song.take_not_under_clip (clip_id, take_id), song.take_not_on_clip_track (clip_id, take_id), song.take_track_missing (take_id,
 // track_id), song.take_has_no_audio (take_id), song.pass_has_no_takes (pass_id).
 namespace overdub::song
 {
@@ -71,7 +71,7 @@ std::vector<const Take*> laneTakes (const Song& song, const Id& trackId);
 // where its span and the Take's recorded span overlap, the source offset is recomputed so the
 // Take stays where it was recorded (timeline start - origin), and the fades are clamped to the
 // new length (fade-in first). Errors: song.clip_not_found, song.take_not_found,
-// song.take_not_under_clip (no overlap).
+// song.take_not_on_clip_track (recorded on another Track), song.take_not_under_clip (no overlap).
 core::Expected<Song> swapClipTake (Song song, const Id& clipId, const Id& takeId);
 
 // The whole Take back as recorded, as a new Clip (with this id) on the top layer of its Track.
@@ -82,6 +82,10 @@ core::Expected<Song> bringBackTake (Song song, const Id& takeId, const Id& newCl
 // Takes whose Track is gone or whose recorded span is empty. New Clip ids from makeId().
 // Errors: song.pass_not_found, song.pass_has_no_takes (no Clip would be added).
 core::Expected<Song> bringBackPass (Song song, const Id& passId);
+
+// Whether bringBackPass would add a Clip: some Take of the Pass is on a Track that still exists
+// and has audio from its Pass start.
+bool canBringBackPass (const Song& song, const Id& passId);
 
 // Undo step labels: "Use Pass 2 on Guitar", "Bring back Pass 2 on Guitar", "Bring back Pass 2".
 std::string useTakeLabel (const Song& song, const Take& take);

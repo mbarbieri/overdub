@@ -1,6 +1,6 @@
 #include "ui/TakeLanes.h"
 
-#include "ui/EditPage.h"
+#include "ui/TransportText.h"
 
 #include <format>
 #include <ranges>
@@ -52,12 +52,12 @@ std::optional<LaneEdit> laneEditAt (const song::Song& song, const song::Id& take
     if (click.kind == LaneClickKind::swap)
     {
         auto swapped = song::swapClipTake (song, click.clipId, takeId);
-        if (! swapped.has_value())
+        if (! OVERDUB_CHECK (swapped.has_value(), "ui.take_lane_swap_failed", { "take_id", takeId }, { "clip_id", click.clipId }))
             return std::nullopt;
         return LaneEdit { std::move (*swapped), song::useTakeLabel (song, *take), click.clipId };
     }
     auto brought = song::bringBackTake (song, takeId, newClipId);
-    if (! brought.has_value())
+    if (! OVERDUB_CHECK (brought.has_value(), "ui.take_lane_bring_back_failed", { "take_id", takeId }))
         return std::nullopt;
     return LaneEdit { std::move (*brought), song::bringBackTakeLabel (song, *take), newClipId };
 }
@@ -83,7 +83,7 @@ std::vector<PassRow> passRows (const song::Song& song)
                                  secondsText (pass.startSample, song.sampleRate),
                                  trackNames.empty() ? std::string ("no Track") : trackNames);
         row.status = song::passHeardStatus (song, pass.id);
-        row.canBringBack = song::bringBackPass (song, pass.id).has_value();
+        row.canBringBack = song::canBringBackPass (song, pass.id);
         rows.push_back (std::move (row));
     }
     return rows;
