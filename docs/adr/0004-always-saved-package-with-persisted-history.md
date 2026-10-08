@@ -82,3 +82,8 @@ Older Takes are browsed in **Take Lanes**: a Track's header unfolds one thin lan
 - **When.** `SongPackage::setPluginStateCapture` is called on the Song of every history step (edit, Pass, import), on the current Song before undo and redo (so surviving slots keep their live state), and before each debounced or flushed `song.json` write. A parameter change in a plugin schedules that write (`OpenSong::poll`). Closing the Song captures and flushes.
 - **Undo of a removal** brings the slot back with the state of the latest history step that had it, as the rule above says; parameters moved after that step and before the removal are not in history.
 - **Restore** happens when the plugin arrives (`plugin.insert_ready`, `state_restored`), on open and when undo or redo brings a slot back. A missing or unreadable blob is logged and the plugin keeps its defaults.
+
+## Amendment: plugin editors, settled by the implementation (issue #34)
+
+- A parameter moved in a plugin's editor window reaches `song.json` through the parameter-change path above (no history step). Some plugins change state without reporting a parameter, so closing an editor window also schedules the debounced write (`OpenSong::notePluginStateChanged`), which captures every plugin's state.
+- Insert bypass, reorder (drag within a chain) and removal are history steps ("Bypass AUDelay on Guitar", "Unbypass …", "Move AUDelay in Guitar", "Remove AUDelay from Guitar"); bypass is in the snapshot, so undo restores it.
