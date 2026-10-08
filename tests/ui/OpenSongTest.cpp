@@ -426,3 +426,23 @@ TEST_CASE ("the meters report what each Track and the Master played since the la
     CHECK (peaks.master > 0.0f);
     CHECK_THAT (f.openSong->meterPeaks().master, Catch::Matchers::WithinAbs (0.0, 0.0)); // nothing played since
 }
+
+TEST_CASE ("a new latency calibration places the next Pass's Takes without rebinding the engine", "[ui][open_song][calibration]")
+{
+    OpenSongFixture f;
+    f.openSong->setCalibrationOffset (140);
+    CHECK (f.openSong->audio().latency.calibrationOffsetSamples == 140);
+
+    REQUIRE (f.openSong->record().has_value());
+    f.device.run (f.engine, 10);
+    f.openSong->playOrStop();
+    f.device.run (f.engine, 1);
+    REQUIRE (f.openSong->poll().empty());
+
+    REQUIRE (f.song().takes.size() == 2);
+    for (const auto& take : f.song().takes)
+    {
+        CHECK (take.compensation.calibrationOffsetSamples == 140);
+        CHECK (take.origin == -140);
+    }
+}

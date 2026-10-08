@@ -7,6 +7,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+using overdub::capture::measureNewestVideoTake;
 using overdub::capture::MovieWriter;
 using overdub::capture::runClapSelftest;
 using overdub::song::SongPackage;
@@ -88,4 +89,26 @@ TEST_CASE ("the clap selftest fails explicitly without a Video Take to measure",
     CHECK (missing["pass"] == false);
     CHECK (missing["error"] == "song.read_failed");
     CHECK (missing["error_fields"].contains ("path"));
+}
+
+TEST_CASE ("the open Song's newest Video Take is measured on its claps for the camera calibration", "[capture][video][clap][calibration]")
+{
+    TempPackage folder;
+    const auto location = packageWithClapPass (folder);
+    auto opened = SongPackage::open (location);
+    REQUIRE (opened.has_value());
+
+    const auto measured = measureNewestVideoTake (opened->package->song(), location);
+    REQUIRE (measured.has_value());
+    CHECK (measured->videoTakeId == "video-1");
+    CHECK (measured->cameraId == "camera-facetime");
+    CHECK (measured->appliedCalibrationSamples == 0);
+    CHECK (measured->sampleRate == testSampleRate);
+    CHECK (measured->report.pass);
+    REQUIRE (measured->report.meanOffsetMs.has_value());
+    CHECK (*measured->report.meanOffsetMs == Catch::Approx ((30.5 * frameNs / 1.0e9 - 1.005) * 1000.0).margin (0.01));
+
+    const auto empty = measureNewestVideoTake (overdub::song::makeEmptySong (testSampleRate), location);
+    REQUIRE_FALSE (empty.has_value());
+    CHECK (empty.error().code == "capture.clap_no_video_take");
 }

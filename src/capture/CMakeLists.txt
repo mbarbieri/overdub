@@ -13,6 +13,7 @@ target_sources(overdub_capture PRIVATE
     ClapMeasurement.cpp
     ClapSelftest.cpp
     LoopbackMeasurement.cpp
+    LoopbackRun.cpp
     MovieFrames.mm
     MovieWriter.mm
     PassRecorder.cpp

@@ -35,6 +35,10 @@ constexpr std::array codeTable {
     CodeEntry { "ui.export_running", Tier::notice, "Wait for the export to finish." },
     CodeEntry { "export.nothing_to_export", Tier::notice, "The Song has no Clips to export." },
     CodeEntry { "ui.no_video_take", Tier::notice, "Pick a Video Take to export an MP4." },
+    CodeEntry { "ui.latency_not_calibrated", Tier::notice, "This audio device is not calibrated, so Takes may land late. Calibrate it in Settings." },
+    CodeEntry { "ui.calibration_running", Tier::notice, "Wait for the latency measurement to finish." },
+    CodeEntry { "capture.calibration_timeout", Tier::notice, "The audio device stopped during the measurement. Check the device, then measure again." },
+    CodeEntry { "capture.clap_no_video_take", Tier::notice, "No Pass has a Video Take yet. Arm the camera and record a Pass clapping in frame." },
 
     // Alerts: an action failed or data may be lost.
     CodeEntry { "capture.take_write_failed", Tier::alert, "A Take could not be written to disk; this Pass was not added." },
@@ -59,6 +63,10 @@ constexpr std::array codeTable {
     CodeEntry { "export.write_failed", Tier::alert, "The export could not be written there." },
     CodeEntry { "export.video_take_unreadable", Tier::alert, "The Video Take's movie could not be read; nothing was exported." },
     CodeEntry { "export.movie_failed", Tier::alert, "The MP4 could not be made." },
+    CodeEntry { "engine.calibration_write_failed", Tier::alert, "The latency calibration could not be saved." },
+    CodeEntry { "engine.calibration_unreadable", Tier::alert, "The latency calibration file is damaged and could not be updated." },
+    CodeEntry { "capture.camera_calibration_write_failed", Tier::alert, "The camera calibration could not be saved." },
+    CodeEntry { "capture.camera_calibration_unreadable", Tier::alert, "The camera calibration file is damaged and could not be updated." },
     CodeEntry { "engine.device_settings_write_failed", Tier::alert, "The audio device choice could not be saved for next time." },
 };
 

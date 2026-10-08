@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 using overdub::engine::CalibrationKey;
+using overdub::engine::findCalibrationOffset;
 using overdub::engine::readCalibrationOffset;
 using overdub::engine::writeCalibrationOffset;
 
@@ -76,4 +77,23 @@ TEST_CASE ("a calibration file that is not valid calibration JSON is an explicit
         REQUIRE_FALSE (written.has_value());
         CHECK (written.error().code == "engine.calibration_unreadable");
     }
+}
+
+TEST_CASE ("a device that was never calibrated is told apart from one calibrated to 0", "[engine][calibration]")
+{
+    TempFolder folder;
+    const auto file = folder.root.getChildFile ("latency-calibration.json");
+
+    const auto missingFile = findCalibrationOffset (file, builtIn48k);
+    REQUIRE (missingFile.has_value());
+    CHECK_FALSE (missingFile->has_value());
+
+    REQUIRE (writeCalibrationOffset (file, builtIn48k, 0).has_value());
+    const auto calibrated = findCalibrationOffset (file, builtIn48k);
+    REQUIRE (calibrated.has_value());
+    CHECK (*calibrated == std::optional<overdub::song::SampleCount> { 0 });
+
+    auto builtIn44k = builtIn48k;
+    builtIn44k.sampleRate = 44100;
+    CHECK_FALSE (findCalibrationOffset (file, builtIn44k).value().has_value());
 }

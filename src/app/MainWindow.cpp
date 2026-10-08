@@ -2,9 +2,12 @@
 
 #include "capture/AvCamera.h"
 #include "capture/CameraCalibration.h"
+#include "capture/ClapSelftest.h"
 #include "core/Log.h"
+#include "engine/LatencyCalibration.h"
 #include "ui/Layout.h"
 #include "ui/SongFiles.h"
+#include "ui/UserMessages.h"
 
 namespace overdub::app
 {
@@ -25,16 +28,42 @@ juce::File defaultSongFolder()
     return juce::File::getSpecialLocation (juce::File::userMusicDirectory);
 }
 
-// The settings window: the device picker, hidden (not destroyed) when closed.
+constexpr int devicePanelHeight = 240;
+constexpr int calibrationPanelHeight = 520;
+constexpr int settingsWidth = 460;
+constexpr int latencyPollIntervalMs = 50;
+
+// The settings window's content: the device picker above the calibration panel.
+class SettingsContent final : public juce::Component
+{
+public:
+    SettingsContent()
+    {
+        addAndMakeVisible (devices);
+        addAndMakeVisible (calibration);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds();
+        devices.setBounds (area.removeFromTop (devicePanelHeight));
+        calibration.setBounds (area);
+    }
+
+    ui::DeviceSettingsPanel devices;
+    ui::CalibrationPanel calibration;
+};
+
+// The settings window, hidden (not destroyed) when closed.
 class SettingsWindow final : public juce::DocumentWindow
 {
 public:
-    explicit SettingsWindow (std::unique_ptr<ui::DeviceSettingsPanel> panel)
+    explicit SettingsWindow (std::unique_ptr<SettingsContent> content)
         : DocumentWindow ("Settings", juce::Colours::black, juce::DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (true);
-        setContentOwned (panel.release(), false);
-        centreWithSize (460, 240);
+        setContentOwned (content.release(), false);
+        centreWithSize (settingsWidth, devicePanelHeight + calibrationPanelHeight);
     }
 
     void closeButtonPressed() override { setVisible (false); }
@@ -76,12 +105,16 @@ MainWindow::MainWindow (const juce::String& name, std::unique_ptr<LiveEngine> li
     content.grabKeyboardFocus();
     if (live->engine() == nullptr)
         content.showNotice ("ui.no_audio_device");
+    showLatencyNoticeIfUncalibrated();
 }
 
 MainWindow::~MainWindow()
 {
     juce::MenuBarModel::setMacMainMenu (nullptr);
+    latencyRunPoll.stopTimer();
+    latencyRun.reset();
     settingsPanel = nullptr;
+    calibrationPanel = nullptr;
     settingsWindow.reset();
     closeSong();
     clearContentComponent();
@@ -99,6 +132,11 @@ bool MainWindow::passRunning() const
 
 bool MainWindow::idleOrNotice()
 {
+    if (latencyMeasuring())
+    {
+        content.showNotice ("ui.calibration_running");
+        return false;
+    }
     if (! passRunning())
         return true;
     content.showNotice ("ui.stop_recording_first");
@@ -116,7 +154,7 @@ juce::StringArray MainWindow::getMenuBarNames()
 juce::PopupMenu MainWindow::getMenuForIndex (int topLevelMenuIndex, const juce::String&)
 {
     juce::PopupMenu menu;
-    const auto idle = ! passRunning();
+    const auto idle = ! passRunning() && ! latencyMeasuring();
     if (topLevelMenuIndex == 0)
     {
         menu.addItem (newSongItem, "New Song...", idle);
@@ -226,6 +264,7 @@ void MainWindow::showSong (std::unique_ptr<song::SongPackage> package, const std
     for (const auto& notice : notices)
         content.showNotice (notice.code);
     updateTitle();
+    refreshCalibrationPanel();
     content.grabKeyboardFocus();
 }
 
@@ -262,12 +301,18 @@ void MainWindow::showSettings()
         return;
     if (settingsWindow == nullptr)
     {
-        auto panel = std::make_unique<ui::DeviceSettingsPanel>();
-        panel->onApply = [this] (const engine::DeviceSettings& settings) { applyDeviceSettings (settings); };
-        settingsPanel = panel.get();
-        settingsWindow = std::make_unique<SettingsWindow> (std::move (panel));
+        auto settingsContent = std::make_unique<SettingsContent>();
+        settingsPanel = &settingsContent->devices;
+        calibrationPanel = &settingsContent->calibration;
+        settingsPanel->onApply = [this] (const engine::DeviceSettings& settings) { applyDeviceSettings (settings); };
+        calibrationPanel->onMeasureLatency = [this] { measureLatency(); };
+        calibrationPanel->onSaveLatency = [this] (song::SampleCount offset) { saveLatencyCalibration (offset); };
+        calibrationPanel->onMeasureClap = [this] { measureClapPass(); };
+        calibrationPanel->onSaveCamera = [this] (const std::string& cameraId, double offsetMs) { saveCameraCalibration (cameraId, offsetMs); };
+        settingsWindow = std::make_unique<SettingsWindow> (std::move (settingsContent));
     }
     settingsPanel->show (live->deviceChoices());
+    refreshCalibrationPanel();
     settingsWindow->setVisible (true);
     settingsWindow->toFront (true);
 }
@@ -291,7 +336,146 @@ void MainWindow::applyDeviceSettings (const engine::DeviceSettings& settings)
 
     if (settingsPanel != nullptr)
         settingsPanel->show (live->deviceChoices());
+    refreshCalibrationPanel();
     if (live->engine() == nullptr)
         content.showNotice ("ui.no_audio_device");
+    showLatencyNoticeIfUncalibrated();
+}
+
+//==============================================================================
+// Calibration (issue #39)
+
+void MainWindow::showLatencyNoticeIfUncalibrated()
+{
+    if (live->engine() != nullptr && ! live->storedCalibrationOffset().has_value())
+        content.showNotice ("ui.latency_not_calibrated");
+}
+
+ui::CalibrationStatus MainWindow::calibrationStatus() const
+{
+    ui::CalibrationStatus status;
+    const auto& key = live->calibrationKey();
+    status.deviceOpen = live->engine() != nullptr && key.sampleRate > 0;
+    status.deviceText = key.inputDevice + " > " + key.outputDevice + ", " + std::to_string (key.sampleRate) + " Hz";
+    status.sampleRate = key.sampleRate;
+    status.latencyOffset = live->storedCalibrationOffset();
+    if (openSong == nullptr)
+        return status;
+
+    status.cameraId = openSong->song().cameraDeviceId;
+    for (const auto& device : openSong->cameraDevices())
+        if (device.id == status.cameraId)
+            status.cameraName = device.name;
+    if (! status.cameraId.empty())
+    {
+        const auto stored = capture::findCameraCalibration (capture::defaultCameraCalibrationFile(), { status.cameraId, key.outputDevice });
+        if (! stored.has_value())
+            core::logError (stored.error(), core::Level::warn);
+        status.cameraOffsetMs = stored.value_or (std::nullopt);
+    }
+    return status;
+}
+
+void MainWindow::refreshCalibrationPanel()
+{
+    if (calibrationPanel != nullptr && ! latencyMeasuring())
+        calibrationPanel->show (calibrationStatus());
+}
+
+bool MainWindow::latencyMeasuring() const
+{
+    return latencyRun != nullptr || latencyOutcome.has_value();
+}
+
+void MainWindow::measureLatency()
+{
+    if (! idleOrNotice() || calibrationPanel == nullptr)
+        return;
+    auto* engine = live->engine();
+    if (engine == nullptr || live->sampleRate() <= 0)
+        return content.showNotice ("ui.no_audio_device");
+
+    // The run plays its own Song on the engine; the open Song is bound again when it ends.
+    detachAudio();
+    const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getNonexistentChildFile ("overdub-calibration-loopback", "", false);
+    auto started = capture::LoopbackRun::start (*engine, live->recordLatency(), live->sampleRate(), folder);
+    if (started.has_value())
+        latencyRun = std::move (*started);
+    else
+        latencyOutcome = std::unexpected (started.error());
+    calibrationPanel->showLatencyMeasuring();
+    latencyRunPoll.startTimer (latencyPollIntervalMs);
+}
+
+void MainWindow::pollLatencyRun()
+{
+    if (latencyRun != nullptr)
+    {
+        auto polled = latencyRun->poll();
+        if (! polled.has_value())
+            return;
+        latencyRun.reset();
+        if (polled->has_value())
+            latencyOutcome = (*polled)->measurement;
+        else
+            latencyOutcome = std::unexpected (polled->error());
+    }
+    if (! latencyOutcome.has_value())
+        return latencyRunPoll.stopTimer();
+
+    // Invariant (OpenSong::attachAudio): bind the Song again only once the audio thread has taken
+    // the newest plan (the run's, or the empty one detachAudio left), so no plan renders the
+    // Song's plugins while they are prepared again.
+    if (auto* engine = live->engine(); engine != nullptr && engine->hasPendingPlan())
+        return;
+    latencyRunPoll.stopTimer();
+    const auto outcome = std::move (*latencyOutcome);
+    latencyOutcome.reset();
+    if (openSong != nullptr)
+        openSong->attachAudio (live->audioBinding());
+    content.refresh();
+
+    // A failed run is shown in the panel only: logged once here, at the tier of its code.
+    if (! outcome.has_value())
+        core::logError (outcome.error(), ui::tierFor (outcome.error().code) == ui::Tier::notice ? core::Level::warn : core::Level::error);
+    if (calibrationPanel != nullptr)
+        calibrationPanel->showLatencyResult (outcome);
+}
+
+void MainWindow::saveLatencyCalibration (song::SampleCount offsetSamples)
+{
+    if (! idleOrNotice() || live->engine() == nullptr)
+        return;
+    if (auto written = engine::writeCalibrationOffset (engine::defaultLatencyCalibrationFile(), live->calibrationKey(), offsetSamples); ! written.has_value())
+        return content.handleError (written.error());
+    live->setCalibrationOffset (offsetSamples);
+    if (openSong != nullptr)
+        openSong->setCalibrationOffset (offsetSamples);
+    refreshCalibrationPanel();
+}
+
+void MainWindow::measureClapPass()
+{
+    if (calibrationPanel == nullptr || openSong == nullptr || ! idleOrNotice())
+        return;
+    auto measured = capture::measureNewestVideoTake (openSong->song(), openSong->package().location());
+    if (! measured.has_value())
+        core::logError (measured.error(), core::Level::warn);
+    else
+        core::logEvent (core::Level::info,
+                        "app.clap_pass_measured",
+                        { { "video_take_id", measured->videoTakeId }, { "camera_id", measured->cameraId }, { "applied_calibration_samples", measured->appliedCalibrationSamples }, { "report", capture::clapReportFields (measured->report) } });
+    calibrationPanel->showClapResult (measured);
+}
+
+void MainWindow::saveCameraCalibration (const std::string& cameraId, double offsetMs)
+{
+    // The key needs the output device the clap Pass was heard on.
+    if (! idleOrNotice() || live->engine() == nullptr)
+        return;
+    const capture::CameraCalibrationKey key { cameraId, live->calibrationKey().outputDevice };
+    if (auto written = capture::writeCameraCalibration (capture::defaultCameraCalibrationFile(), key, offsetMs); ! written.has_value())
+        return content.handleError (written.error());
+    refreshCalibrationPanel();
 }
 } // namespace overdub::app

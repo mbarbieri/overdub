@@ -11,6 +11,7 @@ target_sources(overdub_tests PRIVATE
     capture/ClapMeasurementTest.cpp
     capture/ClapSelftestTest.cpp
     capture/LoopbackMeasurementTest.cpp
+    capture/LoopbackRunTest.cpp
     capture/MovieRoundTripTest.cpp
     capture/PassRecorderTest.cpp
     capture/PassRecorderVideoTest.cpp
@@ -53,6 +54,8 @@ target_sources(overdub_tests PRIVATE
     song/TakeEditsTest.cpp
     support/RealtimeGuardTest.cpp
     support/RealtimeGuardCatchTest.cpp
+    ui/CalibrationPanelTest.cpp
+    ui/CalibrationTextTest.cpp
     ui/CommandsTest.cpp
     ui/DeviceSettingsPanelTest.cpp
     ui/EditPageTest.cpp
