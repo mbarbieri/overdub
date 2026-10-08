@@ -22,6 +22,10 @@
 // keys and clicks into Commands and OpenSong calls; the logic lives in the pure functions and
 // in OpenSong.
 //
+// Record mode (issue #32): the pre-roll picker sets the Song's pre-roll (no undo step); a click on a
+// Pass row moves the playhead to the Pass's start, and on the overview to the Song sample there;
+// ↺ Bring back is one undo step. While pre-roll counts down, the clock's status line does too.
+//
 // M and S (Record rows, Edit headers, Mixer strips) and the Mixer's faders and pan are undo steps
 // through OpenSong::edit; a Mixer drag in progress is heard through OpenSong::previewMix (issue #31).
 //
@@ -83,6 +87,7 @@ private:
     void timerCallback() override { tick(); }
 
     void showMode (Mode mode);
+    void jumpToPass (const song::Id& passId);
     void splitSelectedClip();
     void deleteSelectedClip();
     void applyEdit (core::Expected<song::Song> changed, const std::string& label);

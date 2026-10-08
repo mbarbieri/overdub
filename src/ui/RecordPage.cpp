@@ -3,9 +3,17 @@
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 #include "ui/MuteSoloButtons.h"
+#include "ui/TakeLanes.h"
+
+#include <algorithm>
 
 namespace overdub::ui
 {
+int preRollChoiceIndex (song::PreRoll preRoll)
+{
+    return (int) std::distance (preRollChoices.begin(), std::ranges::find (preRollChoices, preRoll));
+}
+
 RecordPageState recordPageStateFor (const song::Song& song,
                                     const std::vector<std::string>& inputChannelNames,
                                     const std::function<bool (const song::Id&)>& isMonitoring,
@@ -13,6 +21,8 @@ RecordPageState recordPageStateFor (const song::Song& song,
 {
     RecordPageState state;
     state.canImport = ! passRunning;
+    state.preRoll = song.preRoll;
+    state.canChangePreRoll = ! passRunning;
     const auto choices = inputChoices (inputChannelNames);
     for (const auto& track : song.tracks)
     {
@@ -129,8 +139,44 @@ RecordPage::RecordPage()
     };
     emptyLabel.setText ("No Tracks yet. Import an audio file to play along to.", juce::dontSendNotification);
     emptyLabel.setColour (juce::Label::textColourId, colours::dimText);
+
+    preRollCaption.setColour (juce::Label::textColourId, colours::dimText);
+    preRollCaption.setJustificationType (juce::Justification::centredRight);
+    for (std::size_t i = 0; i < preRollChoices.size(); ++i)
+    {
+        const auto seconds = song::preRollSeconds (preRollChoices[i]);
+        preRollPicker.addItem (seconds == 0 ? juce::String ("Off") : juce::String (seconds) + " s", (int) i + 1);
+    }
+    preRollPicker.setSelectedItemIndex (preRollChoiceIndex (shownPreRoll), juce::dontSendNotification);
+    preRollPicker.setWantsKeyboardFocus (false);
+    preRollPicker.onChange = [this] {
+        const auto index = preRollPicker.getSelectedItemIndex();
+        if (index < 0 || (std::size_t) index >= preRollChoices.size() || preRollChoices[(std::size_t) index] == shownPreRoll)
+            return;
+        if (onPreRoll)
+            onPreRoll (preRollChoices[(std::size_t) index]);
+    };
+
+    passesList.onSelect = [this] (const song::Id& passId) {
+        if (onJumpToPass)
+            onJumpToPass (passId);
+    };
+    passesList.onBringBack = [this] (const song::Id& passId) {
+        if (onBringBack)
+            onBringBack (passId);
+    };
+    overview.onSeek = [this] (song::SampleCount sample) {
+        if (onSeek)
+            onSeek (sample);
+    };
+
     addAndMakeVisible (importButton);
     addChildComponent (emptyLabel);
+    addAndMakeVisible (preRollCaption);
+    addAndMakeVisible (preRollPicker);
+    addAndMakeVisible (passesList);
+    addAndMakeVisible (lookAheadStrip);
+    addAndMakeVisible (overview);
 }
 
 void RecordPage::show (const RecordPageState& state)
@@ -174,6 +220,36 @@ void RecordPage::show (const RecordPageState& state)
         rows[i]->show (state.rows[i]);
     importButton.setEnabled (state.canImport);
     emptyLabel.setVisible (rows.empty());
+
+    shownPreRoll = state.preRoll;
+    preRollPicker.setSelectedItemIndex (preRollChoiceIndex (state.preRoll), juce::dontSendNotification);
+    preRollPicker.setEnabled (state.canChangePreRoll);
+}
+
+void RecordPage::showSong (const song::Song& song, const RecordTransport& newTransport, bool editable)
+{
+    const auto changed = ! shownSong.has_value() || shownSong->sampleRate != song.sampleRate || shownSong->tracks != song.tracks
+                      || shownSong->passes != song.passes || shownSong->takes != song.takes || shownEditable != editable;
+    if (changed)
+    {
+        shownSong = song;
+        shownEditable = editable;
+        const auto rowsBefore = passesList.numRows();
+        passesList.show (passRows (song), editable);
+        if (passesList.numRows() != rowsBefore)
+            resized();
+        envelope = peaksFor ? backingEnvelope (song, peaksFor) : BackingEnvelope {};
+    }
+    transport = newTransport;
+    showLookAhead();
+    overview.show (song, transport.playhead);
+}
+
+void RecordPage::showLookAhead()
+{
+    if (! shownSong.has_value())
+        return;
+    lookAheadStrip.show (lookAheadView (envelope, transport, shownSong->sampleRate, lookAheadStrip.waveformBounds().getWidth()), shownSong->sampleRate);
 }
 
 void RecordPage::resized()
@@ -184,6 +260,12 @@ void RecordPage::resized()
         rows[i]->setBounds (layout.rows[i]);
     importButton.setBounds (layout.importButton);
     emptyLabel.setBounds (layout.importButton.withWidth (trackColumnWidth).translated (0, layout.importButton.getHeight() + 6));
+    preRollCaption.setBounds (layout.preRollCaption);
+    preRollPicker.setBounds (layout.preRollPicker);
+    passesList.setBounds (layout.passes);
+    lookAheadStrip.setBounds (layout.lookAhead);
+    overview.setBounds (layout.overview);
+    showLookAhead(); // its columns follow the strip's width
 }
 
 void RecordPage::paint (juce::Graphics& g)
@@ -193,5 +275,8 @@ void RecordPage::paint (juce::Graphics& g)
     g.fillRoundedRectangle (stageArea.toFloat(), 8.0f);
     g.setColour (colours::line);
     g.drawRoundedRectangle (stageArea.toFloat().reduced (0.5f), 8.0f, 1.0f);
+    g.setColour (colours::dimText);
+    g.setFont (juce::FontOptions (13.0f));
+    g.drawText ("Camera stage: the camera arrives in a later version.", stageArea, juce::Justification::centred);
 }
 } // namespace overdub::ui

@@ -15,8 +15,6 @@ namespace overdub::ui
 {
 namespace
 {
-const juce::Colour takeClipColour { 0xff3d5a80 };
-const juce::Colour backingClipColour { 0xff4a6b4a };
 const juce::Colour coveredColour { 0xffb8c4ff };
 const juce::Colour cameraLaneColour { 0xff1c171c };
 const juce::Colour takeLaneColour { 0xff18181a };
@@ -585,7 +583,7 @@ void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Recta
     const auto& song = shownSong();
     const auto isSelected = selected == clip.id;
     const auto area = clipArea.toFloat();
-    g.setColour (clip.source.kind == song::ClipSourceKind::backing ? backingClipColour : takeClipColour);
+    g.setColour (clip.source.kind == song::ClipSourceKind::backing ? colours::backingClip : colours::takeClip);
     g.fillRoundedRectangle (area, 4.0f);
 
     // Waveform: one column per visible pixel, under the name strip.
@@ -702,12 +700,12 @@ void Timeline::paintTakeLane (juce::Graphics& g, const TakeLaneRow& row, juce::R
         return juce::Rectangle<int> (left, strip.getY(), right - left, strip.getHeight());
     };
     const auto block = spanRect (*row.recorded);
-    g.setColour (takeClipColour.withAlpha (0.35f));
+    g.setColour (colours::takeClip.withAlpha (0.35f));
     g.fillRoundedRectangle (block.toFloat(), 3.0f);
-    g.setColour (takeClipColour.brighter (0.4f));
+    g.setColour (colours::takeClip.brighter (0.4f));
     for (const auto& heard : row.heard)
         g.fillRect (spanRect (heard));
-    g.setColour (takeClipColour.brighter (0.2f));
+    g.setColour (colours::takeClip.brighter (0.2f));
     g.drawRoundedRectangle (block.toFloat().reduced (0.5f), 3.0f, 1.0f);
     g.setColour (juce::Colours::white.withAlpha (0.85f));
     g.setFont (juce::FontOptions (10.0f, juce::Font::bold));

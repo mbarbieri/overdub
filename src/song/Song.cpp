@@ -24,6 +24,18 @@ std::string_view toString (ClipSourceKind kind)
     return "take";
 }
 
+int preRollSeconds (PreRoll preRoll)
+{
+    switch (preRoll)
+    {
+        case PreRoll::off: return 0;
+        case PreRoll::oneSecond: return 1;
+        case PreRoll::twoSeconds: return 2;
+        case PreRoll::fourSeconds: return 4;
+    }
+    return 0;
+}
+
 Song makeEmptySong (int sampleRate)
 {
     Song song;

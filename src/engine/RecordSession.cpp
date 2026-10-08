@@ -45,9 +45,10 @@ void RecordSession::begin (SampleCount songSample, int planLatency) noexcept
     currentState.store (RecordState::recording, std::memory_order_release);
 }
 
-void RecordSession::capture (const float* const* deviceInputs, int numDeviceInputs, int numSamples, Anchor anchor) noexcept
+void RecordSession::capture (const float* const* deviceInputs, int numDeviceInputs, int numSamples, Anchor anchor, int firstFrame) noexcept
 {
-    if (numSamples <= 0)
+    const auto numFrames = numSamples - std::max (firstFrame, 0);
+    if (numFrames <= 0)
         return;
 
     if (anchorFifo.getFreeSpace() >= 1)
@@ -60,19 +61,19 @@ void RecordSession::capture (const float* const* deviceInputs, int numDeviceInpu
         droppedAnchorCount.fetch_add (1, std::memory_order_relaxed);
     }
 
-    const auto fitsEveryFifo = std::ranges::all_of (fifos, [numSamples] (const auto& input) { return input->fifo.getFreeSpace() >= numSamples; });
+    const auto fitsEveryFifo = std::ranges::all_of (fifos, [numFrames] (const auto& input) { return input->fifo.getFreeSpace() >= numFrames; });
     if (fitsEveryFifo)
     {
         for (std::size_t i = 0; i < fifos.size(); ++i)
-            writeInput (*fifos[i], recordInputs[i], deviceInputs, numDeviceInputs, numSamples);
+            writeInput (*fifos[i], recordInputs[i], deviceInputs, numDeviceInputs, numSamples - numFrames, numFrames);
     }
     else
     {
-        overrunCount.fetch_add ((std::uint64_t) numSamples, std::memory_order_relaxed);
-        pushGap (numSamples);
+        overrunCount.fetch_add ((std::uint64_t) numFrames, std::memory_order_relaxed);
+        pushGap (numFrames);
     }
 
-    streamFrames.fetch_add (numSamples, std::memory_order_release);
+    streamFrames.fetch_add (numFrames, std::memory_order_release);
 }
 
 void RecordSession::end (RecordStopReason reason) noexcept
@@ -86,15 +87,17 @@ void RecordSession::cancel() noexcept
     end (RecordStopReason::cancelled);
 }
 
-void RecordSession::writeInput (InputFifo& input, const RecordInput& spec, const float* const* deviceInputs, int numDeviceInputs, int numSamples) noexcept
+void RecordSession::writeInput (InputFifo& input, const RecordInput& spec, const float* const* deviceInputs, int numDeviceInputs, int firstFrame, int numFrames) noexcept
 {
     int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
-    input.fifo.prepareToWrite (numSamples, start1, size1, start2, size2);
+    input.fifo.prepareToWrite (numFrames, start1, size1, start2, size2);
 
     for (std::size_t c = 0; c < spec.inputChannels.size(); ++c)
     {
         const auto deviceChannel = spec.inputChannels[c];
-        const float* source = deviceInputs != nullptr && deviceChannel >= 0 && deviceChannel < numDeviceInputs ? deviceInputs[deviceChannel] : nullptr;
+        const float* source = deviceInputs != nullptr && deviceChannel >= 0 && deviceChannel < numDeviceInputs && deviceInputs[deviceChannel] != nullptr
+                                ? deviceInputs[deviceChannel] + firstFrame
+                                : nullptr;
         auto* destination = input.storage.getWritePointer ((int) c);
 
         if (source == nullptr)

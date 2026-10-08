@@ -57,8 +57,18 @@ RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks)
 {
     RecordPageLayout layout;
     auto area = page.reduced (margin);
+    layout.overview = area.removeFromBottom (songOverviewHeight);
+    area.removeFromBottom (gap);
+    layout.lookAhead = area.removeFromBottom (lookAheadStripHeight);
+    area.removeFromBottom (margin);
+
     auto column = area.removeFromRight (trackColumnWidth);
     area.removeFromRight (margin);
+    auto stageBar = area.removeFromTop (stageBarHeight);
+    layout.preRollCaption = stageBar.removeFromLeft (60);
+    stageBar.removeFromLeft (gap);
+    layout.preRollPicker = stageBar.removeFromLeft (90);
+    area.removeFromTop (gap);
     layout.stage = area;
 
     for (int i = 0; i < numTracks; ++i)
@@ -68,6 +78,8 @@ RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks)
     }
     column.removeFromTop (gap);
     layout.importButton = column.removeFromTop (importButtonHeight).removeFromLeft (120);
+    column.removeFromTop (margin);
+    layout.passes = column;
     return layout;
 }
 

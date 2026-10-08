@@ -241,3 +241,46 @@ TEST_CASE ("snapshots of the Mixer with four strips and the Master, and hidden",
     window.tick();
     CHECK (writeSnapshot (window, slice, "record-mute-solo").existsAsFile());
 }
+
+// Record mode complete (issue #32): build/ui-snapshots/slice-11/*.png. An 8 s Band Mix and a 6 s
+// Outro moved to 12 s leave a break the strip counts down to; Pass 1 (from 1 s) is in the Passes
+// list. With pre-roll 2 s, R from 5 s: once 1 s into the pre-roll, and once 1.5 s into the Pass.
+TEST_CASE ("snapshots of Record mode during a pre-roll countdown and during a Pass", "[ui][snapshot][pre_roll]")
+{
+    const std::string slice = "slice-11";
+    MainWindowFixture f { overdub::song::testing::FixtureSongBuilder {}
+                              .backingTrack ("Band Mix", 8.0, 220.0)
+                              .backingTrack ("Outro", 6.0, 330.0)
+                              .track ("Guitar", true, { 0 })
+                              .track ("Vocals", true, { 1 })
+                              .build() };
+    auto& window = *f.window;
+    auto moved = f.song();
+    moved.tracks[1].clips[0].timelineStart = 12 * 48000;
+    REQUIRE (f.openSong->edit (moved, "Move Clip").has_value());
+
+    f.openSong->seek (48000);
+    f.runBlocks (0);
+    REQUIRE (pressKey (window, 'r'));
+    f.runBlocks (380);
+    REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+    REQUIRE (f.song().passes.size() == 1);
+
+    choose (window.recordPage.preRollPicker, overdub::ui::preRollChoiceIndex (overdub::song::PreRoll::twoSeconds));
+    f.openSong->seek (5 * 48000);
+    f.runBlocks (0);
+    REQUIRE (pressKey (window, 'r'));
+    f.runBlocks (188); // about 1 s of the 2 s pre-roll
+    REQUIRE (f.openSong->preRollRecordPoint().has_value());
+    CHECK (writeSnapshot (window, slice, "record-pre-roll").existsAsFile());
+
+    f.runBlocks (470); // about 1.5 s into the Pass
+    REQUIRE (f.openSong->runningPassStart().has_value());
+    CHECK (writeSnapshot (window, slice, "record-pass").existsAsFile());
+
+    REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+    REQUIRE (f.song().passes.size() == 2);
+    CHECK (writeSnapshot (window, slice, "record-idle-two-passes").existsAsFile());
+}

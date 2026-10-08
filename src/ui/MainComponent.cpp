@@ -2,11 +2,13 @@
 
 #include "song/ClipEdits.h"
 #include "song/MixEdits.h"
+#include "song/TakeEdits.h"
 
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 #include "ui/TransportText.h"
 
+#include <algorithm>
 #include <memory>
 
 namespace overdub::ui
@@ -63,6 +65,25 @@ MainComponent::MainComponent()
     };
     recordPage.onMute = [this] (const song::Id& trackId, bool mute) { setMute (trackId, mute); };
     recordPage.onSolo = [this] (const song::Id& trackId, bool solo) { setSolo (trackId, solo); };
+    recordPage.onPreRoll = [this] (song::PreRoll preRoll) {
+        if (openSong != nullptr)
+            openSong->setPreRoll (preRoll);
+        refresh();
+    };
+    recordPage.onJumpToPass = [this] (const song::Id& passId) { jumpToPass (passId); };
+    recordPage.onBringBack = [this] (const song::Id& passId) {
+        if (openSong != nullptr)
+            applyEdit (song::bringBackPass (openSong->song(), passId), song::bringBackPassLabel (openSong->song(), passId));
+    };
+    recordPage.onSeek = [this] (song::SampleCount sample) {
+        if (openSong != nullptr)
+            openSong->seek (sample);
+        refresh();
+    };
+    recordPage.peaksFor = [this] (const song::ClipSource& source) -> const song::Peaks& {
+        static const song::Peaks none;
+        return openSong != nullptr ? openSong->peaks (source) : none;
+    };
     recordPage.onImport = [this] {
         if (openSong == nullptr || openSong->isRecording() || ! chooseFilesToImport)
             return;
@@ -220,6 +241,18 @@ void MainComponent::setSolo (const song::Id& trackId, bool solo)
         applyEdit (song::setTrackSolo (openSong->song(), trackId, solo), song::soloLabel (openSong->song(), trackId, solo));
 }
 
+void MainComponent::jumpToPass (const song::Id& passId)
+{
+    if (openSong == nullptr)
+        return;
+    const auto& passes = openSong->song().passes;
+    const auto pass = std::ranges::find (passes, passId, &song::Pass::id);
+    if (! OVERDUB_CHECK (pass != passes.end(), "ui.pass_row_unknown", { "pass_id", passId }))
+        return;
+    openSong->seek (pass->startSample);
+    refresh();
+}
+
 void MainComponent::showMode (Mode mode)
 {
     if (mode != currentMode)
@@ -307,8 +340,16 @@ void MainComponent::refresh()
         const auto recording = openSong->isRecording();
         state.playing = openSong->isPlaying();
         state.recording = recording;
-        state.clock = clockText (openSong->position(), song.sampleRate);
-        state.status = statusText (TransportStatus { state.playing, recording, openSong->recordingPassNumber() });
+        const auto recordPoint = openSong->preRollRecordPoint();
+        const auto position = openSong->position();
+        state.clock = clockText (position, song.sampleRate);
+        state.status = statusText (TransportStatus {
+            .playing = state.playing,
+            .recording = recording,
+            .passNumber = openSong->recordingPassNumber(),
+            .preRollRemaining = recordPoint.has_value() ? std::optional<song::SampleCount> (*recordPoint - position) : std::nullopt,
+            .sampleRate = song.sampleRate,
+        });
         state.undoText = undoButtonText (package.canUndo() ? package.undoLabel() : "");
         state.redoText = redoButtonText (package.canRedo() ? package.redoLabel() : "");
         state.canUndo = package.canUndo() && ! recording;
@@ -319,6 +360,8 @@ void MainComponent::refresh()
             openSong->audio().inputChannelNames,
             [this] (const song::Id& trackId) { return openSong->isMonitoring (trackId); },
             recording));
+        if (currentMode == Mode::record)
+            recordPage.showSong (song, RecordTransport { position, openSong->runningPassStart(), recordPoint }, ! recording);
         if (currentMode == Mode::edit)
             editPage.show (TimelineState { song, openSong->position(), state.playing, ! recording });
     }

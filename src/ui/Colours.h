@@ -15,4 +15,7 @@ inline const juce::Colour rec { 0xffff453a };
 inline const juce::Colour notice { 0xff3a3a1e };
 inline const juce::Colour mute { 0xffff9f0a };
 inline const juce::Colour solo { 0xffffd60a };
+inline const juce::Colour takeClip { 0xff3d5a80 };
+inline const juce::Colour backingClip { 0xff4a6b4a };
+inline const juce::Colour envelope { 0xffa9b0ff };
 } // namespace overdub::ui::colours

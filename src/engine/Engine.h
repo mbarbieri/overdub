@@ -77,7 +77,10 @@ public:
 
     // Recording (issue #26), any non-audio thread. The session must stay alive until its state()
     // is `stopped`. It starts at the first block that plays after this call: that block's first
-    // input sample is attributed to the block's Song position (RecordSession::begin). It ends at
+    // input sample is attributed to the block's Song position (RecordSession::begin). A Pass with
+    // a record point (RecordSession::startAt, pre-roll, issue #32) is taken at the first playing
+    // block too but begins at the block that plays that Song sample, capturing from that sample
+    // on; isRecording() turns true then. Until it begins it ends like a running Pass. It ends at
     // the first block after stopRecording (session), or when the transport stops or seeks. A
     // session the audio thread has not taken yet is cancelled by stopRecording (state `stopped`
     // at once), and so is one still pending when another session is started.
@@ -115,7 +118,9 @@ private:
     void takePendingPlan (std::uint64_t hostTimeNs) noexcept;
     // Returns true when a seek moved the position this block.
     bool applyTransportCommands (std::uint64_t hostTimeNs) noexcept;
-    void updateRecording (bool seekedThisBlock, std::uint64_t hostTimeNs) noexcept;
+    // Ends and starts Passes; returns the block frame the active Pass captures from (0 unless a
+    // Pass begins at a record point inside this block).
+    int updateRecording (bool seekedThisBlock, int numSamples, std::uint64_t hostTimeNs) noexcept;
     void restartStaleOutput() noexcept;
     void silenceStaleOutput (float* const* outputs, int numOutputChannels, int numSamples) noexcept;
     void reportSilencedNodes (std::uint64_t silencedNodes, std::uint64_t hostTimeNs) noexcept;
@@ -186,10 +191,13 @@ private:
     std::atomic<std::uint64_t> silencedNodeBlocks { 0 };
 
     // Recording: the non-audio thread publishes a session; the audio thread takes it into
-    // activeRecord on a playing block and drops it after RecordSession::end().
+    // activeRecord on a playing block, begins it then (or, with a record point, at the block that
+    // plays it) and drops it after RecordSession::end(). A taken Pass that has not begun ends
+    // like a running one (stop, transport stop, seek), having captured nothing.
     std::atomic<RecordSession*> pendingRecord { nullptr };
     std::atomic<RecordSession*> recordStopRequestedFor { nullptr };
     RecordSession* activeRecord = nullptr; // audio thread only
+    bool activeRecordBegun = false;        // audio thread only
     std::atomic<bool> publishedRecording { false };
 
     std::atomic<bool> monitoringOn { false };

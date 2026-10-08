@@ -10,13 +10,17 @@ target_sources(overdub_ui PRIVATE
     DeviceSettingsPanel.cpp
     EditPage.cpp
     Layout.cpp
+    LookAheadStrip.cpp
     MainComponent.cpp
     Mixer.cpp
     MixerGeometry.cpp
     OpenSong.cpp
+    PassesPanel.cpp
     Pages.cpp
     RecordPage.cpp
+    RecordView.cpp
     SongFiles.cpp
+    SongOverview.cpp
     TakeLanes.cpp
     Timeline.cpp
     TimelineGeometry.cpp
