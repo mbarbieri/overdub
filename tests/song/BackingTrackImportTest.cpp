@@ -26,7 +26,7 @@ namespace
 struct ImportFixture
 {
     juce::File folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                            .getNonexistentChildFile ("overdub-import-test", "", false);
+                            .getChildFile ("overdub-import-test-" + juce::Uuid().toString());
     juce::File packageRoot = folder.getChildFile ("Song.overdub");
 
     ImportFixture() { folder.createDirectory(); }

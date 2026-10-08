@@ -17,7 +17,7 @@ namespace
 struct TempDirectory
 {
     juce::File path = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                          .getNonexistentChildFile ("overdub-logfiles-test", "", false);
+                          .getChildFile ("overdub-logfiles-test-" + juce::Uuid().toString());
 
     TempDirectory() { path.createDirectory(); }
     ~TempDirectory()

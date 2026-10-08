@@ -12,7 +12,7 @@ namespace
 struct TempFolder
 {
     juce::File root = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                          .getNonexistentChildFile ("overdub-calibration-test", "", false);
+                          .getChildFile ("overdub-calibration-test-" + juce::Uuid().toString());
 
     TempFolder() { root.createDirectory(); }
     ~TempFolder() { root.deleteRecursively(); }

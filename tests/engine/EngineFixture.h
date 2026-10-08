@@ -24,10 +24,12 @@ inline constexpr int testSampleRate = 48000;
 inline const float centrePanGain = (float) std::sqrt (0.5);
 
 // A fresh, empty package folder under the system temp folder, deleted at the end of the test.
+// The name is a UUID: ctest -j runs test cases as parallel processes, and getNonexistentChildFile
+// let two of them pick (and then delete) the same folder.
 struct TempPackage
 {
     juce::File root = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                          .getNonexistentChildFile ("overdub-engine-test", ".overdub", false);
+                          .getChildFile ("overdub-engine-test-" + juce::Uuid().toString() + ".overdub");
 
     TempPackage() { root.createDirectory(); }
     ~TempPackage() { root.deleteRecursively(); }

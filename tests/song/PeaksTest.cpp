@@ -62,7 +62,7 @@ Signal channelsOf (const juce::AudioBuffer<float>& audio)
 struct PackageFixture
 {
     juce::File folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                            .getNonexistentChildFile ("overdub-peaks-test", "", false);
+                            .getChildFile ("overdub-peaks-test-" + juce::Uuid().toString());
     juce::File packageRoot = folder.getChildFile ("Song.overdub");
 
     PackageFixture() { folder.createDirectory(); }
