@@ -5,6 +5,7 @@
 add_library(overdub_capture STATIC)
 
 target_sources(overdub_capture PRIVATE
+    CameraCalibration.cpp
     LoopbackMeasurement.cpp
     PassRecorder.cpp
     VideoPlacement.cpp)

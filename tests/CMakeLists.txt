@@ -7,6 +7,7 @@ add_subdirectory(support)
 add_executable(overdub_tests)
 
 target_sources(overdub_tests PRIVATE
+    capture/CameraCalibrationTest.cpp
     capture/LoopbackMeasurementTest.cpp
     capture/PassRecorderTest.cpp
     capture/VideoPlacementTest.cpp
