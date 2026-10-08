@@ -65,7 +65,9 @@ public:
     const song::SongPackage& package() const { return *package_; }
     const AudioBinding& audio() const { return binding; }
 
-    // Binds a (new) engine: loads the Song and seeks to its playhead. Call detachAudio() first.
+    // Binds a (new) engine: loads the Song and seeks to its playhead. Call detachAudio() first, and
+    // only once the previously bound engine has stopped rendering (its device closed or the engine
+    // destroyed, as MainWindow does): the plugins are re-prepared here for the new device shape.
     void attachAudio (AudioBinding audio);
     // Finishes a running Pass (waiting for the audio thread), stops the transport and leaves the
     // engine an empty Song. Returns the finishing errors, not logged.

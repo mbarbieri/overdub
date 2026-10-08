@@ -268,7 +268,7 @@ TEST_CASE ("captureStates stores every ready plugin's state into its slot's hash
     fake.succeed (0, 0.25f);
     fake.succeed (2, 1.0f);
 
-    REQUIRE (host.captureStates (song, states.store()).has_value());
+    REQUIRE (host.captureStates (song, states.store()) == 0);
 
     CHECK (song.tracks[0].insertChain[0].stateHash == "hash-0.25");
     CHECK (song.tracks[0].insertChain[1].stateHash == "hash-kept"); // still loading: unchanged
@@ -353,4 +353,50 @@ TEST_CASE ("without an Instantiator every slot fails with plugin.host_unavailabl
 
     CHECK (host.status ("a1") == InsertStatus::failed);
     CHECK (eventsNamed (capture, "plugin.host_unavailable").size() == 3);
+}
+
+TEST_CASE ("a state that cannot be stored is logged per slot and the slot keeps its hash", "[plugin][insert_host][state]")
+{
+    FakeInstantiator fake;
+    InsertHost host { fake.instantiator(), {}, hostRate, hostBlock };
+    auto song = songWithChains();
+    song.tracks[0].insertChain[0].stateHash = "hash-old";
+    host.sync (song);
+    fake.succeed (0);
+    fake.succeed (2);
+    ScopedLogCapture capture;
+
+    const auto failures = host.captureStates (song, [] (const juce::MemoryBlock&) -> Expected<std::string> {
+        return std::unexpected (Error { "song.write_failed", "disk full", {} });
+    });
+
+    CHECK (failures == 2);
+    CHECK (song.tracks[0].insertChain[0].stateHash == "hash-old");
+    const auto logged = eventsNamed (capture, "song.write_failed");
+    REQUIRE (logged.size() == 2);
+    CHECK (logged[0].at ("slot_id") == "a1");
+    CHECK (logged[1].at ("slot_id") == "m1");
+}
+
+TEST_CASE ("plugin.insert_ready says whether the saved state was really restored", "[plugin][insert_host][state]")
+{
+    FakeInstantiator fake;
+    FakeStateStore states;
+    states.blobs["hash-0.25"] = juce::MemoryBlock ("0.25", 4);
+    InsertHost host { fake.instantiator(), states.loader(), hostRate, hostBlock };
+    auto song = songWithChains();
+    song.tracks[0].insertChain[0].stateHash = "hash-0.25";
+    song.tracks[0].insertChain[1].stateHash = "hash-gone";
+    host.sync (song);
+    ScopedLogCapture capture;
+
+    fake.succeed (0);
+    fake.succeed (1);
+    fake.succeed (2);
+
+    const auto ready = eventsNamed (capture, "plugin.insert_ready");
+    REQUIRE (ready.size() == 3);
+    CHECK (ready[0].at ("state_restored") == true);
+    CHECK (ready[1].at ("state_restored") == false);
+    CHECK (ready[2].at ("state_restored") == false);
 }

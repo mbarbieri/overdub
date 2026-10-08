@@ -76,11 +76,13 @@ public:
     bool takeStateChanged();
 
     // Stores the state of every ready slot of the Song and sets its stateHash. A slot whose state
-    // cannot be captured or stored keeps its hash; the first such Error is returned after the rest
-    // are captured. Errors: plugin.state_capture_failed, or the store's.
-    core::Expected<void> captureStates (song::Song& song, const StateStore& store);
+    // cannot be captured or stored keeps its hash; each such failure is logged (warn, with
+    // slot_id and name: plugin.state_capture_failed or the store's code) and counted. Returns the
+    // number of failures.
+    int captureStates (song::Song& song, const StateStore& store);
 
-    // Prepares every ready plugin for a new device shape. No plan may be rendering them.
+    // Prepares every ready plugin for a new device shape. Invariant (the caller's): no plan may be
+    // rendering them, i.e. no engine that ever played them still has a device calling process().
     void prepare (double sampleRate, int blockSize);
 
 private:

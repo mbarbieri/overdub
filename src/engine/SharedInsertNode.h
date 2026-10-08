@@ -20,6 +20,9 @@
 //   so the warm-up passes audio through untouched.
 // - Only the plan the audio thread renders forwards blocks, so the processor is never run by two
 //   threads at once.
+// - Plans hold the processor through a shared_ptr, so the last owner may be a retired plan. The
+//   engine frees plans only off the audio thread (loadSong, housekeeping: the message thread in
+//   the app), which is where a plugin may then be destroyed.
 namespace overdub::engine
 {
 class SharedInsertNode final : public PlainProcessor

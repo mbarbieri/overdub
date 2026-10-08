@@ -45,9 +45,8 @@ int OpenSong::blockSizeOf (const AudioBinding& audio)
 
 void OpenSong::capturePluginState (song::Song& song)
 {
-    auto captured = inserts.captureStates (song, [this] (const juce::MemoryBlock& state) { return package_->storePluginState (state); });
-    if (! captured.has_value())
-        core::logError (captured.error(), core::Level::warn);
+    // Failures are logged per slot by the host; the change goes through regardless.
+    inserts.captureStates (song, [this] (const juce::MemoryBlock& state) { return package_->storePluginState (state); });
 }
 
 void OpenSong::attachAudio (AudioBinding audio)
@@ -55,7 +54,7 @@ void OpenSong::attachAudio (AudioBinding audio)
     binding = std::move (audio);
     if (binding.engine == nullptr)
         return;
-    // No engine renders the plugins now: the previous one was detached and is gone.
+    // Invariant (see attachAudio in OpenSong.h): no engine renders the plugins now.
     inserts.prepare (song().sampleRate, blockSizeOf (binding));
     binding.engine->stop();
     binding.engine->setMonitoring (true); // which Tracks are heard is decided by songForEngine

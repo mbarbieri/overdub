@@ -104,12 +104,15 @@ void InsertHost::arrived (const song::Id& slotId, std::uint64_t requestId, core:
 
     auto& processor = **created;
     processor.prepareToPlay (sampleRate, blockSize);
+    bool stateRestored = false;
     if (! entry.slot.stateHash.empty())
     {
         auto restored = loadState ? loadState (entry.slot.stateHash) : core::Expected<juce::MemoryBlock> { std::unexpected (core::Error { "plugin.state_unavailable", "no plugin state store", {} }) };
         if (restored.has_value())
         {
-            if (auto applied = restoreState (processor, *restored); ! applied.has_value())
+            auto applied = restoreState (processor, *restored);
+            stateRestored = applied.has_value();
+            if (! stateRestored)
                 logFailure (applied.error(), entry.slot);
         }
         else
@@ -127,7 +130,7 @@ void InsertHost::arrived (const song::Id& slotId, std::uint64_t requestId, core:
                     { { "slot_id", slotId },
                       { "name", entry.processor->getName().toStdString() },
                       { "latency_samples", entry.processor->getLatencySamples() },
-                      { "state_restored", ! entry.slot.stateHash.empty() } });
+                      { "state_restored", stateRestored } });
 }
 
 void InsertHost::release (Entry& entry)
@@ -192,27 +195,27 @@ bool InsertHost::takeStateChanged()
     return stateChanged.exchange (false);
 }
 
-core::Expected<void> InsertHost::captureStates (song::Song& song, const StateStore& store)
+int InsertHost::captureStates (song::Song& song, const StateStore& store)
 {
-    std::optional<core::Error> firstError;
+    int failures = 0;
+    const auto logFailed = [&failures] (core::Error error, const song::InsertSlot& slot) {
+        ++failures;
+        error.fields["slot_id"] = slot.id;
+        error.fields["name"] = slot.name;
+        core::logError (error, core::Level::warn);
+    };
     const auto captureInto = [&] (song::InsertSlot& slot) {
         const auto found = entries.find (slot.id);
         if (found == entries.end() || found->second.status != InsertStatus::ready)
             return;
         auto state = captureState (*found->second.processor);
         if (! state.has_value())
-        {
-            firstError = firstError.value_or (state.error());
-            return;
-        }
+            return logFailed (state.error(), slot);
         if (state->isEmpty())
             return;
         auto hash = store (*state);
         if (! hash.has_value())
-        {
-            firstError = firstError.value_or (hash.error());
-            return;
-        }
+            return logFailed (hash.error(), slot);
         slot.stateHash = *hash;
     };
 
@@ -221,10 +224,7 @@ core::Expected<void> InsertHost::captureStates (song::Song& song, const StateSto
             captureInto (slot);
     for (auto& slot : song.master.insertChain)
         captureInto (slot);
-
-    if (firstError.has_value())
-        return std::unexpected (*firstError);
-    return {};
+    return failures;
 }
 
 void InsertHost::prepare (double rate, int samplesPerBlock)
