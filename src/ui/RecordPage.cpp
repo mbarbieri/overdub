@@ -21,6 +21,24 @@ std::string monitoringText (int activeInserts)
     return "Monitoring \xC2\xB7 " + std::to_string (activeInserts) + " fx";
 }
 
+CameraControlsState cameraControlsStateFor (const song::Song& song, const std::vector<capture::CameraDevice>& cameras, bool passRunning)
+{
+    CameraControlsState state;
+    state.armed = song.cameraArmed;
+    state.devices = cameras;
+    const auto chosen = std::ranges::find (cameras, song.cameraDeviceId, &capture::CameraDevice::id);
+    if (chosen != cameras.end())
+        state.selected = (std::size_t) std::distance (cameras.begin(), chosen);
+    state.canArm = ! passRunning && (song.cameraArmed || ! cameras.empty());
+    state.canChoose = ! passRunning;
+    return state;
+}
+
+std::string cameraStageMessage (bool armed)
+{
+    return armed ? "Camera Armed: waiting for its picture." : "Arm the camera to record a Video Take with each Pass.";
+}
+
 RecordPageState recordPageStateFor (const song::Song& song,
                                     const std::vector<std::string>& inputChannelNames,
                                     const std::function<bool (const song::Id&)>& isMonitoring,
@@ -171,6 +189,25 @@ RecordPage::RecordPage()
             onPreRoll (preRollChoices[(std::size_t) index]);
     };
 
+    cameraArmButton.setClickingTogglesState (false);
+    cameraArmButton.setColour (juce::TextButton::buttonOnColourId, colours::rec);
+    cameraArmButton.setWantsKeyboardFocus (false);
+    cameraArmButton.onClick = [this] {
+        if (onCameraArm)
+            onCameraArm (! shownCamera.armed);
+    };
+    cameraPicker.setTextWhenNothingSelected ("Camera?");
+    cameraPicker.setTextWhenNoChoicesAvailable ("No camera");
+    cameraPicker.setWantsKeyboardFocus (false);
+    cameraPicker.onChange = [this] {
+        const auto index = cameraPicker.getSelectedItemIndex();
+        if (index < 0 || (std::size_t) index >= shownCamera.devices.size() || shownCamera.selected == (std::size_t) index)
+            return;
+        if (onCameraDevice)
+            onCameraDevice (shownCamera.devices[(std::size_t) index].id);
+    };
+    cameraStage.show (nullptr, juce::String::fromUTF8 (cameraStageMessage (false).c_str()));
+
     passesList.onSelect = [this] (const song::Id& passId) {
         if (onJumpToPass)
             onJumpToPass (passId);
@@ -188,6 +225,9 @@ RecordPage::RecordPage()
     addChildComponent (emptyLabel);
     addAndMakeVisible (preRollCaption);
     addAndMakeVisible (preRollPicker);
+    addAndMakeVisible (cameraArmButton);
+    addAndMakeVisible (cameraPicker);
+    addAndMakeVisible (cameraStage);
     addAndMakeVisible (passesList);
     addAndMakeVisible (lookAheadStrip);
     addAndMakeVisible (overview);
@@ -260,6 +300,25 @@ void RecordPage::showSong (const song::Song& song, const RecordTransport& newTra
     overview.show (song, transport.playhead);
 }
 
+void RecordPage::showCamera (const CameraControlsState& state, void* previewLayer)
+{
+    if (state.devices != shownCamera.devices)
+    {
+        cameraPicker.clear (juce::dontSendNotification);
+        for (std::size_t i = 0; i < state.devices.size(); ++i)
+            cameraPicker.addItem (juce::String::fromUTF8 (state.devices[i].name.c_str()), (int) i + 1);
+    }
+    shownCamera = state;
+    if (state.selected.has_value())
+        cameraPicker.setSelectedItemIndex ((int) *state.selected, juce::dontSendNotification);
+    else
+        cameraPicker.setSelectedId (0, juce::dontSendNotification);
+    cameraPicker.setEnabled (state.canChoose);
+    cameraArmButton.setToggleState (state.armed, juce::dontSendNotification);
+    cameraArmButton.setEnabled (state.canArm);
+    cameraStage.show (previewLayer, juce::String::fromUTF8 (cameraStageMessage (state.armed).c_str()));
+}
+
 void RecordPage::showLookAhead()
 {
     if (! shownSong.has_value())
@@ -270,7 +329,9 @@ void RecordPage::showLookAhead()
 void RecordPage::resized()
 {
     const auto layout = recordPageLayout (getLocalBounds(), (int) rows.size());
-    stageArea = layout.stage;
+    cameraStage.setBounds (layout.stage);
+    cameraArmButton.setBounds (layout.cameraArm);
+    cameraPicker.setBounds (layout.cameraPicker);
     for (std::size_t i = 0; i < rows.size(); ++i)
         rows[i]->setBounds (layout.rows[i]);
     importButton.setBounds (layout.importButton);
@@ -286,12 +347,5 @@ void RecordPage::resized()
 void RecordPage::paint (juce::Graphics& g)
 {
     g.fillAll (colours::background);
-    g.setColour (colours::panel.withAlpha (0.45f));
-    g.fillRoundedRectangle (stageArea.toFloat(), 8.0f);
-    g.setColour (colours::line);
-    g.drawRoundedRectangle (stageArea.toFloat().reduced (0.5f), 8.0f, 1.0f);
-    g.setColour (colours::dimText);
-    g.setFont (juce::FontOptions (13.0f));
-    g.drawText ("Camera stage: the camera arrives in a later version.", stageArea, juce::Justification::centred);
 }
 } // namespace overdub::ui

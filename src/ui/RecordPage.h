@@ -1,7 +1,9 @@
 #pragma once
 
+#include "capture/Camera.h"
 #include "plugin/InsertHost.h"
 #include "song/Song.h"
+#include "ui/CameraStage.h"
 #include "ui/InsertChain.h"
 #include "ui/LookAheadStrip.h"
 #include "ui/PassesPanel.h"
@@ -18,8 +20,9 @@
 #include <string>
 #include <vector>
 
-// Record mode (issues #27, #32, issue #9 resolution, variant C), the performing view. Left: the
-// pre-roll picker (Off / 1 s / 2 s / 4 s) over the camera stage (a placeholder until slice 14).
+// Record mode (issues #27, #32, #35, issue #9 resolution, variant C), the performing view. Left: the
+// pre-roll picker (Off / 1 s / 2 s / 4 s), the camera arm and the camera picker over the camera
+// stage, which shows the camera's live feed while the camera is Armed (ui/CameraStage.h).
 // Right column: one row per Track (arm, name, M and S (issue #31), input picker, Monitoring), the
 // Import button, then the Passes list (heard status and ↺ Bring back; clicking a row jumps to the
 // Pass's start). Along the bottom: the Backing Track look-ahead strip and the whole-Song overview
@@ -52,6 +55,23 @@ struct RecordPageState
     song::PreRoll preRoll = song::PreRoll::off;
     bool canChangePreRoll = true; // false while a Pass runs
 };
+
+// The camera arm and picker over the stage (issue #35).
+struct CameraControlsState
+{
+    bool armed = false;
+    std::vector<capture::CameraDevice> devices;
+    std::optional<std::size_t> selected; // nullopt: no choice, or the chosen camera is not here
+    bool canArm = true;                  // false while a Pass runs, or with no camera to arm
+    bool canChoose = true;               // false while a Pass runs
+
+    bool operator== (const CameraControlsState&) const = default;
+};
+
+CameraControlsState cameraControlsStateFor (const song::Song& song, const std::vector<capture::CameraDevice>& cameras, bool passRunning);
+
+// The stage's line when it shows no feed.
+std::string cameraStageMessage (bool armed);
 
 // The pre-roll picker's items in order, and the item for a setting.
 inline constexpr std::array<song::PreRoll, 4> preRollChoices { song::PreRoll::off, song::PreRoll::oneSecond, song::PreRoll::twoSeconds, song::PreRoll::fourSeconds };
@@ -109,6 +129,8 @@ public:
     // Passes rows and the strip's envelope are recomputed only when the Song's Tracks, Passes,
     // Takes or `editable` changed.
     void showSong (const song::Song& song, const RecordTransport& transport, bool editable);
+    // The camera arm and picker, and the stage's live feed (a CALayer*, or null).
+    void showCamera (const CameraControlsState& state, void* previewLayer);
     void resized() override;
     void paint (juce::Graphics& g) override;
 
@@ -121,6 +143,8 @@ public:
     InsertChainActions insertActions;
     std::function<void()> onImport;
     std::function<void (song::PreRoll)> onPreRoll;
+    std::function<void (bool armed)> onCameraArm;
+    std::function<void (const std::string& cameraId)> onCameraDevice;
     // A click on a Pass row: jump to that Pass's start.
     std::function<void (const song::Id& passId)> onJumpToPass;
     std::function<void (const song::Id& passId)> onBringBack;
@@ -134,6 +158,9 @@ public:
     juce::Label emptyLabel;
     juce::Label preRollCaption { {}, "Pre-roll" };
     juce::ComboBox preRollPicker;
+    juce::TextButton cameraArmButton { "Camera" };
+    juce::ComboBox cameraPicker;
+    CameraStage cameraStage;
     PassesPanel passesList { "Passes \xC2\xB7 newest first \xC2\xB7 click one to jump to its start" };
     LookAheadStrip lookAheadStrip;
     SongOverview overview;
@@ -141,8 +168,8 @@ public:
 private:
     void showLookAhead();
 
-    juce::Rectangle<int> stageArea;
     song::PreRoll shownPreRoll = song::PreRoll::off;
+    CameraControlsState shownCamera;
 
     // What showSong last showed, to recompute only on change.
     std::optional<song::Song> shownSong;

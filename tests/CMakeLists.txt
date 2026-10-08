@@ -60,6 +60,7 @@ target_sources(overdub_tests PRIVATE
     ui/OpenSongInsertsTest.cpp
     ui/OpenSongTest.cpp
     ui/PreRollTest.cpp
+    ui/RecordCameraTest.cpp
     ui/RecordInsertsTest.cpp
     ui/RecordPageTest.cpp
     ui/RecordViewTest.cpp

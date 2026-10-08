@@ -28,6 +28,11 @@
 // Pass row moves the playhead to the Pass's start, and on the overview to the Song sample there;
 // ↺ Bring back is one undo step. While pre-roll counts down, the clock's status line does too.
 //
+// The camera (issue #35): the camera arm asks for camera access first (askCameraAccess), then arms
+// the Song's camera (OpenSong::setCameraArmed); the picker chooses the camera. Neither is an undo
+// step. The stage shows the live feed while the camera is Armed. A camera that cannot open, and a
+// Pass's movie problems, are presented by their tier.
+//
 // Insert Chains (issues #33, #34) on Record rows, Mixer strips and the Master strip: "+ Insert"
 // lists the AU effects and adds the one picked (OpenSong::addInsert), then opens its editor once
 // it has loaded; bypass, remove and drag-to-reorder are one undo step each (song/InsertEdits.h).
@@ -86,6 +91,9 @@ public:
     // or none when dismissed (default: a pop-up menu by name).
     std::function<std::vector<plugin::AvailableAudioUnit>()> listInsertPlugins;
     std::function<void (const std::vector<plugin::AvailableAudioUnit>&, std::function<void (std::optional<std::size_t>)>)> chooseInsertPlugin;
+    // Camera access before arming (issue #35): calls back with whether the app may use the camera
+    // (default: capture::requestCameraAccess, the system prompt).
+    std::function<void (std::function<void (bool granted)>)> askCameraAccess;
     // The File menu's New Song and Open, offered on the no-Song page.
     std::function<void()> onNewSong;
     std::function<void()> onOpenSong;
@@ -108,6 +116,7 @@ private:
     void splitSelectedClip();
     void deleteSelectedClip();
     void applyEdit (core::Expected<song::Song> changed, const std::string& label);
+    void armCamera (bool armed);
     void setMute (const song::Id& trackId, bool mute);
     void setSolo (const song::Id& trackId, bool solo);
     void importFiles (const std::vector<juce::File>& files);

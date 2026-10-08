@@ -1,5 +1,7 @@
 #include "app/MainWindow.h"
 
+#include "capture/AvCamera.h"
+#include "capture/CameraCalibration.h"
 #include "core/Log.h"
 #include "ui/Layout.h"
 #include "ui/SongFiles.h"
@@ -52,7 +54,8 @@ MainWindow::MainWindow (const juce::String& name, std::unique_ptr<LiveEngine> li
                       juce::Desktop::getInstance().getDefaultLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId),
                       juce::DocumentWindow::allButtons),
       appName (name),
-      live (std::move (liveEngine))
+      live (std::move (liveEngine)),
+      camera (capture::makeAvCamera())
 {
     content.onNewSong = [this] { newSong(); };
     content.onOpenSong = [this] { chooseSongToOpen(); };
@@ -216,6 +219,9 @@ void MainWindow::showSong (std::unique_ptr<song::SongPackage> package, const std
 {
     closeSong();
     openSong = std::make_unique<ui::OpenSong> (std::move (package), live->audioBinding(), pluginLoader.instantiator());
+    // A Song saved with its camera Armed opens it now; without camera access that is a Notice.
+    if (auto attached = openSong->attachCamera (camera.get(), capture::defaultCameraCalibrationFile()); ! attached.has_value())
+        content.handleError (attached.error());
     content.setOpenSong (openSong.get());
     for (const auto& notice : notices)
         content.showNotice (notice.code);

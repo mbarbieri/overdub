@@ -284,3 +284,27 @@ TEST_CASE ("snapshots of Record mode during a pre-roll countdown and during a Pa
     REQUIRE (f.song().passes.size() == 2);
     CHECK (writeSnapshot (window, slice, "record-idle-two-passes").existsAsFile());
 }
+
+// The camera (issue #35): build/ui-snapshots/slice-14/*.png. Record mode with the camera
+// disarmed, then Armed (the fake camera has no live feed, so the stage shows its armed line), and
+// during a Pass with the camera.
+TEST_CASE ("snapshots of Record mode's camera arm, picker and stage", "[ui][snapshot][camera]")
+{
+    const std::string slice = "slice-14";
+    MainWindowFixture f;
+    auto& window = *f.window;
+    window.tick();
+    CHECK (writeSnapshot (window, slice, "record-camera-disarmed").existsAsFile());
+
+    click (window.recordPage.cameraArmButton);
+    REQUIRE (f.song().cameraArmed);
+    CHECK (writeSnapshot (window, slice, "record-camera-armed").existsAsFile());
+
+    f.camera.movie.frames = 10;
+    REQUIRE (pressKey (window, 'r'));
+    f.runBlocks (200);
+    REQUIRE (f.openSong->isRecording());
+    CHECK (writeSnapshot (window, slice, "record-camera-pass").existsAsFile());
+    REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+}

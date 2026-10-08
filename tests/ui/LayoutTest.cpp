@@ -51,7 +51,7 @@ TEST_CASE ("Record mode stacks one row per Track, the Import button and the Pass
     const auto layout = recordPageLayout (page, 3);
 
     REQUIRE (layout.rows.size() == 3);
-    checkInsideAndApart (page, { layout.preRollCaption, layout.preRollPicker, layout.stage, layout.rows[0], layout.rows[1], layout.rows[2], layout.importButton, layout.passes, layout.lookAhead, layout.overview });
+    checkInsideAndApart (page, { layout.preRollCaption, layout.preRollPicker, layout.cameraArm, layout.cameraPicker, layout.stage, layout.rows[0], layout.rows[1], layout.rows[2], layout.importButton, layout.passes, layout.lookAhead, layout.overview });
     CHECK (layout.rows[0].getHeight() == trackRowHeight);
     CHECK (layout.rows[1].getY() > layout.rows[0].getBottom() - 1);
     CHECK (layout.rows[2].getBottom() < layout.importButton.getY());
@@ -64,6 +64,12 @@ TEST_CASE ("Record mode stacks one row per Track, the Import button and the Pass
     // under everything else.
     CHECK (layout.preRollCaption.getRight() < layout.preRollPicker.getX());
     CHECK (layout.preRollPicker.getBottom() < layout.stage.getY());
+    // The camera arm and picker sit above the stage at its right end (issue #35).
+    CHECK (layout.preRollPicker.getRight() < layout.cameraArm.getX());
+    CHECK (layout.cameraArm.getRight() < layout.cameraPicker.getX());
+    CHECK (layout.cameraPicker.getRight() == layout.stage.getRight());
+    CHECK (layout.cameraArm.getBottom() < layout.stage.getY());
+    CHECK (layout.cameraPicker.getWidth() >= 160);
     CHECK (layout.lookAhead.getHeight() == lookAheadStripHeight);
     CHECK (layout.overview.getHeight() == songOverviewHeight);
     CHECK (layout.lookAhead.getX() == layout.stage.getX());

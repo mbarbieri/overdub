@@ -3,6 +3,7 @@
 #include "ui/MainComponent.h"
 #include "ui/OpenSong.h"
 
+#include "capture/FakeCamera.h"
 #include "engine/EngineFixture.h"
 #include "song/FixtureSongBuilder.h"
 #include "ui/UiHarness.h"
@@ -13,8 +14,8 @@
 
 // The main window's content over a fixture Song (ADR 0005 UI amendment): a real MainComponent at
 // a fixed size, bound through a real OpenSong to an Engine that a loopback fake device drives.
-// Alerts and file choosers are injected; nothing opens a window, a dialog or audio hardware
-// (plugin editor windows are built off the desktop).
+// Alerts, file choosers and camera access are injected; nothing opens a window, a dialog, a camera
+// or audio hardware (plugin editor windows are built off the desktop; the camera is a fake).
 namespace overdub::ui::testing
 {
 inline constexpr int windowWidth = 1200;
@@ -27,6 +28,8 @@ struct MainWindowFixture
     std::unique_ptr<song::testing::FixtureSong> fixture;
     engine::Engine engine { engine::EngineConfig { .numOutputChannels = 2, .maxBlockSize = deviceBlockSize } };
     engine::testing::LoopbackDevice device { 2, deviceBlockSize, 512 };
+    capture::testing::FakeCamera camera; // before openSong, which uses it until it closes
+    bool cameraAccessGranted = true;
     std::unique_ptr<OpenSong> openSong;
     std::unique_ptr<MainComponent> window;
     std::vector<juce::String> alertsShown;
@@ -36,7 +39,9 @@ struct MainWindowFixture
     {
         openSong = std::make_unique<OpenSong> (std::move (fixture->package), AudioBinding { &engine, {}, { "In 1", "In 2", "In 3", "In 4" } }, std::move (instantiate));
         window = std::make_unique<MainComponent>();
+        REQUIRE (openSong->attachCamera (&camera, juce::File {}).has_value()); // no calibration file: 0 ms
         window->showAlert = [this] (const juce::String& sentence) { alertsShown.push_back (sentence); };
+        window->askCameraAccess = [this] (std::function<void (bool)> done) { done (cameraAccessGranted); };
         window->pluginWindows.showOnDesktop = false; // editor windows are built, never shown
         layOut (*window, windowWidth, windowHeight);
         window->setOpenSong (openSong.get());

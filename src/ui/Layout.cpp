@@ -68,6 +68,9 @@ RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks)
     layout.preRollCaption = stageBar.removeFromLeft (60);
     stageBar.removeFromLeft (gap);
     layout.preRollPicker = stageBar.removeFromLeft (90);
+    layout.cameraPicker = stageBar.removeFromRight (std::min (220, std::max (0, stageBar.getWidth() - 100 - 2 * gap)));
+    stageBar.removeFromRight (gap);
+    layout.cameraArm = stageBar.removeFromRight (100);
     area.removeFromTop (gap);
     layout.stage = area;
 
