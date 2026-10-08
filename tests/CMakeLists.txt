@@ -56,6 +56,7 @@ target_sources(overdub_tests PRIVATE
     ui/CommandsTest.cpp
     ui/DeviceSettingsPanelTest.cpp
     ui/EditPageTest.cpp
+    ui/ExportMp4PageTest.cpp
     ui/ExportPageTest.cpp
     ui/InsertChainUiTest.cpp
     ui/LayoutTest.cpp

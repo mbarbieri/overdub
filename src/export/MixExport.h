@@ -40,13 +40,17 @@ core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& 
 // share. On failure or a stop the file is deleted. Errors: as exportMix's, but folder and rename.
 core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop);
 
-// One exportMix on a worker thread. The owner polls progress() and isDone() from its own thread
+struct MovieRequest; // export/MovieExport.h
+
+// One exportMix (or, given a MovieRequest, one exportMovie) on a worker thread. The owner polls progress() and isDone() from its own thread
 // and takes the result once done. Destroying the job stops a running export (export.cancelled)
 // and waits for its thread.
 class ExportJob final : private juce::Thread
 {
 public:
     ExportJob (std::unique_ptr<MixRender> render, ExportRequest request);
+    // An MP4: exportMovie with `movie` (its destination and length are the request's).
+    ExportJob (std::unique_ptr<MixRender> render, ExportRequest request, MovieRequest movie);
     ~ExportJob() override;
 
     ExportJob (const ExportJob&) = delete;
@@ -64,6 +68,7 @@ private:
 
     std::unique_ptr<MixRender> render;
     ExportRequest exportRequest;
+    std::unique_ptr<MovieRequest> movieRequest; // none for WAV and M4A
     std::atomic<double> fractionDone { 0.0 };
     std::atomic<bool> done { false };
     std::optional<core::Expected<ExportResult>> result; // written by the worker before `done`

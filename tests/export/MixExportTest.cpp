@@ -223,7 +223,7 @@ TEST_CASE ("a stopped export, an empty Song and MP4 leave no file", "[export][er
         CHECK (! destination.exists());
     }
 
-    SECTION ("MP4, which arrives with slice 17")
+    SECTION ("MP4, which is not an audio file (exportMovie writes it)")
     {
         const auto mix = clickSong (package);
         MixRender render { mix, package.root, 256, {} };
@@ -265,7 +265,5 @@ TEST_CASE ("the export format names, extensions and default file", "[export][for
     CHECK (withFormatExtension (music.getChildFile ("Song"), ExportFormat::wav) == music.getChildFile ("Song.wav"));
     CHECK (defaultExportFile (music, "My Song", ExportFormat::wav) == music.getChildFile ("My Song.wav"));
     CHECK (defaultExportFile (music, "", ExportFormat::m4a) == music.getChildFile ("Untitled.m4a"));
-    CHECK (overdub::exporting::isAvailable (ExportFormat::wav));
-    CHECK (overdub::exporting::isAvailable (ExportFormat::m4a));
-    CHECK (! overdub::exporting::isAvailable (ExportFormat::mp4));
+    CHECK (defaultExportFile (music, "My Song", ExportFormat::mp4) == music.getChildFile ("My Song.mp4"));
 }

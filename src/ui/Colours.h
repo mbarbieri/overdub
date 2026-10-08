@@ -18,4 +18,5 @@ inline const juce::Colour solo { 0xffffd60a };
 inline const juce::Colour takeClip { 0xff3d5a80 };
 inline const juce::Colour backingClip { 0xff4a6b4a };
 inline const juce::Colour envelope { 0xffa9b0ff };
+inline const juce::Colour videoTake { 0xff8a5a8a };
 } // namespace overdub::ui::colours

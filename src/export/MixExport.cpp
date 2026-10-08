@@ -2,6 +2,7 @@
 
 #include "core/Log.h"
 #include "export/MixFileWriter.h"
+#include "export/MovieExport.h"
 
 #include <algorithm>
 
@@ -117,6 +118,12 @@ ExportJob::ExportJob (std::unique_ptr<MixRender> mixRender, ExportRequest reques
     startThread();
 }
 
+ExportJob::ExportJob (std::unique_ptr<MixRender> mixRender, ExportRequest request, MovieRequest movie)
+    : juce::Thread ("Overdub export"), render (std::move (mixRender)), exportRequest (std::move (request)), movieRequest (std::make_unique<MovieRequest> (std::move (movie)))
+{
+    startThread();
+}
+
 ExportJob::~ExportJob()
 {
     signalThreadShouldExit();
@@ -135,11 +142,10 @@ std::optional<core::Expected<ExportResult>> ExportJob::takeResult()
 void ExportJob::run()
 {
     const core::ScopedThreadRole role { core::ThreadRole::io };
-    auto finished = exportMix (
-        *render,
-        exportRequest,
-        [this] (double fraction) { fractionDone.store (std::clamp (fraction, 0.0, 1.0)); },
-        [this] { return threadShouldExit(); });
+    const auto progress = [this] (double fraction) { fractionDone.store (std::clamp (fraction, 0.0, 1.0)); };
+    const auto shouldStop = [this] { return threadShouldExit(); };
+    auto finished = movieRequest != nullptr ? exportMovie (*render, *movieRequest, progress, shouldStop)
+                                            : exportMix (*render, exportRequest, progress, shouldStop);
     result = std::move (finished);
     done.store (true);
 }

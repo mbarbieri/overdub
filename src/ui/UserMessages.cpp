@@ -34,7 +34,7 @@ constexpr std::array codeTable {
     CodeEntry { "capture.video_frames_dropped", Tier::notice, "The camera dropped frames during this Pass." },
     CodeEntry { "ui.export_running", Tier::notice, "Wait for the export to finish." },
     CodeEntry { "export.nothing_to_export", Tier::notice, "The Song has no Clips to export." },
-    CodeEntry { "export.format_unavailable", Tier::notice, "That format arrives in a later version." },
+    CodeEntry { "export.no_video_take", Tier::notice, "Pick a Video Take to export an MP4." },
 
     // Alerts: an action failed or data may be lost.
     CodeEntry { "capture.take_write_failed", Tier::alert, "A Take could not be written to disk; this Pass was not added." },
@@ -57,6 +57,8 @@ constexpr std::array codeTable {
     CodeEntry { "song.migration_failed", Tier::alert, "This Song could not be upgraded to the current format." },
     CodeEntry { "song.duplicate_failed", Tier::alert, "The Song could not be duplicated there." },
     CodeEntry { "export.write_failed", Tier::alert, "The export could not be written there." },
+    CodeEntry { "export.video_take_unreadable", Tier::alert, "The Video Take's movie could not be read; nothing was exported." },
+    CodeEntry { "export.movie_failed", Tier::alert, "The MP4 could not be made." },
     CodeEntry { "engine.device_settings_write_failed", Tier::alert, "The audio device choice could not be saved for next time." },
 };
 
