@@ -63,14 +63,17 @@ TEST_CASE ("Record mode stacks one row per Track, then the Import button, in the
     CHECK (page.contains (empty.importButton));
 }
 
-TEST_CASE ("a Track row puts arm, name, input picker and Monitoring left to right", "[ui][layout]")
+TEST_CASE ("a Track row puts arm, name, M, S, input picker and Monitoring left to right", "[ui][layout]")
 {
     const Rectangle<int> row { 800, 100, trackColumnWidth, trackRowHeight };
     const auto layout = trackRowLayout (row);
 
-    checkInsideAndApart (row, { layout.arm, layout.name, layout.input, layout.monitoring });
+    checkInsideAndApart (row, { layout.arm, layout.name, layout.mute, layout.solo, layout.input, layout.monitoring });
     CHECK (layout.arm.getX() < layout.name.getX());
-    CHECK (layout.name.getX() < layout.input.getX());
+    CHECK (layout.name.getX() < layout.mute.getX());
+    CHECK (layout.mute.getX() < layout.solo.getX());
+    CHECK (layout.solo.getX() < layout.input.getX());
+    CHECK (layout.name.getWidth() >= 80);
     CHECK (layout.input.getX() < layout.monitoring.getX());
 }
 
@@ -133,13 +136,56 @@ TEST_CASE ("the timeline has a ruler, the Camera lane, then one lane per Track, 
     CHECK (layout.scrollBar.getX() == layout.ruler.getX());
 }
 
-TEST_CASE ("a Track header puts the arm button left of the name", "[ui][layout][edit]")
+TEST_CASE ("a Track header puts the arm button left of the name, and M and S right of the Takes toggle", "[ui][layout][edit]")
 {
     const Rectangle<int> header { 0, 100, laneHeaderWidth, trackLaneHeight };
     const auto layout = trackHeaderLayout (header);
-    checkInsideAndApart (header, { layout.arm, layout.name, layout.takesToggle });
+    checkInsideAndApart (header, { layout.arm, layout.name, layout.takesToggle, layout.mute, layout.solo });
     CHECK (layout.arm.getX() < layout.name.getX());
     CHECK (layout.takesToggle.getY() >= layout.arm.getBottom());
+    CHECK (layout.mute.getY() == layout.takesToggle.getY());
+    CHECK (layout.takesToggle.getRight() < layout.mute.getX());
+    CHECK (layout.mute.getRight() < layout.solo.getX());
+}
+
+TEST_CASE ("the Mixer puts one strip per Track from the left and the Master strip at the right edge", "[ui][layout][mixer]")
+{
+    const Rectangle<int> mixer { 0, 500, 1200, defaultMixerHeight };
+    const auto layout = mixerLayout (mixer, 4);
+    REQUIRE (layout.strips.size() == 4);
+    auto parts = layout.strips;
+    parts.push_back (layout.master);
+    checkInsideAndApart (mixer, parts);
+    for (std::size_t i = 1; i < layout.strips.size(); ++i)
+    {
+        CHECK (layout.strips[i].getX() > layout.strips[i - 1].getRight());
+        CHECK (layout.strips[i].getWidth() == mixerStripWidth);
+    }
+    CHECK (layout.master.getX() > layout.strips.back().getRight());
+    CHECK (mixer.getRight() - layout.master.getRight() < 12);
+
+    // Strips that do not fit before the Master are cut off: none overlaps it.
+    const auto crowded = mixerLayout (mixer, 30);
+    for (const auto& strip : crowded.strips)
+        CHECK ((strip.isEmpty() || strip.getRight() < crowded.master.getX()));
+    CHECK (! crowded.strips.front().isEmpty());
+    CHECK (crowded.strips.back().isEmpty());
+}
+
+TEST_CASE ("a Mixer strip stacks name, pan, fader beside its meter, the dB value, then M and S", "[ui][layout][mixer]")
+{
+    const Rectangle<int> strip { 10, 500, mixerStripWidth, defaultMixerHeight - 12 };
+    const auto layout = mixerStripLayout (strip);
+    checkInsideAndApart (strip, { layout.name, layout.pan, layout.fader, layout.meter, layout.value, layout.mute, layout.solo });
+    CHECK (layout.name.getBottom() <= layout.pan.getY());
+    CHECK (layout.pan.getBottom() <= layout.fader.getY());
+    CHECK (layout.fader.getRight() <= layout.meter.getX());
+    CHECK (layout.meter.getY() == layout.fader.getY());
+    CHECK (layout.meter.getHeight() == layout.fader.getHeight());
+    CHECK (layout.fader.getBottom() <= layout.value.getY());
+    CHECK (layout.value.getBottom() <= layout.mute.getY());
+    CHECK (layout.mute.getRight() < layout.solo.getX());
+    CHECK (layout.fader.getHeight() >= 60);
 }
 
 TEST_CASE ("a Track's unfolded Take Lanes sit under its lane, before the next Track", "[ui][layout][take_lanes]")

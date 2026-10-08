@@ -32,15 +32,4 @@ private:
 
     void addMonitoredInput (juce::AudioBuffer<float>& buffer) const noexcept;
 };
-
-// The Master node: every Track sums into its input (the graph does the summing). Pass-through in
-// this slice; Master volume and Insert Chain arrive in later slices.
-class MasterNode final : public PlainProcessor
-{
-public:
-    MasterNode() : PlainProcessor (stereoInOut()) {}
-
-    const juce::String getName() const override { return "Master"; }
-    void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override {}
-};
 } // namespace overdub::engine

@@ -79,7 +79,11 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row)
     area.removeFromLeft (gap);
     layout.monitoring = area.removeFromRight (86);
     area.removeFromRight (gap);
-    layout.input = area.removeFromRight (170);
+    layout.input = area.removeFromRight (150);
+    area.removeFromRight (gap);
+    layout.solo = area.removeFromRight (26);
+    area.removeFromRight (2);
+    layout.mute = area.removeFromRight (26);
     area.removeFromRight (gap);
     layout.name = area;
     return layout;
@@ -188,7 +192,54 @@ TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header)
     top.removeFromLeft (gap);
     layout.name = top;
     area.removeFromTop (rowGap);
-    layout.takesToggle = area.removeFromTop (22).removeFromLeft (96);
+    auto bottom = area.removeFromTop (22);
+    layout.solo = bottom.removeFromRight (22);
+    bottom.removeFromRight (2);
+    layout.mute = bottom.removeFromRight (22);
+    bottom.removeFromRight (gap);
+    layout.takesToggle = bottom.removeFromLeft (std::min (96, bottom.getWidth()));
+    return layout;
+}
+
+MixerLayout mixerLayout (juce::Rectangle<int> mixer, int numTracks)
+{
+    MixerLayout layout;
+    auto area = mixer.reduced (gap);
+    layout.master = area.removeFromRight (mixerStripWidth);
+    area.removeFromRight (2 * margin);
+    for (int i = 0; i < numTracks; ++i)
+    {
+        if (area.getWidth() < mixerStripWidth)
+        {
+            layout.strips.emplace_back();
+            continue;
+        }
+        layout.strips.push_back (area.removeFromLeft (mixerStripWidth));
+        area.removeFromLeft (gap);
+    }
+    return layout;
+}
+
+MixerStripLayout mixerStripLayout (juce::Rectangle<int> strip)
+{
+    MixerStripLayout layout;
+    auto area = strip.reduced (6);
+    layout.name = area.removeFromTop (18);
+    area.removeFromTop (rowGap);
+    layout.pan = area.removeFromTop (18);
+    area.removeFromTop (rowGap);
+    auto buttons = area.removeFromBottom (22);
+    area.removeFromBottom (rowGap);
+    layout.value = area.removeFromBottom (16);
+    area.removeFromBottom (rowGap);
+    // The fader and meter, side by side, centred.
+    auto faderRow = area.withSizeKeepingCentre (24 + gap + 10, area.getHeight());
+    layout.fader = faderRow.removeFromLeft (24);
+    faderRow.removeFromLeft (gap);
+    layout.meter = faderRow;
+    const auto buttonWidth = (buttons.getWidth() - gap) / 2;
+    layout.mute = buttons.removeFromLeft (buttonWidth);
+    layout.solo = buttons.removeFromRight (buttonWidth);
     return layout;
 }
 

@@ -4,8 +4,11 @@
 #include "song/FixtureSongBuilder.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <thread>
@@ -317,4 +320,89 @@ TEST_CASE ("a Clip source's peaks come from the package's cache, and a missing s
     for (const auto& event : capture.events())
         events.push_back (event.at ("event"));
     CHECK (events == std::vector<std::string> { "song.media_unknown" });
+}
+
+namespace
+{
+std::size_t plansBuilt (const ScopedLogCapture& capture)
+{
+    return (std::size_t) std::ranges::count_if (capture.events(), [] (const auto& event) { return event.at ("event") == "engine.plan_built"; });
+}
+
+// The peak of output channel 0 over the last `samples` samples the device rendered.
+float recentPeak (const LoopbackDevice& device, std::size_t samples)
+{
+    const auto& output = device.outputHistory[0];
+    float peak = 0.0f;
+    for (auto i = output.size() - samples; i < output.size(); ++i)
+        peak = std::max (peak, std::abs (output[i]));
+    return peak;
+}
+} // namespace
+
+TEST_CASE ("a Mixer edit and its undo and redo are heard without rebuilding the engine's plan", "[ui][open_song][mixer]")
+{
+    OpenSongFixture f;
+    f.openSong->playOrStop();
+    f.device.run (f.engine, 4);
+    REQUIRE (recentPeak (f.device, blockSize) > 0.0f);
+
+    ScopedLogCapture capture;
+    const auto bandMix = f.trackNamed ("Band Mix").id;
+    auto muted = f.song();
+    muted.tracks[0].mute = true;
+    REQUIRE (f.openSong->edit (muted, "Mute Band Mix").has_value());
+    f.device.run (f.engine, 2); // one block ramps down, then silence
+    CHECK_THAT (recentPeak (f.device, blockSize), Catch::Matchers::WithinAbs (0.0, 0.0));
+
+    REQUIRE (f.openSong->undo().has_value());
+    f.device.run (f.engine, 2);
+    CHECK (recentPeak (f.device, blockSize) > 0.0f);
+    REQUIRE (f.openSong->redo().has_value());
+    f.device.run (f.engine, 2);
+    CHECK_THAT (recentPeak (f.device, blockSize), Catch::Matchers::WithinAbs (0.0, 0.0));
+    CHECK (plansBuilt (capture) == 0);
+
+    // Any other change still rebuilds the plan.
+    auto renamed = f.song();
+    renamed.tracks[0].name = "Band";
+    REQUIRE (f.openSong->edit (renamed, "Rename").has_value());
+    CHECK (plansBuilt (capture) == 1);
+    CHECK (f.song().tracks[0].id == bandMix);
+}
+
+TEST_CASE ("a Mixer preview is heard but leaves the Song and its history alone", "[ui][open_song][mixer]")
+{
+    OpenSongFixture f;
+    f.openSong->playOrStop();
+    const auto before = f.song();
+    const auto stepsBefore = f.openSong->package().undoLabel();
+
+    auto quieter = before;
+    quieter.master.volumeDb = -60.0;
+    f.openSong->previewMix (quieter);
+    f.device.run (f.engine, 4);
+    const auto quietPeak = recentPeak (f.device, blockSize);
+
+    f.openSong->previewMix (before);
+    f.device.run (f.engine, 4);
+    const auto fullPeak = recentPeak (f.device, blockSize);
+
+    CHECK (f.song() == before);
+    CHECK (f.openSong->package().undoLabel() == stepsBefore);
+    CHECK (quietPeak > 0.0f);
+    CHECK (quietPeak < fullPeak / 500.0f); // -60 dB is 1/1000
+}
+
+TEST_CASE ("the meters report what each Track and the Master played since the last poll", "[ui][open_song][mixer][meters]")
+{
+    OpenSongFixture f;
+    f.openSong->playOrStop();
+    f.device.run (f.engine, 8);
+
+    const auto peaks = f.openSong->meterPeaks();
+    CHECK (peaks.tracks.at (f.trackNamed ("Band Mix").id) > 0.0f);
+    CHECK_THAT (peaks.tracks.at (f.trackNamed ("Guitar").id), Catch::Matchers::WithinAbs (0.0, 0.0));
+    CHECK (peaks.master > 0.0f);
+    CHECK_THAT (f.openSong->meterPeaks().master, Catch::Matchers::WithinAbs (0.0, 0.0)); // nothing played since
 }

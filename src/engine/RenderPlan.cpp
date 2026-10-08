@@ -134,15 +134,24 @@ void connectStereo (Graph& graph, Graph::NodeID from, Graph::NodeID to)
 RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& engineConfig, const TrackInsertFactory& makeInserts)
     : config (engineConfig), songSampleRate (song.sampleRate), trackCount ((int) song.tracks.size())
 {
+    for (const auto& track : song.tracks)
+    {
+        trackIds.push_back (track.id);
+        trackStrips.push_back (std::make_unique<StripControl>());
+    }
+    // Before the strip nodes are made: each starts from its control's gains, without a ramp.
+    applyMix (song);
+
     graph.setPlayConfigDetails (0, config.numOutputChannels, songSampleRate, config.maxBlockSize);
 
     const auto output = graph.addNode (std::make_unique<Graph::AudioGraphIOProcessor> (Graph::AudioGraphIOProcessor::audioOutputNode), {}, Graph::UpdateKind::none);
-    const auto master = graph.addNode (std::make_unique<MasterNode>(), {}, Graph::UpdateKind::none);
+    const auto master = graph.addNode (std::make_unique<MixStripNode> ("Master", masterStrip), {}, Graph::UpdateKind::none);
 
     SourceLoader loader { song, packageRoot };
     int clipCount = 0;
-    for (const auto& track : song.tracks)
+    for (std::size_t trackIndex = 0; trackIndex < song.tracks.size(); ++trackIndex)
     {
+        const auto& track = song.tracks[trackIndex];
         clipCount += (int) track.clips.size();
         auto previous = graph.addNode (makeTrackPlayer (track, loader, liveInput), {}, Graph::UpdateKind::none)->nodeID;
 
@@ -156,7 +165,9 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
             }
         }
 
-        connectStereo (graph, previous, master->nodeID);
+        const auto strip = graph.addNode (std::make_unique<MixStripNode> ("Strip " + juce::String (track.id), *trackStrips[trackIndex]), {}, Graph::UpdateKind::none)->nodeID;
+        connectStereo (graph, previous, strip);
+        connectStereo (graph, strip, master->nodeID);
     }
 
     for (int channel = 0; channel < std::min (2, config.numOutputChannels); ++channel)
@@ -173,6 +184,7 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
     juce::AudioBuffer<float> scratch { config.numOutputChannels, config.maxBlockSize };
     graph.processBlock (scratch, midi);
     graph.reset();
+    takeMeterPeaks();
 
     core::logEvent (core::Level::info,
                     "engine.plan_built",
@@ -182,6 +194,28 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
                       { "sample_rate", songSampleRate },
                       { "output_channels", config.numOutputChannels },
                       { "max_block_size", config.maxBlockSize } });
+}
+
+bool RenderPlan::hasTracksOf (const song::Song& song) const
+{
+    return std::ranges::equal (song.tracks, trackIds, {}, &song::Track::id);
+}
+
+void RenderPlan::applyMix (const song::Song& song)
+{
+    const auto gains = mixGains (song);
+    for (std::size_t i = 0; i < trackStrips.size() && i < gains.tracks.size(); ++i)
+        trackStrips[i]->setGains (gains.tracks[i]);
+    masterStrip.setGains ({ gains.master, gains.master });
+}
+
+MeterPeaks RenderPlan::takeMeterPeaks()
+{
+    MeterPeaks peaks;
+    for (std::size_t i = 0; i < trackStrips.size(); ++i)
+        peaks.tracks[trackIds[i]] = trackStrips[i]->takePeak();
+    peaks.master = masterStrip.takePeak();
+    return peaks;
 }
 
 std::uint64_t RenderPlan::render (float* const* outputs, const LiveInput& input, int numSamples, std::int64_t renderSample, bool playing) noexcept

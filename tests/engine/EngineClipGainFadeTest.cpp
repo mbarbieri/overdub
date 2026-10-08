@@ -15,7 +15,7 @@
 //   gain  = 10^(gainDb / 20)
 //   in    = k / fadeIn            while k < fadeIn            (0 at the Clip's first sample)
 //   out   = (L - 1 - k) / fadeOut while L - 1 - k < fadeOut   (0 at the Clip's last sample)
-//   value = source * gain * in * out
+//   value = source * gain * in * out * centrePanGain (the Track at the default mix, issue #31)
 using overdub::engine::Engine;
 using overdub::engine::EngineConfig;
 using namespace overdub::engine::testing;
@@ -60,7 +60,7 @@ std::vector<float> expectedOutput (const std::vector<float>& source, const ClipS
         const auto fromEnd = shape.length - 1 - k;
         if (fromEnd < shape.fadeOut)
             amplitude *= (double) fromEnd / (double) shape.fadeOut;
-        expected[(std::size_t) i] = (float) ((double) source[(std::size_t) (shape.sourceOffset + k)] * amplitude);
+        expected[(std::size_t) i] = (float) ((double) source[(std::size_t) (shape.sourceOffset + k)] * amplitude * centrePanGain);
     }
     return expected;
 }

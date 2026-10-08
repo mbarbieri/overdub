@@ -13,4 +13,6 @@ inline const juce::Colour dimText { 0xff8e8e93 };
 inline const juce::Colour accent { 0xff4f8cff };
 inline const juce::Colour rec { 0xffff453a };
 inline const juce::Colour notice { 0xff3a3a1e };
+inline const juce::Colour mute { 0xffff9f0a };
+inline const juce::Colour solo { 0xffffd60a };
 } // namespace overdub::ui::colours

@@ -10,6 +10,8 @@ target_sources(overdub_engine PRIVATE
     DeviceSettings.cpp
     Engine.cpp
     LatencyCalibration.cpp
+    MixLaw.cpp
+    MixStrip.cpp
     RecordSession.cpp
     RenderPlan.cpp
     TrackPlayer.cpp)

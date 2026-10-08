@@ -50,10 +50,13 @@ struct RecordPageLayout
 
 RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks);
 
+// Left to right: arm, name, mute, solo, input picker, Monitoring.
 struct TrackRowLayout
 {
     juce::Rectangle<int> arm;
     juce::Rectangle<int> name;
+    juce::Rectangle<int> mute;
+    juce::Rectangle<int> solo;
     juce::Rectangle<int> input;
     juce::Rectangle<int> monitoring;
 };
@@ -61,7 +64,7 @@ struct TrackRowLayout
 TrackRowLayout trackRowLayout (juce::Rectangle<int> row);
 
 // Edit mode (issue #28, issue #9 resolution): the Clip toolbar, the timeline, and under a
-// draggable divider the Mixer region (empty until slice 10), which can be hidden.
+// draggable divider the Mixer region (issue #31), which can be hidden.
 inline constexpr int clipToolbarHeight = 36;
 inline constexpr int mixerDividerHeight = 6;
 inline constexpr int minimumMixerHeight = 120;
@@ -131,15 +134,44 @@ struct TimelineLayout
 // takeLanesPerTrack: one entry per Track, its number of unfolded Take Lanes (0 when folded).
 TimelineLayout timelineLayout (juce::Rectangle<int> area, const std::vector<int>& takeLanesPerTrack);
 
-// Top row: arm, then the name. Under it, the Take Lanes toggle ("▸ 3 Takes").
+// Top row: arm, then the name. Under it, the Take Lanes toggle ("▸ 3 Takes"), then M and S.
 struct TrackHeaderLayout
 {
     juce::Rectangle<int> arm;
     juce::Rectangle<int> name;
     juce::Rectangle<int> takesToggle;
+    juce::Rectangle<int> mute;
+    juce::Rectangle<int> solo;
 };
 
 TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header);
+
+// The Mixer (issue #31): one strip of mixerStripWidth per Track from the left, and the Master
+// strip at the right edge. Strips that do not fit before the Master are empty (cut off).
+inline constexpr int mixerStripWidth = 92;
+
+struct MixerLayout
+{
+    std::vector<juce::Rectangle<int>> strips;
+    juce::Rectangle<int> master;
+};
+
+MixerLayout mixerLayout (juce::Rectangle<int> mixer, int numTracks);
+
+// Top to bottom: the name, the pan control, the fader with its meter on its right, the dB value,
+// then M and S side by side. The Master strip uses the same places and shows no pan, M or S.
+struct MixerStripLayout
+{
+    juce::Rectangle<int> name;
+    juce::Rectangle<int> pan;
+    juce::Rectangle<int> fader;
+    juce::Rectangle<int> meter;
+    juce::Rectangle<int> value;
+    juce::Rectangle<int> mute;
+    juce::Rectangle<int> solo;
+};
+
+MixerStripLayout mixerStripLayout (juce::Rectangle<int> strip);
 
 // Edit's Passes list (issue #30): a panel under the Passes button, one row per Pass (newest
 // first), each with its title, heard status and a Bring back button. The panel is kept inside

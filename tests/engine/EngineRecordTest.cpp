@@ -337,8 +337,8 @@ TEST_CASE ("with Monitoring on, an Armed Track hears its live input; otherwise i
     device.run (engine, 2); // transport stopped: Monitoring still sounds
     CHECK (nonZeroSamples (device.outputHistory[0]) == std::vector<std::int64_t> { 300 });
     CHECK (nonZeroSamples (device.outputHistory[1]) == std::vector<std::int64_t> { 300 });
-    CHECK_THAT (device.outputHistory[0][300], Catch::Matchers::WithinULP (0.25f, 0));
-    CHECK_THAT (device.outputHistory[1][300], Catch::Matchers::WithinULP (0.25f, 0));
+    CHECK_THAT (device.outputHistory[0][300], Catch::Matchers::WithinULP (0.25f * centrePanGain, 0));
+    CHECK_THAT (device.outputHistory[1][300], Catch::Matchers::WithinULP (0.25f * centrePanGain, 0));
 
     engine.setMonitoring (false);
     device.extraInput[1] = impulse (4 * blockSize, 3 * blockSize, 0.25f);

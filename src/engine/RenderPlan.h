@@ -1,17 +1,19 @@
 #pragma once
 
 #include "engine/LiveInput.h"
+#include "engine/MixStrip.h"
 #include "song/Song.h"
 
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <vector>
 
 // One Song snapshot made playable: its AudioProcessorGraph (Track nodes -> Insert Chain nodes ->
-// Master -> device outputs, ADR 0001) built, prepared and warmed up off the audio thread, so the
+// Track Mixer strip -> Master strip -> device outputs, ADR 0001, issue #31) built, prepared and warmed up off the audio thread, so the
 // audio thread only ever calls render(). The engine swaps whole plans; a plan never changes after
 // it is built.
 namespace overdub::engine
@@ -36,6 +38,13 @@ public:
 
     std::int64_t renderSample = 0;
     bool playing = false;
+};
+
+// Each strip's peak since the previous takeMeterPeaks (linear, post-fader), by Track id.
+struct MeterPeaks
+{
+    std::map<song::Id, float> tracks;
+    float master = 0.0f;
 };
 
 class RenderPlan
@@ -63,11 +72,24 @@ public:
     int latencySamples() const { return graphLatency; }
     int numTracks() const { return trackCount; }
 
+    // Non-audio thread. Whether `song` has exactly this plan's Tracks (ids, in order), so its mix
+    // can be applied here with applyMix.
+    bool hasTracksOf (const song::Song& song) const;
+    // Non-audio thread. Sets every strip's gains from the Song's mix (engine/MixLaw.h); the audio
+    // thread hears them from its next block. The Song must pass hasTracksOf.
+    void applyMix (const song::Song& song);
+    // Non-audio thread. The peaks since the previous call; each starts again from 0.
+    MeterPeaks takeMeterPeaks();
+
 private:
     EngineConfig config;
     int songSampleRate = 0;
     int graphLatency = 0;
     int trackCount = 0;
+    std::vector<song::Id> trackIds;
+    // The strips' controls, read by the strip nodes: declared before the graph, so they outlive it.
+    std::vector<std::unique_ptr<StripControl>> trackStrips;
+    StripControl masterStrip;
     PlanPlayHead playHead;
     LiveInput liveInput; // read by every Track node during render()
     juce::MidiBuffer midi; // always empty: no node reads or writes MIDI

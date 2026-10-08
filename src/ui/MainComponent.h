@@ -22,8 +22,11 @@
 // keys and clicks into Commands and OpenSong calls; the logic lives in the pure functions and
 // in OpenSong.
 //
+// M and S (Record rows, Edit headers, Mixer strips) and the Mixer's faders and pan are undo steps
+// through OpenSong::edit; a Mixer drag in progress is heard through OpenSong::previewMix (issue #31).
+//
 // Every 30 ms (and from tick() in tests) it polls the open Song, which finishes a stopped Pass,
-// refreshes the top bar and the page, and presents queued messages: Notices at once, Alerts only
+// refreshes the top bar and the page, feeds the Mixer's meters, and presents queued messages: Notices at once, Alerts only
 // when no Pass runs (ADR 0006). Logs ui.mode_changed (debug), ui.notice_shown, ui.alert_shown and
 // ui.alert_deferred (info), each with `code` and `tier` where it names a message.
 namespace overdub::ui
@@ -83,6 +86,8 @@ private:
     void splitSelectedClip();
     void deleteSelectedClip();
     void applyEdit (core::Expected<song::Song> changed, const std::string& label);
+    void setMute (const song::Id& trackId, bool mute);
+    void setSolo (const song::Id& trackId, bool solo);
     void importFiles (const std::vector<juce::File>& files);
     void post (UserMessage message);
     void presentMessages();

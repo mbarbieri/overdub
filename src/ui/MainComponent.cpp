@@ -1,6 +1,7 @@
 #include "ui/MainComponent.h"
 
 #include "song/ClipEdits.h"
+#include "song/MixEdits.h"
 
 #include "ui/Colours.h"
 #include "ui/Layout.h"
@@ -60,6 +61,8 @@ MainComponent::MainComponent()
             openSong->setMonitoring (trackId, on);
         refresh();
     };
+    recordPage.onMute = [this] (const song::Id& trackId, bool mute) { setMute (trackId, mute); };
+    recordPage.onSolo = [this] (const song::Id& trackId, bool solo) { setSolo (trackId, solo); };
     recordPage.onImport = [this] {
         if (openSong == nullptr || openSong->isRecording() || ! chooseFilesToImport)
             return;
@@ -80,6 +83,12 @@ MainComponent::MainComponent()
         if (openSong != nullptr)
             openSong->setArmed (trackId, armed);
         refresh();
+    };
+    editPage.onMute = [this] (const song::Id& trackId, bool mute) { setMute (trackId, mute); };
+    editPage.onSolo = [this] (const song::Id& trackId, bool solo) { setSolo (trackId, solo); };
+    editPage.onMixPreview = [this] (const song::Song& preview) {
+        if (openSong != nullptr)
+            openSong->previewMix (preview);
     };
     editPage.onSplit = [this] { perform (Command::splitClip); };
     editPage.onDelete = [this] { perform (Command::deleteClip); };
@@ -199,6 +208,18 @@ void MainComponent::applyEdit (core::Expected<song::Song> changed, const std::st
     refresh();
 }
 
+void MainComponent::setMute (const song::Id& trackId, bool mute)
+{
+    if (openSong != nullptr)
+        applyEdit (song::setTrackMute (openSong->song(), trackId, mute), song::muteLabel (openSong->song(), trackId, mute));
+}
+
+void MainComponent::setSolo (const song::Id& trackId, bool solo)
+{
+    if (openSong != nullptr)
+        applyEdit (song::setTrackSolo (openSong->song(), trackId, solo), song::soloLabel (openSong->song(), trackId, solo));
+}
+
 void MainComponent::showMode (Mode mode)
 {
     if (mode != currentMode)
@@ -268,6 +289,9 @@ void MainComponent::tick()
     if (openSong != nullptr)
         handleErrors (openSong->poll());
     refresh();
+    // Taken every poll, in every mode, so the meters show only what played since the last one.
+    if (openSong != nullptr)
+        editPage.mixer.showMeters (openSong->meterPeaks());
     presentMessages();
 }
 

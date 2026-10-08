@@ -1,6 +1,9 @@
 #include "ui/MainWindowFixture.h"
+#include "ui/MixerGeometry.h"
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <cmath>
 
 using namespace overdub::ui::testing;
 
@@ -174,4 +177,67 @@ TEST_CASE ("snapshots of a Track with three Take Lanes unfolded, partly heard, a
     REQUIRE (window.editPage.isPassesPanelOpen());
     window.tick();
     CHECK (writeSnapshot (window, slice, "edit-passes-panel").existsAsFile());
+}
+
+// The Mixer (issue #31): build/ui-snapshots/slice-10/*.png. Four Tracks (a 6 s Backing Track and
+// three recorded ones) and the Master, with volumes, pans, a mute and a solo set through the
+// strips, the Record rows and the Edit headers, and the meters lit by playback; then the Mixer
+// hidden, and Record mode's rows with M and S.
+TEST_CASE ("snapshots of the Mixer with four strips and the Master, and hidden", "[ui][snapshot][mixer]")
+{
+    const std::string slice = "slice-10";
+    MainWindowFixture f { overdub::song::testing::FixtureSongBuilder {}
+                              .backingTrack ("Band Mix", 6.0, 220.0)
+                              .track ("Guitar", true, { 0 })
+                              .track ("Vocals", true, { 1 })
+                              .track ("Keys", true, { 0 })
+                              .build() };
+    auto& window = *f.window;
+
+    REQUIRE (pressKey (window, 'r'));
+    f.runBlocks (560);
+    REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+    REQUIRE (f.song().passes.size() == 1);
+
+    REQUIRE (pressKey (window, '2'));
+    auto& mixer = window.editPage.mixer;
+    REQUIRE (mixer.strips.size() == 4);
+    const auto dragFader = [] (overdub::ui::MixerFader& fader, int deltaY) {
+        const auto y = overdub::ui::MixerFader::thumbHeight / 2 + (int) std::lround ((1.0 - overdub::ui::dbToFaderPosition (fader.db())) * fader.travel());
+        const juce::Point<int> grab { fader.getWidth() / 2, y };
+        drag (fader, grab, grab.translated (0, deltaY));
+    };
+    const auto dragPan = [] (overdub::ui::PanControl& pan, int deltaX) {
+        const auto centre = pan.getLocalBounds().getCentre();
+        drag (pan, centre, centre.translated (deltaX, 0));
+    };
+    dragFader (mixer.strips[0]->fader, 20);  // Band Mix down
+    dragFader (mixer.strips[1]->fader, -12); // Guitar up
+    dragPan (mixer.strips[1]->panControl, -25);
+    dragPan (mixer.strips[3]->panControl, 30);
+    dragFader (mixer.masterStrip.fader, 8);
+    click (mixer.strips[2]->muteButton); // Vocals muted
+    click (window.editPage.timeline.headers[3]->soloButton); // Keys soloed from its header
+    click (window.editPage.timeline.headers[3]->soloButton); // and unsoloed again
+    REQUIRE (f.trackNamed ("Vocals").mute);
+
+    f.openSong->seek (0);
+    REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+    f.runBlocks (60);
+    window.editPage.timeline.setView (0, 512);
+    window.tick();
+    REQUIRE (mixer.masterStrip.meter.level() > 0.0f);
+    CHECK (writeSnapshot (window, slice, "edit-mixer").existsAsFile());
+
+    click (window.editPage.toolbar.mixerButton);
+    window.tick();
+    CHECK (writeSnapshot (window, slice, "edit-mixer-hidden").existsAsFile());
+
+    REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+    click (f.rowNamed ("Keys").soloButton);
+    REQUIRE (pressKey (window, '1'));
+    window.tick();
+    CHECK (writeSnapshot (window, slice, "record-mute-solo").existsAsFile());
 }

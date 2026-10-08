@@ -2,6 +2,7 @@
 
 #include "core/Error.h"
 #include "song/Song.h"
+#include "ui/Mixer.h"
 #include "ui/TakeLanes.h"
 #include "ui/Timeline.h"
 #include "ui/TransportText.h"
@@ -17,7 +18,7 @@
 // Edit mode's page (issues #28, #29, issue #9 resolution, variant C): the Clip toolbar (the
 // selected Clip's name, Track, start and length; its fade-in, fade-out and gain fields; Split,
 // Delete; zoom; the Mixer toggle) over the Timeline, and under a draggable divider the Mixer
-// region, empty until the Mixer arrives (slice 10). Thin: Split and Delete are reported to the
+// (ui/Mixer.h, issue #31), which the toggle hides and shows. Thin: Split and Delete are reported to the
 // window, which runs them like the S and backspace keys; drags arrive from the Timeline, and field
 // entries are made here, as a changed Song and its undo label ("Fade In", "Fade Out", "Clip Gain").
 //
@@ -131,13 +132,6 @@ private:
     int grabOffset = 0;
 };
 
-// Where the Mixer goes (slice 10): empty for now.
-class MixerRegion final : public juce::Component
-{
-public:
-    void paint (juce::Graphics& g) override;
-};
-
 class EditPage final : public juce::Component
 {
 public:
@@ -155,15 +149,20 @@ public:
     int mixerHeight() const { return mixerHeightRequested; }
 
     std::function<void (song::Song changed, std::string label)> onEdit;
+    // The Song a Mixer gesture in progress would make (OpenSong::previewMix).
+    std::function<void (const song::Song& preview)> onMixPreview;
     std::function<void (song::SampleCount sample)> onSeek;
     std::function<void (const song::Id& trackId, bool armed)> onArm;
+    // M and S in the Track headers.
+    std::function<void (const song::Id& trackId, bool mute)> onMute;
+    std::function<void (const song::Id& trackId, bool solo)> onSolo;
     std::function<void()> onSplit;
     std::function<void()> onDelete;
 
     ClipToolbar toolbar;
     Timeline timeline;
     MixerDivider divider;
-    MixerRegion mixer;
+    Mixer mixer;
     juce::TextButton passesButton;
     PassesPanel passesPanel;
 

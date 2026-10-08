@@ -292,14 +292,6 @@ void MixerDivider::paint (juce::Graphics& g)
     g.fillAll (colours::line);
 }
 
-void MixerRegion::paint (juce::Graphics& g)
-{
-    g.fillAll (colours::panel.darker (0.2f));
-    g.setColour (colours::dimText);
-    g.setFont (juce::FontOptions (13.0f));
-    g.drawText ("The Mixer arrives in a later version.", getLocalBounds(), juce::Justification::centred);
-}
-
 //==============================================================================
 
 EditPage::EditPage()
@@ -352,7 +344,23 @@ EditPage::EditPage()
         if (onArm)
             onArm (trackId, armed);
     };
+    timeline.onMute = [this] (const song::Id& trackId, bool mute) {
+        if (onMute)
+            onMute (trackId, mute);
+    };
+    timeline.onSolo = [this] (const song::Id& trackId, bool solo) {
+        if (onSolo)
+            onSolo (trackId, solo);
+    };
     timeline.onSelectionChanged = [this] { showToolbar(); };
+    mixer.onEdit = [this] (song::Song changed, std::string label) {
+        if (onEdit)
+            onEdit (std::move (changed), std::move (label));
+    };
+    mixer.onPreview = [this] (const song::Song& preview) {
+        if (onMixPreview)
+            onMixPreview (preview);
+    };
 
     passesButton.setButtonText (juce::String::fromUTF8 ("Passes \xE2\x96\xBE"));
     passesButton.setWantsKeyboardFocus (false);
@@ -381,6 +389,7 @@ void EditPage::show (const TimelineState& state)
     const auto passesChanged = state.song != current.song || state.editable != current.editable;
     current = state;
     timeline.show (current);
+    mixer.show (current.song, current.editable);
     showToolbar();
     if (passesChanged)
         showPasses();

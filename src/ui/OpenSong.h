@@ -14,8 +14,9 @@
 #include <vector>
 
 // One open Song bound to the live engine (issue #27): what the main window's gestures do. It owns
-// the package, keeps the engine playing the current Song (reloaded after every change), and runs
-// at most one Pass (capture/PassRecorder.h).
+// the package, keeps the engine playing the current Song (reloaded after every change; a change
+// only to the mix is applied with Engine::setMix instead, so it plays on without a plan rebuild,
+// issue #31), and runs at most one Pass (capture/PassRecorder.h).
 //
 // Invariant: every Pass it starts is finished by it. stop() asks the audio thread to
 // end the Pass; poll() (from the window's timer) finishes it once the audio thread has; detaching
@@ -86,6 +87,13 @@ public:
     // Errors: SongPackage::edit's.
     core::Expected<void> edit (song::Song changed, std::string label);
 
+    // The engine plays this Song's mix (a Mixer gesture in progress) without changing the Song or
+    // its history; ignored unless it differs from the Song only in its mix, and while a Pass runs.
+    // A finished gesture is an edit(); an abandoned one previews song() again.
+    void previewMix (const song::Song& candidate);
+    // Each Mixer strip's peak since the previous call (Engine::takeMeterPeaks); none without audio.
+    engine::MeterPeaks meterPeaks();
+
     // The peaks of a Clip's source from the package's cache (rebuilt there when missing), kept
     // here once read. When they cannot be had, the Error is logged once (warn) and the result has
     // no channels: the Clip is drawn without a waveform.
@@ -107,6 +115,8 @@ public:
 
 private:
     void reloadEngine();
+    // After a history change: setMix when only the mix changed since `before`, else reloadEngine.
+    void updateEngine (const song::Song& before);
     std::vector<core::Error> finishPass (core::Expected<capture::RecordedPass> finished);
 
     std::unique_ptr<song::SongPackage> package_;

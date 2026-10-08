@@ -42,6 +42,16 @@ public:
     // hands it to the audio thread, which plays it from the next callback at the current position.
     void loadSong (const song::Song& song, const juce::File& packageRoot, const TrackInsertFactory& makeInserts = {});
 
+    // The Mixer (issue #31), any non-audio thread. Applies the Song's Track volumes, pans, mutes and
+    // solos and its Master volume (engine/MixLaw.h) to the most recently loaded plan without
+    // rebuilding it: heard from the next block, ramped over that block. Returns false, changing
+    // nothing, when no Song is loaded or the Song's Tracks (ids, in order) are not the loaded
+    // Song's: then call loadSong.
+    bool setMix (const song::Song& song);
+    // Any non-audio thread. Each strip's peak (post-fader, linear) since the previous call, from the
+    // most recently loaded plan; empty before the first loadSong.
+    MeterPeaks takeMeterPeaks();
+
     // Transport commands, any non-audio thread. Each takes effect at the start of the next block;
     // within one block a seek applies before play/stop. After each of them, and after a plan
     // swap, the first latencySamples() output samples are silence: the graph's delay lines still
@@ -129,6 +139,9 @@ private:
     std::atomic<RenderPlan*> pendingPlan { nullptr };
     std::array<std::atomic<RenderPlan*>, 2> retiredPlans {};
     RenderPlan* currentPlan = nullptr; // audio thread only
+    // The plan loadSong published last (under nonRealtimeMutex). It is pending or current: a plan
+    // is retired, and so freed, only after a newer one is published.
+    RenderPlan* latestPlan = nullptr;
     std::atomic<int> currentLatency { 0 };
     std::atomic<int> currentSampleRate { 0 };
 

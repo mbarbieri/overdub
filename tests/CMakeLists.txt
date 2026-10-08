@@ -21,11 +21,14 @@ target_sources(overdub_tests PRIVATE
     engine/EngineEventsTest.cpp
     engine/EngineRealtimeTest.cpp
     engine/EngineRecordTest.cpp
+    engine/EngineMixerTest.cpp
     engine/LatencyCalibrationTest.cpp
+    engine/MixLawTest.cpp
     engine/EngineTakeLanesTest.cpp
     engine/EngineTest.cpp
     song/BackingTrackImportTest.cpp
     song/ClipEditsTest.cpp
+    song/MixEditsTest.cpp
     song/SongJsonTest.cpp
     song/SongMigrationTest.cpp
     song/PeaksTest.cpp
@@ -38,6 +41,8 @@ target_sources(overdub_tests PRIVATE
     ui/EditPageTest.cpp
     ui/LayoutTest.cpp
     ui/MainComponentTest.cpp
+    ui/MixerGeometryTest.cpp
+    ui/MixerUiTest.cpp
     ui/OpenSongTest.cpp
     ui/SnapshotTest.cpp
     ui/SongFilesTest.cpp

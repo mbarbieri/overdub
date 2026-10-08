@@ -107,9 +107,24 @@ TrackHeader::TrackHeader()
         if (onToggleTakes)
             onToggleTakes();
     };
+    muteButton.setColour (juce::TextButton::buttonOnColourId, colours::mute);
+    soloButton.setColour (juce::TextButton::buttonOnColourId, colours::solo);
+    soloButton.setColour (juce::TextButton::textColourOnId, colours::background);
+    muteButton.setWantsKeyboardFocus (false);
+    soloButton.setWantsKeyboardFocus (false);
+    muteButton.onClick = [this] {
+        if (onMute)
+            onMute (! muted);
+    };
+    soloButton.onClick = [this] {
+        if (onSolo)
+            onSolo (! soloed);
+    };
     addAndMakeVisible (armButton);
     addAndMakeVisible (nameLabel);
     addChildComponent (takesButton);
+    addAndMakeVisible (muteButton);
+    addAndMakeVisible (soloButton);
 }
 
 void TrackHeader::show (const song::Track& track, bool enabled, int numTakes, bool unfolded)
@@ -119,6 +134,12 @@ void TrackHeader::show (const song::Track& track, bool enabled, int numTakes, bo
     nameLabel.setText (juce::String::fromUTF8 (track.name.c_str()), juce::dontSendNotification);
     armButton.setToggleState (track.armed, juce::dontSendNotification);
     armButton.setEnabled (enabled);
+    muted = track.mute;
+    soloed = track.solo;
+    muteButton.setToggleState (track.mute, juce::dontSendNotification);
+    soloButton.setToggleState (track.solo, juce::dontSendNotification);
+    muteButton.setEnabled (enabled);
+    soloButton.setEnabled (enabled);
     takesButton.setVisible (numTakes > 0);
     takesButton.setButtonText (takesToggleText (numTakes, unfolded));
     takesButton.setToggleState (unfolded, juce::dontSendNotification);
@@ -130,6 +151,8 @@ void TrackHeader::resized()
     armButton.setBounds (headerLayout.arm);
     nameLabel.setBounds (headerLayout.name);
     takesButton.setBounds (headerLayout.takesToggle);
+    muteButton.setBounds (headerLayout.mute);
+    soloButton.setBounds (headerLayout.solo);
 }
 
 void TrackHeader::paint (juce::Graphics& g)
@@ -276,6 +299,14 @@ void Timeline::rebuildHeaders()
                 onArm (trackId, armed);
         };
         header->onToggleTakes = [this, trackId] { setTakeLanesUnfolded (trackId, ! areTakeLanesUnfolded (trackId)); };
+        header->onMute = [this, trackId] (bool mute) {
+            if (onMute)
+                onMute (trackId, mute);
+        };
+        header->onSolo = [this, trackId] (bool solo) {
+            if (onSolo)
+                onSolo (trackId, solo);
+        };
         addAndMakeVisible (*header);
         headers.push_back (std::move (header));
     }

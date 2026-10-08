@@ -19,6 +19,8 @@ RecordPageState recordPageStateFor (const song::Song& song,
             .trackId = track.id,
             .name = track.name,
             .armed = track.armed,
+            .mute = track.mute,
+            .solo = track.solo,
             .choices = choices,
             .selectedChoice = choiceIndexFor (choices, track.inputChannels),
             .monitoring = isMonitoring (track.id),
@@ -34,6 +36,17 @@ TrackRow::TrackRow()
 {
     armButton.setColour (juce::TextButton::buttonOnColourId, colours::rec);
     monitoringButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
+    muteButton.setColour (juce::TextButton::buttonOnColourId, colours::mute);
+    soloButton.setColour (juce::TextButton::buttonOnColourId, colours::solo);
+    soloButton.setColour (juce::TextButton::textColourOnId, colours::background);
+    muteButton.onClick = [this] {
+        if (onMute)
+            onMute (! current.mute);
+    };
+    soloButton.onClick = [this] {
+        if (onSolo)
+            onSolo (! current.solo);
+    };
     nameLabel.setColour (juce::Label::textColourId, colours::text);
     nameLabel.setFont (juce::FontOptions (14.0f));
     inputPicker.setTextWhenNothingSelected ("Input?");
@@ -55,12 +68,14 @@ TrackRow::TrackRow()
         onInput (current.choices[(std::size_t) index].channels);
     };
 
-    for (auto* button : { &armButton, &monitoringButton })
+    for (auto* button : { &armButton, &monitoringButton, &muteButton, &soloButton })
         button->setWantsKeyboardFocus (false);
     inputPicker.setWantsKeyboardFocus (false);
 
     addAndMakeVisible (armButton);
     addAndMakeVisible (nameLabel);
+    addAndMakeVisible (muteButton);
+    addAndMakeVisible (soloButton);
     addAndMakeVisible (inputPicker);
     addAndMakeVisible (monitoringButton);
 }
@@ -73,6 +88,8 @@ void TrackRow::show (const TrackRowState& state)
     nameLabel.setText (juce::String::fromUTF8 (state.name.c_str()), juce::dontSendNotification);
     armButton.setToggleState (state.armed, juce::dontSendNotification);
     monitoringButton.setToggleState (state.monitoring, juce::dontSendNotification);
+    muteButton.setToggleState (state.mute, juce::dontSendNotification);
+    soloButton.setToggleState (state.solo, juce::dontSendNotification);
 
     if (choicesChanged)
     {
@@ -85,7 +102,7 @@ void TrackRow::show (const TrackRowState& state)
     else
         inputPicker.setSelectedId (0, juce::dontSendNotification);
 
-    for (auto* control : std::initializer_list<juce::Component*> { &armButton, &inputPicker, &monitoringButton })
+    for (auto* control : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &inputPicker, &monitoringButton })
         control->setEnabled (state.enabled);
     repaint();
 }
@@ -95,6 +112,8 @@ void TrackRow::resized()
     const auto layout = trackRowLayout (getLocalBounds());
     armButton.setBounds (layout.arm);
     nameLabel.setBounds (layout.name);
+    muteButton.setBounds (layout.mute);
+    soloButton.setBounds (layout.solo);
     inputPicker.setBounds (layout.input);
     monitoringButton.setBounds (layout.monitoring);
 }
@@ -145,6 +164,14 @@ void RecordPage::show (const RecordPageState& state)
             row->onMonitoring = [this, trackId] (bool on) {
                 if (onMonitoring)
                     onMonitoring (trackId, on);
+            };
+            row->onMute = [this, trackId] (bool mute) {
+                if (onMute)
+                    onMute (trackId, mute);
+            };
+            row->onSolo = [this, trackId] (bool solo) {
+                if (onSolo)
+                    onSolo (trackId, solo);
             };
             addAndMakeVisible (*row);
             rows.push_back (std::move (row));
