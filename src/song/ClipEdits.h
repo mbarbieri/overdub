@@ -30,6 +30,9 @@ inline constexpr const char* clipGainLabel = "Clip Gain";
 inline constexpr double minClipGainDb = -24.0;
 inline constexpr double maxClipGainDb = 12.0;
 
+// A Clip gain in dB as a linear amplitude factor: 10^(gainDb / 20).
+double linearGain (double gainDb);
+
 // A Song sample range [start, end).
 struct SampleSpan
 {

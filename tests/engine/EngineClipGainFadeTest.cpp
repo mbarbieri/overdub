@@ -133,3 +133,32 @@ TEST_CASE ("after a seek into a fade the output nulls against the envelope from 
         CHECK (nonZeroSamples (slice (after.channels[0], 10000 - 1 - seekTo, after.length())).empty());
     }
 }
+
+TEST_CASE ("a faded Clip partly hidden by a Clip on top keeps its whole-Clip envelope where it shows", "[engine][clip_gain]")
+{
+    TempPackage package;
+    auto songToPlay = song::makeEmptySong (testSampleRate);
+    const auto lowSource = sine (12000, 330.0, 0.7f);
+    const auto highSource = sine (12000, 1250.0, 0.4f);
+    const auto lowTake = addTake (songToPlay, package, "take-low", lowSource);
+    const auto highTake = addTake (songToPlay, package, "take-high", highSource);
+    // The top Clip [3000, 6000) hides the middle of the low one [0, 9000), fades included.
+    const ClipShape lowShape { .timelineStart = 0, .sourceOffset = 0, .length = 9000, .gainDb = -2.0, .fadeIn = 4000, .fadeOut = 4500 };
+    const ClipShape highShape { .timelineStart = 3000, .sourceOffset = 1000, .length = 3000, .gainDb = 1.0, .fadeIn = 500, .fadeOut = 700 };
+    auto low = clipShaped (lowTake, lowShape);
+    auto high = clipShaped (highTake, highShape);
+    high.id = "clip-high";
+    songToPlay.tracks.push_back (trackWith ("track-a", { low, high }));
+
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = maxBlockSize } };
+    engine.loadSong (songToPlay, package.root);
+    engine.play();
+    DeviceDriver device { 2, 100 };
+    const auto rendered = device.render (engine, 100).channels[0];
+
+    const auto expectedLow = expectedOutput (lowSource, lowShape, 0, (std::int64_t) rendered.size());
+    const auto expectedHigh = expectedOutput (highSource, highShape, 0, (std::int64_t) rendered.size());
+    CHECK (peakResidualDbfs (slice (rendered, 0, 3000), slice (expectedLow, 0, 3000)) <= -120.0);
+    CHECK (peakResidualDbfs (slice (rendered, 3000, 6000), slice (expectedHigh, 3000, 6000)) <= -120.0);
+    CHECK (peakResidualDbfs (slice (rendered, 6000, 10000), slice (expectedLow, 6000, 10000)) <= -120.0);
+}

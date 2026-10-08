@@ -1,5 +1,6 @@
 #include "ui/Timeline.h"
 
+#include "core/Error.h"
 #include "song/ClipEdits.h"
 #include "ui/Colours.h"
 
@@ -49,6 +50,11 @@ PixelRect handleRect (const ClipHandleBounds& handles, ClipPart part)
             break;
     }
     return {};
+}
+
+juce::Rectangle<int> toRectangle (PixelRect rect)
+{
+    return { rect.x, rect.y, rect.width, rect.height };
 }
 
 std::string rulerLabel (double seconds)
@@ -239,7 +245,7 @@ juce::Rectangle<int> Timeline::handleBounds (const song::Id& clipId, ClipPart pa
             const auto clipTop = clipRectangle (layout.trackLanes[i], clipColumns (timelineView, clip)).getY();
             const auto handles = clipHandleBounds (timelineView, clip, clipTop);
             const auto rect = handleRect (handles, part);
-            return juce::Rectangle<int> { rect.x, rect.y, rect.width, rect.height }.getIntersection (lanesArea());
+            return toRectangle (rect).getIntersection (lanesArea());
         }
     }
     return {};
@@ -286,6 +292,8 @@ void Timeline::mouseDown (const juce::MouseEvent& event)
     }
     // The Clip's fade handles and dB tag win over its body and edges.
     const auto* clip = song::findClip (current.song, hit->clipId);
+    if (! OVERDUB_CHECK (clip != nullptr, "ui.hit_clip_missing", { "clip_id", hit->clipId }))
+        return;
     const auto clipTop = clipRectangle (layout.trackLanes[*lane], clipColumns (timelineView, *clip)).getY();
     if (const auto handle = hitTestClipHandles (timelineView, *clip, clipTop, position.x, position.y))
         hit->part = *handle;
@@ -464,7 +472,7 @@ void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Recta
             const auto columns = waveformColumns (peaks, sourceStart, timelineView.samplesPerPixel, lastX - firstX);
             const auto centre = (float) waveArea.getCentreY();
             const auto halfHeight = (float) waveArea.getHeight() * 0.5f;
-            const auto gain = (float) std::pow (10.0, clip.gainDb / 20.0);
+            const auto gain = (float) song::linearGain (clip.gainDb);
             g.setColour (juce::Colours::white.withAlpha (0.6f));
             for (std::size_t i = 0; i < columns.size(); ++i)
             {
@@ -511,11 +519,11 @@ void Timeline::paintFadesAndGain (juce::Graphics& g, const song::Clip& clip, juc
     const auto isSelected = selected == clip.id;
     g.setColour (juce::Colours::white.withAlpha (isSelected ? 0.95f : 0.55f));
     for (const auto& handle : { handles.fadeIn, handles.fadeOut })
-        g.fillRoundedRectangle (juce::Rectangle<int> { handle.x, handle.y, handle.width, handle.height }.toFloat(), 2.0f);
+        g.fillRoundedRectangle (toRectangle (handle).toFloat(), 2.0f);
 
     if (! handles.gainTag.isEmpty())
     {
-        const juce::Rectangle<int> tag { handles.gainTag.x, handles.gainTag.y, handles.gainTag.width, handles.gainTag.height };
+        const auto tag = toRectangle (handles.gainTag);
         g.setColour (juce::Colours::black.withAlpha (0.35f));
         g.fillRoundedRectangle (tag.toFloat(), 3.0f);
         g.setColour (juce::Colours::white.withAlpha (0.9f));

@@ -1,6 +1,7 @@
 #include "song/ClipEdits.h"
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 
 namespace overdub::song
@@ -127,6 +128,11 @@ core::Expected<Song> splitClip (Song song, const Id& clipId, SampleCount at, con
     return song;
 }
 
+double linearGain (double gainDb)
+{
+    return std::pow (10.0, gainDb / 20.0);
+}
+
 core::Expected<Song> setClipFadeIn (Song song, const Id& clipId, SampleCount length)
 {
     const auto position = locateClip (song, clipId);
@@ -134,7 +140,6 @@ core::Expected<Song> setClipFadeIn (Song song, const Id& clipId, SampleCount len
         return std::unexpected (clipNotFound (clipId));
     auto& clip = song.tracks[position->track].clips[position->clip];
     clip.fadeInLength = std::clamp<SampleCount> (length, 0, std::max<SampleCount> (0, clip.length - clip.fadeOutLength));
-    clampFades (clip);
     return song;
 }
 
@@ -145,7 +150,6 @@ core::Expected<Song> setClipFadeOut (Song song, const Id& clipId, SampleCount le
         return std::unexpected (clipNotFound (clipId));
     auto& clip = song.tracks[position->track].clips[position->clip];
     clip.fadeOutLength = std::clamp<SampleCount> (length, 0, std::max<SampleCount> (0, clip.length - clip.fadeInLength));
-    clampFades (clip);
     return song;
 }
 

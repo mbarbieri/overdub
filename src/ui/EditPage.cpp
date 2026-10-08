@@ -168,11 +168,12 @@ void ClipToolbar::show (const ClipToolbarState& state, bool mixerVisible)
     details.setColour (juce::Label::textColourId, state.hasClip ? colours::text : colours::dimText);
     splitButton.setEnabled (state.canSplit);
     deleteButton.setEnabled (state.canDelete);
-    for (auto [field, text] : { std::pair { &fadeInField, &state.fadeInText }, std::pair { &fadeOutField, &state.fadeOutText }, std::pair { &gainField, &state.gainText } })
-    {
-        field->setText (juce::String::fromUTF8 (text->c_str()), juce::dontSendNotification);
-        field->setEnabled (state.canEditFadesAndGain);
-    }
+    fadeInField.setText (juce::String::fromUTF8 (state.fadeInText.c_str()), juce::dontSendNotification);
+    fadeOutField.setText (juce::String::fromUTF8 (state.fadeOutText.c_str()), juce::dontSendNotification);
+    gainField.setText (juce::String::fromUTF8 (state.gainText.c_str()), juce::dontSendNotification);
+    fadeInField.setEnabled (state.canEditFadesAndGain);
+    fadeOutField.setEnabled (state.canEditFadesAndGain);
+    gainField.setEnabled (state.canEditFadesAndGain);
     mixerButton.setToggleState (mixerVisible, juce::dontSendNotification);
 }
 
@@ -315,8 +316,9 @@ void EditPage::editSelectedClip (const std::function<core::Expected<song::Song> 
     const auto& clipId = timeline.selectedClip();
     if (clipId.has_value() && current.editable)
     {
+        // The fields are enabled only while the selected Clip is in the Song.
         auto changed = change (current.song, *clipId);
-        if (changed.has_value() && *changed != current.song && onEdit)
+        if (OVERDUB_CHECK (changed.has_value(), "ui.clip_field_edit_failed", { "clip_id", *clipId }) && *changed != current.song && onEdit)
             onEdit (std::move (*changed), label);
     }
     showToolbar();

@@ -1,5 +1,7 @@
 #include "engine/ClipSchedule.h"
 
+#include "song/ClipEdits.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -84,7 +86,7 @@ std::vector<ClipSegment> flattenClips (std::span<const LayeredClip> clipsInLayer
             .envelope = {
                 .clipStart = clip.timelineStart,
                 .clipLength = clip.length,
-                .gain = std::pow (10.0, clip.gainDb / 20.0),
+                .gain = song::linearGain (clip.gainDb),
                 .fadeInLength = clip.fadeInLength,
                 .fadeOutLength = clip.fadeOutLength,
             },
