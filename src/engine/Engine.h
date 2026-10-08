@@ -40,7 +40,7 @@ public:
 
     // Non-audio thread. Builds a plan from this Song snapshot (media read from packageRoot) and
     // hands it to the audio thread, which plays it from the next callback at the current position.
-    void loadSong (const song::Song& song, const juce::File& packageRoot, const TrackInsertFactory& makeInserts = {});
+    void loadSong (const song::Song& song, const juce::File& packageRoot, const InsertFactory& makeInserts = {});
 
     // The Mixer (issue #31), any non-audio thread. Applies the Song's Track volumes, pans, mutes and
     // solos and its Master volume (engine/MixLaw.h) to the most recently loaded plan without
@@ -72,6 +72,8 @@ public:
     SampleCount position() const;
     // The latency of the plan the audio thread plays now (0 before the first plan arrives).
     int latencySamples() const;
+    // The tail of the plan the audio thread plays now (RenderPlan::tailSamples; 0 before the first).
+    int tailSamples() const;
     // The latest callback's anchor; empty before the first callback.
     std::optional<Anchor> latestAnchor() const;
 
@@ -149,6 +151,7 @@ private:
     // is retired, and so freed, only after a newer one is published.
     RenderPlan* latestPlan = nullptr;
     std::atomic<int> currentLatency { 0 };
+    std::atomic<int> currentTail { 0 };
     std::atomic<int> currentSampleRate { 0 };
 
     // The shape of the block being rejected (audio thread only); {0, 0} while blocks fit.

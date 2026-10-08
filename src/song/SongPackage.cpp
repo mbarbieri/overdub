@@ -148,6 +148,7 @@ core::Expected<void> SongPackage::edit (Song changed, std::string label, Clock::
 
 SongPackage::EditOutcome SongPackage::commitEdit (Song changed, std::string label, Clock::time_point now)
 {
+    capturePluginState (changed);
     if (auto pushed = history.push (changed, label); ! pushed.has_value())
         return EditOutcome { false, std::move (pushed) };
     currentSong = std::move (changed);
@@ -174,6 +175,8 @@ core::Expected<void> SongPackage::restoreSnapshot (core::Expected<Song> snapshot
 {
     if (! snapshot.has_value())
         return std::unexpected (snapshot.error());
+    // The surviving slots keep their current state (keepStateOutsideHistory): make it current.
+    capturePluginState (currentSong);
     currentSong = keepStateOutsideHistory (std::move (*snapshot), currentSong);
     return writeCommittedStep (now);
 }
@@ -193,6 +196,7 @@ core::Expected<void> SongPackage::writeIfDue (Clock::time_point now)
 {
     if (! writeDeadline.has_value() || now < *writeDeadline)
         return {};
+    capturePluginState (currentSong);
     return writeSongJson();
 }
 
@@ -200,6 +204,7 @@ core::Expected<void> SongPackage::flush()
 {
     if (! writeDeadline.has_value())
         return {};
+    capturePluginState (currentSong);
     return writeSongJson();
 }
 
@@ -291,6 +296,12 @@ void SongPackage::scheduleWrite (Clock::time_point now)
 {
     if (! writeDeadline.has_value())
         writeDeadline = now + options.saveDelay;
+}
+
+void SongPackage::capturePluginState (Song& song)
+{
+    if (pluginStateCapture)
+        pluginStateCapture (song);
 }
 
 core::Expected<void> SongPackage::writeSongJson()

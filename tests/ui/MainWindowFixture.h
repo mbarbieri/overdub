@@ -30,10 +30,10 @@ struct MainWindowFixture
     std::unique_ptr<MainComponent> window;
     std::vector<juce::String> alertsShown;
 
-    explicit MainWindowFixture (std::unique_ptr<song::testing::FixtureSong> songFixture = song::testing::threeTrackFixture())
+    explicit MainWindowFixture (std::unique_ptr<song::testing::FixtureSong> songFixture = song::testing::threeTrackFixture(), plugin::Instantiator instantiate = {})
         : fixture (std::move (songFixture))
     {
-        openSong = std::make_unique<OpenSong> (std::move (fixture->package), AudioBinding { &engine, {}, { "In 1", "In 2", "In 3", "In 4" } });
+        openSong = std::make_unique<OpenSong> (std::move (fixture->package), AudioBinding { &engine, {}, { "In 1", "In 2", "In 3", "In 4" } }, std::move (instantiate));
         window = std::make_unique<MainComponent>();
         window->showAlert = [this] (const juce::String& sentence) { alertsShown.push_back (sentence); };
         layOut (*window, windowWidth, windowHeight);

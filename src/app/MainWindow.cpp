@@ -56,6 +56,8 @@ MainWindow::MainWindow (const juce::String& name, std::unique_ptr<LiveEngine> li
 {
     content.onNewSong = [this] { newSong(); };
     content.onOpenSong = [this] { chooseSongToOpen(); };
+    // Discovery instantiates nothing and is quick; it runs on each "+ Insert" so new installs show.
+    content.listInsertPlugins = [this] { return pluginLoader.findEffects(); };
 
     setUsingNativeTitleBar (true);
     setContentNonOwned (&content, false);
@@ -213,7 +215,7 @@ void MainWindow::openSongFrom (const juce::File& chosen)
 void MainWindow::showSong (std::unique_ptr<song::SongPackage> package, const std::vector<song::Notice>& notices)
 {
     closeSong();
-    openSong = std::make_unique<ui::OpenSong> (std::move (package), live->audioBinding());
+    openSong = std::make_unique<ui::OpenSong> (std::move (package), live->audioBinding(), pluginLoader.instantiator());
     content.setOpenSong (openSong.get());
     for (const auto& notice : notices)
         content.showNotice (notice.code);

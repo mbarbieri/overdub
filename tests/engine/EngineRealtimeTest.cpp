@@ -35,7 +35,7 @@ overdub::song::Song twoTrackSong (const TempPackage& package, std::int64_t impul
     return song;
 }
 
-overdub::engine::TrackInsertFactory delayOnTrackB()
+overdub::engine::InsertFactory delayOnTrackB()
 {
     return insertOnTrack ("track-b", [] { return std::make_unique<DelayProcessor> (64); });
 }
@@ -100,7 +100,7 @@ TEST_CASE ("every loaded Song plays from the next callback without housekeeping"
     std::vector<int> latencies;
     for (int load = 0; load < 6; ++load)
     {
-        engine.loadSong (song, package.root, load % 2 == 0 ? overdub::engine::TrackInsertFactory {} : delayOnTrackB());
+        engine.loadSong (song, package.root, load % 2 == 0 ? overdub::engine::InsertFactory {} : delayOnTrackB());
         device.processOneBlock (engine);
         latencies.push_back (engine.latencySamples());
     }
@@ -129,8 +129,8 @@ TEST_CASE ("Songs loaded while the audio thread runs are all taken without house
     for (int round = 0; round < 40 && stalledAt < 0; ++round)
     {
         const auto targetIsDelayed = round % 2 == 0;
-        engine.loadSong (song, package.root, targetIsDelayed ? overdub::engine::TrackInsertFactory {} : delayOnTrackB());
-        engine.loadSong (song, package.root, targetIsDelayed ? delayOnTrackB() : overdub::engine::TrackInsertFactory {});
+        engine.loadSong (song, package.root, targetIsDelayed ? overdub::engine::InsertFactory {} : delayOnTrackB());
+        engine.loadSong (song, package.root, targetIsDelayed ? delayOnTrackB() : overdub::engine::InsertFactory {});
 
         const auto targetLatency = targetIsDelayed ? 64 : 0;
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (2);

@@ -1,9 +1,47 @@
+diff --git a/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatHeadless.h b/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatHeadless.h
+index 7315b1414a..8c9ffa71a6 100644
+--- a/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatHeadless.h
++++ b/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatHeadless.h
+@@ -73,6 +73,10 @@ private:
+     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioUnitPluginFormatHeadless)
+ };
+ 
++// OVERDUB PATCH (ADR 0002): how many AudioUnits this process has created out-of-process
++// (AudioComponentInstantiate with kAudioComponentInstantiation_LoadOutOfProcess) so far. Any thread.
++uint64 getAudioUnitOutOfProcessInstantiationCount() noexcept;
++
+ #endif
+ 
+ }
+diff --git a/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatHeadless.mm b/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatHeadless.mm
+index e462dc2be4..1b42684d1b 100644
+--- a/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatHeadless.mm
++++ b/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatHeadless.mm
+@@ -39,6 +39,12 @@
+ namespace juce
+ {
+ 
++// OVERDUB PATCH (ADR 0002)
++uint64 getAudioUnitOutOfProcessInstantiationCount() noexcept
++{
++    return audioUnitOutOfProcessInstantiations.load();
++}
++
+ void AudioUnitPluginFormatHeadless::findAllTypesForFile (OwnedArray<PluginDescription>& results,
+                                                          const String& fileOrIdentifier)
+ {
 diff --git a/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatImpl.h b/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatImpl.h
-index 1c947e748d..0a10601a96 100644
+index 1c947e748d..f550c726d2 100644
 --- a/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatImpl.h
 +++ b/modules/juce_audio_processors_headless/format_types/juce_AudioUnitPluginFormatImpl.h
-@@ -538,7 +538,8 @@ using AudioUnitCreationCallback = std::function<void (AudioUnit, OSStatus)>;
+@@ -536,14 +536,22 @@ struct VersionedAudioComponent
  
+ using AudioUnitCreationCallback = std::function<void (AudioUnit, OSStatus)>;
+ 
++// OVERDUB PATCH (ADR 0002): AudioUnits created through AudioComponentInstantiate with
++// kAudioComponentInstantiation_LoadOutOfProcess, read by getAudioUnitOutOfProcessInstantiationCount().
++inline std::atomic<uint64> audioUnitOutOfProcessInstantiations { 0 };
++
  static void createAudioUnit (VersionedAudioComponent versionedComponent, AudioUnitCreationCallback callback)
  {
 -    if (versionedComponent.isAUv3)
@@ -12,3 +50,11 @@ index 1c947e748d..0a10601a96 100644
      {
          AudioComponentInstantiate (versionedComponent.audioComponent,
                                     kAudioComponentInstantiation_LoadOutOfProcess,
+                                    ^(AudioComponentInstance audioUnit, OSStatus err)
+                                    {
++                                       if (err == noErr)
++                                           audioUnitOutOfProcessInstantiations.fetch_add (1);
++
+                                        callback (audioUnit, err);
+                                    });
+ 

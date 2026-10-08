@@ -3,6 +3,8 @@
 #include "capture/PassRecorder.h"
 #include "core/Error.h"
 #include "engine/Engine.h"
+#include "plugin/AudioUnitLoader.h"
+#include "plugin/InsertHost.h"
 #include "song/SongPackage.h"
 
 #include <juce_core/juce_core.h>
@@ -26,6 +28,13 @@
 // While a Pass runs (pre-roll included), only stop, play/stop and rewind act: undo, redo, edits,
 // seeks, import, arm, input, pre-roll and Monitoring are ignored, so the Song and the engine's plan stay as the Pass started.
 //
+// Insert Chains (issue #33): it hosts the Song's plugins in a plugin::InsertHost, created through
+// the Instantiator it is given (out-of-process AUs in the app). The engine plays each plugin once
+// it has loaded; a plugin that loads or changes its latency rebuilds the plan at the next poll()
+// (after the Pass, while one runs). The package captures every plugin's state into its slot on
+// each history step and debounced write; a parameter change schedules that write. Undo keeps a
+// surviving slot's plugin as it is and loads a slot it brings back with the snapshot's state.
+//
 // Message thread only.
 namespace overdub::ui
 {
@@ -41,9 +50,11 @@ struct AudioBinding
 class OpenSong
 {
 public:
-    // Loads the Song into the engine, with Monitoring on for no Track, at the Song's playhead.
-    OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio);
-    // detachAudio() (errors logged), then the package writes what is pending as it closes.
+    // Loads the Song into the engine, with Monitoring on for no Track, at the Song's playhead, and
+    // starts loading its plugins through `instantiate` (none load when it is empty).
+    OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio, plugin::Instantiator instantiate = {});
+    // detachAudio() (errors logged), then the package captures the plugins' state and writes what
+    // is pending as it closes.
     ~OpenSong();
 
     OpenSong (const OpenSong&) = delete;
@@ -107,6 +118,14 @@ public:
     // no channels: the Clip is drawn without a waveform.
     const song::Peaks& peaks (const song::ClipSource& source);
 
+    // Adds this AU at the end of the Track's Insert Chain (the Master's for an empty trackId) as
+    // one undo step "Add AUDelay to Guitar"; it is heard once it has loaded. Ignored while a Pass
+    // runs. Errors: song.track_not_found, SongPackage::edit's.
+    core::Expected<void> addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin);
+    // Whether the slot's plugin is loading, ready or failed; none for a slot not in the Song.
+    std::optional<plugin::InsertStatus> insertStatus (const song::Id& slotId) const { return inserts.status (slotId); }
+    plugin::InsertHost& insertHost() { return inserts; }
+
     // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
     // Ignored while a Pass runs.
     void setPreRoll (song::PreRoll preRoll);
@@ -120,9 +139,10 @@ public:
     // One Backing Track import per file (SongPackage::importBackingTracks); empty during a Pass.
     std::vector<core::Expected<song::Id>> importFiles (const std::vector<juce::File>& files);
 
-    // Call regularly (window timer): finishes a Pass the audio thread has ended, saves the
-    // playhead once the transport is stopped, and writes a due song.json. Returns the errors,
-    // not logged.
+    // Call regularly (window timer): finishes a Pass the audio thread has ended, rebuilds the plan
+    // when a plugin loaded or changed its latency (not during a Pass), schedules a write when a
+    // plugin parameter changed, saves the playhead once the transport is stopped, and writes a due
+    // song.json. Returns the errors, not logged.
     std::vector<core::Error> poll (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
 
 private:
@@ -130,8 +150,12 @@ private:
     // After a history change: setMix when only the mix changed since `before`, else reloadEngine.
     void updateEngine (const song::Song& before);
     std::vector<core::Error> finishPass (core::Expected<capture::RecordedPass> finished);
+    void capturePluginState (song::Song& song);
+    static int blockSizeOf (const AudioBinding& audio);
 
     std::unique_ptr<song::SongPackage> package_;
+    // After package_: destroyed first, once the destructor has captured its state and unhooked it.
+    plugin::InsertHost inserts;
     AudioBinding binding;
     std::set<song::Id> monitored;
     std::map<song::Id, song::Peaks> peaksByMediaId; // media is immutable, so entries never go stale

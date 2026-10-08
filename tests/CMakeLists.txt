@@ -19,6 +19,7 @@ target_sources(overdub_tests PRIVATE
     engine/EngineClipEditTest.cpp
     engine/EngineClipGainFadeTest.cpp
     engine/EngineEventsTest.cpp
+    engine/EngineInsertChainTest.cpp
     engine/EngineRealtimeTest.cpp
     engine/EngineRecordTest.cpp
     engine/EngineMixerTest.cpp
@@ -26,8 +27,12 @@ target_sources(overdub_tests PRIVATE
     engine/MixLawTest.cpp
     engine/EngineTakeLanesTest.cpp
     engine/EngineTest.cpp
+    plugin/AudioUnitIdentifierTest.cpp
+    plugin/AudioUnitLoaderTest.cpp
+    plugin/InsertHostTest.cpp
     song/BackingTrackImportTest.cpp
     song/ClipEditsTest.cpp
+    song/InsertEditsTest.cpp
     song/MixEditsTest.cpp
     song/SongJsonTest.cpp
     song/SongMigrationTest.cpp
@@ -43,8 +48,10 @@ target_sources(overdub_tests PRIVATE
     ui/MainComponentTest.cpp
     ui/MixerGeometryTest.cpp
     ui/MixerUiTest.cpp
+    ui/OpenSongInsertsTest.cpp
     ui/OpenSongTest.cpp
     ui/PreRollTest.cpp
+    ui/RecordInsertsTest.cpp
     ui/RecordPageTest.cpp
     ui/RecordViewTest.cpp
     ui/SnapshotTest.cpp
@@ -56,7 +63,7 @@ target_sources(overdub_tests PRIVATE
     ui/TransportTextTest.cpp
     ui/UserMessagesTest.cpp)
 
-# overdub_ui links overdub_capture, which links overdub_engine, overdub_song and overdub_core publicly; listing those too
+# overdub_ui links overdub_capture and overdub_plugin, which link overdub_engine, overdub_song and overdub_core publicly; listing those too
 # makes ld warn about duplicate libraries.
 target_link_libraries(overdub_tests PRIVATE
     overdub_ui

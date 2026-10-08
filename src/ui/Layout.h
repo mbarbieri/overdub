@@ -14,7 +14,7 @@ inline constexpr int minimumWindowHeight = 600;
 inline constexpr int topBarHeight = 52;
 inline constexpr int noticeLineHeight = 28;
 inline constexpr int trackColumnWidth = 460;
-inline constexpr int trackRowHeight = 40;
+inline constexpr int trackRowHeight = 64;
 
 struct MainLayout
 {
@@ -62,9 +62,12 @@ struct RecordPageLayout
 
 RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks);
 
-// Left to right: arm, name, mute, solo, input picker, Monitoring.
+// Top line, left to right: arm, name, mute, solo, input picker, Monitoring. Bottom line, under the
+// name: the "+ Insert" button and the Insert Chain's names (issue #33).
 struct TrackRowLayout
 {
+    juce::Rectangle<int> insertButton;
+    juce::Rectangle<int> inserts;
     juce::Rectangle<int> arm;
     juce::Rectangle<int> name;
     juce::Rectangle<int> mute;

@@ -1,6 +1,7 @@
 #include "ui/OpenSong.h"
 
 #include "core/Log.h"
+#include "song/InsertEdits.h"
 #include "song/MixEdits.h"
 #include "ui/TrackRowEdits.h"
 
@@ -8,9 +9,21 @@
 
 namespace overdub::ui
 {
-OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio)
-    : package_ (std::move (package))
+namespace
 {
+// Plugins are prepared for this block size when no device is open.
+constexpr int blockSizeWithoutDevice = 512;
+} // namespace
+
+OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio, plugin::Instantiator instantiate)
+    : package_ (std::move (package)),
+      inserts (std::move (instantiate),
+               [this] (const std::string& hash) { return package_->loadPluginState (hash); },
+               package_->song().sampleRate,
+               blockSizeOf (audio))
+{
+    package_->setPluginStateCapture ([this] (song::Song& song) { capturePluginState (song); });
+    inserts.sync (song());
     attachAudio (std::move (audio));
 }
 
@@ -18,6 +31,23 @@ OpenSong::~OpenSong()
 {
     for (const auto& error : detachAudio())
         core::logError (error);
+    if (inserts.takeStateChanged())
+        package_->changeWithoutHistory (song());
+    if (auto written = package_->flush(); ! written.has_value())
+        core::logError (written.error());
+    package_->setPluginStateCapture ({});
+}
+
+int OpenSong::blockSizeOf (const AudioBinding& audio)
+{
+    return audio.engine != nullptr ? audio.engine->configuration().maxBlockSize : blockSizeWithoutDevice;
+}
+
+void OpenSong::capturePluginState (song::Song& song)
+{
+    auto captured = inserts.captureStates (song, [this] (const juce::MemoryBlock& state) { return package_->storePluginState (state); });
+    if (! captured.has_value())
+        core::logError (captured.error(), core::Level::warn);
 }
 
 void OpenSong::attachAudio (AudioBinding audio)
@@ -25,6 +55,8 @@ void OpenSong::attachAudio (AudioBinding audio)
     binding = std::move (audio);
     if (binding.engine == nullptr)
         return;
+    // No engine renders the plugins now: the previous one was detached and is gone.
+    inserts.prepare (song().sampleRate, blockSizeOf (binding));
     binding.engine->stop();
     binding.engine->setMonitoring (true); // which Tracks are heard is decided by songForEngine
     reloadEngine();
@@ -167,6 +199,17 @@ core::Expected<void> OpenSong::edit (song::Song changed, std::string label)
     return result;
 }
 
+core::Expected<void> OpenSong::addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin)
+{
+    if (recorder != nullptr)
+        return {};
+    const song::InsertSlot slot { .id = song::makeId(), .component = plugin.component, .name = plugin.name, .version = plugin.version };
+    auto changed = song::addInsert (song(), trackId, slot);
+    if (! changed.has_value())
+        return std::unexpected (changed.error());
+    return edit (std::move (*changed), song::addInsertLabel (song(), trackId, plugin.name));
+}
+
 void OpenSong::previewMix (const song::Song& candidate)
 {
     if (recorder != nullptr || binding.engine == nullptr || ! song::differsOnlyInMix (song(), candidate))
@@ -252,6 +295,12 @@ std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point no
     if (recorder != nullptr && recorder->hasStopped())
         errors = finishPass (recorder->finish (now));
 
+    // During a Pass the plan stays as it started; finishPass rebuilds it.
+    if (recorder == nullptr && inserts.takeGraphChanged())
+        reloadEngine();
+    if (inserts.takeStateChanged())
+        package_->changeWithoutHistory (song(), now);
+
     if (recorder == nullptr && binding.engine != nullptr && ! binding.engine->isPlaying())
     {
         const auto position = binding.engine->position();
@@ -288,7 +337,8 @@ void OpenSong::updateEngine (const song::Song& before)
 
 void OpenSong::reloadEngine()
 {
+    inserts.sync (song());
     if (binding.engine != nullptr)
-        binding.engine->loadSong (songForEngine (song(), monitored), package_->location());
+        binding.engine->loadSong (songForEngine (song(), monitored), package_->location(), inserts.insertFactory());
 }
 } // namespace overdub::ui

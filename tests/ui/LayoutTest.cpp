@@ -91,6 +91,18 @@ TEST_CASE ("a Track row puts arm, name, M, S, input picker and Monitoring left t
     CHECK (layout.input.getX() < layout.monitoring.getX());
 }
 
+TEST_CASE ("a Track row puts the + Insert button and the Insert Chain under the name", "[ui][layout][inserts]")
+{
+    const Rectangle<int> row { 800, 100, trackColumnWidth, trackRowHeight };
+    const auto layout = trackRowLayout (row);
+
+    checkInsideAndApart (row, { layout.arm, layout.name, layout.mute, layout.solo, layout.input, layout.monitoring, layout.insertButton, layout.inserts });
+    CHECK (layout.insertButton.getY() >= layout.name.getBottom());
+    CHECK (layout.insertButton.getX() == layout.name.getX());
+    CHECK (layout.insertButton.getRight() < layout.inserts.getX());
+    CHECK (layout.inserts.getWidth() >= 200);
+}
+
 TEST_CASE ("Edit mode stacks the Clip toolbar, the timeline, the divider and the Mixer region", "[ui][layout][edit]")
 {
     const Rectangle<int> page { 0, topBarHeight, 1200, 700 };

@@ -3,13 +3,16 @@
 #include "core/Error.h"
 #include "core/Log.h"
 #include "engine/ClipSchedule.h"
+#include "engine/SharedInsertNode.h"
 #include "engine/TrackPlayer.h"
 #include "song/BackingTrackImport.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <algorithm>
+#include <cmath>
 #include <map>
+#include <optional>
 #include <string>
 
 namespace overdub::engine
@@ -130,9 +133,41 @@ void connectStereo (Graph& graph, Graph::NodeID from, Graph::NodeID to)
     for (int channel = 0; channel < 2; ++channel)
         graph.addConnection ({ { from, channel }, { to, channel } }, Graph::UpdateKind::none);
 }
+
+// What an Insert Chain added to the graph: its first and last node (none when it is empty), how
+// many nodes, and its summed tail in seconds.
+struct ChainNodes
+{
+    std::optional<Graph::NodeID> first;
+    std::optional<Graph::NodeID> last;
+    int count = 0;
+    double tailSeconds = 0.0;
+};
+
+ChainNodes addChain (Graph& graph, std::vector<std::unique_ptr<juce::AudioProcessor>> processors)
+{
+    ChainNodes chain;
+    for (auto& processor : processors)
+    {
+        chain.tailSeconds += processor->getTailLengthSeconds();
+        const auto node = graph.addNode (std::move (processor), {}, Graph::UpdateKind::none)->nodeID;
+        if (chain.last.has_value())
+            connectStereo (graph, *chain.last, node);
+        else
+            chain.first = node;
+        chain.last = node;
+        ++chain.count;
+    }
+    return chain;
+}
+
+std::vector<std::unique_ptr<juce::AudioProcessor>> makeChain (const InsertFactory& makeInserts, const song::Id& trackId, const std::vector<song::InsertSlot>& slots)
+{
+    return makeInserts ? makeInserts (trackId, slots) : std::vector<std::unique_ptr<juce::AudioProcessor>> {};
+}
 } // namespace
 
-RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& engineConfig, const TrackInsertFactory& makeInserts)
+RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& engineConfig, const InsertFactory& makeInserts)
     : config (engineConfig), songSampleRate (song.sampleRate), trackCount ((int) song.tracks.size())
 {
     for (const auto& track : song.tracks)
@@ -146,39 +181,44 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
     graph.setPlayConfigDetails (0, config.numOutputChannels, songSampleRate, config.maxBlockSize);
 
     const auto output = graph.addNode (std::make_unique<Graph::AudioGraphIOProcessor> (Graph::AudioGraphIOProcessor::audioOutputNode), {}, Graph::UpdateKind::none);
-    const auto master = graph.addNode (std::make_unique<MixStripNode> ("Master", masterStrip), {}, Graph::UpdateKind::none);
+    const auto master = graph.addNode (std::make_unique<MixStripNode> ("Master", masterStrip), {}, Graph::UpdateKind::none)->nodeID;
+
+    // Every Track strip sums into the Master's Insert Chain, or straight into the Master strip.
+    const auto masterChain = addChain (graph, makeChain (makeInserts, {}, song.master.insertChain));
+    const auto masterInput = masterChain.first.value_or (master);
+    if (masterChain.last.has_value())
+        connectStereo (graph, *masterChain.last, master);
 
     SourceLoader loader { song, packageRoot };
     int clipCount = 0;
+    int insertCount = masterChain.count;
+    double longestTrackTailSeconds = 0.0;
     for (std::size_t trackIndex = 0; trackIndex < song.tracks.size(); ++trackIndex)
     {
         const auto& track = song.tracks[trackIndex];
         clipCount += (int) track.clips.size();
-        auto previous = graph.addNode (makeTrackPlayer (track, loader, liveInput), {}, Graph::UpdateKind::none)->nodeID;
+        const auto player = graph.addNode (makeTrackPlayer (track, loader, liveInput), {}, Graph::UpdateKind::none)->nodeID;
 
-        if (makeInserts)
-        {
-            for (auto& insert : makeInserts (track))
-            {
-                const auto node = graph.addNode (std::move (insert), {}, Graph::UpdateKind::none)->nodeID;
-                connectStereo (graph, previous, node);
-                previous = node;
-            }
-        }
+        const auto chain = addChain (graph, makeChain (makeInserts, track.id, track.insertChain));
+        insertCount += chain.count;
+        longestTrackTailSeconds = std::max (longestTrackTailSeconds, chain.tailSeconds);
+        if (chain.first.has_value())
+            connectStereo (graph, player, *chain.first);
 
         const auto strip = graph.addNode (std::make_unique<MixStripNode> ("Strip " + juce::String (track.id), *trackStrips[trackIndex]), {}, Graph::UpdateKind::none)->nodeID;
-        connectStereo (graph, previous, strip);
-        connectStereo (graph, strip, master->nodeID);
+        connectStereo (graph, chain.last.value_or (player), strip);
+        connectStereo (graph, strip, masterInput);
     }
 
     for (int channel = 0; channel < std::min (2, config.numOutputChannels); ++channel)
-        graph.addConnection ({ { master->nodeID, channel }, { output->nodeID, channel } }, Graph::UpdateKind::none);
+        graph.addConnection ({ { master, channel }, { output->nodeID, channel } }, Graph::UpdateKind::none);
 
     graph.setPlayHead (&playHead);
     // Synchronous rebuild on this thread: prepares every node and computes the PDC latency.
     graph.prepareToPlay (songSampleRate, config.maxBlockSize);
     graph.setNonRealtime (false);
     graphLatency = graph.getLatencySamples();
+    graphTail = (int) std::lround ((longestTrackTailSeconds + masterChain.tailSeconds) * songSampleRate);
 
     // Warm-up: the first processBlock installs the render sequence, so the audio thread never
     // reaches the graph's install-or-rebuild path. Then clear any state the warm-up left.
@@ -187,11 +227,19 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
     graph.reset();
     takeMeterPeaks();
 
+    // Only now may shared plugins run: the warm-up passed audio through them untouched, because
+    // the plan the audio thread plays may be running them (engine/SharedInsertNode.h).
+    for (auto* node : graph.getNodes())
+        if (auto* shared = dynamic_cast<SharedInsertNode*> (node->getProcessor()))
+            shared->startForwarding();
+
     core::logEvent (core::Level::info,
                     "engine.plan_built",
                     { { "tracks", trackCount },
                       { "clips", clipCount },
+                      { "inserts", insertCount },
                       { "latency_samples", graphLatency },
+                      { "tail_samples", graphTail },
                       { "sample_rate", songSampleRate },
                       { "output_channels", config.numOutputChannels },
                       { "max_block_size", config.maxBlockSize } });

@@ -28,7 +28,7 @@ Engine::~Engine()
 //==============================================================================
 // Non-audio threads
 
-void Engine::loadSong (const song::Song& song, const juce::File& packageRoot, const TrackInsertFactory& makeInserts)
+void Engine::loadSong (const song::Song& song, const juce::File& packageRoot, const InsertFactory& makeInserts)
 {
     const std::scoped_lock lock { nonRealtimeMutex };
 
@@ -124,6 +124,11 @@ SampleCount Engine::position() const
 int Engine::latencySamples() const
 {
     return currentLatency.load();
+}
+
+int Engine::tailSamples() const
+{
+    return currentTail.load();
 }
 
 std::optional<Anchor> Engine::latestAnchor() const
@@ -252,6 +257,7 @@ void Engine::takePendingPlan (std::uint64_t hostTimeNs) noexcept
     currentPlan = next;
     staleOutputSamples = next->latencySamples();
     currentLatency.store (next->latencySamples());
+    currentTail.store (next->tailSamples());
     currentSampleRate.store (next->sampleRate());
     pushEvent (planSwapped, hostTimeNs, next->latencySamples(), next->numTracks());
 }

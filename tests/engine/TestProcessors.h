@@ -81,13 +81,67 @@ public:
     void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override { buffer.clear(); }
 };
 
-// A TrackInsertFactory that puts `makeProcessor()` on the Track with this id and nothing elsewhere.
-template <typename MakeProcessor>
-TrackInsertFactory insertOnTrack (std::string trackId, MakeProcessor makeProcessor)
+// An effect delay: adds its input delayed by `delaySamples` to itself, reports no latency and a
+// tail of `delaySamples` (the echo it still owes once its input falls silent).
+class EchoProcessor final : public PlainProcessor
 {
-    return [trackId, makeProcessor] (const song::Track& track) {
+public:
+    EchoProcessor (int delaySamples, int sampleRate) : PlainProcessor (stereoInOut()), delay (delaySamples), rate (sampleRate) {}
+
+    const juce::String getName() const override { return "Test Echo"; }
+    double getTailLengthSeconds() const override { return (double) delay / rate; }
+
+    void prepareToPlay (double, int) override
+    {
+        history.assign (2, std::vector<float> ((std::size_t) delay, 0.0f));
+        writeIndex = 0;
+    }
+
+    void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        const auto startIndex = writeIndex;
+        for (int channel = 0; channel < std::min (buffer.getNumChannels(), 2); ++channel)
+        {
+            auto& line = history[(std::size_t) channel];
+            auto index = startIndex;
+            auto* samples = buffer.getWritePointer (channel);
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            {
+                const auto echoed = line[index];
+                line[index] = samples[i];
+                samples[i] += echoed;
+                index = (index + 1) % line.size();
+            }
+            writeIndex = index;
+        }
+    }
+
+private:
+    int delay;
+    int rate;
+    std::vector<std::vector<float>> history;
+    std::size_t writeIndex = 0;
+};
+
+// An InsertFactory that puts `makeProcessor()` on the Track with this id and nothing elsewhere.
+template <typename MakeProcessor>
+InsertFactory insertOnTrack (std::string trackId, MakeProcessor makeProcessor)
+{
+    return [trackId, makeProcessor] (const song::Id& chainTrackId, const std::vector<song::InsertSlot>&) {
         std::vector<std::unique_ptr<juce::AudioProcessor>> inserts;
-        if (track.id == trackId)
+        if (chainTrackId == trackId)
+            inserts.push_back (makeProcessor());
+        return inserts;
+    };
+}
+
+// An InsertFactory that puts `makeProcessor()` on the Master and nothing on any Track.
+template <typename MakeProcessor>
+InsertFactory insertOnMaster (MakeProcessor makeProcessor)
+{
+    return [makeProcessor] (const song::Id& chainTrackId, const std::vector<song::InsertSlot>&) {
+        std::vector<std::unique_ptr<juce::AudioProcessor>> inserts;
+        if (chainTrackId.empty())
             inserts.push_back (makeProcessor());
         return inserts;
     };

@@ -12,6 +12,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,10 @@
 // Record mode (issue #32): the pre-roll picker sets the Song's pre-roll (no undo step); a click on a
 // Pass row moves the playhead to the Pass's start, and on the overview to the Song sample there;
 // ↺ Bring back is one undo step. While pre-roll counts down, the clock's status line does too.
+//
+// "+ Insert" on a Record row lists the AU effects and adds the one picked to that Track's Insert
+// Chain, one undo step through OpenSong::addInsert; the row shows the chain with each plugin's
+// loading or missing state (issue #33).
 //
 // M and S (Record rows, Edit headers, Mixer strips) and the Mixer's faders and pan are undo steps
 // through OpenSong::edit; a Mixer drag in progress is heard through OpenSong::previewMix (issue #31).
@@ -71,6 +76,11 @@ public:
     std::function<void (std::function<void (std::vector<juce::File>)>)> chooseFilesToImport;
     // Shows an Alert: a modal dialog with this sentence.
     std::function<void (const juce::String& sentence)> showAlert;
+    // "+ Insert" on a Record row (issue #33): the AU effects to offer (AudioUnitLoader::findEffects
+    // in the app; none by default), and how the user picks one: calls back with the index picked,
+    // or none when dismissed (default: a pop-up menu by name).
+    std::function<std::vector<plugin::AvailableAudioUnit>()> listInsertPlugins;
+    std::function<void (const std::vector<plugin::AvailableAudioUnit>&, std::function<void (std::optional<std::size_t>)>)> chooseInsertPlugin;
     // The File menu's New Song and Open, offered on the no-Song page.
     std::function<void()> onNewSong;
     std::function<void()> onOpenSong;
@@ -94,6 +104,7 @@ private:
     void setMute (const song::Id& trackId, bool mute);
     void setSolo (const song::Id& trackId, bool solo);
     void importFiles (const std::vector<juce::File>& files);
+    void chooseInsert (const song::Id& trackId);
     void post (UserMessage message);
     void presentMessages();
     void handleErrors (const std::vector<core::Error>& errors);
