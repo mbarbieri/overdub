@@ -54,6 +54,7 @@ target_sources(overdub_tests PRIVATE
     song/TakeEditsTest.cpp
     support/RealtimeGuardTest.cpp
     support/RealtimeGuardCatchTest.cpp
+    ui/CalibrationTextTest.cpp
     ui/CommandsTest.cpp
     ui/DeviceSettingsPanelTest.cpp
     ui/EditPageTest.cpp
