@@ -3,6 +3,7 @@
 #include "core/Error.h"
 #include "song/Song.h"
 #include "ui/Mixer.h"
+#include "ui/PassesPanel.h"
 #include "ui/TakeLanes.h"
 #include "ui/Timeline.h"
 #include "ui/TransportText.h"
@@ -83,36 +84,6 @@ public:
 
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ClipToolbar)
-};
-
-// Edit's Passes list: a heading, then one row per Pass (ui/TakeLanes.h passRows).
-class PassesPanel final : public juce::Component
-{
-public:
-    PassesPanel();
-
-    // Bring back is enabled only when `editable` and the row can be brought back.
-    void show (const std::vector<PassRow>& rows, bool editable);
-    void resized() override;
-    void paint (juce::Graphics& g) override;
-
-    int numRows() const { return (int) rowComponents.size(); }
-
-    std::function<void (const song::Id& passId)> onBringBack;
-
-    struct Row
-    {
-        song::Id passId;
-        juce::Label title;
-        juce::Label status;
-        juce::TextButton bringBackButton;
-    };
-
-    juce::Label heading;
-    std::vector<std::unique_ptr<Row>> rowComponents;
-
-private:
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PassesPanel)
 };
 
 // The bar between the timeline and the Mixer region: dragging it resizes the region.

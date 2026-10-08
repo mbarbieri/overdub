@@ -51,6 +51,9 @@ struct PassRecorderOptions
     double fifoSeconds = 4.0;
     // How often the io thread drains the FIFOs. Tests set it long to provoke an overrun.
     std::chrono::milliseconds ioInterval { 10 };
+    // Pre-roll (issue #32): the Pass, and so its Takes, start at this Song sample rather than at the
+    // first playing block; nothing before it is captured (RecordSession::startAt).
+    std::optional<SampleCount> recordPoint;
 };
 
 // What a finished Pass produced, beyond what the Song now holds.
@@ -89,6 +92,9 @@ public:
     void requestStop();
     // True once the audio thread has ended the Pass (stop requested, transport stopped or seeked).
     bool hasStopped() const;
+    // The record point once the audio thread has begun the Pass and until it ends it; none before
+    // (waiting for the transport, or for the record point during pre-roll) and after.
+    std::optional<SampleCount> runningPassStart() const;
 
     // Requires hasStopped(). Writes the rest of every Take, renames the files into audio/, writes
     // peaks, and adds the Pass as one undo step. Logs capture.pass_stopped (Pass id, Tracks,

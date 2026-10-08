@@ -180,6 +180,8 @@ core::Expected<std::unique_ptr<PassRecorder>> PassRecorder::start (song::SongPac
 
     const auto fifoFrames = std::max (1, (int) (options.fifoSeconds * song.sampleRate));
     recorder->session = std::make_unique<engine::RecordSession> (std::move (inputs), fifoFrames);
+    if (options.recordPoint.has_value())
+        recorder->session->startAt (*options.recordPoint);
     recorder->ioThread = std::thread ([raw = recorder.get()] { raw->runIoThread(); });
     engine.startRecording (*recorder->session);
     return recorder;
@@ -212,6 +214,13 @@ void PassRecorder::requestStop()
 bool PassRecorder::hasStopped() const
 {
     return session->state() == engine::RecordState::stopped;
+}
+
+std::optional<SampleCount> PassRecorder::runningPassStart() const
+{
+    if (session->state() != engine::RecordState::recording)
+        return std::nullopt;
+    return session->startSongSample();
 }
 
 bool PassRecorder::waitUntilStopped (std::chrono::milliseconds timeout) const

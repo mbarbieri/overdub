@@ -1,19 +1,28 @@
 #pragma once
 
 #include "song/Song.h"
+#include "ui/LookAheadStrip.h"
+#include "ui/PassesPanel.h"
+#include "ui/RecordView.h"
 #include "ui/TrackRowEdits.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <array>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-// Bare Record mode (issue #27): one row per Track (arm, name, M and S (issue #31), input picker,
-// Monitoring) and an Import button. The camera stage, meters, Insert Chains, the Passes list and the look-ahead
-// strip come in later slices. Thin: rows show a TrackRowState and report gestures by Track id.
+// Record mode (issues #27, #32, issue #9 resolution, variant C), the performing view. Left: the
+// pre-roll picker (Off / 1 s / 2 s / 4 s) over the camera stage (a placeholder until slice 14).
+// Right column: one row per Track (arm, name, M and S (issue #31), input picker, Monitoring), the
+// Import button, then the Passes list (heard status and ↺ Bring back; clicking a row jumps to the
+// Pass's start). Along the bottom: the Backing Track look-ahead strip and the whole-Song overview
+// (a click moves the playhead). Meters and Insert Chains in the rows come in later slices.
+// Thin: it shows state and reports gestures by Track or Pass id; the strip, overview and Passes
+// rows are computed by ui/RecordView.h and ui/TakeLanes.h.
 namespace overdub::ui
 {
 struct TrackRowState
@@ -33,9 +42,15 @@ struct RecordPageState
 {
     std::vector<TrackRowState> rows;
     bool canImport = true;
+    song::PreRoll preRoll = song::PreRoll::off;
+    bool canChangePreRoll = true; // false while a Pass runs
 };
 
-// The rows for a Song: one per Track, in Song order.
+// The pre-roll picker's items in order, and the item for a setting.
+inline constexpr std::array<song::PreRoll, 4> preRollChoices { song::PreRoll::off, song::PreRoll::oneSecond, song::PreRoll::twoSeconds, song::PreRoll::fourSeconds };
+int preRollChoiceIndex (song::PreRoll preRoll);
+
+// The rows for a Song: one per Track, in Song order; the Song's pre-roll.
 RecordPageState recordPageStateFor (const song::Song& song,
                                     const std::vector<std::string>& inputChannelNames,
                                     const std::function<bool (const song::Id&)>& isMonitoring,
@@ -77,6 +92,10 @@ public:
     RecordPage();
 
     void show (const RecordPageState& state);
+    // The Passes list, the look-ahead strip and the overview for this Song and transport. The
+    // Passes rows and the strip's envelope are recomputed only when the Song's Tracks, Passes,
+    // Takes or `editable` changed.
+    void showSong (const song::Song& song, const RecordTransport& transport, bool editable);
     void resized() override;
     void paint (juce::Graphics& g) override;
 
@@ -86,13 +105,35 @@ public:
     std::function<void (const song::Id&, bool)> onMute;
     std::function<void (const song::Id&, bool)> onSolo;
     std::function<void()> onImport;
+    std::function<void (song::PreRoll)> onPreRoll;
+    // A click on a Pass row: jump to that Pass's start.
+    std::function<void (const song::Id& passId)> onJumpToPass;
+    std::function<void (const song::Id& passId)> onBringBack;
+    // A click on the overview, at this Song sample.
+    std::function<void (song::SampleCount sample)> onSeek;
+    // The Backing Tracks' peaks, for the strip's envelope (OpenSong::peaks).
+    PeaksLookup peaksFor;
 
     std::vector<std::unique_ptr<TrackRow>> rows;
     juce::TextButton importButton { "Import..." };
     juce::Label emptyLabel;
+    juce::Label preRollCaption { {}, "Pre-roll" };
+    juce::ComboBox preRollPicker;
+    PassesPanel passesList { "Passes \xC2\xB7 newest first \xC2\xB7 click one to jump to its start" };
+    LookAheadStrip lookAheadStrip;
+    SongOverview overview;
 
 private:
+    void showLookAhead();
+
     juce::Rectangle<int> stageArea;
+    song::PreRoll shownPreRoll = song::PreRoll::off;
+
+    // What showSong last showed, to recompute only on change.
+    std::optional<song::Song> shownSong;
+    bool shownEditable = true;
+    BackingEnvelope envelope;
+    RecordTransport transport;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RecordPage)
 };

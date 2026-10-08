@@ -44,6 +44,9 @@ target_sources(overdub_tests PRIVATE
     ui/MixerGeometryTest.cpp
     ui/MixerUiTest.cpp
     ui/OpenSongTest.cpp
+    ui/PreRollTest.cpp
+    ui/RecordPageTest.cpp
+    ui/RecordViewTest.cpp
     ui/SnapshotTest.cpp
     ui/SongFilesTest.cpp
     ui/TakeLanesTest.cpp

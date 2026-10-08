@@ -197,6 +197,9 @@ struct Song
     bool operator== (const Song&) const = default;
 };
 
+// The pre-roll's length in whole seconds: 0, 1, 2 or 4.
+int preRollSeconds (PreRoll preRoll);
+
 // A new random id: a lowercase dashed UUID.
 Id makeId();
 

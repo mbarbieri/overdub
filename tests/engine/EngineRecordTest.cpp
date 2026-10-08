@@ -121,6 +121,84 @@ TEST_CASE ("a Pass captures every input sample from its first playing block, at 
     CHECK (drained[1][1] == slice (device.inputHistory[1], passStart, passEnd));
 }
 
+TEST_CASE ("a Pass with a record point begins at the block that plays it and captures from that sample on", "[engine][record][pre_roll]")
+{
+    TempPackage package;
+    Engine engine { stereoConfig() };
+    engine.loadSong (emptySong(), package.root);
+    engine.seek (1000);
+
+    LoopbackDevice device { 2, blockSize, blockSize };
+    device.extraInput[0] = rampFrom (0.1f, 20 * blockSize);
+
+    // The record point falls 100 samples into the third block.
+    constexpr std::int64_t recordPoint = 1000 + 2 * blockSize + 100;
+    RecordSession session { { RecordInput { "track", { 0 } } }, testSampleRate };
+    session.startAt (recordPoint);
+    engine.startRecording (session);
+    engine.play();
+
+    device.run (engine, 2);
+    CHECK (session.state() == RecordState::waiting);
+    CHECK_FALSE (engine.isRecording());
+
+    device.run (engine, 3);
+    CHECK (engine.isRecording());
+    CHECK (session.startSongSample() == recordPoint);
+    CHECK (session.capturedFrames() == 5 * blockSize - (2 * blockSize + 100));
+
+    engine.stopRecording (session);
+    device.run (engine, 1);
+    CHECK (session.stopReason() == RecordStopReason::requested);
+    CHECK (drainAll (session)[0][0] == slice (device.inputHistory[0], 2 * blockSize + 100, 5 * blockSize));
+}
+
+TEST_CASE ("a Pass waiting for its record point ends like a running one, having captured nothing", "[engine][record][pre_roll]")
+{
+    TempPackage package;
+    Engine engine { stereoConfig() };
+    engine.loadSong (emptySong(), package.root);
+    LoopbackDevice device { 2, blockSize, blockSize };
+    engine.play();
+
+    RecordSession stopped { { RecordInput { "track", { 0 } } }, testSampleRate };
+    stopped.startAt (100'000);
+    engine.startRecording (stopped);
+    device.run (engine, 2);
+    engine.stopRecording (stopped);
+    device.run (engine, 1);
+    CHECK (stopped.state() == RecordState::stopped);
+    CHECK (stopped.stopReason() == RecordStopReason::requested);
+    CHECK (stopped.capturedFrames() == 0);
+
+    RecordSession byTransport { { RecordInput { "track", { 0 } } }, testSampleRate };
+    byTransport.startAt (100'000);
+    engine.startRecording (byTransport);
+    device.run (engine, 2);
+    engine.stop();
+    device.run (engine, 1);
+    CHECK (byTransport.stopReason() == RecordStopReason::transportStopped);
+    CHECK (byTransport.capturedFrames() == 0);
+    CHECK_FALSE (engine.isRecording());
+}
+
+TEST_CASE ("a record point the transport has already passed starts the Pass at once", "[engine][record][pre_roll]")
+{
+    TempPackage package;
+    Engine engine { stereoConfig() };
+    engine.loadSong (emptySong(), package.root);
+    engine.seek (5000);
+    LoopbackDevice device { 2, blockSize, blockSize };
+
+    RecordSession session { { RecordInput { "track", { 0 } } }, testSampleRate };
+    session.startAt (1000);
+    engine.startRecording (session);
+    engine.play();
+    device.run (engine, 2);
+    CHECK (session.startSongSample() == 5000);
+    CHECK (session.capturedFrames() == 2 * blockSize);
+}
+
 TEST_CASE ("a Pass ends when the transport stops or seeks", "[engine][record]")
 {
     TempPackage package;
@@ -363,4 +441,28 @@ TEST_CASE ("a stereo Armed Track monitors its first input on the left and its se
 
     CHECK (nonZeroSamples (device.outputHistory[0]) == std::vector<std::int64_t> { 80 });
     CHECK (nonZeroSamples (device.outputHistory[1]) == std::vector<std::int64_t> { 40 });
+}
+
+TEST_CASE ("process() neither allocates nor locks while a Pass waits for its record point and begins mid-block", "[engine][record][rt][pre_roll]")
+{
+    TempPackage package;
+    auto song = emptySong();
+    song.tracks.push_back (armedTrack ("track-armed", { 0 }));
+    Engine engine { stereoConfig() };
+    engine.loadSong (song, package.root);
+    LoopbackDevice device { 2, blockSize, blockSize };
+    device.run (engine, 1);
+
+    RecordSession session { { RecordInput { "track-armed", { 0 } } }, 8 * blockSize };
+    session.startAt (2 * blockSize + 50);
+    engine.startRecording (session);
+    engine.play();
+    for (int block = 0; block < 5; ++block)
+    {
+        device.prepareInput();
+        REQUIRE_REALTIME_SAFE (device.processPreparedBlock (engine));
+        device.keepHistory();
+    }
+    CHECK (session.startSongSample() == 2 * blockSize + 50);
+    CHECK (session.capturedFrames() == 5 * blockSize - (2 * blockSize + 50));
 }

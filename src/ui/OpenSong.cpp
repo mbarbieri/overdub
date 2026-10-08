@@ -1,5 +1,6 @@
 #include "ui/OpenSong.h"
 
+#include "core/Log.h"
 #include "song/MixEdits.h"
 #include "ui/TrackRowEdits.h"
 
@@ -65,17 +66,52 @@ core::Expected<void> OpenSong::record()
         return std::unexpected (core::Error { "ui.no_audio_device", "no audio device is open to record from", {} });
 
     const auto passNumber = nextPassNumber (song());
-    auto started = capture::PassRecorder::start (*package_, *binding.engine, binding.latency);
+    const auto preRollSamples = (song::SampleCount) song::preRollSeconds (song().preRoll) * song().sampleRate;
+    const auto usePreRoll = ! binding.engine->isPlaying() && preRollSamples > 0;
+    const auto recordPoint = binding.engine->position();
+
+    capture::PassRecorderOptions options;
+    if (usePreRoll)
+        options.recordPoint = recordPoint;
+    auto started = capture::PassRecorder::start (*package_, *binding.engine, binding.latency, options);
     if (! started.has_value())
         return std::unexpected (started.error());
 
     recorder = std::move (*started);
     recordingPass = passNumber;
+    preRollPoint = options.recordPoint;
     // A Mixer preview still applied (a drag the Pass interrupts) gives way to the Song's mix.
     binding.engine->setMix (song());
+    if (usePreRoll)
+    {
+        const auto playFrom = std::max<song::SampleCount> (0, recordPoint - preRollSamples);
+        binding.engine->seek (playFrom);
+        core::logEvent (core::Level::info, "ui.pre_roll_started", { { "record_point", recordPoint }, { "play_from", playFrom }, { "pre_roll_seconds", song::preRollSeconds (song().preRoll) } });
+    }
     if (! binding.engine->isPlaying())
         binding.engine->play();
     return {};
+}
+
+std::optional<song::SampleCount> OpenSong::preRollRecordPoint() const
+{
+    if (recorder == nullptr || ! preRollPoint.has_value() || recorder->hasStopped() || recorder->runningPassStart().has_value())
+        return std::nullopt;
+    return preRollPoint;
+}
+
+std::optional<song::SampleCount> OpenSong::runningPassStart() const
+{
+    return recorder != nullptr ? recorder->runningPassStart() : std::nullopt;
+}
+
+void OpenSong::setPreRoll (song::PreRoll preRoll)
+{
+    if (recorder != nullptr || preRoll == song().preRoll)
+        return;
+    auto changed = song();
+    changed.preRoll = preRoll;
+    package_->changeWithoutHistory (std::move (changed));
 }
 
 void OpenSong::stop()
@@ -236,6 +272,7 @@ std::vector<core::Error> OpenSong::finishPass (core::Expected<capture::RecordedP
 {
     recorder.reset();
     recordingPass = 0;
+    preRollPoint.reset();
     reloadEngine(); // the Pass's Takes and Clips, when it was added
     if (! finished.has_value())
         return { finished.error() };

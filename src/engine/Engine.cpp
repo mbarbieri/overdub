@@ -198,9 +198,9 @@ void Engine::process (const float* const* inputs,
     takePendingPlan (hostTimeNs);
     const auto seekedThisBlock = applyTransportCommands (hostTimeNs);
     publishAnchor (hostTimeNs);
-    updateRecording (seekedThisBlock, hostTimeNs);
-    if (activeRecord != nullptr)
-        activeRecord->capture (inputs, numInputChannels, numSamples, Anchor { playPosition, hostTimeNs });
+    const auto firstRecordedFrame = updateRecording (seekedThisBlock, numSamples, hostTimeNs);
+    if (activeRecord != nullptr && activeRecordBegun)
+        activeRecord->capture (inputs, numInputChannels, numSamples, Anchor { playPosition, hostTimeNs }, firstRecordedFrame);
 
     const auto fitsPlan = currentPlan != nullptr
                        && numSamples <= currentPlan->maxBlockSize()
@@ -278,7 +278,7 @@ bool Engine::applyTransportCommands (std::uint64_t hostTimeNs) noexcept
     return seekTarget != noSeek;
 }
 
-void Engine::updateRecording (bool seekedThisBlock, std::uint64_t hostTimeNs) noexcept
+int Engine::updateRecording (bool seekedThisBlock, int numSamples, std::uint64_t hostTimeNs) noexcept
 {
     if (activeRecord != nullptr)
     {
@@ -291,30 +291,45 @@ void Engine::updateRecording (bool seekedThisBlock, std::uint64_t hostTimeNs) no
         else if (! playing)
             reason = RecordStopReason::transportStopped;
 
-        if (reason == RecordStopReason::none)
-            return;
-
-        const auto frames = activeRecord->capturedFrames();
-        const auto overrun = activeRecord->overrunFrames();
-        // The last touch of the session: its owner may free it from here on.
-        activeRecord->end (reason);
-        activeRecord = nullptr;
-        publishedRecording.store (false);
-        pushEvent (recordingStopped, hostTimeNs, (double) frames, (double) overrun, (double) reason);
+        if (reason != RecordStopReason::none)
+        {
+            const auto frames = activeRecord->capturedFrames();
+            const auto overrun = activeRecord->overrunFrames();
+            // The last touch of the session: its owner may free it from here on.
+            activeRecord->end (reason);
+            activeRecord = nullptr;
+            activeRecordBegun = false;
+            publishedRecording.store (false);
+            pushEvent (recordingStopped, hostTimeNs, (double) frames, (double) overrun, (double) reason);
+        }
     }
 
-    if (! playing || pendingRecord.load (std::memory_order_acquire) == nullptr)
-        return;
+    if (activeRecord == nullptr)
+    {
+        if (! playing || pendingRecord.load (std::memory_order_acquire) == nullptr)
+            return 0;
+        auto* session = pendingRecord.exchange (nullptr, std::memory_order_acq_rel);
+        if (session == nullptr)
+            return 0;
+        activeRecord = session;
+        activeRecordBegun = false;
+    }
 
-    auto* session = pendingRecord.exchange (nullptr, std::memory_order_acq_rel);
-    if (session == nullptr)
-        return;
+    if (activeRecordBegun)
+        return 0;
 
+    // Pre-roll: a session with a record point begins at the block that plays it.
+    const auto recordPoint = activeRecord->recordPoint();
+    if (recordPoint.has_value() && *recordPoint >= playPosition + numSamples)
+        return 0;
+
+    const auto firstFrame = recordPoint.has_value() ? (int) std::clamp<SampleCount> (*recordPoint - playPosition, 0, numSamples) : 0;
     const auto latency = currentPlan != nullptr ? currentPlan->latencySamples() : 0;
-    session->begin (playPosition, latency);
-    activeRecord = session;
+    activeRecord->begin (playPosition + firstFrame, latency);
+    activeRecordBegun = true;
     publishedRecording.store (true);
-    pushEvent (recordingStarted, hostTimeNs, (double) session->inputs().size(), latency);
+    pushEvent (recordingStarted, hostTimeNs, (double) activeRecord->inputs().size(), latency);
+    return firstFrame;
 }
 
 void Engine::restartStaleOutput() noexcept

@@ -9,6 +9,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -22,8 +23,8 @@
 // end the Pass; poll() (from the window's timer) finishes it once the audio thread has; detaching
 // the audio or destroying it waits for the audio thread and finishes it there.
 //
-// While a Pass runs, only stop, play/stop and rewind act: undo, redo, edits, seeks, import, arm,
-// input and Monitoring are ignored, so the Song and the engine's plan stay as the Pass started.
+// While a Pass runs (pre-roll included), only stop, play/stop and rewind act: undo, redo, edits,
+// seeks, import, arm, input, pre-roll and Monitoring are ignored, so the Song and the engine's plan stay as the Pass started.
 //
 // Message thread only.
 namespace overdub::ui
@@ -67,8 +68,15 @@ public:
     song::SampleCount position() const;
 
     // Starts a Pass from the playhead (and the transport, if stopped). Does nothing while a Pass
-    // runs. Errors: ui.no_audio_device, or PassRecorder::start's (capture.nothing_armed, ...).
+    // runs. With the transport stopped and the Song's pre-roll on (issue #32), playback starts that
+    // many seconds before the playhead (at 0 at the earliest) and the Pass waits for the playhead,
+    // its record point: only from there on is input captured.
+    // Errors: ui.no_audio_device, or PassRecorder::start's (capture.nothing_armed, ...).
     core::Expected<void> record();
+    // The record point while a Pass waits for it during pre-roll; none otherwise.
+    std::optional<song::SampleCount> preRollRecordPoint() const;
+    // The running Pass's record point once its capture has begun; none otherwise.
+    std::optional<song::SampleCount> runningPassStart() const;
     // Stops the transport and asks the audio thread to end a running Pass.
     void stop();
     // Plays, or stops (as stop()) when playing or recording.
@@ -99,6 +107,10 @@ public:
     // no channels: the Clip is drawn without a waveform.
     const song::Peaks& peaks (const song::ClipSource& source);
 
+    // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
+    // Ignored while a Pass runs.
+    void setPreRoll (song::PreRoll preRoll);
+
     void setArmed (const song::Id& trackId, bool armed);
     void setInputChannels (const song::Id& trackId, std::vector<int> inputChannels);
     // Monitoring is transient (not in the Song): hearing an Armed Track's live input.
@@ -125,5 +137,6 @@ private:
     std::map<song::Id, song::Peaks> peaksByMediaId; // media is immutable, so entries never go stale
     std::unique_ptr<capture::PassRecorder> recorder;
     int recordingPass = 0;
+    std::optional<song::SampleCount> preRollPoint; // the running Pass's record point, when it used pre-roll
 };
 } // namespace overdub::ui

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 // The audio side of one Pass (issue #26): what the engine's process() captures while recording,
@@ -62,14 +63,23 @@ public:
 
     const std::vector<RecordInput>& inputs() const { return recordInputs; }
 
+    // Pre-roll (issue #32): the Pass starts at this Song sample instead of at the first playing
+    // block. Set it before Engine::startRecording, off the audio thread; the engine then takes the
+    // session at the block that plays this sample and captures from it (from the block start if
+    // the transport is already past it).
+    void startAt (SampleCount songSample) { requestedRecordPoint = songSample; }
+    std::optional<SampleCount> recordPoint() const { return requestedRecordPoint; }
+
     //==========================================================================
     // Audio thread. Never allocate, lock or log.
 
     // The first captured block's first input sample is attributed to Song sample `songSample`
     // (the block's first output sample, ADR 0003 amendment); `planLatency` is the plan's PDC then.
     void begin (SampleCount songSample, int planLatency) noexcept;
-    // Queues one block of every input (a missing device channel records silence) and its anchor.
-    void capture (const float* const* deviceInputs, int numDeviceInputs, int numSamples, Anchor anchor) noexcept;
+    // Queues one block of every input from frame `firstFrame` on (a missing device channel records
+    // silence) and the block's anchor. firstFrame > 0 only on the block the Pass begins in, when
+    // its record point falls inside the block.
+    void capture (const float* const* deviceInputs, int numDeviceInputs, int numSamples, Anchor anchor, int firstFrame = 0) noexcept;
     void end (RecordStopReason reason) noexcept;
 
     //==========================================================================
@@ -118,12 +128,13 @@ private:
         InputFifo (int channels, int frames) : fifo (frames), storage (channels, frames) {}
     };
 
-    void writeInput (InputFifo& input, const RecordInput& spec, const float* const* deviceInputs, int numDeviceInputs, int numSamples) noexcept;
+    void writeInput (InputFifo& input, const RecordInput& spec, const float* const* deviceInputs, int numDeviceInputs, int firstFrame, int numFrames) noexcept;
     void pushGap (SampleCount frames) noexcept;
     void handOut (std::size_t inputIndex, int frames, const ChunkWriter& write);
     void handOutZeros (SampleCount frames, const ChunkWriter& write);
 
     std::vector<RecordInput> recordInputs;
+    std::optional<SampleCount> requestedRecordPoint; // written before publication, then read-only
     std::vector<std::unique_ptr<InputFifo>> fifos;
 
     juce::AbstractFifo anchorFifo;
