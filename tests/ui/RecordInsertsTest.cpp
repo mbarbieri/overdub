@@ -45,7 +45,7 @@ public:
 };
 } // namespace
 
-TEST_CASE ("an Insert Chain reads as its plugins' names with their loading or missing state", "[ui][record_page][inserts]")
+TEST_CASE ("an Insert chip reads as its plugin's name with its loading or missing state", "[ui][record_page][inserts]")
 {
     const std::vector<InsertSlot> chain { slotNamed ("s1", "AUDelay"), slotNamed ("s2", "NAM"), slotNamed ("s3", "AUPeakLimiter") };
     const auto statusOf = [] (const overdub::song::Id& slotId) -> std::optional<InsertStatus> {
@@ -56,9 +56,28 @@ TEST_CASE ("an Insert Chain reads as its plugins' names with their loading or mi
         return InsertStatus::loading;
     };
 
-    CHECK (insertChainText (chain, statusOf) == "AUDelay \xC2\xB7 NAM (missing) \xC2\xB7 AUPeakLimiter (loading)");
-    CHECK (insertChainText (chain, {}) == "AUDelay \xC2\xB7 NAM \xC2\xB7 AUPeakLimiter");
-    CHECK (insertChainText ({}, statusOf) == "No Inserts");
+    CHECK (insertChipText (chain[0], statusOf) == "AUDelay");
+    CHECK (insertChipText (chain[1], statusOf) == "NAM (missing)");
+    CHECK (insertChipText (chain[2], statusOf) == "AUPeakLimiter (loading)");
+    CHECK (insertChipText (chain[1], {}) == "NAM");
+    const auto chips = insertChipsFor (chain, statusOf);
+    REQUIRE (chips.size() == 3);
+    CHECK (chips[0].ready);
+    CHECK_FALSE (chips[1].ready);
+    CHECK (chips[2].slotId == "s3");
+}
+
+TEST_CASE ("the Monitoring button counts the Inserts that are active: ready and not bypassed", "[ui][record_page][inserts]")
+{
+    auto chain = std::vector<InsertSlot> { slotNamed ("s1", "AUDelay"), slotNamed ("s2", "NAM"), slotNamed ("s3", "AUPeakLimiter"), slotNamed ("s4", "AUReverb") };
+    chain[3].bypassed = true;
+    const auto statusOf = [] (const overdub::song::Id& slotId) -> std::optional<InsertStatus> { return slotId == "s2" ? InsertStatus::failed : InsertStatus::ready; };
+
+    CHECK (activeInsertCount (chain, statusOf) == 2);
+    CHECK (activeInsertCount (chain, {}) == 3);
+    CHECK (activeInsertCount ({}, statusOf) == 0);
+    CHECK (monitoringText (0) == "Monitoring");
+    CHECK (monitoringText (2) == "Monitoring \xC2\xB7 2 fx");
 }
 
 TEST_CASE ("+ Insert on a Record row adds the picked AU to that Track's chain as one undo step", "[ui][record_page][inserts]")
@@ -72,10 +91,10 @@ TEST_CASE ("+ Insert on a Record row adds the picked AU to that Track's chain as
         done (1);
     };
     auto& row = f.rowNamed ("Guitar");
-    CHECK (row.insertsLabel.getText() == "No Inserts");
-    CHECK (isShown (row.insertButton));
+    CHECK (row.insertChain.chips.empty());
+    CHECK (isShown (row.insertChain.addButton));
 
-    click (row.insertButton);
+    click (row.insertChain.addButton);
 
     CHECK (offered.size() == 2);
     const auto& chain = f.trackNamed ("Guitar").insertChain;
@@ -84,13 +103,14 @@ TEST_CASE ("+ Insert on a Record row adds the picked AU to that Track's chain as
     CHECK (chain[0].component == auPeakLimiter.component);
     CHECK (f.openSong->package().undoLabel() == "Add AUPeakLimiter to Guitar");
     CHECK (f.trackNamed ("Vocals").insertChain.empty());
-    CHECK (f.rowNamed ("Guitar").insertsLabel.getText() == "AUPeakLimiter (loading)");
+    REQUIRE (f.rowNamed ("Guitar").insertChain.chips.size() == 1);
+    CHECK (f.rowNamed ("Guitar").insertChain.chips[0]->text() == "AUPeakLimiter (loading)");
 
     // Once it has loaded, the row shows it plainly.
     REQUIRE (plugins.requests.size() == 1);
     plugins.requests[0](std::unique_ptr<juce::AudioProcessor> (std::make_unique<PassThrough>()));
     f.runBlocks (1);
-    CHECK (f.rowNamed ("Guitar").insertsLabel.getText() == "AUPeakLimiter");
+    CHECK (f.rowNamed ("Guitar").insertChain.chips[0]->text() == "AUPeakLimiter");
 }
 
 TEST_CASE ("dismissing the plugin menu adds nothing, and + Insert is disabled during a Pass", "[ui][record_page][inserts]")
@@ -100,13 +120,13 @@ TEST_CASE ("dismissing the plugin menu adds nothing, and + Insert is disabled du
     f.window->listInsertPlugins = [] { return std::vector<AvailableAudioUnit> { auDelay }; };
     f.window->chooseInsertPlugin = [] (const std::vector<AvailableAudioUnit>&, std::function<void (std::optional<std::size_t>)> done) { done (std::nullopt); };
 
-    click (f.rowNamed ("Guitar").insertButton);
+    click (f.rowNamed ("Guitar").insertChain.addButton);
     CHECK (f.trackNamed ("Guitar").insertChain.empty());
     CHECK_FALSE (f.openSong->package().undoLabel().starts_with ("Add AUDelay"));
 
     REQUIRE (f.openSong->record().has_value());
     f.runBlocks (2);
-    CHECK_FALSE (f.rowNamed ("Guitar").insertButton.isEnabled());
+    CHECK_FALSE (f.rowNamed ("Guitar").insertChain.addButton.isEnabled());
     f.openSong->stop();
     f.runBlocks (1);
 }
@@ -118,9 +138,9 @@ TEST_CASE ("Record mode with Insert Chains renders to a snapshot", "[ui][record_
     f.window->listInsertPlugins = [] { return std::vector<AvailableAudioUnit> { auDelay, auPeakLimiter }; };
     std::size_t pick = 0;
     f.window->chooseInsertPlugin = [&pick] (const std::vector<AvailableAudioUnit>&, std::function<void (std::optional<std::size_t>)> done) { done (pick); };
-    click (f.rowNamed ("Guitar").insertButton);
+    click (f.rowNamed ("Guitar").insertChain.addButton);
     pick = 1;
-    click (f.rowNamed ("Guitar").insertButton);
+    click (f.rowNamed ("Guitar").insertChain.addButton);
     plugins.requests[0](std::unique_ptr<juce::AudioProcessor> (std::make_unique<PassThrough>()));
     f.runBlocks (1);
 

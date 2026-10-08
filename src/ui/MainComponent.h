@@ -5,6 +5,7 @@
 #include "ui/EditPage.h"
 #include "ui/OpenSong.h"
 #include "ui/Pages.h"
+#include "ui/PluginWindows.h"
 #include "ui/RecordPage.h"
 #include "ui/TopBar.h"
 #include "ui/UserMessages.h"
@@ -27,9 +28,13 @@
 // Pass row moves the playhead to the Pass's start, and on the overview to the Song sample there;
 // ↺ Bring back is one undo step. While pre-roll counts down, the clock's status line does too.
 //
-// "+ Insert" on a Record row lists the AU effects and adds the one picked to that Track's Insert
-// Chain, one undo step through OpenSong::addInsert; the row shows the chain with each plugin's
-// loading or missing state (issue #33).
+// Insert Chains (issues #33, #34) on Record rows, Mixer strips and the Master strip: "+ Insert"
+// lists the AU effects and adds the one picked (OpenSong::addInsert), then opens its editor once
+// it has loaded; bypass, remove and drag-to-reorder are one undo step each (song/InsertEdits.h).
+// Clicking an Insert opens its plugin's editor window (ui/PluginWindows.h; a loading plugin's
+// opens once it is ready, a missing one shows the "ui.plugin_missing" Notice). Windows follow the
+// Song: one whose slot is removed (or undone away) closes; closing one schedules a song.json
+// write that captures the plugin's state, outside history.
 //
 // M and S (Record rows, Edit headers, Mixer strips) and the Mixer's faders and pan are undo steps
 // through OpenSong::edit; a Mixer drag in progress is heard through OpenSong::previewMix (issue #31).
@@ -76,7 +81,7 @@ public:
     std::function<void (std::function<void (std::vector<juce::File>)>)> chooseFilesToImport;
     // Shows an Alert: a modal dialog with this sentence.
     std::function<void (const juce::String& sentence)> showAlert;
-    // "+ Insert" on a Record row (issue #33): the AU effects to offer (AudioUnitLoader::findEffects
+    // "+ Insert" (issue #33): the AU effects to offer (AudioUnitLoader::findEffects
     // in the app; none by default), and how the user picks one: calls back with the index picked,
     // or none when dismissed (default: a pop-up menu by name).
     std::function<std::vector<plugin::AvailableAudioUnit>()> listInsertPlugins;
@@ -92,6 +97,8 @@ public:
     PlaceholderPage exportPage { "Export mode arrives in a later version." };
     NoSongPage noSongPage;
     NoticeLine noticeLine;
+    // The plugin editor windows; tests set showOnDesktop false before opening any.
+    PluginWindows pluginWindows;
 
 private:
     void timerCallback() override { tick(); }
@@ -105,6 +112,9 @@ private:
     void setSolo (const song::Id& trackId, bool solo);
     void importFiles (const std::vector<juce::File>& files);
     void chooseInsert (const song::Id& trackId);
+    void openInsertEditor (const song::Id& slotId);
+    void syncPluginWindows();
+    InsertChainActions insertChainActions();
     void post (UserMessage message);
     void presentMessages();
     void handleErrors (const std::vector<core::Error>& errors);
@@ -114,6 +124,8 @@ private:
     OpenSong* openSong = nullptr;
     Mode currentMode = Mode::record;
     UserMessageQueue messages;
+    // A slot whose editor opens once its plugin is ready (just added, or clicked while loading).
+    std::optional<song::Id> pendingEditorSlot;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

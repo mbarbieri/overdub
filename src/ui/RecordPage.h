@@ -2,6 +2,7 @@
 
 #include "plugin/InsertHost.h"
 #include "song/Song.h"
+#include "ui/InsertChain.h"
 #include "ui/LookAheadStrip.h"
 #include "ui/PassesPanel.h"
 #include "ui/RecordView.h"
@@ -22,8 +23,9 @@
 // Right column: one row per Track (arm, name, M and S (issue #31), input picker, Monitoring), the
 // Import button, then the Passes list (heard status and ↺ Bring back; clicking a row jumps to the
 // Pass's start). Along the bottom: the Backing Track look-ahead strip and the whole-Song overview
-// (a click moves the playhead). Under each row's name: "+ Insert" (issue #33, a minimal way to add
-// an AU before the chain editor of slice 13) and the Insert Chain's names. Meters come later.
+// (a click moves the playhead). Under each row's name: the Track's Insert Chain (issue #34,
+// ui/InsertChain.h: add, open, bypass, remove, drag to reorder); the Monitoring button counts
+// the chain's active Inserts. Meters come later.
 // Thin: it shows state and reports gestures by Track or Pass id; the strip, overview and Passes
 // rows are computed by ui/RecordView.h and ui/TakeLanes.h.
 namespace overdub::ui
@@ -38,7 +40,8 @@ struct TrackRowState
     std::vector<InputChoice> choices;
     std::optional<std::size_t> selectedChoice; // nullopt: the Track's channels are not offered
     bool monitoring = false;
-    std::string inserts; // insertChainText of the Track's chain
+    std::vector<InsertChipState> inserts;
+    int activeInserts = 0; // activeInsertCount of the Track's chain
     bool enabled = true; // false while a Pass runs
 };
 
@@ -54,11 +57,8 @@ struct RecordPageState
 inline constexpr std::array<song::PreRoll, 4> preRollChoices { song::PreRoll::off, song::PreRoll::oneSecond, song::PreRoll::twoSeconds, song::PreRoll::fourSeconds };
 int preRollChoiceIndex (song::PreRoll preRoll);
 
-using InsertStatusLookup = std::function<std::optional<plugin::InsertStatus> (const song::Id& slotId)>;
-
-// An Insert Chain as a row shows it: the plugins' names in order, joined by " Â· ", each marked
-// " (loading)" or " (missing)" when its plugin is not ready; "No Inserts" for an empty chain.
-std::string insertChainText (const std::vector<song::InsertSlot>& chain, const InsertStatusLookup& statusOf);
+// The Monitoring button's text: "Monitoring", then " Â· 2 fx" when Inserts are active.
+std::string monitoringText (int activeInserts);
 
 // The rows for a Song: one per Track, in Song order; the Song's pre-roll. Without a status lookup
 // every Insert shows as ready.
@@ -84,7 +84,6 @@ public:
     std::function<void (bool on)> onMonitoring;
     std::function<void (bool mute)> onMute;
     std::function<void (bool solo)> onSolo;
-    std::function<void()> onInsert;
 
     juce::TextButton armButton { "Arm" };
     juce::Label nameLabel;
@@ -92,8 +91,7 @@ public:
     juce::TextButton soloButton { "S" };
     juce::ComboBox inputPicker;
     juce::TextButton monitoringButton { "Monitoring" };
-    juce::TextButton insertButton { "+ Insert" };
-    juce::Label insertsLabel;
+    InsertChainView insertChain { false };
 
 private:
     TrackRowState current;
@@ -119,8 +117,8 @@ public:
     std::function<void (const song::Id&, bool)> onMonitoring;
     std::function<void (const song::Id&, bool)> onMute;
     std::function<void (const song::Id&, bool)> onSolo;
-    // "+ Insert" on a Track's row.
-    std::function<void (const song::Id& trackId)> onInsert;
+    // The Insert Chains' gestures (every row's).
+    InsertChainActions insertActions;
     std::function<void()> onImport;
     std::function<void (song::PreRoll)> onPreRoll;
     // A click on a Pass row: jump to that Pass's start.

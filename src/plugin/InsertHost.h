@@ -70,6 +70,8 @@ public:
     std::optional<InsertStatus> status (const song::Id& slotId) const;
     // The slot's ready processor, or null.
     juce::AudioProcessor* processor (const song::Id& slotId) const;
+    // The same, shared: an editor window keeps it alive until it closes (issue #34).
+    std::shared_ptr<juce::AudioProcessor> sharedProcessor (const song::Id& slotId) const;
 
     // True once since a slot became ready or a ready plugin's latency changed from what the last
     // insertFactory() saw (logs plugin.latency_changed, info: slot_id, from, to).

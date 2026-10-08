@@ -91,16 +91,77 @@ TEST_CASE ("a Track row puts arm, name, M, S, input picker and Monitoring left t
     CHECK (layout.input.getX() < layout.monitoring.getX());
 }
 
-TEST_CASE ("a Track row puts the + Insert button and the Insert Chain under the name", "[ui][layout][inserts]")
+TEST_CASE ("a Track row puts its Insert Chain under the name", "[ui][layout][inserts]")
 {
     const Rectangle<int> row { 800, 100, trackColumnWidth, trackRowHeight };
     const auto layout = trackRowLayout (row);
 
-    checkInsideAndApart (row, { layout.arm, layout.name, layout.mute, layout.solo, layout.input, layout.monitoring, layout.insertButton, layout.inserts });
-    CHECK (layout.insertButton.getY() >= layout.name.getBottom());
-    CHECK (layout.insertButton.getX() == layout.name.getX());
-    CHECK (layout.insertButton.getRight() < layout.inserts.getX());
-    CHECK (layout.inserts.getWidth() >= 200);
+    checkInsideAndApart (row, { layout.arm, layout.name, layout.mute, layout.solo, layout.input, layout.monitoring, layout.insertChain });
+    CHECK (layout.insertChain.getY() >= layout.name.getBottom());
+    CHECK (layout.insertChain.getX() == layout.name.getX());
+    CHECK (layout.insertChain.getHeight() == insertChipHeight);
+    // "+ Insert" and three chips fit.
+    CHECK (layout.insertChain.getWidth() >= insertAddButtonWidth + 3 * insertChipWidth);
+    CHECK (layout.monitoring.getWidth() >= 110);
+}
+
+TEST_CASE ("a horizontal Insert Chain puts + Insert first, then the chips left to right, cutting off what does not fit", "[ui][layout][inserts]")
+{
+    const Rectangle<int> area { 50, 40, 400, insertChipHeight };
+    const auto layout = insertChainLayout (area, 5, false);
+
+    REQUIRE (layout.chips.size() == 5);
+    CHECK (layout.addButton.getX() == area.getX());
+    CHECK (layout.addButton.getWidth() == insertAddButtonWidth);
+    CHECK (layout.chips[0].getX() > layout.addButton.getRight());
+    CHECK (layout.chips[1].getX() > layout.chips[0].getRight());
+    CHECK (layout.chips[0].getWidth() == insertChipWidth);
+    checkInsideAndApart (area, { layout.addButton, layout.chips[0], layout.chips[1] });
+    CHECK (layout.chips[3].isEmpty());
+    CHECK (layout.chips[4].isEmpty());
+}
+
+TEST_CASE ("a vertical Insert Chain stacks the chips from the top and keeps + Insert at the bottom", "[ui][layout][inserts]")
+{
+    const Rectangle<int> area { 10, 100, 98, mixerInsertsHeight };
+    const auto layout = insertChainLayout (area, 4, true);
+
+    REQUIRE (layout.chips.size() == 4);
+    CHECK (layout.chips[0].getY() == area.getY());
+    CHECK (layout.chips[0].getWidth() == area.getWidth());
+    CHECK (layout.chips[0].getHeight() == insertChipHeight);
+    CHECK (layout.chips[1].getY() > layout.chips[0].getBottom());
+    CHECK (layout.addButton.getBottom() == area.getBottom());
+    checkInsideAndApart (area, { layout.chips[0], layout.chips[1], layout.chips[2], layout.addButton });
+    CHECK (layout.chips[3].isEmpty()); // three show above + Insert
+}
+
+TEST_CASE ("an Insert chip is its name, then bypass and remove at its right end", "[ui][layout][inserts]")
+{
+    const Rectangle<int> chip { 0, 0, insertChipWidth, insertChipHeight };
+    const auto layout = insertChipLayout (chip);
+    checkInsideAndApart (chip, { layout.name, layout.bypass, layout.remove });
+    CHECK (layout.name.getRight() <= layout.bypass.getX());
+    CHECK (layout.bypass.getRight() <= layout.remove.getX());
+    CHECK (layout.remove.getRight() == chip.getRight());
+}
+
+TEST_CASE ("a dragged Insert chip lands before the first other chip whose centre is past the drop point", "[ui][layout][inserts]")
+{
+    const auto vertical = insertChainLayout ({ 0, 0, 98, 200 }, 3, true).chips;
+    // Dragging the first chip below the second's centre puts it second; below the third's, last.
+    CHECK (insertDropIndex (vertical, 0, vertical[1].getCentre().translated (0, 1), true) == 1);
+    CHECK (insertDropIndex (vertical, 0, vertical[2].getCentre().translated (0, 1), true) == 2);
+    CHECK (insertDropIndex (vertical, 0, { 5, 1000 }, true) == 2);
+    // The last chip dragged above the first's centre goes first.
+    CHECK (insertDropIndex (vertical, 2, vertical[0].getCentre().translated (0, -1), true) == 0);
+    CHECK (insertDropIndex (vertical, 2, { 5, -50 }, true) == 0);
+    // Dropped where it was: the same place.
+    CHECK (insertDropIndex (vertical, 1, vertical[1].getCentre(), true) == 1);
+
+    const auto horizontal = insertChainLayout ({ 0, 0, 600, insertChipHeight }, 3, false).chips;
+    CHECK (insertDropIndex (horizontal, 0, horizontal[2].getCentre().translated (1, 0), false) == 2);
+    CHECK (insertDropIndex (horizontal, 2, horizontal[0].getTopLeft(), false) == 0);
 }
 
 TEST_CASE ("Edit mode stacks the Clip toolbar, the timeline, the divider and the Mixer region", "[ui][layout][edit]")
@@ -198,13 +259,15 @@ TEST_CASE ("the Mixer puts one strip per Track from the left and the Master stri
     CHECK (crowded.strips.back().isEmpty());
 }
 
-TEST_CASE ("a Mixer strip stacks name, pan, fader beside its meter, the dB value, then M and S", "[ui][layout][mixer]")
+TEST_CASE ("a Mixer strip stacks name, pan, the Insert Chain, fader beside its meter, the dB value, then M and S", "[ui][layout][mixer]")
 {
     const Rectangle<int> strip { 10, 500, mixerStripWidth, defaultMixerHeight - 12 };
     const auto layout = mixerStripLayout (strip);
-    checkInsideAndApart (strip, { layout.name, layout.pan, layout.fader, layout.meter, layout.value, layout.mute, layout.solo });
+    checkInsideAndApart (strip, { layout.name, layout.pan, layout.inserts, layout.fader, layout.meter, layout.value, layout.mute, layout.solo });
     CHECK (layout.name.getBottom() <= layout.pan.getY());
-    CHECK (layout.pan.getBottom() <= layout.fader.getY());
+    CHECK (layout.pan.getBottom() <= layout.inserts.getY());
+    CHECK (layout.inserts.getHeight() == mixerInsertsHeight);
+    CHECK (layout.inserts.getBottom() <= layout.fader.getY());
     CHECK (layout.fader.getRight() <= layout.meter.getX());
     CHECK (layout.meter.getY() == layout.fader.getY());
     CHECK (layout.meter.getHeight() == layout.fader.getHeight());
@@ -212,6 +275,8 @@ TEST_CASE ("a Mixer strip stacks name, pan, fader beside its meter, the dB value
     CHECK (layout.value.getBottom() <= layout.mute.getY());
     CHECK (layout.mute.getRight() < layout.solo.getX());
     CHECK (layout.fader.getHeight() >= 60);
+    // An Insert chip's name has room for about ten characters.
+    CHECK (insertChipLayout (layout.inserts.withHeight (insertChipHeight)).name.getWidth() >= 60);
 }
 
 TEST_CASE ("a Track's unfolded Take Lanes sit under its lane, before the next Track", "[ui][layout][take_lanes]")

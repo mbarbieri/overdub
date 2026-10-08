@@ -14,23 +14,11 @@ int preRollChoiceIndex (song::PreRoll preRoll)
     return (int) std::distance (preRollChoices.begin(), std::ranges::find (preRollChoices, preRoll));
 }
 
-std::string insertChainText (const std::vector<song::InsertSlot>& chain, const InsertStatusLookup& statusOf)
+std::string monitoringText (int activeInserts)
 {
-    if (chain.empty())
-        return "No Inserts";
-    std::string text;
-    for (const auto& slot : chain)
-    {
-        if (! text.empty())
-            text += " \xC2\xB7 ";
-        text += slot.name;
-        const auto status = statusOf ? statusOf (slot.id) : std::optional { plugin::InsertStatus::ready };
-        if (status == plugin::InsertStatus::loading)
-            text += " (loading)";
-        else if (status != plugin::InsertStatus::ready)
-            text += " (missing)";
-    }
-    return text;
+    if (activeInserts <= 0)
+        return "Monitoring";
+    return "Monitoring \xC2\xB7 " + std::to_string (activeInserts) + " fx";
 }
 
 RecordPageState recordPageStateFor (const song::Song& song,
@@ -55,7 +43,8 @@ RecordPageState recordPageStateFor (const song::Song& song,
             .choices = choices,
             .selectedChoice = choiceIndexFor (choices, track.inputChannels),
             .monitoring = isMonitoring (track.id),
-            .inserts = insertChainText (track.insertChain, insertStatus),
+            .inserts = insertChipsFor (track.insertChain, insertStatus),
+            .activeInserts = activeInsertCount (track.insertChain, insertStatus),
             .enabled = ! passRunning,
         });
     }
@@ -81,12 +70,6 @@ TrackRow::TrackRow()
         if (onMonitoring)
             onMonitoring (! current.monitoring);
     };
-    insertButton.onClick = [this] {
-        if (onInsert)
-            onInsert();
-    };
-    insertsLabel.setColour (juce::Label::textColourId, colours::dimText);
-    insertsLabel.setFont (juce::FontOptions (12.0f));
     inputPicker.onChange = [this] {
         const auto index = inputPicker.getSelectedItemIndex();
         if (index < 0 || (std::size_t) index >= current.choices.size() || ! onInput)
@@ -96,7 +79,7 @@ TrackRow::TrackRow()
         onInput (current.choices[(std::size_t) index].channels);
     };
 
-    for (auto* button : { &armButton, &monitoringButton, &insertButton })
+    for (auto* button : { &armButton, &monitoringButton })
         button->setWantsKeyboardFocus (false);
     inputPicker.setWantsKeyboardFocus (false);
 
@@ -106,8 +89,7 @@ TrackRow::TrackRow()
     addAndMakeVisible (soloButton);
     addAndMakeVisible (inputPicker);
     addAndMakeVisible (monitoringButton);
-    addAndMakeVisible (insertButton);
-    addAndMakeVisible (insertsLabel);
+    addAndMakeVisible (insertChain);
 }
 
 void TrackRow::show (const TrackRowState& state)
@@ -120,7 +102,8 @@ void TrackRow::show (const TrackRowState& state)
     monitoringButton.setToggleState (state.monitoring, juce::dontSendNotification);
     muteButton.setToggleState (state.mute, juce::dontSendNotification);
     soloButton.setToggleState (state.solo, juce::dontSendNotification);
-    insertsLabel.setText (juce::String::fromUTF8 (state.inserts.c_str()), juce::dontSendNotification);
+    monitoringButton.setButtonText (juce::String::fromUTF8 (monitoringText (state.activeInserts).c_str()));
+    insertChain.show (state.trackId, state.inserts, state.enabled);
 
     if (choicesChanged)
     {
@@ -133,7 +116,7 @@ void TrackRow::show (const TrackRowState& state)
     else
         inputPicker.setSelectedId (0, juce::dontSendNotification);
 
-    for (auto* control : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &inputPicker, &monitoringButton, &insertButton })
+    for (auto* control : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &inputPicker, &monitoringButton })
         control->setEnabled (state.enabled);
     repaint();
 }
@@ -147,8 +130,7 @@ void TrackRow::resized()
     soloButton.setBounds (layout.solo);
     inputPicker.setBounds (layout.input);
     monitoringButton.setBounds (layout.monitoring);
-    insertButton.setBounds (layout.insertButton);
-    insertsLabel.setBounds (layout.inserts);
+    insertChain.setBounds (layout.insertChain);
 }
 
 void TrackRow::paint (juce::Graphics& g)
@@ -242,10 +224,7 @@ void RecordPage::show (const RecordPageState& state)
                 if (onSolo)
                     onSolo (trackId, solo);
             };
-            row->onInsert = [this, trackId] {
-                if (onInsert)
-                    onInsert (trackId);
-            };
+            row->insertChain.actions = &insertActions;
             addAndMakeVisible (*row);
             rows.push_back (std::move (row));
         }

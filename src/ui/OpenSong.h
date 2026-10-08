@@ -121,9 +121,13 @@ public:
     const song::Peaks& peaks (const song::ClipSource& source);
 
     // Adds this AU at the end of the Track's Insert Chain (the Master's for an empty trackId) as
-    // one undo step "Add AUDelay to Guitar"; it is heard once it has loaded. Ignored while a Pass
-    // runs. Errors: song.track_not_found, SongPackage::edit's.
-    core::Expected<void> addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin);
+    // one undo step "Add AUDelay to Guitar"; it is heard once it has loaded. Returns the new
+    // slot's id; an empty id while a Pass runs (nothing is added).
+    // Errors: song.track_not_found, SongPackage::edit's.
+    core::Expected<song::Id> addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin);
+    // A plugin's state may have changed without a parameter report (its editor window closed):
+    // schedules the debounced song.json write, which captures every plugin's state. No undo step.
+    void notePluginStateChanged();
     // Whether the slot's plugin is loading, ready or failed; none for a slot not in the Song.
     std::optional<plugin::InsertStatus> insertStatus (const song::Id& slotId) const { return inserts.status (slotId); }
     plugin::InsertHost& insertHost() { return inserts; }

@@ -174,6 +174,12 @@ juce::AudioProcessor* InsertHost::processor (const song::Id& slotId) const
     return found != entries.end() ? found->second.processor.get() : nullptr;
 }
 
+std::shared_ptr<juce::AudioProcessor> InsertHost::sharedProcessor (const song::Id& slotId) const
+{
+    const auto found = entries.find (slotId);
+    return found != entries.end() ? found->second.processor : nullptr;
+}
+
 bool InsertHost::takeGraphChanged()
 {
     for (auto& [slotId, entry] : entries)
