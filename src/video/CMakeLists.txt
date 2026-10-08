@@ -6,10 +6,17 @@
 add_library(overdub_video STATIC)
 
 target_sources(overdub_video PRIVATE
-    FrameSelection.cpp)
+    FrameSelection.cpp
+    MovieFile.mm)
+
+# The AVFoundation sources hold Objective-C objects in C++ structs: ARC manages them.
+set_source_files_properties(MovieFile.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 
 target_link_libraries(overdub_video
     PUBLIC
         overdub_engine
+        "-framework AVFoundation"
+        "-framework CoreMedia"
+        "-framework CoreVideo"
     PRIVATE
         juce::juce_recommended_warning_flags)
