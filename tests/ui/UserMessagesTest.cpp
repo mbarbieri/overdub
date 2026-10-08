@@ -14,6 +14,10 @@ TEST_CASE ("situations the user need not decide on are Notices; lost data and fa
     CHECK (tierFor ("ui.stop_recording_first") == Tier::notice);
     CHECK (tierFor ("song.split_outside_clip") == Tier::notice);
     CHECK (tierFor ("song.clip_not_found") == Tier::notice);
+    CHECK (tierFor ("ui.latency_not_calibrated") == Tier::notice);
+    CHECK (tierFor ("ui.calibration_running") == Tier::notice);
+    CHECK (tierFor ("capture.calibration_timeout") == Tier::notice);
+    CHECK (tierFor ("capture.clap_no_video_take") == Tier::notice);
 
     CHECK (tierFor ("capture.take_write_failed") == Tier::alert);
     CHECK (tierFor ("song.import_unreadable") == Tier::alert);
