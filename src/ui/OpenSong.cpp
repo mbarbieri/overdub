@@ -68,6 +68,8 @@ void OpenSong::attachAudio (AudioBinding audio)
 
 std::vector<core::Error> OpenSong::detachAudio()
 {
+    // The export renders the plugins the next engine is prepared for: it must stop first.
+    stopExport ("audio_detached");
     std::vector<core::Error> errors;
     if (recorder != nullptr)
     {
@@ -111,6 +113,8 @@ core::Expected<void> OpenSong::record()
 {
     if (recorder != nullptr)
         return {};
+    if (isExporting())
+        return std::unexpected (core::Error { "ui.export_running", "an export is running", {} });
     if (binding.engine == nullptr)
         return std::unexpected (core::Error { "ui.no_audio_device", "no audio device is open to record from", {} });
 
@@ -179,7 +183,7 @@ void OpenSong::stop()
 
 void OpenSong::playOrStop()
 {
-    if (binding.engine == nullptr)
+    if (binding.engine == nullptr || isExporting())
         return;
     if (recorder != nullptr || binding.engine->isPlaying())
         stop();
@@ -320,9 +324,10 @@ std::vector<core::Expected<song::Id>> OpenSong::importFiles (const std::vector<j
 
 std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point now)
 {
-    std::vector<core::Error> errors;
+    auto errors = advanceExport();
     if (recorder != nullptr && recorder->hasStopped())
-        errors = finishPass (recorder->finish (now));
+        for (auto& error : finishPass (recorder->finish (now)))
+            errors.push_back (std::move (error));
 
     // During a Pass the plan stays as it started; finishPass rebuilds it.
     if (recorder == nullptr && inserts.takeGraphChanged())
@@ -450,7 +455,78 @@ void OpenSong::updateEngine (const song::Song& before)
 void OpenSong::reloadEngine()
 {
     inserts.sync (song());
-    if (binding.engine != nullptr)
+    if (binding.engine != nullptr && ! isExporting())
         binding.engine->loadSong (songForEngine (song(), monitored), package_->location(), inserts.insertFactory());
+}
+
+core::Expected<void> OpenSong::startExport (exporting::ExportRequest request)
+{
+    if (recorder != nullptr)
+        return std::unexpected (core::Error { "ui.stop_recording_first", "a Pass is running", {} });
+    if (isExporting())
+        return {};
+    if (auto available = exporting::checkAvailable (request.format); ! available.has_value())
+        return available;
+
+    lastExport.reset();
+    if (binding.engine != nullptr)
+    {
+        binding.engine->stop();
+        binding.engine->loadSong (song::makeEmptySong (song().sampleRate), package_->location());
+    }
+    core::logEvent (core::Level::info, "ui.export_requested", { { "format", exporting::formatName (request.format) }, { "path", request.destination.getFullPathName().toStdString() }, { "audio", binding.engine != nullptr } });
+    exportWaiting = std::move (request);
+    // Without audio nothing else renders the plugins: the export starts now.
+    startExportOnceAudioLetGo();
+    return {};
+}
+
+ExportPhase OpenSong::exportPhase() const
+{
+    if (exportJob != nullptr)
+        return ExportPhase::rendering;
+    return exportWaiting.has_value() ? ExportPhase::waitingForAudio : ExportPhase::idle;
+}
+
+double OpenSong::exportProgress() const
+{
+    return exportJob != nullptr ? exportJob->progress() : 0.0;
+}
+
+void OpenSong::startExportOnceAudioLetGo()
+{
+    if (! exportWaiting.has_value() || (binding.engine != nullptr && binding.engine->hasPendingPlan()))
+        return;
+    // The audio thread renders the empty plan now: the export may run the plugins.
+    inserts.sync (song());
+    auto render = std::make_unique<exporting::MixRender> (song(), package_->location(), blockSizeOf (binding), inserts.insertFactory());
+    exportJob = std::make_unique<exporting::ExportJob> (std::move (render), std::move (*exportWaiting));
+    exportWaiting.reset();
+}
+
+std::vector<core::Error> OpenSong::advanceExport()
+{
+    startExportOnceAudioLetGo();
+    if (exportJob == nullptr || ! exportJob->isDone())
+        return {};
+
+    auto result = exportJob->takeResult();
+    exportJob.reset();
+    reloadEngine();
+    if (! OVERDUB_CHECK (result.has_value(), "ui.export_result_missing"))
+        return {};
+    if (! result->has_value())
+        return { result->error() };
+    lastExport = (*result)->file;
+    return {};
+}
+
+void OpenSong::stopExport (const char* reason)
+{
+    if (! isExporting())
+        return;
+    core::logEvent (core::Level::info, "ui.export_stopped", { { "reason", reason }, { "phase", exportJob != nullptr ? "rendering" : "waiting_for_audio" } });
+    exportWaiting.reset();
+    exportJob.reset(); // stops the worker and waits for it
 }
 } // namespace overdub::ui

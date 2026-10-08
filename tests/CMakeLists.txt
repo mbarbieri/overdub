@@ -33,6 +33,8 @@ target_sources(overdub_tests PRIVATE
     engine/MixLawTest.cpp
     engine/EngineTakeLanesTest.cpp
     engine/EngineTest.cpp
+    export/MixExportTest.cpp
+    export/MixRenderTest.cpp
     plugin/AudioUnitIdentifierTest.cpp
     plugin/AudioUnitLoaderTest.cpp
     plugin/InsertBypassTest.cpp
@@ -51,6 +53,7 @@ target_sources(overdub_tests PRIVATE
     ui/CommandsTest.cpp
     ui/DeviceSettingsPanelTest.cpp
     ui/EditPageTest.cpp
+    ui/ExportPageTest.cpp
     ui/InsertChainUiTest.cpp
     ui/LayoutTest.cpp
     ui/MainComponentTest.cpp

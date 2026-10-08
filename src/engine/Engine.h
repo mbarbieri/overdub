@@ -74,6 +74,11 @@ public:
     int latencySamples() const;
     // The tail of the plan the audio thread plays now (RenderPlan::tailSamples; 0 before the first).
     int tailSamples() const;
+    // True from loadSong until the audio thread has taken that plan (at the start of a callback).
+    // Once false, the plan the audio thread renders is the latest one loaded, and every older plan
+    // has finished its last block: export waits for this before rendering the shared plugins
+    // itself (issue #37).
+    bool hasPendingPlan() const { return pendingPlan.load (std::memory_order_acquire) != nullptr; }
     // The latest callback's anchor; empty before the first callback.
     std::optional<Anchor> latestAnchor() const;
 

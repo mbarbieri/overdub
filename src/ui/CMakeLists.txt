@@ -10,6 +10,7 @@ target_sources(overdub_ui PRIVATE
     Commands.cpp
     DeviceSettingsPanel.cpp
     EditPage.cpp
+    ExportPage.cpp
     InsertChain.cpp
     Layout.cpp
     LookAheadStrip.cpp
@@ -39,6 +40,7 @@ set_source_files_properties(CameraStage.mm VideoScreen.mm PROPERTIES COMPILE_OPT
 target_link_libraries(overdub_ui
     PUBLIC
         overdub_capture
+        overdub_export
         overdub_plugin
         overdub_video
     PRIVATE

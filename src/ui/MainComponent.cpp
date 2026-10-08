@@ -2,6 +2,7 @@
 
 #include "capture/AvCamera.h"
 #include "core/Log.h"
+#include "export/MixRender.h"
 #include "plugin/PluginKind.h"
 #include "song/ClipEdits.h"
 #include "song/InsertEdits.h"
@@ -53,6 +54,16 @@ core::Fields messageFields (const UserMessage& message)
     return { { "code", message.code }, { "tier", tierName (message.tier) } };
 }
 
+void chooseExportFileWithNativeDialog (juce::File current, std::function<void (std::optional<juce::File>)> whenChosen)
+{
+    auto chooser = std::make_shared<juce::FileChooser> ("Export the mix", current, "*." + current.getFileExtension().trimCharactersAtStart ("."));
+    const auto flags = juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting;
+    chooser->launchAsync (flags, [chooser, done = std::move (whenChosen)] (const juce::FileChooser& finished) {
+        const auto chosen = finished.getResult();
+        done (chosen == juce::File() ? std::nullopt : std::optional<juce::File> (chosen));
+    });
+}
+
 void showAlertWithNativeDialog (const juce::String& sentence)
 {
     juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOk (juce::MessageBoxIconType::WarningIcon, "Overdub", sentence), nullptr);
@@ -65,6 +76,8 @@ MainComponent::MainComponent()
     chooseInsertPlugin = choosePluginFromMenu;
     showAlert = showAlertWithNativeDialog;
     askCameraAccess = capture::requestCameraAccess;
+    chooseExportDestination = chooseExportFileWithNativeDialog;
+    revealInFinder = [] (const juce::File& file) { file.revealToUser(); };
 
     topBar.onCommand = [this] (Command command) { perform (command); };
     recordPage.onArm = [this] (const song::Id& trackId, bool armed) {
@@ -155,6 +168,12 @@ MainComponent::MainComponent()
         static const song::Peaks none;
         return openSong != nullptr ? openSong->peaks (source) : none;
     };
+    exportPage.onExport = [this] (exporting::ExportRequest request) { startExport (request); };
+    exportPage.onChooseDestination = [this] (juce::File current) { chooseExportFile (current); };
+    exportPage.onReveal = [this] (juce::File file) {
+        if (revealInFinder)
+            revealInFinder (file);
+    };
     noSongPage.onNewSong = [this] {
         if (onNewSong)
             onNewSong();
@@ -243,7 +262,29 @@ void MainComponent::setOpenSong (OpenSong* song)
     pluginWindows.closeAll();
     pendingEditorSlot.reset();
     openSong = song;
+    if (openSong != nullptr)
+        exportPage.setDestination (exporting::defaultExportFile (exportFolder, openSong->package().location().getFileNameWithoutExtension().toStdString(), exportPage.format()));
     refresh();
+}
+
+void MainComponent::startExport (const exporting::ExportRequest& request)
+{
+    if (openSong == nullptr)
+        return;
+    if (auto started = openSong->startExport (request); ! started.has_value())
+        handleError (started.error());
+    refresh();
+}
+
+void MainComponent::chooseExportFile (const juce::File& current)
+{
+    if (! chooseExportDestination)
+        return;
+    chooseExportDestination (current, [safeThis = juce::Component::SafePointer<MainComponent> (this)] (std::optional<juce::File> chosen) {
+        if (safeThis == nullptr || ! chosen.has_value())
+            return;
+        safeThis->exportPage.setDestination (*chosen);
+    });
 }
 
 void MainComponent::perform (Command command)
@@ -561,6 +602,15 @@ void MainComponent::refresh()
             recordPage.showSong (song, RecordTransport { position, openSong->runningPassStart(), recordPoint }, ! recording);
         if (currentMode == Mode::edit)
             editPage.show (TimelineState { song, openSong->position(), state.playing, ! recording, openSong->videoPlayback().spans (song) });
+        const auto exportPhase = openSong->exportPhase();
+        exportPage.show (ExportPageState {
+            .clipsEnd = exporting::lastClipEnd (song),
+            .sampleRate = song.sampleRate,
+            .waitingForAudio = exportPhase == ExportPhase::waitingForAudio,
+            .rendering = exportPhase == ExportPhase::rendering,
+            .progress = openSong->exportProgress(),
+            .finishedFile = openSong->lastExportedFile(),
+        });
     }
     topBar.show (state);
     syncPluginWindows();

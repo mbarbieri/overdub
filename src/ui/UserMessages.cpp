@@ -32,6 +32,9 @@ constexpr std::array codeTable {
     CodeEntry { "capture.camera_access_denied", Tier::notice, "Allow Overdub to use the camera in System Settings, then arm the camera again." },
     CodeEntry { "capture.camera_unavailable", Tier::notice, "The camera could not be opened." },
     CodeEntry { "capture.video_frames_dropped", Tier::notice, "The camera dropped frames during this Pass." },
+    CodeEntry { "ui.export_running", Tier::notice, "Wait for the export to finish." },
+    CodeEntry { "export.nothing_to_export", Tier::notice, "The Song has no Clips to export." },
+    CodeEntry { "export.format_unavailable", Tier::notice, "That format arrives in a later version." },
 
     // Alerts: an action failed or data may be lost.
     CodeEntry { "capture.take_write_failed", Tier::alert, "A Take could not be written to disk; this Pass was not added." },
@@ -53,6 +56,7 @@ constexpr std::array codeTable {
     CodeEntry { "song.format_too_new", Tier::alert, "This Song was made by a newer version of Overdub." },
     CodeEntry { "song.migration_failed", Tier::alert, "This Song could not be upgraded to the current format." },
     CodeEntry { "song.duplicate_failed", Tier::alert, "The Song could not be duplicated there." },
+    CodeEntry { "export.write_failed", Tier::alert, "The export could not be written there." },
     CodeEntry { "engine.device_settings_write_failed", Tier::alert, "The audio device choice could not be saved for next time." },
 };
 

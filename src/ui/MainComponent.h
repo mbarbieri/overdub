@@ -3,6 +3,7 @@
 #include "core/Error.h"
 #include "ui/Commands.h"
 #include "ui/EditPage.h"
+#include "ui/ExportPage.h"
 #include "ui/OpenSong.h"
 #include "ui/Pages.h"
 #include "ui/PluginWindows.h"
@@ -21,7 +22,7 @@
 #include <vector>
 
 // The main window's content (issue #27, issue #9 resolution): the top bar over the current mode's
-// page (Record, Edit (issue #28), or the Export placeholder), the Notice line, and Alerts.
+// page (Record, Edit (issue #28), or Export (issue #37)), the Notice line, and Alerts.
 // In Edit mode S splits the selected Clip at the playhead and backspace deletes it, each one
 // undo step through OpenSong::edit; in the other modes both keys do nothing. It translates
 // keys and clicks into Commands and OpenSong calls; the logic lives in the pure functions and
@@ -51,6 +52,11 @@
 // opens once it is ready, a missing one shows the "ui.plugin_missing" Notice). Windows follow the
 // Song: one whose slot is removed (or undone away) closes; closing one schedules a song.json
 // write that captures the plugin's state, outside history.
+//
+// Export mode (issue #37): the page's request goes to OpenSong::startExport; Choose… asks for the
+// destination (chooseExportDestination), Reveal in Finder shows the written file
+// (revealInFinder). A Song opens with its destination at <exportFolder>/<Song name>.wav. An export
+// that fails is presented by its tier.
 //
 // M and S (Record rows, Edit headers, Mixer strips) and the Mixer's faders and pan are undo steps
 // through OpenSong::edit; a Mixer drag in progress is heard through OpenSong::previewMix (issue #31).
@@ -116,6 +122,12 @@ public:
     // Camera access before arming (issue #35): calls back with whether the app may use the camera
     // (default: capture::requestCameraAccess, the system prompt).
     std::function<void (std::function<void (bool granted)>)> askCameraAccess;
+    // Export (issue #37): asks where to save, starting from the current destination, and calls back
+    // with the file (none when cancelled; default: a native save dialog). Reveal in Finder shows
+    // the file (default: juce::File::revealToUser). New Songs export into exportFolder.
+    std::function<void (juce::File current, std::function<void (std::optional<juce::File>)>)> chooseExportDestination;
+    std::function<void (const juce::File&)> revealInFinder;
+    juce::File exportFolder = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Overdub");
     // The File menu's New Song and Open, offered on the no-Song page.
     std::function<void()> onNewSong;
     std::function<void()> onOpenSong;
@@ -124,7 +136,7 @@ public:
     TopBar topBar;
     RecordPage recordPage;
     EditPage editPage;
-    PlaceholderPage exportPage { "Export mode arrives in a later version." };
+    ExportPage exportPage;
     NoSongPage noSongPage;
     NoticeLine noticeLine;
     // The plugin editor windows; tests set showOnDesktop false before opening any.
@@ -144,6 +156,8 @@ private:
     void setMute (const song::Id& trackId, bool mute);
     void setSolo (const song::Id& trackId, bool solo);
     void importFiles (const std::vector<juce::File>& files);
+    void startExport (const exporting::ExportRequest& request);
+    void chooseExportFile (const juce::File& current);
     void chooseInsert (const song::Id& trackId);
     void openInsertEditor (const song::Id& slotId);
     void syncPluginWindows();
