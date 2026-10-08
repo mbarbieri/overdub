@@ -58,8 +58,11 @@ public:
     // Errors: capture.camera_not_open, capture.movie_write_failed (path, reason).
     virtual core::Expected<void> beginMovie (const juce::File& movieFile) = 0;
     // Stops writing and waits until the file is complete.
-    // Errors: capture.movie_no_frames, capture.movie_write_failed (path, reason).
+    // Errors: capture.camera_not_open (no movie is being written, e.g. the camera closed),
+    // capture.movie_no_frames, capture.movie_write_failed (path, reason).
     virtual core::Expected<CameraMovie> endMovie() = 0;
+    // Stops writing without finishing the file, and deletes it: a movie no Pass will keep.
+    virtual void cancelMovie() = 0;
 
     // The live feed as an AVCaptureVideoPreviewLayer (a CALayer*); null when closed or fake.
     virtual void* previewLayer() const = 0;

@@ -67,16 +67,18 @@ public:
     {
         close();
         // No frame callback may still be running into this object.
-        dispatch_sync (sessionQueue, ^{});
-        dispatch_sync (videoQueue, ^{});
+        dispatch_sync (sessionQueue, ^ {
+                       });
+        dispatch_sync (videoQueue, ^ {
+                       });
         delegate.owner = nullptr;
     }
 
     std::vector<CameraDevice> devices() override
     {
         auto* discovery = [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:cameraTypes()
-                                                                                  mediaType:AVMediaTypeVideo
-                                                                                   position:AVCaptureDevicePositionUnspecified];
+                                                                                 mediaType:AVMediaTypeVideo
+                                                                                  position:AVCaptureDevicePositionUnspecified];
         std::vector<CameraDevice> found;
         for (AVCaptureDevice* camera in discovery.devices)
             found.push_back (CameraDevice { toStd (camera.uniqueID), toStd (camera.localizedName) });
@@ -148,16 +150,7 @@ public:
         if (session == nil)
             return;
         auto* closing = session;
-        __block std::unique_ptr<MovieWriter> abandoned;
-        dispatch_sync (videoQueue, ^{
-          abandoned = std::move (movie);
-        });
-        if (abandoned != nullptr)
-        {
-            const auto file = abandoned->file();
-            abandoned.reset(); // cancels the writer
-            file.deleteFile();
-        }
+        cancelMovie();
         dispatch_async (sessionQueue, ^{
           [closing stopRunning];
         });
@@ -167,6 +160,7 @@ public:
         device = nil;
         preview = nil;
         current.reset();
+        syncClock = nullptr; // owned by the closed session
     }
 
     std::optional<CameraDevice> openCamera() const override { return current; }
@@ -200,21 +194,37 @@ public:
           dropped = droppedFrames;
         });
         if (finishing == nullptr)
-            return std::unexpected (core::Error { "capture.movie_no_frames", "no movie was being written", {} });
+            return std::unexpected (core::Error { "capture.camera_not_open", "no movie was being written: the camera closed", {} });
 
         const auto stats = finishing->finish();
         if (! stats.has_value())
             return std::unexpected (stats.error());
 
+        if (! firstHostNs.has_value())
+            return std::unexpected (core::Error { "capture.movie_write_failed", "the movie's start time is unknown", { { "path", finishing->file().getFullPathName().toStdString() }, { "reason", "no first frame host time" } } });
+
         CameraMovie finished;
         finished.cameraId = current.has_value() ? current->id : std::string {};
-        finished.firstFrameHostNs = firstHostNs.value_or (0);
+        finished.firstFrameHostNs = *firstHostNs;
         finished.captureClockRate = syncClock != nullptr ? CMSyncGetRelativeRate (syncClock, CMClockGetHostTimeClock()) : 1.0;
         finished.frames = stats->frames;
         finished.droppedFrames = dropped + stats->refusedFrames;
         finished.durationSeconds = stats->durationSeconds();
         finished.longestGapSeconds = (double) stats->longestGapNs / 1.0e9;
         return finished;
+    }
+
+    void cancelMovie() override
+    {
+        __block std::unique_ptr<MovieWriter> abandoned;
+        dispatch_sync (videoQueue, ^{
+          abandoned = std::move (movie);
+        });
+        if (abandoned == nullptr)
+            return;
+        const auto file = abandoned->file();
+        abandoned.reset(); // cancels the writer
+        file.deleteFile();
     }
 
     void* previewLayer() const override { return (__bridge void*) preview; }
@@ -227,8 +237,10 @@ public:
         if (movie == nullptr)
             return;
         core::setCurrentThreadRole (core::ThreadRole::video);
-        const auto firstFrame = movie->stats().frames == 0;
-        if (movie->appendSampleBuffer ((void*) sampleBuffer) && firstFrame)
+        const auto sessionStarted = movie->stats().sessionStartPtsNs.has_value();
+        movie->appendSampleBuffer ((void*) sampleBuffer);
+        // Movie time 0 is the frame that started the writer's session, written or not.
+        if (! sessionStarted && movie->stats().sessionStartPtsNs.has_value())
         {
             const auto pts = CMSampleBufferGetPresentationTimeStamp (sampleBuffer);
             firstFrameHostNs = toHostNs (CMSyncConvertTime (pts, syncClock, CMClockGetHostTimeClock()));

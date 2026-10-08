@@ -56,6 +56,7 @@ TEST_CASE ("a written movie starts at its first frame and keeps every frame's ti
     CHECK (stats->frames == 30);
     CHECK (stats->refusedFrames == 0);
     CHECK (stats->firstPtsNs == firstPtsNs);
+    CHECK (stats->sessionStartPtsNs == firstPtsNs);
     CHECK (stats->longestGapNs == frameNs + stallNs);
 
     // Renamed into place as the recorder does: AVFoundation reads a movie by its extension.

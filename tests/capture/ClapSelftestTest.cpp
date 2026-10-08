@@ -86,5 +86,6 @@ TEST_CASE ("the clap selftest fails explicitly without a Video Take to measure",
 
     const auto missing = runClapSelftest (folder.root.getChildFile ("Missing.overdub"));
     CHECK (missing["pass"] == false);
-    CHECK (missing["error"] == "song.package_not_found");
+    CHECK (missing["error"] == "song.read_failed");
+    CHECK (missing["error_fields"].contains ("path"));
 }

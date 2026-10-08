@@ -14,18 +14,13 @@ namespace
 {
 core::Fields failed (const juce::File& package, const core::Error& error)
 {
-    core::Fields report { { "selftest", "clap" }, { "pass", false }, { "package", package.getFullPathName().toStdString() }, { "error", error.code } };
-    for (const auto& [key, value] : error.fields.items())
-        report[key] = value;
-    return report;
+    return { { "selftest", "clap" }, { "pass", false }, { "package", package.getFullPathName().toStdString() }, { "error", error.code }, { "error_fields", error.fields } };
 }
 
+// The package's Song through the one read path for package Songs (song/SongMigration.h).
 core::Expected<song::Song> readSong (const juce::File& package)
 {
-    const auto songFile = package.getChildFile ("song.json");
-    if (! songFile.existsAsFile())
-        return std::unexpected (core::Error { "song.package_not_found", "no Song package at this location", { { "path", package.getFullPathName().toStdString() } } });
-    auto stored = song::readStoredSong (songFile, "");
+    auto stored = song::readStoredSong (package.getChildFile ("song.json"), "");
     if (! stored.has_value())
         return std::unexpected (stored.error());
     return std::move (stored->song);

@@ -63,7 +63,7 @@ core::Expected<std::vector<MovieFrame>> readMovieFrames (const juce::File& movie
 
     NSString* path = [NSString stringWithUTF8String:movie.getFullPathName().toRawUTF8()];
     auto* url = [NSURL fileURLWithPath:path != nil ? path : @""];
-    auto* asset = [AVURLAsset URLAssetWithURL:url options:@{ AVURLAssetPreferPreciseDurationAndTimingKey: @YES }];
+    auto* asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetPreferPreciseDurationAndTimingKey : @YES}];
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     // The synchronous track list: this runs off the audio thread, in a selftest or a test.
@@ -76,7 +76,7 @@ core::Expected<std::vector<MovieFrame>> readMovieFrames (const juce::File& movie
     auto* reader = [[AVAssetReader alloc] initWithAsset:asset error:&error];
     if (reader == nil)
         return std::unexpected (unreadable (movie, error != nil ? error.localizedDescription.UTF8String : "no reader"));
-    NSDictionary* settings = @{ (id) kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA) };
+    NSDictionary* settings = @{(id) kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA)};
     auto* output = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:track outputSettings:settings];
     [reader addOutput:output];
     if (! [reader startReading])

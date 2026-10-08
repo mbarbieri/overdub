@@ -22,7 +22,8 @@ struct MovieWriterStats
 {
     std::int64_t frames = 0;
     std::int64_t refusedFrames = 0; // the writer was not ready, or refused the frame
-    std::optional<std::int64_t> firstPtsNs;
+    std::optional<std::int64_t> sessionStartPtsNs; // movie time 0: the PTS the writer's session started at
+    std::optional<std::int64_t> firstPtsNs;        // the first written frame's PTS
     std::int64_t lastPtsNs = 0;
     std::int64_t longestGapNs = 0; // the longest interval between two written frames
 
@@ -43,6 +44,8 @@ public:
     MovieWriter& operator= (const MovieWriter&) = delete;
 
     // Appends a CMSampleBufferRef from the camera. Returns false when the frame was not written.
+    // The first frame offered starts the movie's session (stats().sessionStartPtsNs), even when
+    // the writer then refuses it: movie time 0 is that frame's PTS.
     bool appendSampleBuffer (void* sampleBuffer);
     // Appends an ARGB image (scaled to the movie size if needed) at this presentation time.
     bool appendImage (const juce::Image& image, std::int64_t ptsNs);
@@ -61,7 +64,7 @@ private:
 
     bool startAt (std::int64_t ptsNs);
     void noteWritten (std::int64_t ptsNs);
-    core::Error failure (const std::string& reason) const;
+    static core::Error failure (const juce::File& file, const std::string& reason);
 
     juce::File movieFile;
     std::unique_ptr<Native> native;

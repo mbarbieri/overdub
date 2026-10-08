@@ -24,6 +24,7 @@ struct FakeCamera final : public Camera
     std::optional<juce::File> writing;
     std::vector<juce::File> moviesBegun;
     int moviesEnded = 0;
+    int moviesCancelled = 0;
 
     std::vector<CameraDevice> devices() override { return available; }
 
@@ -69,6 +70,15 @@ struct FakeCamera final : public Camera
         auto finished = movie;
         finished.cameraId = opened.has_value() ? opened->id : "";
         return finished;
+    }
+
+    void cancelMovie() override
+    {
+        if (! writing.has_value())
+            return;
+        ++moviesCancelled;
+        writing->deleteFile();
+        writing.reset();
     }
 
     void* previewLayer() const override { return nullptr; }

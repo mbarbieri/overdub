@@ -461,12 +461,14 @@ void PassRecorder::beginMovie()
     if (const auto created = videoFolder.createDirectory(); created.failed())
     {
         movieBeginError = song::writeFailed (videoFolder, "create_folder", 0, created.getErrorMessage().toStdString());
+        core::logEvent (core::Level::info, "capture.video_stopped", { { "pass_id", passIdentifier }, { "outcome", "not_started" } });
         return;
     }
     if (auto begun = options.camera->beginMovie (next.tempFile); ! begun.has_value())
     {
         movieBeginError = begun.error();
-        core::logEvent (core::Level::warn, "capture.video_stopped", { { "pass_id", passIdentifier }, { "outcome", "not_started" }, { "error", begun.error().code } });
+        // The Error itself is logged where it is presented (RecordedPass::notices).
+        core::logEvent (core::Level::info, "capture.video_stopped", { { "pass_id", passIdentifier }, { "outcome", "not_started" } });
         return;
     }
 
@@ -483,14 +485,9 @@ void PassRecorder::discardMovie()
         return;
     const auto inProgress = std::move (*movie);
     movie.reset();
-    const auto ended = options.camera->endMovie();
+    options.camera->cancelMovie();
     inProgress.tempFile.deleteFile();
-    core::logEvent (core::Level::info,
-                    "capture.video_stopped",
-                    { { "pass_id", passIdentifier },
-                      { "video_take_id", inProgress.videoTakeId },
-                      { "outcome", "discarded" },
-                      { "frames", ended.has_value() ? ended->frames : 0 } });
+    core::logEvent (core::Level::info, "capture.video_stopped", { { "pass_id", passIdentifier }, { "video_take_id", inProgress.videoTakeId }, { "outcome", "discarded" } });
 }
 
 std::optional<song::VideoTake> PassRecorder::finishMovie (RecordedPass& pass)
@@ -507,9 +504,7 @@ std::optional<song::VideoTake> PassRecorder::finishMovie (RecordedPass& pass)
     movie.reset();
     const auto failed = [&] (core::Error error) -> std::optional<song::VideoTake> {
         inProgress.tempFile.deleteFile();
-        core::logEvent (core::Level::warn,
-                        "capture.video_stopped",
-                        { { "pass_id", passIdentifier }, { "video_take_id", inProgress.videoTakeId }, { "outcome", "failed" }, { "error", error.code } });
+        core::logEvent (core::Level::info, "capture.video_stopped", { { "pass_id", passIdentifier }, { "video_take_id", inProgress.videoTakeId }, { "outcome", "failed" } });
         pass.notices.push_back (std::move (error));
         return std::nullopt;
     };

@@ -131,3 +131,16 @@ TEST_CASE ("a capture clock running against host time scales the drift ratio", "
     const auto placement = placeVideoTake (*fit, 1'500'000'000ULL, 0, 0, 1.00001, sampleRate);
     CHECK (placement.songSamplesPerMovieSecond == Catch::Approx (sampleRate / 1.00001).epsilon (1.0e-12));
 }
+
+TEST_CASE ("a frame after a camera stall maps exactly to the Song sample heard at its host time", "[capture][video][clock]")
+{
+    // 480-sample callbacks, exactly 10 ms apart; a 30 fps camera whose frame 10 arrives after a
+    // 1.5 s stall. Movie time is that frame's own PTS, never 10 frame intervals.
+    const auto fit = fitAnchors (anchorsFor (0, 2000, 480, 0.0, 1'000'000'000ULL), sampleRate);
+    REQUIRE (fit.has_value());
+    const auto placement = placeVideoTake (*fit, 1'200'000'000ULL, 48, 0, 1.0, sampleRate);
+    CHECK (placement.startSample == 9600 - 48);
+
+    const auto afterStallSeconds = 10.0 * 0.025 + 1.5; // frames 25 ms apart, then the stall
+    CHECK (songSampleAtMovieTime (placement.startSample, placement.songSamplesPerMovieSecond, afterStallSeconds) == Catch::Approx (9552.0 + 1.75 * 48'000).margin (1.0e-6));
+}

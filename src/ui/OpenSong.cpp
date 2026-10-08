@@ -409,6 +409,8 @@ core::Expected<void> OpenSong::syncCamera()
         return std::unexpected (opened.error());
     }
     // The default camera opened for no (or a missing) choice becomes the choice.
+    if (! song().cameraDeviceId.empty() && opened->id != song().cameraDeviceId)
+        core::logEvent (core::Level::warn, "ui.camera_fallback", { { "chosen_camera_id", song().cameraDeviceId }, { "opened_camera_id", opened->id } });
     changed.cameraDeviceId = opened->id;
     if (changed != song())
         package_->changeWithoutHistory (std::move (changed));

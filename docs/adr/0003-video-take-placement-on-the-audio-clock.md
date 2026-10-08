@@ -32,6 +32,8 @@ The engine's graph delays every Track path by the plan latency L (PDC, ADR 0001)
 ## Amendment: camera capture and placement as built (issue #35)
 
 - **Placement.** The fit is over the Pass's anchors only; the first frame's host time maps to the Song sample heard then (fit inverse minus the output latency in samples), minus the camera calibration, rounded to the nearest sample. The drift ratio is the fit's samples per host second divided by the capture clock's rate against host time (`CMSyncGetRelativeRate`, 1 when the session's clock is the host clock).
+- **No loopback offset.** The ADR 0002 loopback calibration corrects the whole round trip (input + output) and cannot be split into its output half, so Video Take placement uses the reported output latency only; any output-latency error is absorbed by the camera calibration, which is keyed by the output device for that reason.
+- **Movie time 0** is the PTS of the frame that started the writer's session, even when the writer refused that frame; its host time is the one placed.
 - **Calibration** is stored in milliseconds per camera ID and output device name (`camera-calibration.json`), converted to samples at the Song's rate when a Video Take is placed; the Video Take keeps the samples applied.
 - **The movie runs from the Pass's start to its finish**, pre-roll included, so it may hold frames from before the record point. They are placed by heard time like every other frame (the fit extrapolates a few seconds backwards, well under a sample at observed drift).
 - **Failure keeps the audio.** A movie that cannot begin or finish, or a Pass without anchors, adds the Pass without a Video Take; the user sees an Alert (a Video Take was lost), dropped frames a Notice.

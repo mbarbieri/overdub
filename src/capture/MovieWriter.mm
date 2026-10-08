@@ -64,9 +64,9 @@ MovieWriter::~MovieWriter()
         [native->writer cancelWriting];
 }
 
-core::Error MovieWriter::failure (const std::string& reason) const
+core::Error MovieWriter::failure (const juce::File& file, const std::string& reason)
 {
-    return core::Error { "capture.movie_write_failed", "the movie could not be written", { { "path", movieFile.getFullPathName().toStdString() }, { "reason", reason } } };
+    return core::Error { "capture.movie_write_failed", "the movie could not be written", { { "path", file.getFullPathName().toStdString() }, { "reason", reason } } };
 }
 
 core::Expected<std::unique_ptr<MovieWriter>> MovieWriter::create (const juce::File& file, int width, int height)
@@ -78,22 +78,21 @@ core::Expected<std::unique_ptr<MovieWriter>> MovieWriter::create (const juce::Fi
 
     NSError* error = nil;
     native->writer = [[AVAssetWriter alloc] initWithURL:fileUrl (file) fileType:AVFileTypeQuickTimeMovie error:&error];
-    const auto fail = [&] (const std::string& reason) {
-        return core::Error { "capture.movie_write_failed", "the movie could not be written", { { "path", file.getFullPathName().toStdString() }, { "reason", reason } } };
-    };
     if (native->writer == nil)
-        return std::unexpected (fail (describe (error)));
+        return std::unexpected (failure (file, describe (error)));
 
-    NSDictionary* settings = @{ AVVideoCodecKey: AVVideoCodecTypeH264, AVVideoWidthKey: @(width), AVVideoHeightKey: @(height) };
+    NSDictionary* settings = @{AVVideoCodecKey : AVVideoCodecTypeH264,
+                               AVVideoWidthKey : @(width),
+                               AVVideoHeightKey : @(height)};
     native->input = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:settings];
     native->input.expectsMediaDataInRealTime = YES;
     if (! [native->writer canAddInput:native->input])
-        return std::unexpected (fail ("the writer refused an H.264 input of this size"));
+        return std::unexpected (failure (file, "the writer refused an H.264 input of this size"));
     [native->writer addInput:native->input];
 
-    NSDictionary* pixelAttributes = @{ (id) kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
-                                       (id) kCVPixelBufferWidthKey: @(width),
-                                       (id) kCVPixelBufferHeightKey: @(height) };
+    NSDictionary* pixelAttributes = @{(id) kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA),
+                                      (id) kCVPixelBufferWidthKey : @(width),
+                                      (id) kCVPixelBufferHeightKey : @(height)};
     native->adaptor = [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:native->input
                                                                                        sourcePixelBufferAttributes:pixelAttributes];
     return std::unique_ptr<MovieWriter> (new MovieWriter (file, std::move (native)));
@@ -107,6 +106,7 @@ bool MovieWriter::startAt (std::int64_t ptsNs)
         return false;
     [native->writer startSessionAtSourceTime:CMTimeMake (ptsNs, (int32_t) nsPerSecond)];
     native->started = true;
+    written.sessionStartPtsNs = ptsNs;
     return true;
 }
 
@@ -180,13 +180,16 @@ bool MovieWriter::appendImage (const juce::Image& image, std::int64_t ptsNs)
 core::Expected<MovieWriterStats> MovieWriter::finish()
 {
     if (finished)
-        return std::unexpected (failure ("already finished"));
+        return std::unexpected (failure (movieFile, "already finished"));
     finished = true;
     if (! native->started || written.frames == 0)
     {
+        const auto writerFailed = native->writer.status == AVAssetWriterStatusFailed || (! native->started && written.refusedFrames > 0);
         if (native->started)
             [native->writer cancelWriting];
         movieFile.deleteFile();
+        if (writerFailed)
+            return std::unexpected (failure (movieFile, describe (native->writer.error)));
         return std::unexpected (core::Error { "capture.movie_no_frames", "the camera delivered no frames", { { "path", movieFile.getFullPathName().toStdString() } } });
     }
 
@@ -196,9 +199,12 @@ core::Expected<MovieWriterStats> MovieWriter::finish()
       dispatch_semaphore_signal (done);
     }];
     if (dispatch_semaphore_wait (done, dispatch_time (DISPATCH_TIME_NOW, finishTimeoutNs)) != 0)
-        return std::unexpected (failure ("finishing the movie timed out"));
+    {
+        [native->writer cancelWriting]; // nothing may keep writing into a file the caller deletes
+        return std::unexpected (failure (movieFile, "finishing the movie timed out"));
+    }
     if (native->writer.status != AVAssetWriterStatusCompleted)
-        return std::unexpected (failure (describe (native->writer.error)));
+        return std::unexpected (failure (movieFile, describe (native->writer.error)));
     return written;
 }
 } // namespace overdub::capture

@@ -101,6 +101,27 @@ TEST_CASE ("a Song opened with its camera Armed opens its chosen camera, and clo
     CHECK_FALSE (fixture.camera.opened.has_value());
 }
 
+TEST_CASE ("a chosen camera that is gone falls back to the default one, and says so in the log", "[ui][camera]")
+{
+    overdub::core::ScopedLogCapture capture;
+    CameraFixture fixture { true };
+    fixture.camera.available.pop_back(); // the USB camera was unplugged
+    REQUIRE (fixture.openSong->attachCamera (&fixture.camera, fixture.calibrationFile).has_value());
+    REQUIRE (fixture.camera.opened.has_value());
+    CHECK (fixture.camera.opened->id == "camera-facetime");
+    CHECK (fixture.openSong->song().cameraDeviceId == "camera-facetime");
+
+    int fallbacks = 0;
+    for (const auto& event : capture.events())
+        if (event.value ("event", "") == "ui.camera_fallback")
+        {
+            ++fallbacks;
+            CHECK (event["chosen_camera_id"] == "camera-usb");
+            CHECK (event["opened_camera_id"] == "camera-facetime");
+        }
+    CHECK (fallbacks == 1);
+}
+
 TEST_CASE ("choosing another camera reopens it while Armed", "[ui][camera]")
 {
     CameraFixture fixture;

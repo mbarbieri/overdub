@@ -152,7 +152,8 @@ TEST_CASE ("a Pass whose movie fails is kept without a Video Take and reports a 
     const auto stopped = eventsNamed (capture, "capture.video_stopped");
     REQUIRE (stopped.size() == 1);
     CHECK (stopped[0]["outcome"] == "failed");
-    CHECK (stopped[0]["error"] == "capture.movie_no_frames");
+    // The Error itself is logged once, where the UI presents the Notice.
+    CHECK (eventsNamed (capture, "capture.movie_no_frames").empty());
 }
 
 TEST_CASE ("a Pass whose movie cannot begin records audio only and reports a Notice", "[capture][record][video]")
@@ -232,7 +233,8 @@ TEST_CASE ("a Pass stopped before it began discards its movie", "[capture][recor
     const auto finished = (*started)->finish();
     REQUIRE_FALSE (finished.has_value());
     CHECK (finished.error().code == "capture.pass_empty");
-    CHECK (fixture.camera.moviesEnded == 1);
+    CHECK (fixture.camera.moviesCancelled == 1);
+    CHECK (fixture.camera.moviesEnded == 0);
     CHECK_FALSE (fixture.camera.moviesBegun[0].exists());
     CHECK (fixture.package->song().videoTakes.empty());
 }
