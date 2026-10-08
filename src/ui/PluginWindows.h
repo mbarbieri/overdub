@@ -112,7 +112,8 @@ public:
     void close (const song::Id& slotId);
     void closeAll();
 
-    // Updates every open window from its state (title, bypass, editable); closes a window whose
+    // Updates every open window from its state (title, bypass, editable; the badge is kept from
+    // open); closes a window whose
     // slot has no state (gone from the Song) or whose processor is no longer the slot's (null:
     // not ready). `stateOf` and `processorOf` answer by slot id.
     void sync (const std::function<std::optional<PluginWindowState> (const song::Id&)>& stateOf,

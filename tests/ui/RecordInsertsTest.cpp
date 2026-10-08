@@ -91,7 +91,7 @@ TEST_CASE ("+ Insert on a Record row adds the picked AU to that Track's chain as
         done (1);
     };
     auto& row = f.rowNamed ("Guitar");
-    CHECK (row.insertChain.chips.empty());
+    CHECK (row.insertChain.numShown() == 0);
     CHECK (isShown (row.insertChain.addButton));
 
     click (row.insertChain.addButton);
@@ -103,7 +103,7 @@ TEST_CASE ("+ Insert on a Record row adds the picked AU to that Track's chain as
     CHECK (chain[0].component == auPeakLimiter.component);
     CHECK (f.openSong->package().undoLabel() == "Add AUPeakLimiter to Guitar");
     CHECK (f.trackNamed ("Vocals").insertChain.empty());
-    REQUIRE (f.rowNamed ("Guitar").insertChain.chips.size() == 1);
+    REQUIRE (f.rowNamed ("Guitar").insertChain.numShown() == 1);
     CHECK (f.rowNamed ("Guitar").insertChain.chips[0]->text() == "AUPeakLimiter (loading)");
 
     // Once it has loaded, the row shows it plainly.

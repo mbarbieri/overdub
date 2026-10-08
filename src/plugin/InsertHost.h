@@ -26,8 +26,8 @@
 //   an inert placeholder, its Song entry and state kept.
 // - The engine plays only ready slots that are not bypassed (insertFactory(); issue #34: a
 //   bypassed slot is left out of the plan, latency included, and keeps its plugin and state).
-//   takeGraphChanged() says when a new plan is
-//   needed: a slot became ready, or a ready plugin's latency is not the one the last plan used.
+//   takeGraphChanged() says when a new plan is needed: a slot became ready, or a ready plugin's
+//   latency is not the one the last plan used.
 // - captureStates() writes every ready plugin's state into its slot (ADR 0004 blobs); the package
 //   calls it on each history step and debounced write. takeStateChanged() says a parameter moved.
 //

@@ -40,6 +40,8 @@ PluginEditorPanel::PluginEditorPanel (juce::AudioProcessor& processor, const Plu
         if (current.editable && onBypass)
             onBypass (! current.bypassed);
     };
+    // Where the plugin runs does not change while the window is open.
+    badgeLabel.setText (fromUtf8 (state.badge), juce::dontSendNotification);
     addAndMakeVisible (badgeLabel);
     addAndMakeVisible (bypassButton);
 
@@ -67,7 +69,6 @@ PluginEditorPanel::~PluginEditorPanel()
 void PluginEditorPanel::show (const PluginWindowState& state)
 {
     current = state;
-    badgeLabel.setText (fromUtf8 (state.badge), juce::dontSendNotification);
     bypassButton.setToggleState (state.bypassed, juce::dontSendNotification);
     bypassButton.setEnabled (state.editable);
 }

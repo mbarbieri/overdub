@@ -136,8 +136,8 @@ void dragChipTo (InsertChip& chip, const InsertChip& target, juce::Point<int> of
 std::vector<std::string> chipTexts (const InsertChainView& chain)
 {
     std::vector<std::string> texts;
-    for (const auto& chip : chain.chips)
-        texts.push_back (chip->text().toStdString());
+    for (std::size_t i = 0; i < chain.numShown(); ++i)
+        texts.push_back (chain.chips[i]->text().toStdString());
     return texts;
 }
 
@@ -200,7 +200,7 @@ TEST_CASE ("in a Mixer strip, add, reorder, bypass and remove are one undo step 
     click (chain.chips[2]->removeButton);
     CHECK (f.chainNames (f.trackNamed ("Guitar").insertChain) == std::vector<std::string> { "AUReverb", "AUDelay" });
     CHECK (f.undoLabel() == "Remove AUPeakLimiter from Guitar");
-    CHECK (chain.chips.size() == 2);
+    CHECK (chain.numShown() == 2);
 
     // Undo walks back through each step.
     f.undo();

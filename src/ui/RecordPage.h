@@ -57,7 +57,7 @@ struct RecordPageState
 inline constexpr std::array<song::PreRoll, 4> preRollChoices { song::PreRoll::off, song::PreRoll::oneSecond, song::PreRoll::twoSeconds, song::PreRoll::fourSeconds };
 int preRollChoiceIndex (song::PreRoll preRoll);
 
-// The Monitoring button's text: "Monitoring", then " Â· 2 fx" when Inserts are active.
+// The Monitoring button's text: "Monitoring", then " · 2 fx" when Inserts are active.
 std::string monitoringText (int activeInserts);
 
 // The rows for a Song: one per Track, in Song order; the Song's pre-roll. Without a status lookup

@@ -100,13 +100,11 @@ MainComponent::MainComponent()
         static const song::Peaks none;
         return openSong != nullptr ? openSong->peaks (source) : none;
     };
-    recordPage.insertActions = insertChainActions();
-    editPage.mixer.insertActions = insertChainActions();
+    const auto chainActions = insertChainActions();
+    recordPage.insertActions = chainActions;
+    editPage.mixer.insertActions = chainActions;
     editPage.mixer.insertStatusOf = [this] (const song::Id& slotId) { return openSong != nullptr ? openSong->insertStatus (slotId) : std::nullopt; };
-    pluginWindows.onBypass = [this] (const song::Id& slotId, bool bypassed) {
-        if (openSong != nullptr)
-            applyEdit (song::setInsertBypassed (openSong->song(), slotId, bypassed), song::bypassInsertLabel (openSong->song(), slotId, bypassed));
-    };
+    pluginWindows.onBypass = chainActions.bypass;
     pluginWindows.onClosed = [this] (const song::Id&) {
         if (openSong != nullptr)
             openSong->notePluginStateChanged();
@@ -359,10 +357,7 @@ void MainComponent::syncPluginWindows()
     if (openSong == nullptr)
         return;
     const auto editable = ! openSong->isRecording();
-    const auto stateOf = [this, editable] (const song::Id& slotId) -> std::optional<PluginWindowState> {
-        auto* processor = openSong->insertHost().processor (slotId);
-        return pluginWindowStateFor (openSong->song(), slotId, processor != nullptr ? plugin::hostingBadge (*processor) : std::string {}, editable);
-    };
+    const auto stateOf = [this, editable] (const song::Id& slotId) { return pluginWindowStateFor (openSong->song(), slotId, {}, editable); };
     pluginWindows.sync (stateOf, [this] (const song::Id& slotId) { return openSong->insertHost().processor (slotId); });
 
     if (! pendingEditorSlot.has_value())
@@ -374,8 +369,9 @@ void MainComponent::syncPluginWindows()
     pendingEditorSlot.reset();
     if (status != plugin::InsertStatus::ready)
         return; // gone from the Song, or failed to load (logged where it failed)
-    if (const auto state = stateOf (slotId))
-        pluginWindows.open (openSong->insertHost().sharedProcessor (slotId), *state);
+    auto processor = openSong->insertHost().sharedProcessor (slotId);
+    if (const auto state = pluginWindowStateFor (openSong->song(), slotId, plugin::hostingBadge (*processor), editable))
+        pluginWindows.open (std::move (processor), *state);
 }
 
 void MainComponent::handleError (const core::Error& error)

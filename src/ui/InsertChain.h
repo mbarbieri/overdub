@@ -92,14 +92,17 @@ class InsertChainView final : public juce::Component
 public:
     explicit InsertChainView (bool vertical);
 
-    // Rebuilds the chips only when the slots changed; otherwise updates them.
+    // Shows one chip per state, in order. Chips are made as needed and kept (hidden) when the
+    // chain shrinks, so none is deleted during its own gesture.
     void show (const song::Id& trackId, const std::vector<InsertChipState>& chips, bool editable);
     void resized() override;
 
     // Set by the owner (RecordPage, Mixer); called with this chain's Track id.
     const InsertChainActions* actions = nullptr;
 
+    // The first numShown() are the chain's, in order; any after them are hidden spares.
     std::vector<std::unique_ptr<InsertChip>> chips;
+    std::size_t numShown() const { return shown; }
     juce::TextButton addButton { "+ Insert" };
 
 private:
@@ -108,6 +111,7 @@ private:
     bool vertical;
     song::Id trackId;
     bool editable = true;
+    std::size_t shown = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (InsertChainView)
 };

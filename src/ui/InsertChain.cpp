@@ -115,6 +115,7 @@ void InsertChip::mouseUp (const juce::MouseEvent& event)
     }
     if (onOpen)
         onOpen();
+    // Nothing after a callback: it may edit the Song and refresh this chain.
 }
 
 void InsertChip::resized()
@@ -153,41 +154,44 @@ void InsertChainView::show (const song::Id& chainTrackId, const std::vector<Inse
     editable = isEditable;
     addButton.setEnabled (editable);
 
-    const auto sameSlots = std::ranges::equal (chips, states, {}, &InsertChip::slotId, &InsertChipState::slotId);
-    if (! sameSlots)
+    // Chips are reused, never deleted while the chain is shown: a gesture's own chip (and the
+    // callback it is running) survives the edit and refresh that the gesture triggers.
+    while (chips.size() < states.size())
     {
-        chips.clear();
-        for (std::size_t i = 0; i < states.size(); ++i)
-        {
-            auto chip = std::make_unique<InsertChip>();
-            auto* raw = chip.get();
-            chip->onOpen = [this, raw] {
-                if (actions != nullptr && actions->open)
-                    actions->open (raw->slotId());
-            };
-            chip->onBypass = [this, raw] (bool bypassed) {
-                if (actions != nullptr && actions->bypass)
-                    actions->bypass (raw->slotId(), bypassed);
-            };
-            chip->onRemove = [this, raw] {
-                if (actions != nullptr && actions->remove)
-                    actions->remove (raw->slotId());
-            };
-            chip->onDragEnd = [this, raw, i] (juce::Point<int> end) { dropped (i, end + raw->getPosition()); };
-            addAndMakeVisible (*chip);
-            chips.push_back (std::move (chip));
-        }
+        auto chip = std::make_unique<InsertChip>();
+        auto* raw = chip.get();
+        const auto index = chips.size();
+        chip->onOpen = [this, raw] {
+            if (actions != nullptr && actions->open)
+                actions->open (raw->slotId());
+        };
+        chip->onBypass = [this, raw] (bool bypassed) {
+            if (actions != nullptr && actions->bypass)
+                actions->bypass (raw->slotId(), bypassed);
+        };
+        chip->onRemove = [this, raw] {
+            if (actions != nullptr && actions->remove)
+                actions->remove (raw->slotId());
+        };
+        chip->onDragEnd = [this, raw, index] (juce::Point<int> end) { dropped (index, end + raw->getPosition()); };
+        addChildComponent (*chip);
+        chips.push_back (std::move (chip));
+    }
+
+    for (std::size_t i = 0; i < states.size(); ++i)
+        chips[i]->show (states[i], editable);
+    if (states.size() != shown)
+    {
+        shown = states.size();
         resized();
     }
-    for (std::size_t i = 0; i < chips.size(); ++i)
-        chips[i]->show (states[i], editable);
 }
 
 void InsertChainView::dropped (std::size_t index, juce::Point<int> pointInChain)
 {
     std::vector<juce::Rectangle<int>> bounds;
-    for (const auto& chip : chips)
-        bounds.push_back (chip->isVisible() ? chip->getBounds() : juce::Rectangle<int>());
+    for (std::size_t i = 0; i < shown; ++i)
+        bounds.push_back (chips[i]->isVisible() ? chips[i]->getBounds() : juce::Rectangle<int>());
     const auto toIndex = insertDropIndex (bounds, index, pointInChain, vertical);
     if (toIndex == index || actions == nullptr || ! actions->move)
         return;
@@ -196,12 +200,13 @@ void InsertChainView::dropped (std::size_t index, juce::Point<int> pointInChain)
 
 void InsertChainView::resized()
 {
-    const auto layout = insertChainLayout (getLocalBounds(), (int) chips.size(), vertical);
+    const auto layout = insertChainLayout (getLocalBounds(), (int) shown, vertical);
     addButton.setBounds (layout.addButton);
     for (std::size_t i = 0; i < chips.size(); ++i)
     {
-        chips[i]->setBounds (layout.chips[i]);
-        chips[i]->setVisible (! layout.chips[i].isEmpty());
+        const auto bounds = i < shown ? layout.chips[i] : juce::Rectangle<int>();
+        chips[i]->setBounds (bounds);
+        chips[i]->setVisible (! bounds.isEmpty());
     }
 }
 } // namespace overdub::ui
