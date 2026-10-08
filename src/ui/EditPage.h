@@ -2,13 +2,17 @@
 
 #include "core/Error.h"
 #include "song/Song.h"
+#include "ui/TakeLanes.h"
 #include "ui/Timeline.h"
+#include "ui/TransportText.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 // Edit mode's page (issues #28, #29, issue #9 resolution, variant C): the Clip toolbar (the
 // selected Clip's name, Track, start and length; its fade-in, fade-out and gain fields; Split,
@@ -16,6 +20,10 @@
 // region, empty until the Mixer arrives (slice 10). Thin: Split and Delete are reported to the
 // window, which runs them like the S and backspace keys; drags arrive from the Timeline, and field
 // entries are made here, as a changed Song and its undo label ("Fade In", "Fade Out", "Clip Gain").
+//
+// "Passes ▾" (issue #30) in the timeline's ruler corner opens the Passes panel: one row per Pass,
+// newest first, with its heard status and a "↺ Bring back" button that puts every surviving Take
+// of the Pass back on top as one undo step ("Bring back Pass N"), then closes the panel.
 namespace overdub::ui
 {
 struct ClipToolbarState
@@ -29,9 +37,6 @@ struct ClipToolbarState
     std::string fadeOutText; // "0.250 s"; empty with no Clip
     std::string gainText;    // "-3.0 dB"; empty with no Clip
 };
-
-// "1.250 s": samples as seconds with three decimals; an unknown rate (<= 0) reads "0.000 s".
-std::string secondsText (song::SampleCount samples, int sampleRate);
 
 // A toolbar entry in seconds ("0.5", "0.5 s"), as whole samples at the rate; none when it is not a
 // finite number of seconds >= 0.
@@ -79,6 +84,36 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ClipToolbar)
 };
 
+// Edit's Passes list: a heading, then one row per Pass (ui/TakeLanes.h passRows).
+class PassesPanel final : public juce::Component
+{
+public:
+    PassesPanel();
+
+    // Bring back is enabled only when `editable` and the row can be brought back.
+    void show (const std::vector<PassRow>& rows, bool editable);
+    void resized() override;
+    void paint (juce::Graphics& g) override;
+
+    int numRows() const { return (int) rowComponents.size(); }
+
+    std::function<void (const song::Id& passId)> onBringBack;
+
+    struct Row
+    {
+        song::Id passId;
+        juce::Label title;
+        juce::Label status;
+        juce::TextButton bringBackButton;
+    };
+
+    juce::Label heading;
+    std::vector<std::unique_ptr<Row>> rowComponents;
+
+private:
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PassesPanel)
+};
+
 // The bar between the timeline and the Mixer region: dragging it resizes the region.
 class MixerDivider final : public juce::Component
 {
@@ -114,6 +149,8 @@ public:
     void paint (juce::Graphics& g) override;
 
     bool isMixerVisible() const { return mixerVisible; }
+    bool isPassesPanelOpen() const { return passesPanel.isVisible(); }
+    void setPassesPanelOpen (bool open);
     void setMixerVisible (bool visible);
     int mixerHeight() const { return mixerHeightRequested; }
 
@@ -127,9 +164,13 @@ public:
     Timeline timeline;
     MixerDivider divider;
     MixerRegion mixer;
+    juce::TextButton passesButton;
+    PassesPanel passesPanel;
 
 private:
     void showToolbar();
+    void showPasses();
+    void bringBackPass (const song::Id& passId);
     // Applies `change` to the selected Clip as one undo step with this label, if it changes the
     // Song; then the toolbar shows the Clip's values again (a rejected or clamped entry included).
     void editSelectedClip (const std::function<core::Expected<song::Song> (const song::Song&, const song::Id&)>& change, const char* label);

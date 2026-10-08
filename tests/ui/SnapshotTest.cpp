@@ -128,3 +128,50 @@ TEST_CASE ("snapshots of Clips with fades and non-zero gain", "[ui][snapshot][cl
     window.tick();
     CHECK (writeSnapshot (window, slice, "edit-fades-and-gain-zoomed-in").existsAsFile());
 }
+
+// Take Lanes and Bring back (issue #30): build/ui-snapshots/slice-09/*.png. Three Passes on a 6 s
+// Backing Track: Pass 1 from 0 to about 3 s, Pass 2 about 1 s to 2 s, Pass 3 about 1.5 s to
+// 2.5 s, each on top. Guitar's three lanes unfolded (Pass 1 and Pass 2 partly heard, Pass 3
+// heard), then the Passes panel open over the timeline.
+TEST_CASE ("snapshots of a Track with three Take Lanes unfolded, partly heard, and the Passes panel", "[ui][snapshot][take_lanes]")
+{
+    const std::string slice = "slice-09";
+    MainWindowFixture f { overdub::song::testing::FixtureSongBuilder {}
+                              .backingTrack ("Band Mix", 6.0, 220.0)
+                              .track ("Guitar", true, { 0 })
+                              .track ("Vocals", true, { 1 })
+                              .build() };
+    auto& window = *f.window;
+
+    const auto recordPass = [&] (overdub::song::SampleCount from, int blocks) {
+        f.openSong->seek (from);
+        f.runBlocks (0);
+        REQUIRE (pressKey (window, 'r'));
+        f.runBlocks (blocks);
+        REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+        f.runBlocks (1);
+    };
+    recordPass (0, 560);
+    recordPass (48000, 190);
+    recordPass (72000, 190);
+    REQUIRE (f.song().passes.size() == 3);
+    REQUIRE (f.trackNamed ("Guitar").clips.size() == 3);
+
+    REQUIRE (pressKey (window, '2'));
+    auto& timeline = window.editPage.timeline;
+    const auto& guitarId = f.trackNamed ("Guitar").id;
+    timeline.setTakeLanesUnfolded (guitarId, true);
+    const auto lanes = timeline.takeLanesShown (guitarId);
+    REQUIRE (lanes.size() == 3);
+    REQUIRE (lanes[0].status == overdub::song::HeardStatus::heard);
+    REQUIRE (lanes[1].status == overdub::song::HeardStatus::partlyHeard);
+    REQUIRE (lanes[2].status == overdub::song::HeardStatus::partlyHeard);
+    timeline.setView (0, 256);
+    window.tick();
+    CHECK (writeSnapshot (window, slice, "edit-take-lanes-unfolded").existsAsFile());
+
+    click (window.editPage.passesButton);
+    REQUIRE (window.editPage.isPassesPanelOpen());
+    window.tick();
+    CHECK (writeSnapshot (window, slice, "edit-passes-panel").existsAsFile());
+}

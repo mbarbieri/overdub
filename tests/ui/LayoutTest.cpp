@@ -113,7 +113,7 @@ TEST_CASE ("the Mixer region's height stays between its minimum and what leaves 
 TEST_CASE ("the timeline has a ruler, the Camera lane, then one lane per Track, each with its header", "[ui][layout][edit]")
 {
     const Rectangle<int> area { 0, 88, 1200, 500 };
-    const auto layout = timelineLayout (area, 2);
+    const auto layout = timelineLayout (area, { 0, 0 });
 
     REQUIRE (layout.trackHeaders.size() == 2);
     REQUIRE (layout.trackLanes.size() == 2);
@@ -137,8 +137,50 @@ TEST_CASE ("a Track header puts the arm button left of the name", "[ui][layout][
 {
     const Rectangle<int> header { 0, 100, laneHeaderWidth, trackLaneHeight };
     const auto layout = trackHeaderLayout (header);
-    checkInsideAndApart (header, { layout.arm, layout.name });
+    checkInsideAndApart (header, { layout.arm, layout.name, layout.takesToggle });
     CHECK (layout.arm.getX() < layout.name.getX());
+    CHECK (layout.takesToggle.getY() >= layout.arm.getBottom());
+}
+
+TEST_CASE ("a Track's unfolded Take Lanes sit under its lane, before the next Track", "[ui][layout][take_lanes]")
+{
+    const Rectangle<int> area { 0, 88, 1200, 600 };
+    const auto layout = timelineLayout (area, { 3, 0 });
+
+    REQUIRE (layout.takeLanes.size() == 2);
+    REQUIRE (layout.takeLanes[0].size() == 3);
+    CHECK (layout.takeLanes[1].empty());
+    CHECK (layout.takeLanes[0][0].getY() == layout.trackLanes[0].getBottom());
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        CHECK (layout.takeLanes[0][i].getHeight() == takeLaneHeight);
+        CHECK (layout.takeLanes[0][i].getX() == layout.trackLanes[0].getX());
+        CHECK (layout.takeLaneHeaders[0][i].getY() == layout.takeLanes[0][i].getY());
+        CHECK (layout.takeLaneHeaders[0][i].getWidth() == laneHeaderWidth);
+    }
+    CHECK (layout.takeLanes[0][1].getY() == layout.takeLanes[0][0].getBottom());
+    CHECK (layout.trackLanes[1].getY() == layout.takeLanes[0][2].getBottom());
+}
+
+TEST_CASE ("the Passes button sits in the timeline's ruler corner and its panel opens under it", "[ui][layout][take_lanes]")
+{
+    const Rectangle<int> page { 0, 52, 1200, 700 };
+    const auto edit = editPageLayout (page, true, defaultMixerHeight);
+    CHECK (edit.timeline.contains (edit.passesButton));
+    CHECK (edit.passesButton.getBottom() <= edit.timeline.getY() + rulerHeight);
+    CHECK (edit.passesButton.getRight() <= edit.timeline.getX() + laneHeaderWidth);
+
+    const auto bounds = passesPanelBounds (page, edit.passesButton, 3);
+    CHECK (page.contains (bounds));
+    CHECK (bounds.getY() > edit.passesButton.getBottom());
+    const auto panel = passesPanelLayout (bounds.withZeroOrigin(), 3);
+    REQUIRE (panel.rows.size() == 3);
+    checkInsideAndApart (bounds.withZeroOrigin(), { panel.heading, panel.rows[0], panel.rows[1], panel.rows[2] });
+
+    const auto row = passRowLayout (panel.rows[0]);
+    checkInsideAndApart (panel.rows[0], { row.title, row.status, row.bringBack });
+    CHECK (row.title.getRight() <= row.status.getX());
+    CHECK (row.status.getRight() <= row.bringBack.getX());
 }
 
 TEST_CASE ("the Clip toolbar puts the Clip's details, fade and gain fields, Split and Delete left, zoom and Mixer right", "[ui][layout][edit]")

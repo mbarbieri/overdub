@@ -35,7 +35,7 @@ Camera footage captured during a pass, which stays aligned with that pass's take
 _Avoid_: Video track, camera clip
 
 **Take Lane**:
-A thin row under a Track, one per Take recorded on that Track, showing where that Take is currently heard. Clicking it makes the Clip at that point play that Take.
+A thin row under a Track, one per Take recorded on that Track, showing where that Take is currently heard. Clicking it makes the Clip at that point play that Take (a Swap), or brings the whole Take back on top where no Take Clip sounds.
 _Avoid_: Comp lane, playlist, take folder
 
 **Pre-roll**:

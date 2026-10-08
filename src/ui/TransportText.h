@@ -19,6 +19,9 @@ struct TransportStatus
 // unknown rate (<= 0) read "0.0 s".
 std::string clockText (song::SampleCount position, int sampleRate);
 
+// "1.250 s": samples as seconds with three decimals; an unknown rate (<= 0) reads "0.000 s".
+std::string secondsText (song::SampleCount samples, int sampleRate);
+
 // "REC · PASS n" while recording, else "PLAY" or "STOP".
 std::string statusText (TransportStatus status);
 

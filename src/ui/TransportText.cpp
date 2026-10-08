@@ -28,4 +28,14 @@ std::string redoButtonText (const std::string& label)
 {
     return label.empty() ? "Redo" : "Redo " + label;
 }
+
+std::string secondsText (song::SampleCount samples, int sampleRate)
+{
+    if (sampleRate <= 0)
+        return "0.000 s";
+    const auto sign = samples < 0 ? "-" : "";
+    const auto magnitude = samples < 0 ? -samples : samples;
+    const auto milliseconds = magnitude * 1000 / sampleRate;
+    return std::format ("{}{}.{:03} s", sign, milliseconds / 1000, milliseconds % 1000);
+}
 } // namespace overdub::ui

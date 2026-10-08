@@ -22,6 +22,7 @@ target_sources(overdub_tests PRIVATE
     engine/EngineRealtimeTest.cpp
     engine/EngineRecordTest.cpp
     engine/LatencyCalibrationTest.cpp
+    engine/EngineTakeLanesTest.cpp
     engine/EngineTest.cpp
     song/BackingTrackImportTest.cpp
     song/ClipEditsTest.cpp
@@ -29,6 +30,7 @@ target_sources(overdub_tests PRIVATE
     song/SongMigrationTest.cpp
     song/PeaksTest.cpp
     song/SongPackageTest.cpp
+    song/TakeEditsTest.cpp
     support/RealtimeGuardTest.cpp
     support/RealtimeGuardCatchTest.cpp
     ui/CommandsTest.cpp
@@ -39,6 +41,8 @@ target_sources(overdub_tests PRIVATE
     ui/OpenSongTest.cpp
     ui/SnapshotTest.cpp
     ui/SongFilesTest.cpp
+    ui/TakeLanesTest.cpp
+    ui/TakeLanesUiTest.cpp
     ui/TimelineGeometryTest.cpp
     ui/TrackRowEditsTest.cpp
     ui/TransportTextTest.cpp

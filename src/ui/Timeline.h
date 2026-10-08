@@ -3,6 +3,7 @@
 #include "song/Peaks.h"
 #include "song/Song.h"
 #include "ui/Layout.h"
+#include "ui/TakeLanes.h"
 #include "ui/TimelineGeometry.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -10,6 +11,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -27,6 +29,13 @@
 // undo label. Clicking empty lane space clears the selection; clicking or dragging
 // in the ruler moves the playhead. The scroll bar and the mouse wheel scroll; zoomIn/zoomOut zoom.
 // Selection and the view are transient UI state, never in the Song.
+//
+// Take Lanes (issue #30): a Track header with Takes shows a "▸ n Takes" toggle that unfolds one
+// thin lane per Take recorded on the Track, newest Pass first (ui/TakeLanes.h): the Take's
+// recorded span as a block, the spans where it is heard now filled in, and its heard status in
+// the lane's header. Clicking a lane at a point swaps the top Clip there to that Take, or brings
+// the whole Take back on top (laneEditAt), reported through onEdit with its label; the swapped or
+// added Clip is selected. Which Tracks are unfolded is transient UI state, like selection.
 namespace overdub::ui
 {
 // The peaks of a Clip's source (no channels: draw no waveform). The reference must stay valid
@@ -45,22 +54,25 @@ struct TimelineState
 // Track, "Missing" when the Song lacks its source.
 std::string clipName (const song::Song& song, const song::Clip& clip);
 
-// A Track lane's compact header: arm and name.
+// A Track lane's compact header: arm and name, and the Take Lanes toggle when it has Takes.
 class TrackHeader final : public juce::Component
 {
 public:
     TrackHeader();
 
-    void show (const song::Track& track, bool enabled);
+    // numTakes: the Takes recorded on the Track (no toggle when 0); unfolded: its lanes are shown.
+    void show (const song::Track& track, bool enabled, int numTakes, bool unfolded);
     void resized() override;
     void paint (juce::Graphics& g) override;
 
     const song::Id& trackId() const { return id; }
 
     std::function<void (bool armed)> onArm;
+    std::function<void()> onToggleTakes;
 
     juce::TextButton armButton { "Arm" };
     juce::Label nameLabel;
+    juce::TextButton takesButton;
 
 private:
     song::Id id;
@@ -93,10 +105,18 @@ public:
     // is not on screen, or for another part.
     juce::Rectangle<int> handleBounds (const song::Id& clipId, ClipPart part) const;
     juce::Rectangle<int> rulerBounds() const { return layout.ruler; }
+
+    // Take Lanes: unfolding is per Track and transient.
+    void setTakeLanesUnfolded (const song::Id& trackId, bool unfolded);
+    bool areTakeLanesUnfolded (const song::Id& trackId) const { return unfoldedTracks.contains (trackId); }
+    // The lanes shown under this Track (empty when folded), newest Pass first.
+    std::vector<TakeLaneRow> takeLanesShown (const song::Id& trackId) const;
+    // Where the lane of this Take is drawn, cut to the lanes; empty when folded or off screen.
+    juce::Rectangle<int> takeLaneBounds (const song::Id& takeId) const;
     juce::Rectangle<int> cameraLaneBounds() const { return layout.cameraLane; }
 
-    // A finished drag: the changed Song and its undo label ("Move Clip", "Trim Clip", "Fade In",
-    // "Fade Out", "Clip Gain").
+    // A finished drag or lane click: the changed Song and its undo label ("Move Clip", "Trim Clip",
+    // "Fade In", "Fade Out", "Clip Gain", "Use Pass 2 on Guitar", "Bring back Pass 2 on Guitar").
     std::function<void (song::Song changed, std::string label)> onEdit;
     std::function<void (song::SampleCount sample)> onSeek;
     std::function<void (const song::Id& trackId, bool armed)> onArm;
@@ -123,6 +143,9 @@ private:
 
     void scrollBarMoved (juce::ScrollBar* bar, double newRangeStart) override;
     void rebuildHeaders();
+    void showHeaders();
+    void refreshTakeLanes();
+    bool clickTakeLane (juce::Point<int> position);
     void updateScrollBar();
     const song::Song& shownSong() const { return preview.has_value() ? *preview : current.song; }
     std::optional<std::size_t> laneAt (juce::Point<int> position) const;
@@ -135,6 +158,8 @@ private:
     void paintFadesAndGain (juce::Graphics& g, const song::Clip& clip, juce::Rectangle<int> clipArea) const;
     void paintCoveredSpans (juce::Graphics& g, const song::Track& track, juce::Rectangle<int> lane) const;
     void paintPlayhead (juce::Graphics& g) const;
+    void paintTakeLane (juce::Graphics& g, const TakeLaneRow& row, juce::Rectangle<int> lane) const;
+    void paintTakeLaneHeader (juce::Graphics& g, const TakeLaneRow& row, juce::Rectangle<int> header) const;
 
     TimelineState current;
     std::optional<song::Song> preview; // the Song a drag in progress would make
@@ -143,6 +168,8 @@ private:
     TimelineView timelineView;
     TimelineLayout layout;
     std::optional<song::Id> selected;
+    std::set<song::Id> unfoldedTracks;
+    std::vector<std::vector<TakeLaneRow>> takeLanes; // per Track of the shown Song; empty when folded
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Timeline)
 };

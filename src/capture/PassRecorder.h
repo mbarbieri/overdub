@@ -23,7 +23,7 @@
 // therefore belongs at
 //     origin = (start + L) - (input latency + output latency + L + calibration offset)
 // so a sound lands on the Song sample at which it was heard. The Take keeps every dry sample it
-// captured. Its Clip starts at the Pass start (the record point) or at the origin, whichever is
+// captured. Its Clip (song::clipAsRecorded, song/TakeEdits.h) starts at the Pass start (the record point) or at the origin, whichever is
 // later: input captured before the record point is in the file but not heard.
 //
 // On stop, the Pass, its Takes and one new top-layer Clip per Take are added as one undo step

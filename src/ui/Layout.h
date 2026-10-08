@@ -72,6 +72,7 @@ struct EditPageLayout
 {
     juce::Rectangle<int> clipToolbar;
     juce::Rectangle<int> timeline;
+    juce::Rectangle<int> passesButton; // over the timeline's ruler corner (issue #30)
     juce::Rectangle<int> mixerDivider; // empty when the Mixer region is hidden
     juce::Rectangle<int> mixer;        // empty when the Mixer region is hidden
 };
@@ -103,12 +104,14 @@ struct ClipToolbarLayout
 ClipToolbarLayout clipToolbarLayout (juce::Rectangle<int> bar);
 
 // The timeline: a header column of laneHeaderWidth on the left; on the right the ruler, the
-// Camera lane, one lane per Track, and the horizontal scroll bar along the bottom. Lanes past
-// the bottom are cut off (rows keep their height).
+// Camera lane, one lane per Track, each followed by its unfolded Take Lanes (issue #30), and the
+// horizontal scroll bar along the bottom. Lanes past the bottom are cut off (rows keep their
+// height).
 inline constexpr int laneHeaderWidth = 150;
 inline constexpr int rulerHeight = 24;
 inline constexpr int cameraLaneHeight = 36;
 inline constexpr int trackLaneHeight = 76;
+inline constexpr int takeLaneHeight = 22;
 inline constexpr int timelineScrollBarHeight = 12;
 
 struct TimelineLayout
@@ -119,16 +122,50 @@ struct TimelineLayout
     juce::Rectangle<int> cameraLane;
     std::vector<juce::Rectangle<int>> trackHeaders;
     std::vector<juce::Rectangle<int>> trackLanes;
+    // Per Track, one header and one lane per unfolded Take Lane (none when folded).
+    std::vector<std::vector<juce::Rectangle<int>>> takeLaneHeaders;
+    std::vector<std::vector<juce::Rectangle<int>>> takeLanes;
     juce::Rectangle<int> scrollBar;
 };
 
-TimelineLayout timelineLayout (juce::Rectangle<int> area, int numTracks);
+// takeLanesPerTrack: one entry per Track, its number of unfolded Take Lanes (0 when folded).
+TimelineLayout timelineLayout (juce::Rectangle<int> area, const std::vector<int>& takeLanesPerTrack);
 
+// Top row: arm, then the name. Under it, the Take Lanes toggle ("▸ 3 Takes").
 struct TrackHeaderLayout
 {
     juce::Rectangle<int> arm;
     juce::Rectangle<int> name;
+    juce::Rectangle<int> takesToggle;
 };
 
 TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header);
+
+// Edit's Passes list (issue #30): a panel under the Passes button, one row per Pass (newest
+// first), each with its title, heard status and a Bring back button. The panel is kept inside
+// `page`; rows past its bottom are cut off.
+inline constexpr int passesPanelWidth = 560;
+inline constexpr int passRowHeight = 30;
+inline constexpr int passesPanelHeaderHeight = 26;
+
+// The panel's bounds in the page.
+juce::Rectangle<int> passesPanelBounds (juce::Rectangle<int> page, juce::Rectangle<int> passesButton, int numRows);
+
+struct PassesPanelLayout
+{
+    juce::Rectangle<int> heading;
+    std::vector<juce::Rectangle<int>> rows;
+};
+
+// Inside the panel, in its own coordinates.
+PassesPanelLayout passesPanelLayout (juce::Rectangle<int> panel, int numRows);
+
+struct PassRowLayout
+{
+    juce::Rectangle<int> title;
+    juce::Rectangle<int> status;
+    juce::Rectangle<int> bringBack;
+};
+
+PassRowLayout passRowLayout (juce::Rectangle<int> row);
 } // namespace overdub::ui
