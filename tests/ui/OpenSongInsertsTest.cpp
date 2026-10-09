@@ -305,7 +305,7 @@ TEST_CASE ("a plugin that crashes while playing is reported once, left out of th
     f.openSong->insertHost().pluginCrashed (*plugin);
     const auto errors = f.openSong->poll();
 
-    REQUIRE (codesOf (errors) == std::vector<std::string> { "plugin.crashed" });
+    REQUIRE (codesOf (errors) == std::vector<std::string> { "ui.plugin_crashed" });
     CHECK (errors[0].fields.at ("slot_ids") == nlohmann::json::array ({ f.guitarSlot().id }));
     CHECK (errors[0].fields.at ("names") == nlohmann::json::array ({ "Test Latent" }));
     CHECK (f.openSong->isPlaying());
@@ -338,7 +338,7 @@ TEST_CASE ("a plugin that crashes during a Pass does not stop it: the Pass keeps
     f.device.run (f.engine, 4);
     f.openSong->insertHost().pluginCrashed (*plugin);
     const auto errors = f.openSong->poll();
-    REQUIRE (codesOf (errors) == std::vector<std::string> { "plugin.crashed" });
+    REQUIRE (codesOf (errors) == std::vector<std::string> { "ui.plugin_crashed" });
     f.device.run (f.engine, 4);
 
     CHECK (f.openSong->isRecording());
@@ -356,7 +356,7 @@ TEST_CASE ("a plugin that crashes during a Pass does not stop it: the Pass keeps
     CHECK (f.engine.latencySamples() == 0); // until the reloaded plugin arrives
 }
 
-TEST_CASE ("a plugin that keeps crashing is reported as plugin.crashed_repeatedly and stays left out", "[ui][open_song][inserts][crash]")
+TEST_CASE ("a plugin that keeps crashing is reported as ui.plugin_crashed_repeatedly and stays left out", "[ui][open_song][inserts][crash]")
 {
     FakeInstantiator fake;
     InsertsFixture f { fake.instantiator() };
@@ -365,14 +365,14 @@ TEST_CASE ("a plugin that keeps crashing is reported as plugin.crashed_repeatedl
     for (int reload = 0; reload < overdub::plugin::maxCrashReloads; ++reload)
     {
         f.openSong->insertHost().pluginCrashed (*plugin);
-        REQUIRE (codesOf (f.openSong->poll()) == std::vector<std::string> { "plugin.crashed" });
+        REQUIRE (codesOf (f.openSong->poll()) == std::vector<std::string> { "ui.plugin_crashed" });
         plugin = fake.succeed (fake.requests.size() - 1, 0);
     }
 
     f.openSong->insertHost().pluginCrashed (*plugin);
     const auto errors = f.openSong->poll();
 
-    REQUIRE (codesOf (errors) == std::vector<std::string> { "plugin.crashed_repeatedly" });
+    REQUIRE (codesOf (errors) == std::vector<std::string> { "ui.plugin_crashed_repeatedly" });
     CHECK (errors[0].fields.at ("names") == nlohmann::json::array ({ "Test Latent" }));
     f.openSong->poll();
     CHECK (fake.requests.size() == 1 + overdub::plugin::maxCrashReloads);
@@ -380,7 +380,7 @@ TEST_CASE ("a plugin that keeps crashing is reported as plugin.crashed_repeatedl
     CHECK (f.guitarSlot().component == testPlugin.component); // kept in the Song
 }
 
-TEST_CASE ("a plugin crash during an export stops it, leaves no file and reports export.plugin_crashed", "[ui][open_song][inserts][crash][export]")
+TEST_CASE ("a plugin crash during an export stops it, leaves no file and reports ui.export_plugin_crashed", "[ui][open_song][inserts][crash][export]")
 {
     FakeInstantiator fake;
     InsertsFixture f { fake.instantiator() };
@@ -398,7 +398,7 @@ TEST_CASE ("a plugin crash during an export stops it, leaves no file and reports
     f.openSong->insertHost().pluginCrashed (*plugin);
     const auto errors = f.openSong->poll();
 
-    CHECK (codesOf (errors) == std::vector<std::string> { "export.plugin_crashed", "plugin.crashed" });
+    CHECK (codesOf (errors) == std::vector<std::string> { "ui.export_plugin_crashed", "ui.plugin_crashed" });
     CHECK_FALSE (f.openSong->isExporting());
     CHECK_FALSE (destination.exists());
     CHECK_FALSE (f.openSong->lastExportedFile().has_value());

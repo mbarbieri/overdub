@@ -61,10 +61,10 @@
 //
 // Plugin crash recovery (issue #40, ADR 0002 amendment): when a plugin's hosting process dies, the
 // InsertHost marks its slot crashed and its nodes pass audio through at once. poll() reports it
-// (plugin.crashed, or plugin.crashed_repeatedly once it will not reload: Notices), rebuilds the
+// (ui.plugin_crashed, or ui.plugin_crashed_repeatedly once it will not reload: Notices), rebuilds the
 // plan without it (after the Pass, while one runs: recording goes on, Takes are dry anyway), and
 // reloads it from its slot's saved state once no Pass or export runs. An export running when a
-// plugin crashes is discarded (export.plugin_crashed, an Alert): its file would miss the effect.
+// plugin crashes is discarded (ui.export_plugin_crashed, an Alert): its file would miss the effect.
 //
 // Message thread only.
 namespace overdub::ui
@@ -244,8 +244,8 @@ private:
     // After a history change: setMix when only the mix changed since `before`, else reloadEngine.
     void updateEngine (const song::Song& before);
     std::vector<core::Error> finishPass (core::Expected<capture::RecordedPass> finished);
-    // The crashes the InsertHost heard since the last poll, as Notice errors (plugin.crashed,
-    // plugin.crashed_repeatedly: slot_ids, names), after export.plugin_crashed (path) when an
+    // The crashes the InsertHost heard since the last poll, as Notice errors (ui.plugin_crashed,
+    // ui.plugin_crashed_repeatedly: slot_ids, names), after ui.export_plugin_crashed (path) when an
     // export was running: that export is discarded.
     std::vector<core::Error> handleCrashes();
     juce::File exportDestination() const;

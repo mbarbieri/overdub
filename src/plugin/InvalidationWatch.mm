@@ -7,17 +7,35 @@
 #include <AudioToolbox/AudioToolbox.h>
 #import <Foundation/Foundation.h>
 
+#include <cstdint>
+#include <map>
+#include <mutex>
+
 namespace overdub::plugin
 {
 struct InvalidationWatch::Observer
 {
     Handler handler;
-    // Expires with the watch, so a notification already handed to the message thread is dropped.
-    std::weak_ptr<Observer> self;
 };
 
 namespace
 {
+// Core Audio may be delivering a notification on its thread while the watch is destroyed on the
+// message thread, so the CF observer is a number, never a pointer: a delivery looks its watch up
+// here under the lock and finds nothing once the watch has unregistered.
+struct Registry
+{
+    std::mutex lock;
+    std::uintptr_t nextKey = 1;
+    std::map<std::uintptr_t, std::weak_ptr<InvalidationWatch::Observer>> observers;
+};
+
+Registry& registry()
+{
+    static Registry instance;
+    return instance;
+}
+
 // The AU instance the notification names (the "audioUnit" NSValue), or null.
 const void* audioUnitIn (CFDictionaryRef userInfo)
 {
@@ -30,11 +48,18 @@ const void* audioUnitIn (CFDictionaryRef userInfo)
     return [(NSValue*) value pointerValue];
 }
 
-void notified (CFNotificationCenterRef, void* observerPointer, CFNotificationName, const void*, CFDictionaryRef userInfo)
+void notified (CFNotificationCenterRef, void* observerKey, CFNotificationName, const void*, CFDictionaryRef userInfo)
 {
-    const auto* observer = static_cast<InvalidationWatch::Observer*> (observerPointer);
+    std::weak_ptr<InvalidationWatch::Observer> weak;
+    {
+        auto& known = registry();
+        const std::scoped_lock held { known.lock };
+        const auto found = known.observers.find (reinterpret_cast<std::uintptr_t> (observerKey));
+        if (found == known.observers.end())
+            return;
+        weak = found->second;
+    }
     const auto* audioUnit = audioUnitIn (userInfo);
-    std::weak_ptr<InvalidationWatch::Observer> weak = observer->self;
     juce::MessageManager::callAsync ([weak, audioUnit] {
         const auto alive = weak.lock();
         if (alive == nullptr)
@@ -49,11 +74,16 @@ void notified (CFNotificationCenterRef, void* observerPointer, CFNotificationNam
 }
 } // namespace
 
-InvalidationWatch::InvalidationWatch (Handler handler) : observer (std::make_shared<Observer> (Observer { std::move (handler), {} }))
+InvalidationWatch::InvalidationWatch (Handler handler) : observer (std::make_shared<Observer> (Observer { std::move (handler) }))
 {
-    observer->self = observer;
+    {
+        auto& known = registry();
+        const std::scoped_lock held { known.lock };
+        key = known.nextKey++;
+        known.observers[key] = observer;
+    }
     CFNotificationCenterAddObserver (CFNotificationCenterGetLocalCenter(),
-                                     observer.get(),
+                                     reinterpret_cast<const void*> (key),
                                      &notified,
                                      kAudioComponentInstanceInvalidationNotification,
                                      nullptr,
@@ -62,6 +92,9 @@ InvalidationWatch::InvalidationWatch (Handler handler) : observer (std::make_sha
 
 InvalidationWatch::~InvalidationWatch()
 {
-    CFNotificationCenterRemoveObserver (CFNotificationCenterGetLocalCenter(), observer.get(), kAudioComponentInstanceInvalidationNotification, nullptr);
+    CFNotificationCenterRemoveObserver (CFNotificationCenterGetLocalCenter(), reinterpret_cast<const void*> (key), kAudioComponentInstanceInvalidationNotification, nullptr);
+    auto& known = registry();
+    const std::scoped_lock held { known.lock };
+    known.observers.erase (key);
 }
 } // namespace overdub::plugin

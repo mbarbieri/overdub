@@ -375,7 +375,7 @@ std::vector<core::Error> OpenSong::handleCrashes()
     if (isExporting())
     {
         // The export's plan passes the dead plugin's audio through dry: its file would be wrong.
-        errors.push_back (core::Error { "export.plugin_crashed", "a plugin crashed during the export", { { "path", exportDestination().getFullPathName().toStdString() } } });
+        errors.push_back (core::Error { "ui.export_plugin_crashed", "a plugin crashed during the export", { { "path", exportDestination().getFullPathName().toStdString() } } });
         discardExport();
     }
 
@@ -388,9 +388,9 @@ std::vector<core::Error> OpenSong::handleCrashes()
         fields["names"].push_back (crash.name);
     }
     if (! reloading["slot_ids"].empty())
-        errors.push_back (core::Error { "plugin.crashed", "a plugin crashed and is bypassed until it reloads", reloading });
+        errors.push_back (core::Error { "ui.plugin_crashed", "a plugin crashed and is bypassed until it reloads", reloading });
     if (! givenUp["slot_ids"].empty())
-        errors.push_back (core::Error { "plugin.crashed_repeatedly", "a plugin keeps crashing and stays bypassed", givenUp });
+        errors.push_back (core::Error { "ui.plugin_crashed_repeatedly", "a plugin keeps crashing and stays bypassed", givenUp });
     return errors;
 }
 
@@ -599,7 +599,10 @@ void OpenSong::discardExport()
         core::logEvent (core::Level::info, "ui.export_stopped", { { "reason", "plugin_crashed" }, { "phase", "finished" } });
         exportJob.reset();
     }
-    stopExport ("plugin_crashed");
+    else
+    {
+        stopExport ("plugin_crashed");
+    }
     reloadEngine();
 }
 

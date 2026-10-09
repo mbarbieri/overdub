@@ -6,7 +6,6 @@
 #include "plugin/PluginKind.h"
 #include "plugin/PluginState.h"
 
-#include <algorithm>
 #include <set>
 
 namespace overdub::plugin
@@ -127,6 +126,7 @@ void InsertHost::arrived (const song::Id& slotId, std::uint64_t requestId, core:
     processor.addListener (this);
     entry.processor = std::shared_ptr<juce::AudioProcessor> (std::move (*created));
     entry.crashedFlag = std::make_shared<std::atomic<bool>> (false);
+    entry.tailSecondsAtLoad = entry.processor->getTailLengthSeconds();
     entry.status = InsertStatus::ready;
     graphChanged = true;
     core::logEvent (core::Level::info,
@@ -244,25 +244,38 @@ int InsertHost::captureStates (song::Song& song, const StateStore& store)
 
 void InsertHost::pluginCrashed (const juce::AudioProcessor& crashedProcessor)
 {
-    const auto found = std::ranges::find_if (entries, [&crashedProcessor] (const auto& item) {
-        return item.second.status == InsertStatus::ready && item.second.processor.get() == &crashedProcessor;
-    });
-    if (found == entries.end())
-        return;
+    for (auto& [slotId, entry] : entries)
+    {
+        if (entry.status == InsertStatus::ready && entry.processor.get() == &crashedProcessor)
+            return markCrashed (slotId, entry);
+    }
+}
 
-    auto& [slotId, entry] = *found;
+void InsertHost::audioUnitInvalidated (const void* audioUnit)
+{
+    for (auto& [slotId, entry] : entries)
+    {
+        if (entry.status == InsertStatus::ready && audioUnit != nullptr && audioUnitHandle (*entry.processor) == audioUnit)
+            return markCrashed (slotId, entry);
+    }
+    // The notification comes more than once per crash, and for AUs other hosts' code made.
+    core::logEvent (core::Level::debug, "plugin.invalidation_unmatched", {});
+}
+
+void InsertHost::markCrashed (const song::Id& slotId, Entry& entry)
+{
     // Before anything else: the audio thread stops calling the dead plugin at its next block.
     entry.crashedFlag->store (true, std::memory_order_release);
     ++entry.crashes;
-    const auto willReload = entry.crashes <= maxCrashReloads;
+    const auto willReload = reloadsAfter (entry.crashes);
     core::logEvent (core::Level::warn,
                     "plugin.invalidated",
                     { { "slot_id", slotId },
                       { "name", entry.slot.name },
                       { "component", componentText (entry.slot.component) },
                       { "version", entry.slot.version },
-                      { "latency_samples", entry.processor->getLatencySamples() },
-                      { "tail_seconds", entry.processor->getTailLengthSeconds() },
+                      { "latency_samples", entry.latencyInPlan },
+                      { "tail_seconds", entry.tailSecondsAtLoad },
                       { "out_of_process", audioUnitHandle (*entry.processor) != nullptr },
                       { "crashes", entry.crashes },
                       { "will_reload", willReload } });
@@ -274,24 +287,10 @@ void InsertHost::pluginCrashed (const juce::AudioProcessor& crashedProcessor)
     crashesToReport.push_back (InsertCrash { slotId, entry.slot.name, entry.crashes, willReload });
 }
 
-void InsertHost::audioUnitInvalidated (const void* audioUnit)
-{
-    for (const auto& [slotId, entry] : entries)
-    {
-        if (entry.status == InsertStatus::ready && audioUnit != nullptr && audioUnitHandle (*entry.processor) == audioUnit)
-        {
-            pluginCrashed (*entry.processor);
-            return;
-        }
-    }
-    // The notification comes more than once per crash, and for AUs other hosts' code made.
-    core::logEvent (core::Level::debug, "plugin.invalidation_unmatched", {});
-}
-
-int InsertHost::crashCount (const song::Id& slotId) const
+bool InsertHost::crashedForGood (const song::Id& slotId) const
 {
     const auto found = entries.find (slotId);
-    return found != entries.end() ? found->second.crashes : 0;
+    return found != entries.end() && found->second.status == InsertStatus::crashed && ! reloadsAfter (found->second.crashes);
 }
 
 std::vector<InsertCrash> InsertHost::takeCrashes()
@@ -305,7 +304,7 @@ int InsertHost::reloadCrashed (const song::Song& song)
     for (const auto* slot : slotsOf (song))
     {
         const auto found = entries.find (slot->id);
-        if (found == entries.end() || found->second.status != InsertStatus::crashed || found->second.crashes > maxCrashReloads)
+        if (found == entries.end() || found->second.status != InsertStatus::crashed || ! reloadsAfter (found->second.crashes))
             continue;
         core::logEvent (core::Level::info, "plugin.insert_reloading", { { "slot_id", slot->id }, { "crashes", found->second.crashes } });
         request (*slot);

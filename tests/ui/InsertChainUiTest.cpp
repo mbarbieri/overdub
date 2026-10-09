@@ -491,14 +491,14 @@ TEST_CASE ("a crashed plugin closes its editor window, reads (crashed), shows a 
     CHECK (f.window->pluginWindows.size() == 0);
     CHECK (chain.chips[0]->text() == "AUDelay (loading)"); // already reloading: nothing is recording
     CHECK (isShown (f.window->noticeLine));
-    CHECK (f.window->noticeLine.text() == juce::String (sentenceFor ("plugin.crashed")));
-    const auto crashed = eventsNamed (capture, "plugin.crashed");
+    CHECK (f.window->noticeLine.text() == juce::String (sentenceFor ("ui.plugin_crashed")));
+    const auto crashed = eventsNamed (capture, "ui.plugin_crashed");
     REQUIRE (crashed.size() == 1);
     CHECK (crashed[0].at ("lvl") == "warn");
     CHECK (crashed[0].at ("names") == nlohmann::json::array ({ "AUDelay" }));
     const auto shown = eventsNamed (capture, "ui.notice_shown");
     REQUIRE (shown.size() == 1);
-    CHECK (shown[0].at ("code") == "plugin.crashed");
+    CHECK (shown[0].at ("code") == "ui.plugin_crashed");
     CHECK (shown[0].at ("tier") == "notice");
 
     plugins.completeAll();
@@ -529,5 +529,5 @@ TEST_CASE ("a plugin crashed for good reads (crashed), and clicking it shows a N
     CHECK (f.window->pluginWindows.size() == 0);
     const auto shown = eventsNamed (capture, "ui.notice_shown");
     REQUIRE (shown.size() == 1);
-    CHECK (shown[0].at ("code") == "plugin.crashed_repeatedly");
+    CHECK (shown[0].at ("code") == "ui.plugin_crashed_repeatedly");
 }

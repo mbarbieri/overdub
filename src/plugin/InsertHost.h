@@ -112,15 +112,16 @@ public:
 
     // The slot whose ready processor this is crashed (see the header comment). Ignored for a
     // processor that is not a ready slot's (a repeated notification for the same crash). Logs
-    // plugin.invalidated (warn: slot_id, name, component, version, latency_samples, tail_seconds,
+    // plugin.invalidated (warn: slot_id, name, component, version, latency_samples (as the last plan
+    // used it) and tail_seconds (as loaded): a dead plugin is not asked,
     // out_of_process, crashes, will_reload).
     void pluginCrashed (const juce::AudioProcessor& processor);
     // kAudioComponentInstanceInvalidationNotification named this AU instance (InvalidationWatch):
     // pluginCrashed for the ready slot whose AU it is; plugin.invalidation_unmatched (debug:
     // matched none) otherwise.
     void audioUnitInvalidated (const void* audioUnit);
-    // How many times the slot's plugin crashed since it was first loaded (0 for an unknown slot).
-    int crashCount (const song::Id& slotId) const;
+    // True for a crashed slot that will not reload (it crashed more than maxCrashReloads times).
+    bool crashedForGood (const song::Id& slotId) const;
     // Every crash since the last call, in the order they happened.
     std::vector<InsertCrash> takeCrashes();
     // Starts loading every crashed slot of the Song that may still reload, with the Song's slot
@@ -143,11 +144,14 @@ private:
         // Set when the plugin crashed: read by every plan node that runs this processor.
         std::shared_ptr<std::atomic<bool>> crashedFlag;
         int crashes = 0;
+        double tailSecondsAtLoad = 0.0; // read while alive: a dead AU is never asked again
     };
 
     void request (const song::InsertSlot& slot);
     void arrived (const song::Id& slotId, std::uint64_t request, core::Expected<std::unique_ptr<juce::AudioProcessor>> created);
     void release (Entry& entry);
+    void markCrashed (const song::Id& slotId, Entry& entry);
+    static bool reloadsAfter (int crashes) { return crashes <= maxCrashReloads; }
 
     void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override;
     void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}

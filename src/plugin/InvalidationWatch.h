@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 
@@ -27,10 +28,11 @@ public:
     InvalidationWatch (const InvalidationWatch&) = delete;
     InvalidationWatch& operator= (const InvalidationWatch&) = delete;
 
-    // Core Audio's callback: hands the named AU instance to the message thread.
+    // The handler, shared with deliveries already handed to the message thread.
     struct Observer;
 
 private:
     std::shared_ptr<Observer> observer;
+    std::uintptr_t key = 0; // this watch's CF observer: an entry in the .mm's registry
 };
 } // namespace overdub::plugin
