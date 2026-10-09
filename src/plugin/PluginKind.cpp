@@ -16,13 +16,19 @@ bool isAUv3 (AudioUnit unit)
 }
 } // namespace
 
+const void* audioUnitHandle (const juce::AudioProcessor& processor)
+{
+    const auto* instance = dynamic_cast<const juce::AudioPluginInstance*> (&processor);
+    const auto* client = instance != nullptr ? instance->getAudioUnitClient() : nullptr;
+    return client != nullptr ? client->getAudioUnitHandle() : nullptr;
+}
+
 std::string hostingBadge (juce::AudioProcessor& processor)
 {
-    auto* instance = dynamic_cast<juce::AudioPluginInstance*> (&processor);
-    auto* client = instance != nullptr ? instance->getAudioUnitClient() : nullptr;
-    if (client == nullptr)
+    const auto handle = audioUnitHandle (processor);
+    if (handle == nullptr)
         return "in-process";
-    const auto unit = static_cast<AudioUnit> (client->getAudioUnitHandle());
+    const auto unit = static_cast<AudioUnit> (const_cast<void*> (handle));
     return std::string (isAUv3 (unit) ? "AUv3" : "AUv2") + " \xC2\xB7 out-of-process";
 }
 } // namespace overdub::plugin

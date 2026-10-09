@@ -38,12 +38,13 @@ struct InsertChipState
     song::Id slotId;
     std::string text; // insertChipText
     bool bypassed = false;
-    bool ready = true; // false while loading or when missing: drawn dimmed
+    bool ready = true; // false while loading, missing or crashed: drawn dimmed
 
     bool operator== (const InsertChipState&) const = default;
 };
 
-// The chip's text: the plugin's name, with " (loading)" or " (missing)" when it is not ready.
+// The chip's text: the plugin's name, with " (loading)", " (missing)" or " (crashed)" when it is
+// not ready.
 // Without a status lookup every slot reads as ready.
 std::string insertChipText (const song::InsertSlot& slot, const InsertStatusLookup& statusOf);
 

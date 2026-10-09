@@ -3,8 +3,10 @@
 #include "core/Log.h"
 #include "engine/SharedInsertNode.h"
 #include "plugin/AudioUnitIdentifier.h"
+#include "plugin/PluginKind.h"
 #include "plugin/PluginState.h"
 
+#include <algorithm>
 #include <set>
 
 namespace overdub::plugin
@@ -69,6 +71,7 @@ void InsertHost::request (const song::InsertSlot& slot)
 {
     auto& entry = entries[slot.id];
     entry.slot = slot;
+    entry.status = InsertStatus::loading;
     entry.request = nextRequest++;
     core::logEvent (core::Level::debug, "plugin.insert_requested", { { "slot_id", slot.id }, { "component", componentText (slot.component) } });
 
@@ -123,6 +126,7 @@ void InsertHost::arrived (const song::Id& slotId, std::uint64_t requestId, core:
 
     processor.addListener (this);
     entry.processor = std::shared_ptr<juce::AudioProcessor> (std::move (*created));
+    entry.crashedFlag = std::make_shared<std::atomic<bool>> (false);
     entry.status = InsertStatus::ready;
     graphChanged = true;
     core::logEvent (core::Level::info,
@@ -144,20 +148,25 @@ engine::InsertFactory InsertHost::insertFactory()
 {
     // The plan this factory builds has every ready plugin at its current latency.
     graphChanged = false;
-    std::map<song::Id, std::shared_ptr<juce::AudioProcessor>> ready;
+    struct ReadyPlugin
+    {
+        std::shared_ptr<juce::AudioProcessor> processor;
+        std::shared_ptr<const std::atomic<bool>> crashed;
+    };
+    std::map<song::Id, ReadyPlugin> ready;
     for (auto& [slotId, entry] : entries)
     {
         if (entry.status != InsertStatus::ready)
             continue;
         entry.latencyInPlan = entry.processor->getLatencySamples();
-        ready.emplace (slotId, entry.processor);
+        ready.emplace (slotId, ReadyPlugin { entry.processor, entry.crashedFlag });
     }
 
     return [ready] (const song::Id&, const std::vector<song::InsertSlot>& chain) {
         std::vector<std::unique_ptr<juce::AudioProcessor>> nodes;
         for (const auto& slot : chain)
             if (const auto found = ready.find (slot.id); ! slot.bypassed && found != ready.end())
-                nodes.push_back (std::make_unique<engine::SharedInsertNode> (found->second));
+                nodes.push_back (std::make_unique<engine::SharedInsertNode> (found->second.processor, found->second.crashed));
         return nodes;
     };
 }
@@ -231,6 +240,72 @@ int InsertHost::captureStates (song::Song& song, const StateStore& store)
     for (auto& slot : song.master.insertChain)
         captureInto (slot);
     return failures;
+}
+
+void InsertHost::pluginCrashed (const juce::AudioProcessor& crashedProcessor)
+{
+    const auto found = std::ranges::find_if (entries, [&crashedProcessor] (const auto& item) {
+        return item.second.status == InsertStatus::ready && item.second.processor.get() == &crashedProcessor;
+    });
+    if (found == entries.end())
+        return;
+
+    auto& [slotId, entry] = *found;
+    // Before anything else: the audio thread stops calling the dead plugin at its next block.
+    entry.crashedFlag->store (true, std::memory_order_release);
+    ++entry.crashes;
+    const auto willReload = entry.crashes <= maxCrashReloads;
+    core::logEvent (core::Level::warn,
+                    "plugin.invalidated",
+                    { { "slot_id", slotId },
+                      { "name", entry.slot.name },
+                      { "component", componentText (entry.slot.component) },
+                      { "version", entry.slot.version },
+                      { "latency_samples", entry.processor->getLatencySamples() },
+                      { "tail_seconds", entry.processor->getTailLengthSeconds() },
+                      { "out_of_process", audioUnitHandle (*entry.processor) != nullptr },
+                      { "crashes", entry.crashes },
+                      { "will_reload", willReload } });
+
+    // Plans still running it keep it alive (their nodes pass audio through) until they are freed.
+    release (entry);
+    entry.status = InsertStatus::crashed;
+    graphChanged = true;
+    crashesToReport.push_back (InsertCrash { slotId, entry.slot.name, entry.crashes, willReload });
+}
+
+void InsertHost::audioUnitInvalidated (const void* audioUnit)
+{
+    for (const auto& [slotId, entry] : entries)
+    {
+        if (entry.status == InsertStatus::ready && audioUnit != nullptr && audioUnitHandle (*entry.processor) == audioUnit)
+        {
+            pluginCrashed (*entry.processor);
+            return;
+        }
+    }
+    // The notification comes more than once per crash, and for AUs other hosts' code made.
+    core::logEvent (core::Level::debug, "plugin.invalidation_unmatched", {});
+}
+
+std::vector<InsertCrash> InsertHost::takeCrashes()
+{
+    return std::exchange (crashesToReport, {});
+}
+
+int InsertHost::reloadCrashed (const song::Song& song)
+{
+    int started = 0;
+    for (const auto* slot : slotsOf (song))
+    {
+        const auto found = entries.find (slot->id);
+        if (found == entries.end() || found->second.status != InsertStatus::crashed || found->second.crashes > maxCrashReloads)
+            continue;
+        core::logEvent (core::Level::info, "plugin.insert_reloading", { { "slot_id", slot->id }, { "crashes", found->second.crashes } });
+        request (*slot);
+        ++started;
+    }
+    return started;
 }
 
 void InsertHost::prepare (double rate, int samplesPerBlock)

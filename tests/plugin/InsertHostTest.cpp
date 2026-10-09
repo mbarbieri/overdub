@@ -42,13 +42,14 @@ public:
         preparedRate = rate;
         preparedBlock = block;
     }
-    void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override {}
+    void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override { ++blocksProcessed; }
     void getStateInformation (juce::MemoryBlock& state) override { state.replaceAll (juce::String (mix->get()).toRawUTF8(), juce::String (mix->get()).getNumBytesAsUTF8()); }
     void setStateInformation (const void* data, int size) override { *mix = juce::String::fromUTF8 (static_cast<const char*> (data), size).getFloatValue(); }
 
     juce::AudioParameterFloat* mix = nullptr;
     double preparedRate = 0.0;
     int preparedBlock = 0;
+    int blocksProcessed = 0;
 };
 
 struct PendingRequest
@@ -399,4 +400,161 @@ TEST_CASE ("plugin.insert_ready says whether the saved state was really restored
     CHECK (ready[0].at ("state_restored") == true);
     CHECK (ready[1].at ("state_restored") == false);
     CHECK (ready[2].at ("state_restored") == false);
+}
+
+//==============================================================================
+// Crash recovery (issue #40): the test stands in for kAudioComponentInstanceInvalidationNotification
+// by calling pluginCrashed with the slot's processor.
+
+TEST_CASE ("a plugin whose hosting process crashed is logged, released, and no longer run by any plan", "[plugin][insert_host][crash]")
+{
+    FakeInstantiator fake;
+    InsertHost host { fake.instantiator(), {}, hostRate, hostBlock };
+    const auto song = songWithChains();
+    host.sync (song);
+    auto* a1 = fake.succeed (0);
+    a1->setLatencySamples (32);
+    fake.succeed (1);
+    // A plan that the audio thread still renders when the crash arrives.
+    auto planned = host.insertFactory() ("track-a", song.tracks[0].insertChain);
+    REQUIRE (planned.size() == 2);
+    auto* node = dynamic_cast<overdub::engine::SharedInsertNode*> (planned[0].get());
+    REQUIRE (node != nullptr);
+    node->startForwarding();
+    juce::AudioBuffer<float> buffer (2, hostBlock);
+    juce::MidiBuffer midi;
+    node->processBlock (buffer, midi);
+    REQUIRE (a1->blocksProcessed == 1);
+    ScopedLogCapture capture;
+
+    host.pluginCrashed (*a1);
+
+    CHECK (host.status ("a1") == InsertStatus::crashed);
+    CHECK (host.processor ("a1") == nullptr);
+    node->processBlock (buffer, midi);
+    CHECK (a1->blocksProcessed == 1); // the old plan's node no longer calls the dead plugin
+    CHECK (host.takeGraphChanged());
+    CHECK (namesOf (host.insertFactory() ("track-a", song.tracks[0].insertChain)).size() == 1);
+    const auto invalidated = eventsNamed (capture, "plugin.invalidated");
+    REQUIRE (invalidated.size() == 1);
+    CHECK (invalidated[0].at ("lvl") == "warn");
+    CHECK (invalidated[0].at ("slot_id") == "a1");
+    CHECK (invalidated[0].at ("name") == "a1");
+    CHECK (invalidated[0].at ("component") == "aufx,test,ovdb");
+    CHECK (invalidated[0].at ("latency_samples") == 32);
+    CHECK (invalidated[0].at ("out_of_process") == false);
+    CHECK (invalidated[0].at ("crashes") == 1);
+    CHECK (invalidated[0].at ("will_reload") == true);
+}
+
+TEST_CASE ("takeCrashes hands each crash over once; a repeated notification for it is ignored", "[plugin][insert_host][crash]")
+{
+    FakeInstantiator fake;
+    InsertHost host { fake.instantiator(), {}, hostRate, hostBlock };
+    host.sync (songWithChains());
+    auto* a1 = fake.succeed (0);
+    fake.succeed (1);
+    auto* m1 = fake.succeed (2);
+
+    // One hosting process may host several plugins: they all go at once.
+    host.pluginCrashed (*a1);
+    host.pluginCrashed (*m1);
+    host.pluginCrashed (*a1);
+
+    const auto crashes = host.takeCrashes();
+    REQUIRE (crashes.size() == 2);
+    CHECK (crashes[0].slotId == "a1");
+    CHECK (crashes[0].name == "a1");
+    CHECK (crashes[0].willReload);
+    CHECK (crashes[1].slotId == "m1");
+    CHECK (host.takeCrashes().empty());
+    CHECK (host.status ("a2") == InsertStatus::ready);
+}
+
+TEST_CASE ("a crashed slot reloads with the state the Song holds for it now", "[plugin][insert_host][crash]")
+{
+    FakeInstantiator fake;
+    FakeStateStore states;
+    InsertHost host { fake.instantiator(), states.loader(), hostRate, hostBlock };
+    auto song = songWithChains();
+    host.sync (song);
+    auto* a1 = fake.succeed (0, 0.25f);
+    fake.succeed (1);
+    fake.succeed (2);
+    // The last capture before the crash stored 0.25 into the slot.
+    REQUIRE (host.captureStates (song, states.store()) == 0);
+    host.pluginCrashed (*a1);
+    host.takeCrashes();
+    host.takeGraphChanged();
+    ScopedLogCapture capture;
+
+    CHECK (host.reloadCrashed (song) == 1);
+
+    REQUIRE (fake.requests.size() == 4);
+    CHECK (fake.requests[3].slot.id == "a1");
+    CHECK (fake.requests[3].slot.stateHash == "hash-0.25");
+    CHECK (host.status ("a1") == InsertStatus::loading);
+    CHECK (host.reloadCrashed (song) == 0); // already loading
+    const auto reloading = eventsNamed (capture, "plugin.insert_reloading");
+    REQUIRE (reloading.size() == 1);
+    CHECK (reloading[0].at ("slot_id") == "a1");
+    CHECK (reloading[0].at ("crashes") == 1);
+
+    auto* reloaded = fake.succeed (3, 0.9f);
+    CHECK (host.status ("a1") == InsertStatus::ready);
+    CHECK (host.processor ("a1") == reloaded);
+    CHECK_THAT (reloaded->mix->get(), Catch::Matchers::WithinULP (0.25f, 0));
+    CHECK (host.takeGraphChanged());
+}
+
+TEST_CASE ("a slot that crashes a third time stays crashed and is not reloaded again", "[plugin][insert_host][crash]")
+{
+    FakeInstantiator fake;
+    InsertHost host { fake.instantiator(), {}, hostRate, hostBlock };
+    const auto song = songWithChains();
+    host.sync (song);
+    auto* plugin = fake.succeed (0);
+
+    for (int reload = 0; reload < overdub::plugin::maxCrashReloads; ++reload)
+    {
+        host.pluginCrashed (*plugin);
+        const auto crashes = host.takeCrashes();
+        REQUIRE (crashes.size() == 1);
+        CHECK (crashes[0].willReload);
+        REQUIRE (host.reloadCrashed (song) == 1);
+        plugin = fake.succeed (fake.requests.size() - 1);
+    }
+    ScopedLogCapture capture;
+    host.pluginCrashed (*plugin);
+
+    const auto crashes = host.takeCrashes();
+    REQUIRE (crashes.size() == 1);
+    CHECK (crashes[0].crashes == 3);
+    CHECK_FALSE (crashes[0].willReload);
+    const auto requested = fake.requests.size();
+    CHECK (host.reloadCrashed (song) == 0);
+    host.sync (song);
+    CHECK (fake.requests.size() == requested);
+    CHECK (host.status ("a1") == InsertStatus::crashed);
+    const auto invalidated = eventsNamed (capture, "plugin.invalidated");
+    REQUIRE (invalidated.size() == 1);
+    CHECK (invalidated[0].at ("will_reload") == false);
+}
+
+TEST_CASE ("a crashed slot the Song loses is forgotten; brought back by an undo it loads afresh", "[plugin][insert_host][crash]")
+{
+    FakeInstantiator fake;
+    InsertHost host { fake.instantiator(), {}, hostRate, hostBlock };
+    host.sync (songWithChains());
+    host.pluginCrashed (*fake.succeed (0));
+
+    auto without = songWithChains();
+    without.tracks[0].insertChain.erase (without.tracks[0].insertChain.begin());
+    host.sync (without);
+    CHECK_FALSE (host.status ("a1").has_value());
+
+    host.sync (songWithChains());
+    CHECK (host.status ("a1") == InsertStatus::loading);
+    REQUIRE (fake.requests.size() == 4);
+    CHECK (fake.requests[3].slot.id == "a1");
 }
