@@ -43,6 +43,7 @@ target_sources(overdub_tests PRIVATE
     plugin/AudioUnitLoaderTest.cpp
     plugin/InsertBypassTest.cpp
     plugin/InsertHostTest.cpp
+    plugin/InvalidationWatchTest.mm
     song/BackingTrackImportTest.cpp
     song/ClipEditsTest.cpp
     song/InsertEditsTest.cpp
@@ -87,7 +88,7 @@ target_sources(overdub_tests PRIVATE
     video/MovieFileTest.cpp
     video/VideoPlaybackTest.cpp)
 
-set_source_files_properties(export/Mp4Decode.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+set_source_files_properties(export/Mp4Decode.mm plugin/InvalidationWatchTest.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 
 # overdub_ui links overdub_capture and overdub_plugin, which link overdub_engine, overdub_song and overdub_core publicly; listing those too
 # makes ld warn about duplicate libraries.

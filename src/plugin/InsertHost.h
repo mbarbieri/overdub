@@ -3,6 +3,7 @@
 #include "core/Error.h"
 #include "engine/RenderPlan.h"
 #include "plugin/AudioUnitLoader.h"
+#include "plugin/InvalidationWatch.h"
 #include "song/Song.h"
 
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
@@ -160,5 +161,7 @@ private:
     std::atomic<bool> stateChanged { false };
     // Expires with the host, so an instantiation that finishes later drops its processor.
     std::shared_ptr<int> lifetime = std::make_shared<int> (0);
+    // Last: destroyed first, so no crash notification reaches a host being torn down.
+    InvalidationWatch invalidations { [this] (const void* audioUnit) { audioUnitInvalidated (audioUnit); } };
 };
 } // namespace overdub::plugin
