@@ -27,6 +27,15 @@ TEST_CASE ("situations the user need not decide on are Notices; lost data and fa
     CHECK (tierFor ("song.some_future_code") == Tier::alert);
 }
 
+TEST_CASE ("a crashed plugin is a Notice; an export it spoiled is an Alert", "[ui][messages][crash]")
+{
+    CHECK (tierFor ("ui.plugin_crashed") == Tier::notice);
+    CHECK (tierFor ("ui.plugin_crashed_repeatedly") == Tier::notice);
+    CHECK (tierFor ("ui.export_plugin_crashed") == Tier::alert);
+    for (const auto* code : { "ui.plugin_crashed", "ui.plugin_crashed_repeatedly", "ui.export_plugin_crashed" })
+        CHECK (sentenceFor (code).find (code) == std::string::npos);
+}
+
 TEST_CASE ("every code reads as a sentence; an unknown code falls back to one naming it", "[ui][messages]")
 {
     CHECK (sentenceFor ("song.history_dropped") != sentenceFor ("capture.nothing_armed"));

@@ -23,12 +23,17 @@
 // - Plans hold the processor through a shared_ptr, so the last owner may be a retired plan. The
 //   engine frees plans only off the audio thread (loadSong, housekeeping: the message thread in
 //   the app), which is where a plugin may then be destroyed.
+// - Crash (issue #40): once `crashed` reads true (set by the host when the plugin's hosting process
+//   died), the processor is never called again. The node passes its input through delayed by the
+//   latency it reported, so the plan's PDC still lines the chain up with every other path until a
+//   new plan leaves the slot out. The delay line is allocated here, never on the audio thread.
 namespace overdub::engine
 {
 class SharedInsertNode final : public PlainProcessor
 {
 public:
-    explicit SharedInsertNode (std::shared_ptr<juce::AudioProcessor> processor);
+    // `crashed` may be null: the plugin is then never considered crashed.
+    explicit SharedInsertNode (std::shared_ptr<juce::AudioProcessor> processor, std::shared_ptr<const std::atomic<bool>> crashed = {});
 
     const juce::String getName() const override { return name; }
     double getTailLengthSeconds() const override { return tailSeconds; }
@@ -38,9 +43,15 @@ public:
     void startForwarding() { forwarding.store (true, std::memory_order_release); }
 
 private:
+    void passThroughDelayed (juce::AudioBuffer<float>& buffer);
+
     std::shared_ptr<juce::AudioProcessor> shared;
+    std::shared_ptr<const std::atomic<bool>> crashed;
     juce::String name;
     double tailSeconds = 0.0;
     std::atomic<bool> forwarding { false };
+    // The crash pass-through's delay line: 2 channels of the reported latency.
+    juce::AudioBuffer<float> delayLine;
+    int delayIndex = 0;
 };
 } // namespace overdub::engine

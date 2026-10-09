@@ -28,6 +28,7 @@ std::string insertChipText (const song::InsertSlot& slot, const InsertStatusLook
         case plugin::InsertStatus::ready: return slot.name;
         case plugin::InsertStatus::loading: return slot.name + " (loading)";
         case plugin::InsertStatus::failed: return slot.name + " (missing)";
+        case plugin::InsertStatus::crashed: return slot.name + " (crashed)";
     }
     return slot.name;
 }

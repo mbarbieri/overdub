@@ -9,8 +9,12 @@ add_library (overdub_plugin STATIC)
                         AudioUnitIdentifier.cpp
                             AudioUnitLoader.cpp
                                 InsertHost.cpp
+                                    InvalidationWatch.mm
                                     PluginKind.cpp
                                     PluginState.cpp)
+
+# InvalidationWatch reads Foundation objects: ARC manages them.
+set_source_files_properties (InvalidationWatch.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 
         target_link_libraries (overdub_plugin
                                    PUBLIC

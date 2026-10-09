@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <atomic>
 #include <memory>
 
 using overdub::engine::Engine;
@@ -219,5 +220,36 @@ TEST_CASE ("process() neither allocates nor locks with shared and Master Inserts
     engine.play();
     REQUIRE_REALTIME_SAFE (for (int block = 0; block < 8; ++block) device.processOneBlock (engine));
     engine.stop();
+    REQUIRE_REALTIME_SAFE (for (int block = 0; block < 4; ++block) device.processOneBlock (engine));
+}
+
+TEST_CASE ("a shared Insert whose plugin crashed passes its audio through at the latency the plan gave it", "[engine][shared_insert][crash]")
+{
+    TempPackage package;
+    auto song = impulseSong (package, 1200);
+    const auto takeB = addTake (song, package, "take-b", impulse (8000, 2000));
+    song.tracks.push_back (trackWith ("track-b", { clipOf ("clip-b", takeB, 0, 0, 8000) }));
+    // A dead plugin's output is garbage (here silence): once crashed it must not be run at all.
+    auto dead = std::make_shared<SilenceProcessor>();
+    dead->setLatencySamples (128);
+    auto crashed = std::make_shared<std::atomic<bool>> (false);
+
+    Engine engine { stereoConfig() };
+    engine.loadSong (song, package.root, [dead, crashed] (const overdub::song::Id& trackId, const std::vector<overdub::song::InsertSlot>&) {
+        std::vector<std::unique_ptr<juce::AudioProcessor>> inserts;
+        if (trackId == "track-b")
+            inserts.push_back (std::make_unique<SharedInsertNode> (dead, crashed));
+        return inserts;
+    });
+    engine.play();
+    DeviceDriver device { 2, blockSize };
+    auto rendered = renderSamples (device, engine, 4); // to Song sample 1024
+    crashed->store (true);
+    const auto afterCrash = renderSamples (device, engine, 12);
+    rendered.insert (rendered.end(), afterCrash.begin(), afterCrash.end());
+
+    CHECK (engine.latencySamples() == 128);
+    // Track B's impulse is heard dry, still in time with Track A: the plan's PDC still holds.
+    CHECK (nonZeroSamples (rendered) == std::vector<std::int64_t> { 1200, 2000 });
     REQUIRE_REALTIME_SAFE (for (int block = 0; block < 4; ++block) device.processOneBlock (engine));
 }

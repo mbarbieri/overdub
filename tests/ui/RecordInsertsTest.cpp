@@ -67,6 +67,16 @@ TEST_CASE ("an Insert chip reads as its plugin's name with its loading or missin
     CHECK (chips[2].slotId == "s3");
 }
 
+TEST_CASE ("a crashed Insert's chip says so and counts as not active", "[ui][record_page][inserts][crash]")
+{
+    const std::vector<InsertSlot> chain { slotNamed ("s1", "NAM") };
+    const auto statusOf = [] (const overdub::song::Id&) -> std::optional<InsertStatus> { return InsertStatus::crashed; };
+
+    CHECK (insertChipText (chain[0], statusOf) == "NAM (crashed)");
+    CHECK_FALSE (insertChipsFor (chain, statusOf)[0].ready);
+    CHECK (activeInsertCount (chain, statusOf) == 0);
+}
+
 TEST_CASE ("the Monitoring button counts the Inserts that are active: ready and not bypassed", "[ui][record_page][inserts]")
 {
     auto chain = std::vector<InsertSlot> { slotNamed ("s1", "AUDelay"), slotNamed ("s2", "NAM"), slotNamed ("s3", "AUPeakLimiter"), slotNamed ("s4", "AUReverb") };

@@ -59,6 +59,13 @@
 // the empty plan, so the export waits ("Preparing…") until the device runs or is detached. A slot
 // an edit removes during an export keeps rendering in it (the plan holds the plugin) until it ends.
 //
+// Plugin crash recovery (issue #40, ADR 0002 amendment): when a plugin's hosting process dies, the
+// InsertHost marks its slot crashed and its nodes pass audio through at once. poll() reports it
+// (ui.plugin_crashed, or ui.plugin_crashed_repeatedly once it will not reload: Notices), rebuilds the
+// plan without it (after the Pass, while one runs: recording goes on, Takes are dry anyway), and
+// reloads it from its slot's saved state once no Pass or export runs. An export running when a
+// plugin crashes is discarded (ui.export_plugin_crashed, an Alert): its file would miss the effect.
+//
 // Message thread only.
 namespace overdub::ui
 {
@@ -224,7 +231,8 @@ public:
     // audio thread has ended, rebuilds the plan
     // when a plugin loaded or changed its latency (not during a Pass), schedules a write when a
     // plugin parameter changed, saves the playhead once the transport is stopped, and writes a due
-    // song.json. Returns the errors, not logged.
+    // song.json, and handles plugin crashes (see the header comment). Returns the errors, not
+    // logged.
     std::vector<core::Error> poll (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
 
 private:
@@ -236,6 +244,13 @@ private:
     // After a history change: setMix when only the mix changed since `before`, else reloadEngine.
     void updateEngine (const song::Song& before);
     std::vector<core::Error> finishPass (core::Expected<capture::RecordedPass> finished);
+    // The crashes the InsertHost heard since the last poll, as Notice errors (ui.plugin_crashed,
+    // ui.plugin_crashed_repeatedly: slot_ids, names), after ui.export_plugin_crashed (path) when an
+    // export was running: that export is discarded.
+    std::vector<core::Error> handleCrashes();
+    juce::File exportDestination() const;
+    // Stops the export (deleting the file of one that already finished) and reloads the engine.
+    void discardExport();
     void capturePluginState (song::Song& song);
     // Opens the Song's chosen camera when it is Armed, closes it otherwise. On failure the Song's
     // camera is disarmed and the Error returned.
