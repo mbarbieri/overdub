@@ -474,3 +474,60 @@ TEST_CASE ("a plugin editor window renders to a snapshot", "[ui][inserts][plugin
 
     CHECK (writeSnapshot (window->panel(), "slice-13", "plugin-window").existsAsFile());
 }
+
+TEST_CASE ("a crashed plugin closes its editor window, reads (crashed), shows a Notice, and comes back once reloaded", "[ui][inserts][plugin_window][crash]")
+{
+    PendingPlugins plugins;
+    InsertUiFixture f { plugins };
+    auto& chain = f.rowNamed ("Guitar").insertChain;
+    f.addThrough (chain, 0);
+    const auto slotId = f.trackNamed ("Guitar").insertChain[0].id;
+    REQUIRE (f.window->pluginWindows.size() == 1);
+    ScopedLogCapture capture;
+
+    f.openSong->insertHost().pluginCrashed (*f.openSong->insertHost().processor (slotId));
+    f.runBlocks (1);
+
+    CHECK (f.window->pluginWindows.size() == 0);
+    CHECK (chain.chips[0]->text() == "AUDelay (loading)"); // already reloading: nothing is recording
+    CHECK (isShown (f.window->noticeLine));
+    CHECK (f.window->noticeLine.text() == juce::String (sentenceFor ("plugin.crashed")));
+    const auto crashed = eventsNamed (capture, "plugin.crashed");
+    REQUIRE (crashed.size() == 1);
+    CHECK (crashed[0].at ("lvl") == "warn");
+    CHECK (crashed[0].at ("names") == nlohmann::json::array ({ "AUDelay" }));
+    const auto shown = eventsNamed (capture, "ui.notice_shown");
+    REQUIRE (shown.size() == 1);
+    CHECK (shown[0].at ("code") == "plugin.crashed");
+    CHECK (shown[0].at ("tier") == "notice");
+
+    plugins.completeAll();
+    f.runBlocks (1);
+    CHECK (chain.chips[0]->text() == "AUDelay");
+}
+
+TEST_CASE ("a plugin crashed for good reads (crashed), and clicking it shows a Notice instead of a window", "[ui][inserts][plugin_window][crash]")
+{
+    PendingPlugins plugins;
+    InsertUiFixture f { plugins };
+    auto& chain = f.rowNamed ("Guitar").insertChain;
+    f.addThrough (chain, 0);
+    const auto slotId = f.trackNamed ("Guitar").insertChain[0].id;
+    f.window->pluginWindows.closeAll();
+    for (int crash = 0; crash <= overdub::plugin::maxCrashReloads; ++crash)
+    {
+        f.openSong->insertHost().pluginCrashed (*f.openSong->insertHost().processor (slotId));
+        f.runBlocks (1);
+        plugins.completeAll();
+        f.runBlocks (1);
+    }
+    REQUIRE (chain.chips[0]->text() == "AUDelay (crashed)");
+    ScopedLogCapture capture;
+
+    click (*chain.chips[0]);
+
+    CHECK (f.window->pluginWindows.size() == 0);
+    const auto shown = eventsNamed (capture, "ui.notice_shown");
+    REQUIRE (shown.size() == 1);
+    CHECK (shown[0].at ("code") == "plugin.crashed_repeatedly");
+}

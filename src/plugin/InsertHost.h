@@ -119,6 +119,8 @@ public:
     // pluginCrashed for the ready slot whose AU it is; plugin.invalidation_unmatched (debug:
     // matched none) otherwise.
     void audioUnitInvalidated (const void* audioUnit);
+    // How many times the slot's plugin crashed since it was first loaded (0 for an unknown slot).
+    int crashCount (const song::Id& slotId) const;
     // Every crash since the last call, in the order they happened.
     std::vector<InsertCrash> takeCrashes();
     // Starts loading every crashed slot of the Song that may still reload, with the Song's slot

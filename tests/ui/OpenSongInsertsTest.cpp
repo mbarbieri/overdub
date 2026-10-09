@@ -271,3 +271,136 @@ TEST_CASE ("AUDelay's state round-trips through a blob and an undo, and through 
     REQUIRE (overdub::plugin::testing::runMessagesUntil ([&] { return f.openSong->insertStatus (slotId) == InsertStatus::ready; }));
     CHECK_THAT (auParameter (f.openSong->insertHost().processor (slotId), kDelayParam_DelayTime), Catch::Matchers::WithinAbs (1.5, 1e-6));
 }
+
+//==============================================================================
+// Crash recovery (issue #40). The test calls InsertHost::pluginCrashed where the app hears
+// kAudioComponentInstanceInvalidationNotification.
+
+namespace
+{
+std::vector<std::string> codesOf (const std::vector<overdub::core::Error>& errors)
+{
+    std::vector<std::string> codes;
+    for (const auto& error : errors)
+        codes.push_back (error.code);
+    return codes;
+}
+} // namespace
+
+TEST_CASE ("a plugin that crashes while playing is reported once, left out of the plan, and reloaded with its saved state", "[ui][open_song][inserts][crash]")
+{
+    FakeInstantiator fake;
+    InsertsFixture f { fake.instantiator() };
+    const auto guitarId = f.trackNamed ("Guitar").id;
+    REQUIRE (f.openSong->addInsert (guitarId, testPlugin).has_value());
+    auto* plugin = fake.succeed (0, 64);
+    *plugin->mix = 0.25f;
+    // A history step captures the state the reload restores.
+    REQUIRE (f.openSong->edit (*overdub::song::setTrackMute (f.openSong->song(), guitarId, true), "Mute Guitar").has_value());
+    f.openSong->poll();
+    f.openSong->playOrStop();
+    f.device.run (f.engine, 2);
+    REQUIRE (f.engine.latencySamples() == 64);
+
+    f.openSong->insertHost().pluginCrashed (*plugin);
+    const auto errors = f.openSong->poll();
+
+    REQUIRE (codesOf (errors) == std::vector<std::string> { "plugin.crashed" });
+    CHECK (errors[0].fields.at ("slot_ids") == nlohmann::json::array ({ f.guitarSlot().id }));
+    CHECK (errors[0].fields.at ("names") == nlohmann::json::array ({ "Test Latent" }));
+    CHECK (f.openSong->isPlaying());
+    f.device.run (f.engine, 1);
+    CHECK (f.engine.latencySamples() == 0); // left out, as a bypass would
+    CHECK (f.openSong->insertStatus (f.guitarSlot().id) == InsertStatus::loading);
+    REQUIRE (fake.requests.size() == 2);
+    CHECK (f.openSong->poll().empty()); // reported once
+
+    auto* reloaded = fake.succeed (1, 64);
+    CHECK_THAT (reloaded->mix->get(), Catch::Matchers::WithinULP (0.25f, 0));
+    f.openSong->poll();
+    f.device.run (f.engine, 1);
+    CHECK (f.engine.latencySamples() == 64);
+}
+
+TEST_CASE ("a plugin that crashes during a Pass does not stop it: the Pass keeps its plan and Takes, and the slot reloads after it", "[ui][open_song][inserts][crash][record]")
+{
+    FakeInstantiator fake;
+    InsertsFixture f { fake.instantiator() };
+    const auto guitarId = f.trackNamed ("Guitar").id;
+    REQUIRE (f.openSong->addInsert (guitarId, testPlugin).has_value());
+    auto* plugin = fake.succeed (0, 64);
+    f.openSong->setArmed (guitarId, true);
+    f.openSong->setInputChannels (guitarId, { 0 });
+    f.openSong->poll();
+    const auto takesBefore = f.openSong->song().takes.size();
+
+    REQUIRE (f.openSong->record().has_value());
+    f.device.run (f.engine, 4);
+    f.openSong->insertHost().pluginCrashed (*plugin);
+    const auto errors = f.openSong->poll();
+    REQUIRE (codesOf (errors) == std::vector<std::string> { "plugin.crashed" });
+    f.device.run (f.engine, 4);
+
+    CHECK (f.openSong->isRecording());
+    CHECK (f.engine.latencySamples() == 64); // the Pass keeps the plan it started with
+    CHECK (fake.requests.size() == 1);       // no reload while recording
+    CHECK (f.openSong->insertStatus (f.guitarSlot().id) == InsertStatus::crashed);
+
+    f.openSong->stop();
+    f.device.run (f.engine, 1);
+    CHECK (f.openSong->poll().empty());
+    CHECK_FALSE (f.openSong->isRecording());
+    CHECK (f.openSong->song().takes.size() > takesBefore); // the Pass was added
+    CHECK (fake.requests.size() == 2);
+    f.device.run (f.engine, 1);
+    CHECK (f.engine.latencySamples() == 0); // until the reloaded plugin arrives
+}
+
+TEST_CASE ("a plugin that keeps crashing is reported as plugin.crashed_repeatedly and stays left out", "[ui][open_song][inserts][crash]")
+{
+    FakeInstantiator fake;
+    InsertsFixture f { fake.instantiator() };
+    REQUIRE (f.openSong->addInsert (f.trackNamed ("Guitar").id, testPlugin).has_value());
+    auto* plugin = fake.succeed (0, 0);
+    for (int reload = 0; reload < overdub::plugin::maxCrashReloads; ++reload)
+    {
+        f.openSong->insertHost().pluginCrashed (*plugin);
+        REQUIRE (codesOf (f.openSong->poll()) == std::vector<std::string> { "plugin.crashed" });
+        plugin = fake.succeed (fake.requests.size() - 1, 0);
+    }
+
+    f.openSong->insertHost().pluginCrashed (*plugin);
+    const auto errors = f.openSong->poll();
+
+    REQUIRE (codesOf (errors) == std::vector<std::string> { "plugin.crashed_repeatedly" });
+    CHECK (errors[0].fields.at ("names") == nlohmann::json::array ({ "Test Latent" }));
+    f.openSong->poll();
+    CHECK (fake.requests.size() == 1 + overdub::plugin::maxCrashReloads);
+    CHECK (f.openSong->insertStatus (f.guitarSlot().id) == InsertStatus::crashed);
+    CHECK (f.guitarSlot().component == testPlugin.component); // kept in the Song
+}
+
+TEST_CASE ("a plugin crash during an export stops it, leaves no file and reports export.plugin_crashed", "[ui][open_song][inserts][crash][export]")
+{
+    FakeInstantiator fake;
+    InsertsFixture f { fake.instantiator() };
+    REQUIRE (f.openSong->addInsert (f.trackNamed ("Guitar").id, testPlugin).has_value());
+    auto* plugin = fake.succeed (0, 0);
+    f.openSong->poll();
+    juce::TemporaryFile folder;
+    REQUIRE (folder.getFile().createDirectory());
+    const auto destination = folder.getFile().getChildFile ("Song.wav");
+
+    REQUIRE (f.openSong->startExport ({ overdub::exporting::ExportFormat::wav, destination }).has_value());
+    f.device.run (f.engine, 1); // the audio thread lets go of the plugins
+    f.openSong->poll();         // the export renders them now
+    REQUIRE (f.openSong->isExporting());
+    f.openSong->insertHost().pluginCrashed (*plugin);
+    const auto errors = f.openSong->poll();
+
+    CHECK (codesOf (errors) == std::vector<std::string> { "export.plugin_crashed", "plugin.crashed" });
+    CHECK_FALSE (f.openSong->isExporting());
+    CHECK_FALSE (destination.exists());
+    CHECK_FALSE (f.openSong->lastExportedFile().has_value());
+    folder.getFile().deleteRecursively();
+}

@@ -485,6 +485,12 @@ void MainComponent::openInsertEditor (const song::Id& slotId)
         showNotice ("ui.plugin_missing");
         return;
     }
+    if (status == plugin::InsertStatus::crashed)
+    {
+        const auto givenUp = openSong->insertHost().crashCount (slotId) > plugin::maxCrashReloads;
+        showNotice (givenUp ? "plugin.crashed_repeatedly" : "plugin.crashed");
+        return;
+    }
     // Loading: it opens when ready (syncPluginWindows).
     pendingEditorSlot = slotId;
     syncPluginWindows();

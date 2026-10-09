@@ -288,6 +288,12 @@ void InsertHost::audioUnitInvalidated (const void* audioUnit)
     core::logEvent (core::Level::debug, "plugin.invalidation_unmatched", {});
 }
 
+int InsertHost::crashCount (const song::Id& slotId) const
+{
+    const auto found = entries.find (slotId);
+    return found != entries.end() ? found->second.crashes : 0;
+}
+
 std::vector<InsertCrash> InsertHost::takeCrashes()
 {
     return std::exchange (crashesToReport, {});

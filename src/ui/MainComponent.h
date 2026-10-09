@@ -49,9 +49,10 @@
 // lists the AU effects and adds the one picked (OpenSong::addInsert), then opens its editor once
 // it has loaded; bypass, remove and drag-to-reorder are one undo step each (song/InsertEdits.h).
 // Clicking an Insert opens its plugin's editor window (ui/PluginWindows.h; a loading plugin's
-// opens once it is ready, a missing one shows the "ui.plugin_missing" Notice). Windows follow the
-// Song: one whose slot is removed (or undone away) closes; closing one schedules a song.json
-// write that captures the plugin's state, outside history.
+// opens once it is ready, a missing one shows the "ui.plugin_missing" Notice, a crashed one
+// "plugin.crashed" or "plugin.crashed_repeatedly", issue #40). Windows follow the Song: one whose
+// slot is removed (or undone away), or whose plugin crashed, closes; closing one schedules a
+// song.json write that captures the plugin's state, outside history.
 //
 // Export mode (issue #37): the page's request goes to OpenSong::startExport; Choose… asks for the
 // destination (chooseExportDestination), Reveal in Finder shows the written file

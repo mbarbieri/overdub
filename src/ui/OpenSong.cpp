@@ -333,11 +333,16 @@ std::vector<core::Expected<song::Id>> OpenSong::importFiles (const std::vector<j
 
 std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point now)
 {
-    auto errors = advanceExport();
+    auto errors = handleCrashes();
+    for (auto& error : advanceExport())
+        errors.push_back (std::move (error));
     if (recorder != nullptr && recorder->hasStopped())
         for (auto& error : finishPass (recorder->finish (now)))
             errors.push_back (std::move (error));
 
+    // A crashed plugin reloads only once no Pass or export runs (a Pass keeps its plan anyway).
+    if (recorder == nullptr && ! isExporting())
+        inserts.reloadCrashed (song());
     // During a Pass the plan stays as it started; finishPass rebuilds it.
     if (recorder == nullptr && inserts.takeGraphChanged())
         reloadEngine();
@@ -357,6 +362,35 @@ std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point no
 
     if (auto written = package_->writeIfDue (now); ! written.has_value())
         errors.push_back (written.error());
+    return errors;
+}
+
+std::vector<core::Error> OpenSong::handleCrashes()
+{
+    const auto crashes = inserts.takeCrashes();
+    if (crashes.empty())
+        return {};
+
+    std::vector<core::Error> errors;
+    if (isExporting())
+    {
+        // The export's plan passes the dead plugin's audio through dry: its file would be wrong.
+        errors.push_back (core::Error { "export.plugin_crashed", "a plugin crashed during the export", { { "path", exportDestination().getFullPathName().toStdString() } } });
+        discardExport();
+    }
+
+    core::Fields reloading { { "slot_ids", nlohmann::json::array() }, { "names", nlohmann::json::array() } };
+    core::Fields givenUp = reloading;
+    for (const auto& crash : crashes)
+    {
+        auto& fields = crash.willReload ? reloading : givenUp;
+        fields["slot_ids"].push_back (crash.slotId);
+        fields["names"].push_back (crash.name);
+    }
+    if (! reloading["slot_ids"].empty())
+        errors.push_back (core::Error { "plugin.crashed", "a plugin crashed and is bypassed until it reloads", reloading });
+    if (! givenUp["slot_ids"].empty())
+        errors.push_back (core::Error { "plugin.crashed_repeatedly", "a plugin keeps crashing and stays bypassed", givenUp });
     return errors;
 }
 
@@ -546,6 +580,27 @@ std::vector<core::Error> OpenSong::advanceExport()
         return { result->error() };
     lastExport = (*result)->file;
     return {};
+}
+
+juce::File OpenSong::exportDestination() const
+{
+    if (exportJob != nullptr)
+        return exportJob->request().destination;
+    return exportWaiting.has_value() ? exportWaiting->destination : juce::File();
+}
+
+void OpenSong::discardExport()
+{
+    // A job that already finished has written its file: that file may hold the crash, so it goes.
+    if (exportJob != nullptr && exportJob->isDone())
+    {
+        if (auto result = exportJob->takeResult(); result.has_value() && result->has_value())
+            (*result)->file.deleteFile();
+        core::logEvent (core::Level::info, "ui.export_stopped", { { "reason", "plugin_crashed" }, { "phase", "finished" } });
+        exportJob.reset();
+    }
+    stopExport ("plugin_crashed");
+    reloadEngine();
 }
 
 void OpenSong::stopExport (const char* reason)
