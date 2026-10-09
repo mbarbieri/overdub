@@ -35,7 +35,8 @@ void postInvalidation (NSDictionary* userInfo)
 
 void postInvalidationOf (const void* audioUnit)
 {
-    postInvalidation (@{ @"audioUnit" : [NSValue valueWithPointer:audioUnit], @"Service PID" : @1 });
+    postInvalidation (@{@"audioUnit" : [NSValue valueWithPointer:audioUnit],
+                        @"Service PID" : @1});
 }
 } // namespace
 
@@ -64,7 +65,7 @@ TEST_CASE ("an invalidation that names no AU, or arrives after the watch is gone
     ScopedLogCapture capture;
     {
         InvalidationWatch watch { [&calls] (const void*) { ++calls; } };
-        postInvalidation (@{ @"Service PID" : @1 });
+        postInvalidation (@{@"Service PID" : @1});
         REQUIRE (runMessagesUntil ([&] {
             for (const auto& event : capture.events())
                 if (event.at ("event") == "plugin.invalidation_without_unit")
