@@ -235,3 +235,29 @@ TEST_CASE ("a device that starts with a shape the engine was not built for is re
     CHECK (mismatch[0]["engine_output_channels"] == 2);
     CHECK (mismatch[0]["engine_max_block_size"] == 256);
 }
+
+TEST_CASE ("a device that stops ends the engine's running Pass and stops its transport", "[engine][device][binding][device_change]")
+{
+    TempPackage package;
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    engine.loadSong (overdub::song::makeEmptySong (testSampleRate), package.root);
+    DeviceBinding binding { engine };
+    FakeAudioIODevice device { FakeDeviceShape { .name = "Scarlett 2i2 USB", .typeName = "CoreAudio" } };
+    FakeDeviceBuffers buffers { 2, 2, 256 };
+    std::uint64_t hostTime = 1'000'000'000;
+    const juce::AudioIODeviceCallbackContext context { &hostTime };
+
+    binding.audioDeviceAboutToStart (&device);
+    overdub::engine::RecordSession session { { overdub::engine::RecordInput { "track", { 0 } } }, testSampleRate };
+    engine.startRecording (session);
+    engine.play();
+    for (int block = 0; block < 3; ++block)
+        buffers.callback (binding, context);
+    REQUIRE (engine.isRecording());
+
+    binding.audioDeviceStopped(); // the interface was unplugged
+    CHECK (session.state() == overdub::engine::RecordState::stopped);
+    CHECK (session.stopReason() == overdub::engine::RecordStopReason::deviceStopped);
+    CHECK (session.capturedFrames() == 3 * 256);
+    CHECK_FALSE (engine.isPlaying());
+}

@@ -121,6 +121,8 @@ const char* stopReasonName (engine::RecordStopReason reason)
             return "seeked";
         case engine::RecordStopReason::cancelled:
             return "cancelled";
+        case engine::RecordStopReason::deviceStopped:
+            return "device_stopped";
     }
     return "unknown";
 }

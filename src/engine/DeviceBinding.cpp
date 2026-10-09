@@ -78,6 +78,8 @@ void DeviceBinding::audioDeviceAboutToStart (juce::AudioIODevice* device)
 
 void DeviceBinding::audioDeviceStopped()
 {
+    // The device calls back no more: a Pass ends here, keeping what it captured (issue #41).
+    engine.deviceStopped();
     if (runningDevice == nullptr)
         return;
 
@@ -89,5 +91,9 @@ void DeviceBinding::audioDeviceStopped()
                         { "xruns", runningDevice->getXRunCount() },
                     });
     runningDevice = nullptr;
+}
+void DeviceBinding::audioDeviceError (const juce::String& errorMessage)
+{
+    core::logEvent (core::Level::warn, "engine.device_error", { { "reason", errorMessage.toStdString() } });
 }
 } // namespace overdub::engine

@@ -95,6 +95,38 @@ void Engine::stopRecording (RecordSession& session)
         recordStopRequestedFor.store (&session, std::memory_order_release);
 }
 
+void Engine::deviceStopped()
+{
+    // No process() runs (see Engine.h), so the audio thread's own state is safe to change here.
+    const auto wasPlaying = playing || playRequested.load();
+    playRequested.store (false);
+    playing = false;
+    publishedPlaying.store (false);
+    publishedPosition.store (playPosition);
+
+    auto passEnded = false;
+    SampleCount capturedFrames = 0;
+    if (activeRecord != nullptr)
+    {
+        capturedFrames = activeRecord->capturedFrames();
+        activeRecord->end (RecordStopReason::deviceStopped);
+        activeRecord = nullptr;
+        activeRecordBegun = false;
+        publishedRecording.store (false);
+        passEnded = true;
+    }
+    if (auto* waiting = pendingRecord.exchange (nullptr, std::memory_order_acq_rel); waiting != nullptr)
+    {
+        waiting->end (RecordStopReason::deviceStopped);
+        passEnded = true;
+    }
+    recordStopRequestedFor.store (nullptr, std::memory_order_release);
+
+    core::logEvent (core::Level::info,
+                    "engine.device_stopped",
+                    { { "was_playing", wasPlaying }, { "pass_ended", passEnded }, { "captured_frames", capturedFrames }, { "position", position() } });
+}
+
 bool Engine::isRecording() const
 {
     return publishedRecording.load();
