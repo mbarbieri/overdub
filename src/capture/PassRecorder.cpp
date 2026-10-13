@@ -537,6 +537,7 @@ std::optional<song::VideoTake> PassRecorder::finishMovie (RecordedPass& pass)
     videoTake.songSamplesPerMovieSecond = placement.songSamplesPerMovieSecond;
     videoTake.cameraId = ended->cameraId.empty() ? inProgress.cameraId : ended->cameraId;
     videoTake.calibrationOffsetSamples = options.cameraCalibrationSamples;
+    videoTake.outputDevice = options.outputDevice;
     pass.videoTakeId = videoTake.id;
 
     if (ended->droppedFrames > 0)
@@ -551,6 +552,7 @@ std::optional<song::VideoTake> PassRecorder::finishMovie (RecordedPass& pass)
                         { "video_take_id", videoTake.id },
                         { "outcome", "recorded" },
                         { "camera_id", videoTake.cameraId },
+                        { "output_device", videoTake.outputDevice },
                         { "frames", ended->frames },
                         { "dropped_frames", ended->droppedFrames },
                         { "duration_seconds", ended->durationSeconds },

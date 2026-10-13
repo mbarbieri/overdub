@@ -90,7 +90,7 @@ struct FlashFixture
 
         movie = package.root.getChildFile ("video/video-1.mov");
         writeFlashMovie (movie);
-        videoTake = song::VideoTake { "video-1", "pass-1", "video/video-1.mov", videoStart, driftRatio, "camera-test", 0 };
+        videoTake = song::VideoTake { "video-1", "pass-1", "video/video-1.mov", videoStart, driftRatio, "camera-test", 0, "Speakers" };
         mix.passes.push_back (song::Pass { "pass-1", videoStart, "2026-10-08T12:00:00Z" });
         mix.videoTakes.push_back (videoTake);
     }

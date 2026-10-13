@@ -69,6 +69,7 @@ core::Expected<VideoTakeClaps> measureNewestVideoTake (const song::Song& song, c
         .takeId = take->id,
         .videoTakeId = videoTake->id,
         .cameraId = videoTake->cameraId,
+        .outputDevice = videoTake->outputDevice,
         .appliedCalibrationSamples = videoTake->calibrationOffsetSamples,
         .sampleRate = song.sampleRate,
         .frames = frames->size(),
@@ -92,6 +93,7 @@ core::Fields runClapSelftest (const juce::File& package)
     report["take_id"] = measured->takeId;
     report["video_take_id"] = measured->videoTakeId;
     report["camera_id"] = measured->cameraId;
+    report["output_device"] = measured->outputDevice;
     report["calibration_offset_samples"] = measured->appliedCalibrationSamples;
     report["frames"] = measured->frames;
     return report;

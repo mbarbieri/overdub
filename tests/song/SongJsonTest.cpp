@@ -106,11 +106,12 @@ TEST_CASE ("the fully populated test Song sets every field away from its default
     checkListsHoldTwoOrMore (document, "$");
 }
 
-TEST_CASE ("song.json carries formatVersion 1 and the key names fixed by issues #8 and #14", "[song][json]")
+TEST_CASE ("song.json carries formatVersion 2 and the key names fixed by issues #8, #14 and #68", "[song][json]")
 {
     const auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
 
-    CHECK (document.at ("formatVersion") == 1);
+    CHECK (document.at ("formatVersion") == 2);
+    CHECK (document.at ("videoTakes").at (0).at ("outputDevice") == "MacBook Pro Speakers");
     CHECK (document.at ("takes").at (0).contains ("trackId"));
     CHECK (document.at ("takes").at (0).contains ("passId"));
     CHECK (document.at ("tracks").at (0).at ("clips").at (0).at ("source").at ("kind") == "take");

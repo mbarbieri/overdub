@@ -35,7 +35,14 @@ inline song::Id addSyntheticVideoTake (song::Song& song, const juce::File& packa
     const auto videoTakeId = song::makeId();
     song.passes.push_back (song::Pass { passId, startSample, "2026-10-08T12:00:00Z" });
     const auto file = "video/" + videoTakeId + ".mov";
-    song.videoTakes.push_back (song::VideoTake { videoTakeId, passId, file, startSample, (double) song.sampleRate, "camera-facetime", 0 });
+    song.videoTakes.push_back (song::VideoTake { .id = videoTakeId,
+                                                 .passId = passId,
+                                                 .file = file,
+                                                 .startSample = startSample,
+                                                 .songSamplesPerMovieSecond = (double) song.sampleRate,
+                                                 .cameraId = "camera-facetime",
+                                                 .calibrationOffsetSamples = 0,
+                                                 .outputDevice = "MacBook Pro Speakers" });
     writeSyntheticMovie (packageRoot.getChildFile (file), frames);
     return videoTakeId;
 }

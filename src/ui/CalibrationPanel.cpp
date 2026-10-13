@@ -128,9 +128,10 @@ void CalibrationPanel::showClapResult (const core::Expected<capture::VideoTakeCl
         return;
     }
 
-    clapResultLabel.setText (utf8 (clapResultText (result->report)), juce::dontSendNotification);
-    if (result->report.meanOffsetMs.has_value())
-        cameraToStore = std::pair { result->cameraId, capture::calibratedCameraOffsetMs (result->appliedCalibrationSamples, result->sampleRate, *result->report.meanOffsetMs) };
+    clapResultLabel.setText (utf8 (clapResultText (result->report, result->outputDevice)), juce::dontSendNotification);
+    if (result->report.meanOffsetMs.has_value() && ! result->outputDevice.empty())
+        cameraToStore = std::pair { capture::CameraCalibrationKey { result->cameraId, result->outputDevice },
+                                    capture::calibratedCameraOffsetMs (result->appliedCalibrationSamples, result->sampleRate, *result->report.meanOffsetMs) };
     saveCameraButton.setVisible (cameraToStore.has_value());
 }
 

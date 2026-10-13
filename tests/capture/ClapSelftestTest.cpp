@@ -41,7 +41,7 @@ juce::File packageWithClapPass (const TempPackage& folder)
     take.file = "audio/take-1.wav";
     take.lengthSamples = 3 * testSampleRate;
     song.takes.push_back (take);
-    song.videoTakes.push_back ({ .id = "video-1", .passId = "pass-1", .file = "video/video-1.mov", .startSample = 0, .songSamplesPerMovieSecond = testSampleRate, .cameraId = "camera-facetime", .calibrationOffsetSamples = 0 });
+    song.videoTakes.push_back ({ .id = "video-1", .passId = "pass-1", .file = "video/video-1.mov", .startSample = 0, .songSamplesPerMovieSecond = testSampleRate, .cameraId = "camera-facetime", .calibrationOffsetSamples = 0, .outputDevice = "Scarlett 2i2 USB" });
 
     const auto location = folder.root.getChildFile ("Clap.overdub");
     auto created = SongPackage::create (location, song);
@@ -70,6 +70,7 @@ TEST_CASE ("the clap selftest reports each clap's offset between the Take and th
     CHECK (report["take_id"] == "take-1");
     CHECK (report["video_take_id"] == "video-1");
     CHECK (report["camera_id"] == "camera-facetime");
+    CHECK (report["output_device"] == "Scarlett 2i2 USB");
     REQUIRE (report["claps"].size() == 1);
     CHECK (report["claps"][0]["song_sample"] == 48'240);
     CHECK (report["claps"][0]["offset_ms"].get<double>() == Catch::Approx ((30.5 * frameNs / 1.0e9 - 1.005) * 1000.0).margin (0.01));
@@ -102,6 +103,7 @@ TEST_CASE ("the open Song's newest Video Take is measured on its claps for the c
     REQUIRE (measured.has_value());
     CHECK (measured->videoTakeId == "video-1");
     CHECK (measured->cameraId == "camera-facetime");
+    CHECK (measured->outputDevice == "Scarlett 2i2 USB");
     CHECK (measured->appliedCalibrationSamples == 0);
     CHECK (measured->sampleRate == testSampleRate);
     CHECK (measured->report.pass);

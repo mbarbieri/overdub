@@ -325,7 +325,7 @@ void MainWindow::showSettings()
         calibrationPanel->onMeasureLatency = [this] { measureLatency(); };
         calibrationPanel->onSaveLatency = [this] (song::SampleCount offset) { saveLatencyCalibration (offset); };
         calibrationPanel->onMeasureClap = [this] { measureClapPass(); };
-        calibrationPanel->onSaveCamera = [this] (const std::string& cameraId, double offsetMs) { saveCameraCalibration (cameraId, offsetMs); };
+        calibrationPanel->onSaveCamera = [this] (const capture::CameraCalibrationKey& key, double offsetMs) { saveCameraCalibration (key, offsetMs); };
         settingsWindow = std::make_unique<SettingsWindow> (std::move (settingsContent));
     }
     settingsPanel->show (live->deviceChoices());
@@ -536,16 +536,15 @@ void MainWindow::measureClapPass()
     else
         core::logEvent (core::Level::info,
                         "app.clap_pass_measured",
-                        { { "video_take_id", measured->videoTakeId }, { "camera_id", measured->cameraId }, { "applied_calibration_samples", measured->appliedCalibrationSamples }, { "report", capture::clapReportFields (measured->report) } });
+                        { { "video_take_id", measured->videoTakeId }, { "camera_id", measured->cameraId }, { "output_device", measured->outputDevice }, { "applied_calibration_samples", measured->appliedCalibrationSamples }, { "report", capture::clapReportFields (measured->report) } });
     calibrationPanel->showClapResult (measured);
 }
 
-void MainWindow::saveCameraCalibration (const std::string& cameraId, double offsetMs)
+void MainWindow::saveCameraCalibration (const capture::CameraCalibrationKey& key, double offsetMs)
 {
-    // The key needs the output device the clap Pass was heard on.
-    if (! idleOrNotice() || live->engine() == nullptr)
+    // key.outputDevice is the clap Pass's (its Video Take's), not necessarily the one open now.
+    if (! idleOrNotice())
         return;
-    const capture::CameraCalibrationKey key { cameraId, live->calibrationKey().outputDevice };
     if (auto written = capture::writeCameraCalibration (capture::defaultCameraCalibrationFile(), key, offsetMs); ! written.has_value())
         return content.handleError (written.error());
     refreshCalibrationPanel();

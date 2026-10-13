@@ -24,15 +24,32 @@ overdub::core::Expected<json> failingStep (json)
 }
 } // namespace
 
-TEST_CASE ("a v1 Song needs no migration in this build", "[song][migration]")
+TEST_CASE ("a current Song needs no migration in this build", "[song][migration]")
 {
-    const json document = { { "formatVersion", 1 }, { "sampleRate", 48000 } };
+    const json document = { { "formatVersion", overdub::song::songFormatVersion }, { "sampleRate", 48000 } };
+
+    const auto migrated = overdub::song::migrateSongDocument (document);
+
+    REQUIRE (migrated.has_value());
+    CHECK (migrated->fromVersion == overdub::song::songFormatVersion);
+    CHECK (migrated->document == document);
+}
+
+TEST_CASE ("a v1 Song's Video Takes migrate to v2 with no output device known", "[song][migration]")
+{
+    const json videoTake = { { "id", "video-1" }, { "cameraId", "camera-facetime" } };
+    const json document = { { "formatVersion", 1 }, { "sampleRate", 48000 }, { "videoTakes", json::array ({ videoTake, videoTake }) } };
 
     const auto migrated = overdub::song::migrateSongDocument (document);
 
     REQUIRE (migrated.has_value());
     CHECK (migrated->fromVersion == 1);
-    CHECK (migrated->document == document);
+    CHECK (migrated->document.at ("formatVersion") == 2);
+    for (const auto& migratedTake : migrated->document.at ("videoTakes"))
+    {
+        CHECK (migratedTake.at ("outputDevice") == "");
+        CHECK (migratedTake.at ("cameraId") == "camera-facetime");
+    }
 }
 
 TEST_CASE ("each step function migrates one version and the scaffold stamps the new version", "[song][migration]")
@@ -53,7 +70,7 @@ TEST_CASE ("a newer formatVersion is refused with an Error that names the versio
     REQUIRE_FALSE (migrated.has_value());
     CHECK (migrated.error().code == "song.format_too_new");
     CHECK (migrated.error().fields.at ("version_found") == 7);
-    CHECK (migrated.error().fields.at ("version_supported") == 1);
+    CHECK (migrated.error().fields.at ("version_supported") == overdub::song::songFormatVersion);
 }
 
 TEST_CASE ("a document without an integer formatVersion is refused", "[song][migration]")

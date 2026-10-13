@@ -3,6 +3,8 @@
 #include "song/AtomicWrite.h"
 #include "song/SongJson.h"
 
+#include <array>
+
 namespace overdub::song
 {
 core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::span<const MigrationStep> steps)
@@ -45,10 +47,26 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
     return MigratedDocument { std::move (document), fromVersion };
 }
 
+namespace
+{
+core::Expected<nlohmann::json> addVideoTakeOutputDevice (nlohmann::json document)
+{
+    const auto videoTakes = document.find ("videoTakes");
+    if (videoTakes == document.end() || ! videoTakes->is_array())
+        return document; // reading the migrated document reports what is missing
+    for (auto& videoTake : *videoTakes)
+        if (videoTake.is_object())
+            videoTake["outputDevice"] = "";
+    return document;
+}
+} // namespace
+
 std::span<const MigrationStep> songMigrationSteps()
 {
-    // Empty at formatVersion 1. songFormatVersion must equal songMigrationSteps().size() + 1.
-    return {};
+    // songFormatVersion must equal songMigrationSteps().size() + 1.
+    static const std::array<MigrationStep, 1> steps { addVideoTakeOutputDevice };
+    static_assert (std::tuple_size_v<decltype (steps)> + 1 == songFormatVersion);
+    return steps;
 }
 
 core::Expected<MigratedDocument> migrateSongDocument (nlohmann::json document)
