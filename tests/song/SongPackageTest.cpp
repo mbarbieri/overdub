@@ -105,7 +105,7 @@ TEST_CASE ("a created Song opens again with the same content", "[song][package]"
     CHECK (opened.package->canUndo() == false);
     const auto openedEvent = firstEvent (capture, "song.opened");
     CHECK (openedEvent.at ("lvl") == "info");
-    CHECK (openedEvent.at ("format_version") == 1);
+    CHECK (openedEvent.at ("format_version") == overdub::song::songFormatVersion);
     CHECK (openedEvent.at ("tracks") == 2);
     CHECK (openedEvent.at ("undo_steps") == 0);
     CHECK (openedEvent.at ("temp_files_deleted") == 0);
@@ -636,7 +636,7 @@ TEST_CASE ("a newer formatVersion is refused with an Error and the package is le
     createPackage (temp.package(), overdub::song::testing::fullyPopulatedSong());
     const auto songJson = temp.package().getChildFile ("song.json");
     auto document = *overdub::song::parseJsonText (songJson.loadFileAsString().toStdString());
-    document["formatVersion"] = 2;
+    document["formatVersion"] = overdub::song::songFormatVersion + 1;
     REQUIRE (songJson.replaceWithText (document.dump()));
     const auto leftoverTemp = temp.package().getChildFile ("history/000001.json.tmp");
     REQUIRE (leftoverTemp.replaceWithText ("partial"));
@@ -645,9 +645,39 @@ TEST_CASE ("a newer formatVersion is refused with an Error and the package is le
 
     REQUIRE_FALSE (opened.has_value());
     CHECK (opened.error().code == "song.format_too_new");
-    CHECK (opened.error().fields.at ("version_found") == 2);
+    CHECK (opened.error().fields.at ("version_found") == overdub::song::songFormatVersion + 1);
     CHECK (songJson.loadFileAsString().toStdString() == document.dump());
     CHECK (leftoverTemp.existsAsFile());
+}
+
+TEST_CASE ("a v1 package opens with its Video Takes' output device unknown and song.json rewritten at v2", "[song][package][migration]")
+{
+    TempDirectory temp;
+    createPackage (temp.package(), overdub::song::testing::fullyPopulatedSong());
+    // Turn song.json and the history snapshot back into what a v1 build wrote.
+    const auto toV1 = [] (nlohmann::json document) {
+        document["formatVersion"] = 1;
+        for (auto& videoTake : document.at ("videoTakes"))
+            videoTake.erase ("outputDevice");
+        return document;
+    };
+    const auto songJson = temp.package().getChildFile ("song.json");
+    REQUIRE (songJson.replaceWithText (toV1 (*overdub::song::parseJsonText (songJson.loadFileAsString().toStdString())).dump()));
+    const auto snapshot = temp.package().getChildFile ("history/000000.json");
+    auto snapshotDocument = *overdub::song::parseJsonText (snapshot.loadFileAsString().toStdString());
+    snapshotDocument["song"] = toV1 (snapshotDocument.at ("song"));
+    REQUIRE (snapshot.replaceWithText (snapshotDocument.dump()));
+
+    ScopedLogCapture capture;
+    const auto opened = openPackage (temp.package());
+
+    auto expected = overdub::song::testing::fullyPopulatedSong();
+    for (auto& videoTake : expected.videoTakes)
+        videoTake.outputDevice = "";
+    CHECK (opened.package->song() == expected);
+    CHECK (firstEvent (capture, "song.migrated").at ("from_version") == 1);
+    CHECK (noticesWithCode (opened, "song.history_dropped").empty()); // the v1 snapshot migrates too
+    CHECK (*overdub::song::parseJsonText (songJson.loadFileAsString().toStdString()) == overdub::song::songToJson (expected));
 }
 
 TEST_CASE ("opening a current, consistent Song leaves song.json as it is", "[song][package]")

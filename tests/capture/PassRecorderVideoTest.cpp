@@ -61,6 +61,7 @@ struct VideoFixture
         PassRecorderOptions options;
         options.camera = &camera;
         options.cameraCalibrationSamples = calibrationSamples;
+        options.outputDevice = "MacBook Pro Speakers";
         auto started = PassRecorder::start (*package, engine, latency, options);
         REQUIRE (started.has_value());
         engine.play();
@@ -106,6 +107,8 @@ TEST_CASE ("a Pass with the camera records a Video Take placed by heard time", "
     // latency earlier is what is heard, and the camera's 48-sample calibration moves it earlier.
     CHECK (videoTake.startSample == 72'000 - 96 - 48);
     CHECK (videoTake.calibrationOffsetSamples == 48);
+    // The output device the Pass played through, with the camera the calibration key (issue #68).
+    CHECK (videoTake.outputDevice == "MacBook Pro Speakers");
     CHECK (videoTake.songSamplesPerMovieSecond == Catch::Approx ((double) testSampleRate).epsilon (1.0e-9));
 
     const auto movie = fixture.package->location().getChildFile (videoTake.file);

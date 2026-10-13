@@ -68,6 +68,9 @@ struct PassRecorderOptions
     // this machine's calibration for it and the output device, in samples (CameraCalibration.h).
     Camera* camera = nullptr;
     SampleCount cameraCalibrationSamples = 0;
+    // The output device the Pass plays through, as JUCE lists it: the Video Take keeps it as the
+    // other half of its camera calibration key (song::VideoTake::outputDevice, issue #68).
+    std::string outputDevice;
 };
 
 // What a finished Pass produced, beyond what the Song now holds.

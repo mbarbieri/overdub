@@ -58,7 +58,7 @@ TEST_CASE ("a Video Take whose movie cannot be read is logged once and never sho
     PackageFolder folder;
     auto song = overdub::song::makeEmptySong (48000);
     song.passes.push_back ({ "pass-1", 0, "2026-10-08T12:00:00Z" });
-    song.videoTakes.push_back ({ "lost", "pass-1", "video/lost.mov", 0, 48000.0, "camera", 0 });
+    song.videoTakes.push_back ({ "lost", "pass-1", "video/lost.mov", 0, 48000.0, "camera", 0, "Speakers" });
     REQUIRE (folder.root.getChildFile ("video/lost.mov").create().wasOk());
 
     ScopedLogCapture capture;

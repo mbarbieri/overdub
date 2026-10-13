@@ -166,6 +166,8 @@ TEST_CASE ("with the camera Armed each Pass records a Video Take, placed with th
     // 0.5 s in: Song sample 24000 at the output IO, 120 samples heard earlier, 240 for the camera.
     CHECK (song.videoTakes[0].startSample == 24'000 - 120 - 240);
     CHECK (song.videoTakes[0].calibrationOffsetSamples == 240);
+    // The Video Take keeps the output device of that calibration key (issue #68).
+    CHECK (song.videoTakes[0].outputDevice == "Speakers");
 }
 
 TEST_CASE ("without the camera Armed a Pass records no Video Take", "[ui][camera][record]")

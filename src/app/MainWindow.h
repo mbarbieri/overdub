@@ -2,6 +2,7 @@
 
 #include "app/LiveEngine.h"
 #include "capture/Camera.h"
+#include "capture/CameraCalibration.h"
 #include "capture/LoopbackRun.h"
 #include "plugin/AudioUnitLoader.h"
 #include "song/SongPackage.h"
@@ -26,7 +27,8 @@ namespace overdub::app
 // capture::LoopbackRun on the live device (polled by a timer) and binds the Song again; using a
 // result stores it (engine/LatencyCalibration.h) and applies it to the next Pass without reopening
 // the device. Measure Last Clap Pass measures the open Song's newest Video Take; using it stores the
-// camera calibration (capture/CameraCalibration.h) for that camera and the output device.
+// camera calibration (capture/CameraCalibration.h) for that camera and the output device its Pass
+// played through (the Video Take keeps it, issue #68).
 // While a loopback run measures, the actions that would touch the engine show ui.calibration_running.
 //
 // Opening another Song, changing the device and closing the window each finish a running Pass
@@ -77,7 +79,7 @@ private:
     void pollLatencyRun();
     void saveLatencyCalibration (song::SampleCount offsetSamples);
     void measureClapPass();
-    void saveCameraCalibration (const std::string& cameraId, double offsetMs);
+    void saveCameraCalibration (const capture::CameraCalibrationKey& key, double offsetMs);
 
     // Closes the open Song (finishing a running Pass) and shows this one.
     void showSong (std::unique_ptr<song::SongPackage> package, const std::vector<song::Notice>& notices);

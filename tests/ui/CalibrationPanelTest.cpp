@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+using overdub::capture::CameraCalibrationKey;
 using overdub::capture::ClapReport;
 using overdub::capture::ClapResult;
 using overdub::capture::LoopbackMeasurement;
@@ -49,6 +50,7 @@ VideoTakeClaps clapsWithMeanOffset (double meanOffsetMs, SampleCount appliedSamp
     claps.report.meanOffsetMs = meanOffsetMs;
     claps.report.pass = true;
     claps.cameraId = "camera-facetime";
+    claps.outputDevice = "Scarlett 2i2 USB";
     claps.appliedCalibrationSamples = appliedSamples;
     claps.sampleRate = 48000;
     return claps;
@@ -153,25 +155,45 @@ TEST_CASE ("measuring the last clap Pass offers the camera calibration it implie
     panel.show (builtInDevices());
 
     int measureRequests = 0;
-    std::optional<std::pair<std::string, double>> saved;
+    std::optional<std::pair<CameraCalibrationKey, double>> saved;
     panel.onMeasureClap = [&] { ++measureRequests; };
-    panel.onSaveCamera = [&] (const std::string& cameraId, double offsetMs) { saved = { cameraId, offsetMs }; };
+    panel.onSaveCamera = [&] (const CameraCalibrationKey& key, double offsetMs) { saved = { key, offsetMs }; };
 
     click (panel.measureClapButton);
     CHECK (measureRequests == 1);
 
-    // Placed with 480 samples (10 ms) and still 25 ms late: store 35 ms for that camera.
+    // Placed with 480 samples (10 ms) and still 25 ms late: store 35 ms for that camera and the
+    // output device the clap Pass played through, not the one open now (issue #68).
     panel.showClapResult (clapsWithMeanOffset (25.0, 480));
-    CHECK (textOf (panel.clapResultLabel) == "1 of 1 claps seen: the video was 25.0 ms late. Use this calibration to correct it.");
+    CHECK (textOf (panel.clapResultLabel) == "1 of 1 claps seen: the video was 25.0 ms late on Scarlett 2i2 USB. Use this calibration to correct it.");
     REQUIRE (isShown (panel.saveCameraButton));
     click (panel.saveCameraButton);
     REQUIRE (saved.has_value());
-    CHECK (saved->first == "camera-facetime");
+    CHECK (saved->first == CameraCalibrationKey { "camera-facetime", "Scarlett 2i2 USB" });
     CHECK (saved->second == 35.0);
 
     panel.showClapResult (std::unexpected (overdub::core::Error { "capture.clap_no_video_take", "none", {} }));
     CHECK_FALSE (isShown (panel.saveCameraButton));
     CHECK (textOf (panel.clapResultLabel) == "No Pass has a Video Take yet. Arm the camera and record a Pass clapping in frame.");
+}
+
+TEST_CASE ("a clap Pass whose output device is not known offers no camera calibration and says why", "[ui][calibration]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    CalibrationPanel panel;
+    layOut (panel, 460, 520);
+    panel.show (builtInDevices());
+    int saves = 0;
+    panel.onSaveCamera = [&] (const CameraCalibrationKey&, double) { ++saves; };
+
+    auto fromFormat1Song = clapsWithMeanOffset (25.0, 480);
+    fromFormat1Song.outputDevice = "";
+    panel.showClapResult (fromFormat1Song);
+
+    CHECK_FALSE (isShown (panel.saveCameraButton));
+    CHECK (textOf (panel.clapResultLabel).ends_with ("so no calibration can be stored. Record a new clap Pass, then measure again."));
+    click (panel.saveCameraButton);
+    CHECK (saves == 0);
 }
 
 TEST_CASE ("a zero result is offered to a device never calibrated, so it counts as calibrated, and to no other", "[ui][calibration]")

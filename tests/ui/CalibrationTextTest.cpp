@@ -51,13 +51,24 @@ TEST_CASE ("a clap result says how far the video was from the audio, or that no 
     seen.claps = { ClapResult { .offsetMs = 24.0 }, ClapResult { .offsetMs = 26.0 }, ClapResult {} };
     seen.meanOffsetMs = 25.0;
     seen.frameIntervalMs = 33.3;
-    CHECK (clapResultText (seen) == "2 of 3 claps seen: the video was 25.0 ms late. Use this calibration to correct it.");
+    CHECK (clapResultText (seen, "Speakers") == "2 of 3 claps seen: the video was 25.0 ms late on Speakers. Use this calibration to correct it.");
 
     auto early = seen;
     early.meanOffsetMs = -10.0;
-    CHECK (clapResultText (early) == "2 of 3 claps seen: the video was 10.0 ms early. Use this calibration to correct it.");
+    CHECK (clapResultText (early, "Speakers") == "2 of 3 claps seen: the video was 10.0 ms early on Speakers. Use this calibration to correct it.");
 
     ClapReport none;
     none.claps = { ClapResult {} };
-    CHECK (clapResultText (none) == "No clap was seen. Record a Pass clapping 3 to 5 times in frame, then measure again.");
+    CHECK (clapResultText (none, "Speakers") == "No clap was seen. Record a Pass clapping 3 to 5 times in frame, then measure again.");
+}
+
+TEST_CASE ("a clap result from a Pass whose output device is not known says no calibration can be stored", "[ui][calibration]")
+{
+    ClapReport seen;
+    seen.claps = { ClapResult { .offsetMs = 25.0 } };
+    seen.meanOffsetMs = 25.0;
+
+    CHECK (clapResultText (seen, "")
+           == "1 of 1 claps seen: the video was 25.0 ms late. The output device this Pass played through is not known, so no calibration can be stored. "
+              "Record a new clap Pass, then measure again.");
 }

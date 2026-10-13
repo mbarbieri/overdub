@@ -23,7 +23,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 1;
+inline constexpr int songFormatVersion = 2;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -173,6 +173,9 @@ struct VideoTake
     double songSamplesPerMovieSecond = 0.0; // drift ratio: Song samples per second of movie time
     std::string cameraId;
     SampleCount calibrationOffsetSamples = 0; // the per-machine camera offset applied at placement
+    // The audio output device the Pass played through (its name as JUCE lists it): with cameraId,
+    // the key of the camera calibration a clap Pass measures (issue #68). "" = unknown (format 1).
+    std::string outputDevice;
 
     bool operator== (const VideoTake&) const = default;
 };

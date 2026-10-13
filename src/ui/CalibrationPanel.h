@@ -1,5 +1,6 @@
 #pragma once
 
+#include "capture/CameraCalibration.h"
 #include "capture/ClapSelftest.h"
 #include "capture/LoopbackMeasurement.h"
 #include "core/Error.h"
@@ -23,7 +24,9 @@
 // Camera: shows the camera calibration stored for the Song's camera and the output device, how to
 // record a clap Pass, and Measure Last Clap Pass. The app measures the open Song's newest Video
 // Take (capture::measureNewestVideoTake); a result with a clap seen offers the calibration it was
-// placed with plus the mean clap offset, for that Video Take's camera.
+// placed with plus the mean clap offset, for that Video Take's camera and the output device its Pass
+// played through (issue #68). A Video Take that does not know its output device (format 1) offers
+// nothing and says why.
 //
 // Thin: the texts are ui/CalibrationText.h; the app does the measuring and the storing.
 namespace overdub::ui
@@ -59,7 +62,7 @@ public:
     std::function<void()> onMeasureLatency;
     std::function<void (song::SampleCount offsetToStore)> onSaveLatency;
     std::function<void()> onMeasureClap;
-    std::function<void (const std::string& cameraId, double offsetMsToStore)> onSaveCamera;
+    std::function<void (const capture::CameraCalibrationKey& key, double offsetMsToStore)> onSaveCamera;
 
     juce::Label deviceLabel;
     juce::Label latencyStatusLabel;
@@ -77,7 +80,7 @@ public:
 private:
     CalibrationStatus current;
     std::optional<song::SampleCount> latencyToStore;
-    std::optional<std::pair<std::string, double>> cameraToStore;
+    std::optional<std::pair<capture::CameraCalibrationKey, double>> cameraToStore;
     juce::Label latencyTitle { {}, "Latency calibration" };
     juce::Label cameraTitle { {}, "Camera calibration" };
 

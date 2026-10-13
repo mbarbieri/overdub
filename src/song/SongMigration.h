@@ -33,7 +33,9 @@ struct MigratedDocument
 // step_error: the failing step's code).
 core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::span<const MigrationStep> steps);
 
-// This build's steps: none yet at v1. Add one per new formatVersion and bump songFormatVersion.
+// This build's steps, one per formatVersion after 1; add one per new formatVersion and bump
+// songFormatVersion.
+//   1 -> 2 (issue #68): every Video Take gains "outputDevice": "" (unknown).
 std::span<const MigrationStep> songMigrationSteps();
 
 // migrateDocument with songMigrationSteps().

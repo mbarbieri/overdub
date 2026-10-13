@@ -80,6 +80,7 @@ inline Song fullyPopulatedSong()
             .songSamplesPerMovieSecond = 44100.25,
             .cameraId = "camera-facetime",
             .calibrationOffsetSamples = 1764,
+            .outputDevice = "MacBook Pro Speakers",
         },
         VideoTake {
             .id = "video-2",
@@ -89,6 +90,7 @@ inline Song fullyPopulatedSong()
             .songSamplesPerMovieSecond = 44099.875,
             .cameraId = "camera-usb",
             .calibrationOffsetSamples = -441,
+            .outputDevice = "Scarlett 2i2 USB",
         },
     };
 

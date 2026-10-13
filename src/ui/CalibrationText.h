@@ -21,6 +21,8 @@ std::string latencyResultText (const capture::LoopbackMeasurement& measurement, 
 // The stored camera calibration for the camera and output device (none: never calibrated).
 std::string cameraCalibrationText (std::optional<double> storedOffsetMs);
 
-// A clap measurement: how far the video sat from the audio, or that no clap was seen.
-std::string clapResultText (const capture::ClapReport& report);
+// A clap measurement: how far the video sat from the audio on the output device the clap Pass
+// played through, or that no clap was seen. An empty outputDevice (not known, e.g. a format 1 Video
+// Take) says that no calibration can be stored (issue #68).
+std::string clapResultText (const capture::ClapReport& report, const std::string& outputDevice);
 } // namespace overdub::ui

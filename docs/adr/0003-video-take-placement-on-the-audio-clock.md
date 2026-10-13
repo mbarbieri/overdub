@@ -61,5 +61,10 @@ The engine's graph delays every Track path by the plan latency L (PDC, ADR 0001)
 ## Amendment: the camera calibration flow as built (issue #39)
 
 - Settings' calibration panel shows the camera calibration stored for the Song's chosen camera and the current output device ("Not calibrated: 0 ms" by default) and how to record a clap Pass (camera Armed, 3 to 5 claps in frame about a second apart).
-- **Measure Last Clap Pass** runs the clap selftest's measurement on the open Song's newest Video Take (`capture::measureNewestVideoTake`, shared with `overdub --selftest clap`). When a clap is seen it offers the calibration that Video Take was placed with (its `calibrationOffsetSamples` in ms) plus the mean clap offset, stored for **that Video Take's camera** and the current output device: the Video Take does not record its output device, so the flow assumes the clap Pass was recorded on the device open now.
+- **Measure Last Clap Pass** runs the clap selftest's measurement on the open Song's newest Video Take (`capture::measureNewestVideoTake`, shared with `overdub --selftest clap`). When a clap is seen it offers the calibration that Video Take was placed with (its `calibrationOffsetSamples` in ms) plus the mean clap offset, stored for **that Video Take's camera** and the current output device: the Video Take does not record its output device, so the flow assumes the clap Pass was recorded on the device open now. (Superseded by the issue #68 amendment below.)
 - Video Takes already recorded keep their placement; the next Pass uses the new value.
+
+## Amendment: a Video Take keeps its output device (issue #68)
+
+- Song `formatVersion` 2 adds `outputDevice` to each Video Take: the output device name (as JUCE lists it) the Pass played through, the other half of the camera calibration key its placement used. The 1 → 2 migration sets it to `""` (unknown).
+- **Measure Last Clap Pass** stores the calibration for that Video Take's camera **and its output device**, not the one open now; the panel names the device. A Video Take whose output device is unknown (recorded at format 1) offers no calibration and says why: record a new clap Pass. This replaces the issue #39 assumption that the clap Pass was recorded on the device open now.

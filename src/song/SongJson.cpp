@@ -295,6 +295,7 @@ json videoTakeToJson (const VideoTake& videoTake)
         { "songSamplesPerMovieSecond", videoTake.songSamplesPerMovieSecond },
         { "cameraId", videoTake.cameraId },
         { "calibrationOffsetSamples", videoTake.calibrationOffsetSamples },
+        { "outputDevice", videoTake.outputDevice },
     };
 }
 
@@ -388,6 +389,7 @@ VideoTake readVideoTake (const Reader& reader)
         .songSamplesPerMovieSecond = reader.number ("songSamplesPerMovieSecond"),
         .cameraId = reader.string ("cameraId"),
         .calibrationOffsetSamples = reader.integer ("calibrationOffsetSamples"),
+        .outputDevice = reader.string ("outputDevice"),
     };
 }
 

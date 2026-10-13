@@ -25,6 +25,7 @@ struct VideoTakeClaps
     song::Id takeId;
     song::Id videoTakeId;
     std::string cameraId;
+    std::string outputDevice; // the one the Pass played through; "" when the Song does not know it
     SampleCount appliedCalibrationSamples = 0; // the camera calibration the Video Take was placed with
     int sampleRate = 0;                        // the Song's
     std::size_t frames = 0;
@@ -36,7 +37,7 @@ struct VideoTakeClaps
 core::Expected<VideoTakeClaps> measureNewestVideoTake (const song::Song& song, const juce::File& packageRoot);
 
 // The report: selftest "clap", pass, package, pass_id, take_id, video_take_id, camera_id,
-// calibration_offset_samples, then clapReportFields; or pass false with `error` (an Error code:
+// output_device, calibration_offset_samples, then clapReportFields; or pass false with `error` (an Error code:
 // song.read_failed and the other song.json read errors, or measureNewestVideoTake's) and
 // `error_fields`.
 core::Fields runClapSelftest (const juce::File& package);

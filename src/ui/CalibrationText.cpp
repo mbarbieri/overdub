@@ -50,7 +50,7 @@ std::string cameraCalibrationText (std::optional<double> storedOffsetMs)
     return "Calibrated: " + oneDecimal (*storedOffsetMs) + " ms (video " + (*storedOffsetMs >= 0.0 ? "late" : "early") + ").";
 }
 
-std::string clapResultText (const capture::ClapReport& report)
+std::string clapResultText (const capture::ClapReport& report, const std::string& outputDevice)
 {
     if (! report.meanOffsetMs.has_value())
         return "No clap was seen. Record a Pass clapping 3 to 5 times in frame, then measure again.";
@@ -60,7 +60,10 @@ std::string clapResultText (const capture::ClapReport& report)
         if (clap.offsetMs.has_value())
             ++seen;
     const auto mean = *report.meanOffsetMs;
-    return std::to_string (seen) + " of " + std::to_string (report.claps.size()) + " claps seen: the video was " + oneDecimal (std::abs (mean)) + " ms "
-         + (mean >= 0.0 ? "late" : "early") + ". Use this calibration to correct it.";
+    const auto measured = std::to_string (seen) + " of " + std::to_string (report.claps.size()) + " claps seen: the video was " + oneDecimal (std::abs (mean))
+                        + " ms " + (mean >= 0.0 ? "late" : "early");
+    if (outputDevice.empty())
+        return measured + ". The output device this Pass played through is not known, so no calibration can be stored. Record a new clap Pass, then measure again.";
+    return measured + " on " + outputDevice + ". Use this calibration to correct it.";
 }
 } // namespace overdub::ui

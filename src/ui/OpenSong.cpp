@@ -149,6 +149,7 @@ core::Expected<void> OpenSong::record()
     {
         options.camera = camera;
         options.cameraCalibrationSamples = cameraCalibrationSamples (camera->openCamera()->id);
+        options.outputDevice = binding.outputDeviceName;
     }
     auto started = capture::PassRecorder::start (*package_, *binding.engine, binding.latency, options);
     if (! started.has_value())
