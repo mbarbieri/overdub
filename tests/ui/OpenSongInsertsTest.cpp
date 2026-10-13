@@ -478,6 +478,101 @@ TEST_CASE ("a plugin crash during an export stops it, leaves no file and reports
     CHECK_FALSE (f.openSong->lastExportedFile().has_value());
 }
 
+TEST_CASE ("a plugin that loads while an export waits for the audio and crashes before its render is built discards the export", "[ui][open_song][inserts][crash][export]")
+{
+    FakeInstantiator fake;
+    InsertsFixture f { fake.instantiator() };
+    REQUIRE (f.openSong->addInsert (f.trackNamed ("Guitar").id, testPlugin).has_value());
+    ExportFolder folder;
+    const auto destination = folder.root.getChildFile ("Song.wav");
+    REQUIRE (f.openSong->startExport ({ overdub::exporting::ExportFormat::wav, destination }).has_value());
+    REQUIRE (f.openSong->exportPhase() == overdub::ui::ExportPhase::waitingForAudio);
+    overdub::core::ScopedLogCapture capture;
+
+    auto* plugin = fake.succeed (0, 0); // loads while the export waits
+    f.openSong->insertHost().pluginCrashed (*plugin);
+    const auto errors = f.openSong->poll();
+
+    REQUIRE (codesOf (errors) == std::vector<std::string> { "ui.export_plugin_crashed", "ui.plugin_crashed" });
+    CHECK (errors[0].fields.at ("path") == destination.getFullPathName().toStdString());
+    CHECK_FALSE (f.openSong->isExporting());
+    const auto stopped = eventsNamed (capture, "ui.export_stopped");
+    REQUIRE (stopped.size() == 1);
+    CHECK (stopped[0]["reason"] == "plugin_crashed");
+    CHECK (stopped[0]["phase"] == "waiting_for_audio");
+    f.device.run (f.engine, 1);
+    f.openSong->poll();
+    CHECK_FALSE (f.openSong->isExporting()); // no render starts once the audio lets go
+    CHECK_FALSE (destination.exists());
+    CHECK_FALSE (f.openSong->lastExportedFile().has_value());
+}
+
+TEST_CASE ("a crash in a bypassed plugin while an export waits for the audio leaves the export running", "[ui][open_song][inserts][crash][export]")
+{
+    FakeInstantiator fake;
+    InsertsFixture f { fake.instantiator() };
+    const auto plugins = addPlayedAndBypassed (f, fake);
+    ExportFolder folder;
+    const auto destination = folder.root.getChildFile ("Song.wav");
+    REQUIRE (f.openSong->startExport ({ overdub::exporting::ExportFormat::wav, destination }).has_value());
+    REQUIRE (f.openSong->exportPhase() == overdub::ui::ExportPhase::waitingForAudio);
+
+    f.openSong->insertHost().pluginCrashed (*plugins.bypassed);
+    CHECK (codesOf (f.openSong->poll()) == std::vector<std::string> { "ui.plugin_crashed" });
+    f.device.run (f.engine, 1);
+
+    CHECK (codesOf (pollUntilExported (f)).empty());
+    CHECK (f.openSong->lastExportedFile() == destination);
+    CHECK (destination.existsAsFile());
+}
+
+TEST_CASE ("a plugin that crashes bypassed while an export waits and is then played discards the export once the audio lets go", "[ui][open_song][inserts][crash][export]")
+{
+    FakeInstantiator fake;
+    InsertsFixture f { fake.instantiator() };
+    const auto plugins = addPlayedAndBypassed (f, fake);
+    ExportFolder folder;
+    const auto destination = folder.root.getChildFile ("Song.wav");
+    REQUIRE (f.openSong->startExport ({ overdub::exporting::ExportFormat::wav, destination }).has_value());
+    f.openSong->insertHost().pluginCrashed (*plugins.bypassed);
+    REQUIRE (codesOf (f.openSong->poll()) == std::vector<std::string> { "ui.plugin_crashed" });
+    const auto& song = f.openSong->song();
+    REQUIRE (f.openSong->edit (*overdub::song::setInsertBypassed (song, plugins.bypassedId, false), overdub::song::bypassInsertLabel (song, plugins.bypassedId, false)).has_value());
+
+    f.device.run (f.engine, 1); // the audio lets go: the render would leave the crashed slot dry
+    const auto errors = f.openSong->poll();
+
+    REQUIRE (codesOf (errors) == std::vector<std::string> { "ui.export_plugin_crashed" });
+    CHECK (errors[0].fields.at ("path") == destination.getFullPathName().toStdString());
+    CHECK_FALSE (f.openSong->isExporting());
+    CHECK_FALSE (destination.exists());
+    CHECK_FALSE (f.openSong->lastExportedFile().has_value());
+}
+
+TEST_CASE ("a plugin that crashed for good before an export is left out of it, as playback leaves it out", "[ui][open_song][inserts][crash][export]")
+{
+    FakeInstantiator fake;
+    InsertsFixture f { fake.instantiator() };
+    REQUIRE (f.openSong->addInsert (f.trackNamed ("Guitar").id, testPlugin).has_value());
+    auto* plugin = fake.succeed (0, 0);
+    f.openSong->poll();
+    for (int reload = 0; reload < overdub::plugin::maxCrashReloads; ++reload)
+    {
+        f.openSong->insertHost().pluginCrashed (*plugin);
+        f.openSong->poll();
+        plugin = fake.succeed (fake.requests.size() - 1, 0);
+    }
+    f.openSong->insertHost().pluginCrashed (*plugin);
+    REQUIRE (codesOf (f.openSong->poll()) == std::vector<std::string> { "ui.plugin_crashed_repeatedly" });
+    ExportFolder folder;
+    const auto destination = folder.root.getChildFile ("Song.wav");
+
+    startRendering (f, destination);
+
+    CHECK (codesOf (pollUntilExported (f)).empty());
+    CHECK (f.openSong->lastExportedFile() == destination);
+}
+
 TEST_CASE ("a crash in a plugin the export does not render leaves the export running and its file intact", "[ui][open_song][inserts][crash][export]")
 {
     FakeInstantiator fake;

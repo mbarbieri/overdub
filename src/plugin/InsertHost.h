@@ -101,6 +101,9 @@ public:
     engine::InsertFactory insertFactory();
     // The Song's slots a plan built by insertFactory() now renders: ready and not bypassed.
     std::set<song::Id> renderedSlots (const song::Song& song) const;
+    // The Song's slots a plan built from it would render once they are loaded: not bypassed,
+    // whatever their status.
+    std::set<song::Id> playedSlots (const song::Song& song) const;
 
     // The slot's status; none for a slot sync() has not seen.
     std::optional<InsertStatus> status (const song::Id& slotId) const;
