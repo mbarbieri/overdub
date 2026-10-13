@@ -121,6 +121,8 @@ const char* stopReasonName (engine::RecordStopReason reason)
             return "seeked";
         case engine::RecordStopReason::cancelled:
             return "cancelled";
+        case engine::RecordStopReason::deviceStopped:
+            return "device_stopped";
     }
     return "unknown";
 }
@@ -218,6 +220,11 @@ void PassRecorder::requestStop()
 bool PassRecorder::hasStopped() const
 {
     return session->state() == engine::RecordState::stopped;
+}
+
+engine::RecordStopReason PassRecorder::stopReason() const
+{
+    return session->stopReason();
 }
 
 std::optional<SampleCount> PassRecorder::runningPassStart() const

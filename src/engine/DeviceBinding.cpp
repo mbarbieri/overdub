@@ -78,6 +78,8 @@ void DeviceBinding::audioDeviceAboutToStart (juce::AudioIODevice* device)
 
 void DeviceBinding::audioDeviceStopped()
 {
+    // The device calls back no more: a Pass ends here, keeping what it captured (issue #41).
+    engine.deviceStopped();
     if (runningDevice == nullptr)
         return;
 

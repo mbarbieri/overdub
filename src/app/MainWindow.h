@@ -31,6 +31,14 @@ namespace overdub::app
 //
 // Opening another Song, changing the device and closing the window each finish a running Pass
 // first (ui::OpenSong's invariant). While a Pass runs, those menu items are disabled.
+//
+// Device changes (issue #41, ADR 0004 amendment): opening a Song switches the device to the Song's
+// rate when the device offers it (a new LiveEngine); otherwise the Song opens without audio and
+// shows ui.sample_rate_mismatch. A device change the LiveEngine reports builds a new LiveEngine
+// with the same rule: at once when the device was lost or reconfigured (the Pass it cut short is
+// already ended and is finished first, its Alert shown), and once no Pass, export or loopback run
+// is running when the saved choice came back or a device appeared. A lost device that falls back to
+// another shows ui.audio_device_lost.
 class MainWindow final : public juce::DocumentWindow, private juce::MenuBarModel
 {
 public:
@@ -49,6 +57,16 @@ private:
     void duplicateSong();
     void showSettings();
     void applyDeviceSettings (const engine::DeviceSettings& settings);
+    // Closes the live audio and opens it again (the saved choice, or the default; at the open
+    // Song's rate when offered), binds the open Song and shows what the user needs to know.
+    void reopenAudio();
+    // Hooks the LiveEngine's device changes up to applyDeviceChange.
+    void watchDevices();
+    // Retried by deviceChangePoll until the reported change could be answered.
+    void applyDeviceChange();
+    std::optional<int> openSongRate() const;
+    // The open Song's ui.sample_rate_mismatch Notice, when its device runs at another rate.
+    void showRateMismatch();
     void showLatencyNoticeIfUncalibrated();
 
     ui::CalibrationStatus calibrationStatus() const;
@@ -86,6 +104,9 @@ private:
     // The run's outcome, held until the audio thread lets go of the plans and the Song is bound again.
     std::optional<core::Expected<capture::LoopbackMeasurement>> latencyOutcome;
     juce::TimedCallback latencyRunPoll { [this] { pollLatencyRun(); } };
+    // The device change reported and not answered yet (the newest wins).
+    std::optional<engine::DeviceChange> pendingDeviceChange;
+    juce::TimedCallback deviceChangePoll { [this] { applyDeviceChange(); } };
     ui::MainComponent content;
     std::unique_ptr<juce::FileChooser> chooser;
     std::unique_ptr<juce::DocumentWindow> settingsWindow;

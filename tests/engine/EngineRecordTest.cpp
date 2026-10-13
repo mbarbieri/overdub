@@ -503,3 +503,82 @@ TEST_CASE ("Monitoring goes through the Armed Track's Insert Chain while its Tak
     const auto drained = drainAll (session);
     CHECK (drained[0][0] == slice (device.inputHistory[1], 0, 6 * blockSize));
 }
+
+TEST_CASE ("a device that stops ends the running Pass where it stopped, keeping what it captured, and stops the transport", "[engine][record][device_change]")
+{
+    ScopedLogCapture capture;
+    TempPackage package;
+    Engine engine { stereoConfig() };
+    engine.loadSong (emptySong(), package.root);
+    LoopbackDevice device { 2, blockSize, blockSize };
+    device.extraInput[0] = rampFrom (0.1f, 20 * blockSize);
+    engine.play();
+
+    RecordSession session { { RecordInput { "track", { 0 } } }, testSampleRate };
+    engine.startRecording (session);
+    device.run (engine, 4);
+    REQUIRE (engine.isRecording());
+
+    // The device is gone: no callback runs from here on.
+    engine.deviceStopped();
+    CHECK (session.state() == RecordState::stopped);
+    CHECK (session.stopReason() == RecordStopReason::deviceStopped);
+    CHECK (session.capturedFrames() == 4 * blockSize);
+    CHECK (drainAll (session)[0][0] == slice (device.inputHistory[0], 0, 4 * blockSize));
+    CHECK_FALSE (engine.isRecording());
+    CHECK_FALSE (engine.isPlaying());
+    CHECK (engine.position() == 4 * blockSize);
+
+    const auto stopped = eventsNamed (capture, "engine.device_stopped");
+    REQUIRE (stopped.size() == 1);
+    CHECK (stopped[0]["lvl"] == "info");
+    CHECK (stopped[0]["was_playing"] == true);
+    CHECK (stopped[0]["pass_ended"] == true);
+    CHECK (stopped[0]["captured_frames"] == 4 * blockSize);
+    CHECK (stopped[0]["position"] == 4 * blockSize);
+
+    // Another device that starts calling the engine finds it stopped, recording nothing.
+    device.run (engine, 2);
+    CHECK_FALSE (engine.isPlaying());
+    CHECK (session.capturedFrames() == 4 * blockSize);
+}
+
+TEST_CASE ("a Pass the audio thread had not taken when the device stopped ends having captured nothing", "[engine][record][device_change]")
+{
+    TempPackage package;
+    Engine engine { stereoConfig() };
+    engine.loadSong (emptySong(), package.root);
+    LoopbackDevice device { 2, blockSize, blockSize };
+
+    RecordSession session { { RecordInput { "track", { 0 } } }, testSampleRate };
+    engine.startRecording (session);
+    engine.play();
+    engine.deviceStopped();
+    CHECK (session.state() == RecordState::stopped);
+    CHECK (session.stopReason() == RecordStopReason::deviceStopped);
+
+    // Never taken afterwards.
+    engine.play();
+    device.run (engine, 2);
+    CHECK (session.capturedFrames() == 0);
+    CHECK_FALSE (engine.isRecording());
+}
+
+TEST_CASE ("a device that stops while idle leaves the engine stopped where it was", "[engine][device_change]")
+{
+    ScopedLogCapture capture;
+    TempPackage package;
+    Engine engine { stereoConfig() };
+    engine.loadSong (emptySong(), package.root);
+    engine.seek (5000);
+    LoopbackDevice device { 2, blockSize, blockSize };
+    device.run (engine, 1);
+
+    engine.deviceStopped();
+    CHECK_FALSE (engine.isPlaying());
+    CHECK (engine.position() == 5000);
+    const auto stopped = eventsNamed (capture, "engine.device_stopped");
+    REQUIRE (stopped.size() == 1);
+    CHECK (stopped[0]["was_playing"] == false);
+    CHECK (stopped[0]["pass_ended"] == false);
+}

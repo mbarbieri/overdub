@@ -48,7 +48,8 @@ enum class RecordStopReason
     requested,        // Engine::stopRecording
     transportStopped, // the transport stopped: a Pass covers one continuous run of the transport
     seeked,           // a seek: the captured stream would no longer be continuous Song time
-    cancelled         // stopped before the audio thread ever took it
+    cancelled,        // stopped before the audio thread ever took it
+    deviceStopped     // the device stopped calling back (unplugged, closed): Engine::deviceStopped
 };
 
 class RecordSession

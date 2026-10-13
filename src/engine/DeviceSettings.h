@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 // The audio device choice for this machine (issue #24). It is a per-machine setting, never part
 // of the Song: a Song moved to another Mac plays through that Mac's device. Stored as JSON in
@@ -45,4 +46,43 @@ juce::AudioDeviceManager::AudioDeviceSetup toAudioDeviceSetup (const DeviceSetti
 
 // The settings that reopen the device described by this type name and setup.
 DeviceSettings deviceSettingsFrom (const juce::String& deviceType, const juce::AudioDeviceManager::AudioDeviceSetup& setup);
+
+//==============================================================================
+// Device changes (issue #41, ADR 0004 amendment). Overdub follows this machine's saved choice, not
+// the system default: a default that changes is ignored while the saved choice runs.
+
+// The device names of the current device type, as JUCE lists them now.
+struct AvailableDevices
+{
+    std::vector<std::string> inputs;
+    std::vector<std::string> outputs;
+};
+
+// What a device list or device state change means for the live engine.
+enum class DeviceChange
+{
+    none,                 // the engine's device runs as it was opened
+    lost,                 // the engine's device closed or was replaced by another (unplugged)
+    reconfigured,         // the same device now runs at another rate or buffer size
+    savedChoiceAvailable, // running on a fallback, and the saved choice is plugged in again
+    appeared              // no device was open, and an output device is plugged in now
+};
+
+// "none", "lost", "reconfigured", "saved_choice_available", "appeared": the `change` field of
+// app.device_changed.
+const char* deviceChangeName (DeviceChange change);
+
+// engineDevice: the device the live engine was built for (none without one); runningDevice: what
+// the device manager runs now; savedChoice: this machine's choice (none when never saved);
+// outputsWhenOpened: the output devices listed when the engine was built. Without a device, only
+// an output device not listed then has `appeared` (one listed then already failed to open).
+DeviceChange classifyDeviceChange (const std::optional<DeviceSettings>& engineDevice,
+                                   const std::optional<DeviceSettings>& runningDevice,
+                                   const std::optional<DeviceSettings>& savedChoice,
+                                   const AvailableDevices& available,
+                                   const std::vector<std::string>& outputsWhenOpened = {});
+
+// The rate to reopen the device at for an open Song of songRate Hz: songRate when the device runs
+// at another rate and offers it; none otherwise (already there, not offered, or no Song rate).
+std::optional<int> sampleRateForSong (int deviceRate, int songRate, const std::vector<int>& offeredRates);
 } // namespace overdub::engine

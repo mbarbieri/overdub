@@ -62,3 +62,13 @@ TEST_CASE ("Alerts wait while a Pass runs; Notices show at once", "[ui][messages
     CHECK (afterPass[0].tier == Tier::alert);
     CHECK (queue.takeReady (false).empty());
 }
+
+TEST_CASE ("device changes the user need not decide on are Notices; a Pass cut short by the audio device is an Alert", "[ui][messages][device_change]")
+{
+    CHECK (tierFor ("ui.audio_device_lost") == Tier::notice);
+    CHECK (tierFor ("ui.sample_rate_mismatch") == Tier::notice);
+    CHECK (tierFor ("ui.camera_disconnected") == Tier::notice);
+    CHECK (tierFor ("ui.audio_device_lost_during_pass") == Tier::alert);
+    for (const auto* code : { "ui.audio_device_lost", "ui.sample_rate_mismatch", "ui.camera_disconnected", "ui.audio_device_lost_during_pass" })
+        CHECK (sentenceFor (code).find (code) == std::string::npos);
+}

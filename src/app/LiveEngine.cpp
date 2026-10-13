@@ -28,22 +28,30 @@ juce::String applySavedChoice (juce::AudioDeviceManager& deviceManager, const en
 }
 } // namespace
 
-LiveEngine::LiveEngine()
+LiveEngine::LiveEngine (std::optional<int> songSampleRate)
 {
     openDevice();
+    if (songSampleRate.has_value())
+        matchSongRate (*songSampleRate);
+    // Whatever the device manager says from here on is compared with what was opened now.
+    outputsWhenOpened = listDevices().outputs;
+    deviceManager.addChangeListener (this);
 
     auto* device = deviceManager.getCurrentAudioDevice();
     if (device == nullptr)
     {
         core::logEvent (core::Level::error, "app.device_unavailable", {}, "no audio output device could be opened; the app runs silent");
+        lastSeenChange = classifyCurrentDevice();
         return;
     }
 
     startEngine (*device);
+    lastSeenChange = classifyCurrentDevice();
 }
 
 LiveEngine::~LiveEngine()
 {
+    deviceManager.removeChangeListener (this);
     stopTimer();
     // The device stops calling the binding before any member is destroyed.
     if (binding != nullptr)
@@ -62,7 +70,7 @@ void LiveEngine::openDevice()
     if (defaultError.isNotEmpty())
         core::logEvent (core::Level::warn, "app.device_open_failed", { { "choice", "default" }, { "reason", defaultError.toStdString() } });
 
-    const auto savedChoice = saved.has_value() ? *saved : std::optional<engine::DeviceSettings> {};
+    savedChoice = saved.has_value() ? *saved : std::optional<engine::DeviceSettings> {};
     if (savedChoice.has_value())
     {
         const auto error = applySavedChoice (deviceManager, *savedChoice);
@@ -86,9 +94,72 @@ void LiveEngine::openDevice()
     }
 }
 
+void LiveEngine::matchSongRate (int songSampleRate)
+{
+    auto* device = deviceManager.getCurrentAudioDevice();
+    if (device == nullptr)
+        return;
+    std::vector<int> offered;
+    for (const auto rate : device->getAvailableSampleRates())
+        offered.push_back (juce::roundToInt (rate));
+    const auto deviceRate = juce::roundToInt (device->getCurrentSampleRate());
+    const auto rate = engine::sampleRateForSong (deviceRate, songSampleRate, offered);
+    if (! rate.has_value())
+        return;
+
+    auto setup = deviceManager.getAudioDeviceSetup();
+    setup.sampleRate = *rate;
+    const auto error = deviceManager.setAudioDeviceSetup (setup, true);
+    core::logEvent (error.isEmpty() ? core::Level::info : core::Level::warn,
+                    "app.device_rate_matched",
+                    { { "from_rate", deviceRate }, { "song_rate", songSampleRate }, { "matched", error.isEmpty() }, { "reason", error.toStdString() } });
+}
+
+engine::AvailableDevices LiveEngine::listDevices()
+{
+    engine::AvailableDevices available;
+    if (auto* type = deviceManager.getCurrentDeviceTypeObject())
+    {
+        for (const auto& name : type->getDeviceNames (true))
+            available.inputs.push_back (name.toStdString());
+        for (const auto& name : type->getDeviceNames (false))
+            available.outputs.push_back (name.toStdString());
+    }
+    return available;
+}
+
+engine::DeviceChange LiveEngine::classifyCurrentDevice()
+{
+    std::optional<engine::DeviceSettings> running;
+    if (deviceManager.getCurrentAudioDevice() != nullptr)
+        running = engine::deviceSettingsFrom (deviceManager.getCurrentAudioDeviceType(), deviceManager.getAudioDeviceSetup());
+    return engine::classifyDeviceChange (engineDevice, running, savedChoice, listDevices(), outputsWhenOpened);
+}
+
+void LiveEngine::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    const auto change = classifyCurrentDevice();
+    if (change == lastSeenChange)
+        return;
+    lastSeenChange = change;
+    if (change == engine::DeviceChange::none)
+        return;
+
+    auto fields = deviceFields();
+    fields["change"] = engine::deviceChangeName (change);
+    // Flat (ADR 0006): the device the engine was built for, next to the one running now.
+    fields["engine_input_device"] = engineDevice.has_value() ? engineDevice->inputDevice : std::string {};
+    fields["engine_output_device"] = engineDevice.has_value() ? engineDevice->outputDevice : std::string {};
+    fields["engine_sample_rate"] = engineDevice.has_value() ? engineDevice->sampleRate : 0;
+    core::logEvent (change == engine::DeviceChange::lost ? core::Level::warn : core::Level::info, "app.device_changed", fields);
+    if (onDeviceChange)
+        onDeviceChange (change);
+}
+
 void LiveEngine::startEngine (juce::AudioIODevice& device)
 {
     const auto setup = deviceManager.getAudioDeviceSetup();
+    engineDevice = engine::deviceSettingsFrom (deviceManager.getCurrentAudioDeviceType(), setup);
     key = engine::CalibrationKey {
         .inputDevice = setup.inputDeviceName.toStdString(),
         .outputDevice = setup.outputDeviceName.toStdString(),
@@ -130,6 +201,7 @@ core::Fields LiveEngine::deviceFields()
 ui::AudioBinding LiveEngine::audioBinding()
 {
     ui::AudioBinding audio { audioEngine.get(), latency, {} };
+    audio.sampleRate = deviceSampleRate;
     auto* device = deviceManager.getCurrentAudioDevice();
     if (device == nullptr)
         return audio;

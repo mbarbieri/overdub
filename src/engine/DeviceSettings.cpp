@@ -1,5 +1,7 @@
 #include "engine/DeviceSettings.h"
 
+#include <algorithm>
+
 #include <nlohmann/json.hpp>
 
 namespace overdub::engine
@@ -109,5 +111,65 @@ DeviceSettings deviceSettingsFrom (const juce::String& deviceType, const juce::A
         .sampleRate = juce::roundToInt (setup.sampleRate),
         .bufferSize = setup.bufferSize,
     };
+}
+namespace
+{
+bool sameDevices (const DeviceSettings& a, const DeviceSettings& b)
+{
+    return a.deviceType == b.deviceType && a.inputDevice == b.inputDevice && a.outputDevice == b.outputDevice;
+}
+
+// An empty input name means "no input device chosen": only the output must match.
+bool runsSavedChoice (const DeviceSettings& running, const DeviceSettings& saved)
+{
+    return running.outputDevice == saved.outputDevice && (saved.inputDevice.empty() || running.inputDevice == saved.inputDevice);
+}
+
+bool isAvailable (const DeviceSettings& saved, const AvailableDevices& available)
+{
+    if (saved.outputDevice.empty() || ! std::ranges::contains (available.outputs, saved.outputDevice))
+        return false;
+    return saved.inputDevice.empty() || std::ranges::contains (available.inputs, saved.inputDevice);
+}
+} // namespace
+
+const char* deviceChangeName (DeviceChange change)
+{
+    switch (change)
+    {
+        case DeviceChange::none: return "none";
+        case DeviceChange::lost: return "lost";
+        case DeviceChange::reconfigured: return "reconfigured";
+        case DeviceChange::savedChoiceAvailable: return "saved_choice_available";
+        case DeviceChange::appeared: return "appeared";
+    }
+    return "unknown";
+}
+
+DeviceChange classifyDeviceChange (const std::optional<DeviceSettings>& engineDevice,
+                                   const std::optional<DeviceSettings>& runningDevice,
+                                   const std::optional<DeviceSettings>& savedChoice,
+                                   const AvailableDevices& available,
+                                   const std::vector<std::string>& outputsWhenOpened)
+{
+    if (! engineDevice.has_value())
+    {
+        const auto isNew = [&] (const std::string& output) { return ! std::ranges::contains (outputsWhenOpened, output); };
+        return std::ranges::any_of (available.outputs, isNew) ? DeviceChange::appeared : DeviceChange::none;
+    }
+    if (! runningDevice.has_value() || ! sameDevices (*engineDevice, *runningDevice))
+        return DeviceChange::lost;
+    if (runningDevice->sampleRate != engineDevice->sampleRate || runningDevice->bufferSize != engineDevice->bufferSize)
+        return DeviceChange::reconfigured;
+    if (savedChoice.has_value() && ! runsSavedChoice (*engineDevice, *savedChoice) && isAvailable (*savedChoice, available))
+        return DeviceChange::savedChoiceAvailable;
+    return DeviceChange::none;
+}
+
+std::optional<int> sampleRateForSong (int deviceRate, int songRate, const std::vector<int>& offeredRates)
+{
+    if (songRate <= 0 || songRate == deviceRate || ! std::ranges::contains (offeredRates, songRate))
+        return std::nullopt;
+    return songRate;
 }
 } // namespace overdub::engine
