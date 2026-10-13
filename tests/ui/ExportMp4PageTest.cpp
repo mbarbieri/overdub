@@ -321,6 +321,34 @@ TEST_CASE ("a Song with a Video Take but no Clips exports an MP4 over silence, a
     }
 }
 
+TEST_CASE ("on a Song with no Clips, the WAV and M4A span text says there is nothing to export, and MP4 still describes the Video Take's range", "[ui][export][mp4][no_clips_span]")
+{
+    MainWindowFixture f { overdub::song::testing::FixtureSongBuilder {}.track ("Guitar", true, { 0 }).build() };
+    auto& window = *f.window;
+    auto changed = f.song();
+    REQUIRE (overdub::exporting::lastClipEnd (changed) == 0);
+    overdub::video::testing::addSyntheticVideoTake (changed, f.openSong->package().location(), rate / 2, 30);
+    REQUIRE (f.openSong->edit (changed, "Add Video Take").has_value());
+    window.tick();
+    REQUIRE (pressKey (window, '3'));
+    auto& page = window.exportPage;
+
+    for (auto* button : { &page.wavButton, &page.m4aButton })
+    {
+        click (*button);
+        CAPTURE (button->getButtonText());
+        CHECK (page.spanLabel.getText() == juce::String ("Nothing to export: the Song has no Clips"));
+        CHECK (! page.spanLabel.getText().contains ("effect tails"));
+    }
+
+    click (page.mp4Button);
+    REQUIRE (page.trimButton.getToggleState());
+    CHECK (page.spanLabel.getText().startsWith ("Trimmed to "));
+    CHECK (page.spanLabel.getText().endsWith (juce::String::fromUTF8 (": 0:00.5 \xe2\x80\x93 0:01.5")));
+    click (page.fullSongButton);
+    CHECK (page.spanLabel.getText().startsWith (juce::String::fromUTF8 ("Full song: 0:00.0 \xe2\x80\x93 0:01.5, black outside ")));
+}
+
 TEST_CASE ("an MP4 of a Video Take that ends before the Song starts is a Notice that says so, not one about Clips", "[ui][export][mp4][outside_song]")
 {
     ExportFolder folder;

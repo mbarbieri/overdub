@@ -61,6 +61,8 @@ juce::Range<int> spanBarPixels (exporting::SampleRange range, song::SampleCount 
 
 std::string exportSpanText (song::SampleCount clipsEnd, int sampleRate)
 {
+    if (clipsEnd <= 0)
+        return "Nothing to export: the Song has no Clips";
     return "Whole mix: 0:00.0 \xe2\x80\x93 " + minutesText (clipsEnd, sampleRate) + ", plus effect tails";
 }
 
