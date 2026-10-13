@@ -2,16 +2,44 @@
 
 #include "capture/Camera.h"
 
+#include <condition_variable>
+#include <future>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 // A Camera for tests (ADR 0005): no AVFoundation. beginMovie writes a small placeholder file at the
-// path so the recorder's rename works; endMovie returns `movie` (or `endError`) as if the frames
-// had been written.
+// path so the recorder's rename works; endMovie completes with `movie` (or `endError`) as if the
+// frames had been written: at once, or, with a finishGate, on its own thread once the test
+// releases the gate (a slow AVFoundation, issue #70).
 namespace overdub::capture::testing
 {
+// Holds a movie's completion until the test releases it.
+struct MovieGate
+{
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool released = false;
+
+    void release()
+    {
+        {
+            const std::scoped_lock lock { mutex };
+            released = true;
+        }
+        changed.notify_all();
+    }
+
+    void wait()
+    {
+        std::unique_lock lock { mutex };
+        changed.wait (lock, [this] { return released; });
+    }
+};
+
 struct FakeCamera final : public Camera
 {
     std::vector<CameraDevice> available { { "camera-facetime", "FaceTime HD Camera" }, { "camera-usb", "USB Camera" } };
@@ -22,6 +50,8 @@ struct FakeCamera final : public Camera
     CameraMovie movie;
     // Set by a test after changing `available`, as a camera plugged in or out would.
     bool devicesChanged = false;
+    // When set, an ended movie completes only once this gate is released.
+    std::shared_ptr<MovieGate> finishGate;
 
     std::vector<std::string> openRequests;
     std::optional<juce::File> writing;
@@ -66,15 +96,19 @@ struct FakeCamera final : public Camera
         return {};
     }
 
-    core::Expected<CameraMovie> endMovie() override
+    MovieCompletion endMovie() override
     {
         ++moviesEnded;
         writing.reset();
-        if (endError.has_value())
-            return std::unexpected (*endError);
         auto finished = movie;
         finished.cameraId = opened.has_value() ? opened->id : "";
-        return finished;
+        const auto completed = endError.has_value() ? core::Expected<CameraMovie> (std::unexpected (*endError)) : core::Expected<CameraMovie> (finished);
+        if (finishGate == nullptr)
+            return completedMovie (completed);
+        return std::async (std::launch::async, [gate = finishGate, completed] {
+            gate->wait();
+            return completed;
+        });
     }
 
     void cancelMovie() override

@@ -8,6 +8,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -40,8 +41,15 @@
 // finish(), so during pre-roll it holds frames from before the record point; they are placed
 // before the Pass start like any other frame.
 //
-// Threads: start(), finish(), stop() and the destructor run on one non-audio thread (the message
-// thread in the app); the package is single-threaded and only touched there.
+// Finishing without waiting (issue #70): AVFoundation may take seconds to complete the movie. The
+// message thread calls prepareFinish() once hasStopped(), which ends the movie (Camera::endMovie
+// completes it off that thread), polls isReadyToFinish(), and then calls finish(), which no longer
+// waits. The Pass and its Video Take are still one undo step, added once the movie is complete.
+// finish() alone (stop(), detaching the audio, tests) waits for the movie.
+//
+// Threads: start(), prepareFinish(), isReadyToFinish(), finish(), stop() and the destructor run on
+// one non-audio thread (the message thread in the app); the package is single-threaded and only
+// touched there. The destructor waits for a movie being completed and deletes it.
 namespace overdub::capture
 {
 using song::SampleCount;
@@ -121,7 +129,15 @@ public:
     // (waiting for the transport, or for the record point during pre-roll) and after.
     std::optional<SampleCount> runningPassStart() const;
 
-    // Requires hasStopped(). Writes the rest of every Take, renames the files into audio/, writes
+    // Requires hasStopped() (does nothing before, and after the first call). Stops the io thread,
+    // closes the Take files and ends the movie of a Pass that will be kept, without waiting for the
+    // camera to complete it.
+    void prepareFinish();
+    // True once prepareFinish() was called and the movie, if any, is complete: finish() then does
+    // not wait for the camera.
+    bool isReadyToFinish() const;
+
+    // Requires hasStopped(). prepareFinish() if not done yet, waits for the movie to complete, writes the rest of every Take, renames the files into audio/, writes
     // peaks, and adds the Pass as one undo step. Logs capture.pass_stopped (Pass id, Tracks,
     // start sample, length, overrun and dropped counts, stop reason) whatever the outcome.
     // A failed peaks write is only logged (capture.peaks_write_failed, warn): it is a cache.
@@ -156,9 +172,9 @@ private:
     core::Error failedTakeWrite (const TakeWriter& writer) const;
     void logPassStopped (const RecordedPass& pass, const char* outcome) const;
     void beginMovie();
-    // Ends the movie and deletes its file: the Pass will not keep it.
+    // Ends (or waits for the ending movie) and deletes its file: the Pass will not keep it.
     void discardMovie();
-    // Ends the movie, renames it into place and places it on the Pass's anchors. None (with the
+    // Waits for the ended movie, renames it into place and places it on the Pass's anchors. None (with the
     // reason in pass.notices) when there is no movie to keep.
     std::optional<song::VideoTake> finishMovie (RecordedPass& pass);
 
@@ -173,6 +189,7 @@ private:
     std::unique_ptr<engine::RecordSession> session;
     std::optional<MovieInProgress> movie;      // while the camera writes this Pass's movie
     std::optional<core::Error> movieBeginError; // why the movie never began
+    MovieCompletion movieEnding; // from prepareFinish() until finishMovie()
     bool movieBegun = false;                    // set before the io thread starts, then read-only
 
     // io thread state. anchors and the writers are written by the io thread until it is joined.
@@ -182,6 +199,7 @@ private:
     std::condition_variable ioWake;
     bool ioShouldExit = false; // under ioMutex
     std::thread ioThread;
+    bool finishPrepared = false;
     bool finished = false;
 };
 } // namespace overdub::capture

@@ -28,8 +28,11 @@
 // issue #31), and runs at most one Pass (capture/PassRecorder.h).
 //
 // Invariant: every Pass it starts is finished by it. stop() asks the audio thread to
-// end the Pass; poll() (from the window's timer) finishes it once the audio thread has; detaching
-// the audio or destroying it waits for the audio thread and finishes it there.
+// end the Pass; poll() (from the window's timer) ends its movie once the audio thread has ended
+// it, and finishes it once the camera has completed the movie, without waiting for it (issue #70:
+// AVFoundation may take seconds). Until then isRecording() stays true and the Song stays as the
+// Pass started. Detaching the audio or destroying it waits for the audio thread and the movie and
+// finishes it there.
 //
 // While a Pass runs (pre-roll included), only stop, play/stop and rewind act: undo, redo, edits,
 // seeks, import, arm, input, pre-roll and Monitoring are ignored, so the Song and the engine's plan stay as the Pass started.
@@ -140,7 +143,7 @@ public:
     // The engine and its plan are untouched. A running Pass keeps the latency it started with.
     void setCalibrationOffset (song::SampleCount offsetSamples) { binding.latency.calibrationOffsetSamples = offsetSamples; }
 
-    // True from record() until poll() or detachAudio() has finished the Pass.
+    // True from record() until poll() or detachAudio() has finished the Pass (its movie completed).
     bool isRecording() const { return recorder != nullptr; }
     // The number of the Pass being recorded (from 1); 0 when not recording.
     int recordingPassNumber() const { return recordingPass; }

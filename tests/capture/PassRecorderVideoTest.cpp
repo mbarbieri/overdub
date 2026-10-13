@@ -8,8 +8,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 using overdub::capture::PassRecorder;
@@ -17,6 +19,7 @@ using overdub::capture::PassRecorderOptions;
 using overdub::capture::RecordedPass;
 using overdub::capture::RecordLatency;
 using overdub::capture::testing::FakeCamera;
+using overdub::capture::testing::MovieGate;
 using overdub::core::ScopedLogCapture;
 using overdub::engine::Engine;
 using overdub::engine::EngineConfig;
@@ -240,4 +243,71 @@ TEST_CASE ("a Pass stopped before it began discards its movie", "[capture][recor
     CHECK (fixture.camera.moviesEnded == 0);
     CHECK_FALSE (fixture.camera.moviesBegun[0].exists());
     CHECK (fixture.package->song().videoTakes.empty());
+}
+
+TEST_CASE ("a Pass's movie completes off the calling thread, and the Pass is added once it has", "[capture][record][video]")
+{
+    VideoFixture fixture;
+    fixture.camera.movie.firstFrameHostNs = firstBlockHostNs + 100'000'000ULL;
+    fixture.camera.movie.frames = 10;
+    fixture.camera.finishGate = std::make_shared<MovieGate>();
+
+    PassRecorderOptions options;
+    options.camera = &fixture.camera;
+    auto started = PassRecorder::start (*fixture.package, fixture.engine, RecordLatency {}, options);
+    REQUIRE (started.has_value());
+    auto& recorder = **started;
+    fixture.engine.play();
+    fixture.device.run (fixture.engine, 50);
+    recorder.requestStop();
+    fixture.device.run (fixture.engine, 1);
+    REQUIRE (recorder.hasStopped());
+
+    // Ending the movie does not wait for AVFoundation to complete it: well under a 60 Hz frame.
+    const auto before = std::chrono::steady_clock::now();
+    recorder.prepareFinish();
+    CHECK (std::chrono::steady_clock::now() - before < std::chrono::milliseconds (16));
+    CHECK (fixture.camera.moviesEnded == 1);
+    CHECK_FALSE (recorder.isReadyToFinish());
+    CHECK (fixture.package->song().passes.empty());
+
+    fixture.camera.finishGate->release();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (5);
+    while (! recorder.isReadyToFinish() && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    REQUIRE (recorder.isReadyToFinish());
+
+    const auto pass = recorder.finish();
+    REQUIRE (pass.has_value());
+    REQUIRE (pass->videoTakeId.has_value());
+    // The Pass, its Take and its Video Take are one undo step.
+    CHECK (fixture.package->undoLabel() == "Record Pass 1");
+    CHECK (fixture.package->song().passes.size() == 1);
+    CHECK (fixture.package->song().videoTakes.size() == 1);
+    REQUIRE (fixture.package->undo().has_value());
+    CHECK (fixture.package->song().passes.empty());
+    CHECK (fixture.package->song().videoTakes.empty());
+}
+
+TEST_CASE ("a recorder destroyed while its movie completes deletes the movie", "[capture][record][video]")
+{
+    VideoFixture fixture;
+    fixture.camera.movie.frames = 10;
+    fixture.camera.finishGate = std::make_shared<MovieGate>();
+    juce::File movieFile;
+    {
+        PassRecorderOptions options;
+        options.camera = &fixture.camera;
+        auto started = PassRecorder::start (*fixture.package, fixture.engine, RecordLatency {}, options);
+        REQUIRE (started.has_value());
+        fixture.engine.play();
+        fixture.device.run (fixture.engine, 20);
+        (*started)->requestStop();
+        fixture.device.run (fixture.engine, 1);
+        (*started)->prepareFinish();
+        movieFile = fixture.camera.moviesBegun.at (0);
+        fixture.camera.finishGate->release();
+    }
+    CHECK_FALSE (movieFile.exists());
+    CHECK (fixture.package->song().passes.empty());
 }
