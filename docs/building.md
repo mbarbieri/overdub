@@ -13,7 +13,7 @@ git submodule update --init --recursive   # external/JUCE (9.0.3), external/Catc
 ```sh
 cmake --preset debug            # configure into build/debug; applies the JUCE patch
 cmake --build --preset debug    # builds Overdub.app, overdub_core and overdub_tests
-ctest --preset debug            # runs every Catch2 test case
+ctest --preset debug            # runs every Catch2 test case, 12 in parallel (about 85 s; ~7 min serial with -j1)
 open build/debug/src/app/Overdub_artefacts/Debug/Overdub.app
 ```
 
