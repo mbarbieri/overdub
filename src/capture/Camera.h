@@ -44,6 +44,10 @@ public:
 
     // The cameras this machine has now.
     virtual std::vector<CameraDevice> devices() = 0;
+    // True once after a camera was connected or disconnected since the previous call (issue #41):
+    // the caller lists devices() again. The open camera stays "open" after it is unplugged (its
+    // feed and a movie being written simply stop getting frames) until close().
+    virtual bool takeDevicesChanged() = 0;
 
     // Opens this camera (the system default for an empty or unknown id) and starts its live feed;
     // a camera already open is closed first. Returns the camera opened.

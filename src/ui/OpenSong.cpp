@@ -55,6 +55,15 @@ void OpenSong::capturePluginState (song::Song& song)
 
 void OpenSong::attachAudio (AudioBinding audio)
 {
+    rateMismatch.reset();
+    if (audio.engine != nullptr && audio.sampleRate > 0 && audio.sampleRate != song().sampleRate)
+    {
+        // The Song's rate is fixed (ADR 0004): played at another rate it would change speed and pitch.
+        rateMismatch = core::Error { "ui.sample_rate_mismatch",
+                                     "the audio device runs at another rate than the Song",
+                                     { { "song_rate", song().sampleRate }, { "device_rate", audio.sampleRate } } };
+        audio.engine = nullptr;
+    }
     binding = std::move (audio);
     if (binding.engine == nullptr)
         return;
@@ -82,7 +91,17 @@ std::vector<core::Error> OpenSong::detachAudio()
         binding.engine->loadSong (song::makeEmptySong (song().sampleRate), package_->location());
     }
     binding = AudioBinding {};
+    rateMismatch.reset();
     return errors;
+}
+
+std::optional<core::Error> OpenSong::audioProblem() const
+{
+    if (binding.engine != nullptr)
+        return std::nullopt;
+    if (rateMismatch.has_value())
+        return rateMismatch;
+    return core::Error { "ui.no_audio_device", "no audio device is open to record from", {} };
 }
 
 bool OpenSong::isPlaying() const
@@ -116,7 +135,7 @@ core::Expected<void> OpenSong::record()
     if (isExporting())
         return std::unexpected (core::Error { "ui.export_running", "an export is running", {} });
     if (binding.engine == nullptr)
-        return std::unexpected (core::Error { "ui.no_audio_device", "no audio device is open to record from", {} });
+        return std::unexpected (*audioProblem());
 
     const auto passNumber = nextPassNumber (song());
     const auto preRollSamples = (song::SampleCount) song::preRollSeconds (song().preRoll) * song().sampleRate;
@@ -334,6 +353,8 @@ std::vector<core::Expected<song::Id>> OpenSong::importFiles (const std::vector<j
 std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point now)
 {
     auto errors = handleCrashes();
+    for (auto& error : handleCameraChanges())
+        errors.push_back (std::move (error));
     for (auto& error : advanceExport())
         errors.push_back (std::move (error));
     if (recorder != nullptr && recorder->hasStopped())
@@ -396,13 +417,31 @@ std::vector<core::Error> OpenSong::handleCrashes()
 
 std::vector<core::Error> OpenSong::finishPass (core::Expected<capture::RecordedPass> finished)
 {
+    const auto deviceLost = recorder->stopReason() == engine::RecordStopReason::deviceStopped;
+    const auto passNumber = recordingPass;
     recorder.reset();
     recordingPass = 0;
     preRollPoint.reset();
+    if (cameraLostDuringPass)
+        disarmLostCamera();
     reloadEngine(); // the Pass's Takes and Clips, when it was added
+
+    std::vector<core::Error> errors;
+    // The rest of the performance was not recorded: an Alert, shown once the Pass has ended.
+    if (deviceLost)
+        errors.push_back (core::Error { "ui.audio_device_lost_during_pass",
+                                        "the audio device stopped during the Pass",
+                                        { { "pass_number", passNumber }, { "kept", finished.has_value() } } });
     if (! finished.has_value())
-        return { finished.error() };
-    return finished->notices; // the Pass stands; its Video Take may not
+    {
+        // A Pass the device stopped before it began captured nothing: the Alert above says why.
+        if (! (deviceLost && finished.error().code == "capture.pass_empty"))
+            errors.push_back (finished.error());
+        return errors;
+    }
+    for (auto& notice : finished->notices) // the Pass stands; its Video Take may not
+        errors.push_back (std::move (notice));
+    return errors;
 }
 
 //==============================================================================
@@ -416,6 +455,41 @@ core::Expected<void> OpenSong::attachCamera (capture::Camera* newCamera, juce::F
     cameraCalibrationFile = std::move (calibrationFile);
     cameras = camera != nullptr ? camera->devices() : std::vector<capture::CameraDevice> {};
     return syncCamera();
+}
+
+std::vector<core::Error> OpenSong::handleCameraChanges()
+{
+    if (camera == nullptr || ! camera->takeDevicesChanged())
+        return {};
+    cameras = camera->devices();
+    core::logEvent (core::Level::info, "ui.cameras_changed", { { "cameras", cameras.size() } });
+
+    const auto open = camera->openCamera();
+    if (! song().cameraArmed || ! open.has_value() || cameraLostDuringPass || std::ranges::contains (cameras, open->id, &capture::CameraDevice::id))
+        return {};
+
+    // The Armed camera is gone. A running Pass keeps its movie (written until the camera went) and
+    // records on; the camera is disarmed once the Pass is finished.
+    const auto duringPass = recorder != nullptr;
+    core::Error lost { "ui.camera_disconnected", "the Armed camera was disconnected", { { "camera_id", open->id }, { "during_pass", duringPass } } };
+    if (duringPass)
+        cameraLostDuringPass = true;
+    else
+        disarmLostCamera();
+    return { lost };
+}
+
+void OpenSong::disarmLostCamera()
+{
+    cameraLostDuringPass = false;
+    if (camera != nullptr)
+        camera->close();
+    if (! song().cameraArmed)
+        return;
+    // The choice stays: the camera is offered again when it comes back, and arming reopens it.
+    auto changed = song();
+    changed.cameraArmed = false;
+    package_->changeWithoutHistory (std::move (changed));
 }
 
 core::Expected<void> OpenSong::setCameraArmed (bool armed)

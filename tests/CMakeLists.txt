@@ -68,6 +68,7 @@ target_sources(overdub_tests PRIVATE
     ui/MixerGeometryTest.cpp
     ui/MixerUiTest.cpp
     ui/OpenSongCameraTest.cpp
+    ui/OpenSongDeviceChangeTest.cpp
     ui/OpenSongInsertsTest.cpp
     ui/OpenSongTest.cpp
     ui/PreRollTest.cpp

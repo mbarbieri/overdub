@@ -40,6 +40,9 @@ constexpr std::array codeTable {
     CodeEntry { "ui.latency_not_calibrated", Tier::notice, "This audio device is not calibrated, so Takes may land late. Calibrate it in Settings." },
     CodeEntry { "ui.calibration_running", Tier::notice, "Wait for the latency measurement to finish." },
     CodeEntry { "capture.calibration_timeout", Tier::notice, "The audio device stopped during the measurement. Check the device, then measure again." },
+    CodeEntry { "ui.sample_rate_mismatch", Tier::notice, "The audio device runs at another sample rate than this Song, so it plays and records nothing. Pick the Song's rate in Settings." },
+    CodeEntry { "ui.audio_device_lost", Tier::notice, "The audio device was disconnected. Overdub switched to another device." },
+    CodeEntry { "ui.camera_disconnected", Tier::notice, "The camera was disconnected and is no longer Armed." },
     CodeEntry { "capture.clap_no_video_take", Tier::notice, "No Pass has a Video Take yet. Arm the camera and record a Pass clapping in frame." },
 
     // Alerts: an action failed or data may be lost.
@@ -48,6 +51,7 @@ constexpr std::array codeTable {
     CodeEntry { "capture.movie_write_failed", Tier::alert, "The camera's video could not be written; this Pass has no Video Take." },
     CodeEntry { "capture.video_unplaced", Tier::alert, "The camera's video could not be placed; this Pass has no Video Take." },
     CodeEntry { "capture.camera_not_open", Tier::alert, "The camera closed; this Pass has no Video Take." },
+    CodeEntry { "ui.audio_device_lost_during_pass", Tier::alert, "The audio device was disconnected during the Pass. What was recorded until then is kept." },
     CodeEntry { "capture.stop_timeout", Tier::alert, "The audio device stopped responding; this Pass was not added." },
     CodeEntry { "song.write_failed", Tier::alert, "The Song could not be saved to disk." },
     CodeEntry { "song.json_unserializable", Tier::alert, "The Song could not be saved to disk." },

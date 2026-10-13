@@ -66,6 +66,14 @@
 // reloads it from its slot's saved state once no Pass or export runs. An export running when a
 // plugin crashes is discarded (ui.export_plugin_crashed, an Alert): its file would miss the effect.
 //
+// Device changes (issue #41, ADR 0004 amendment): the Song's rate is fixed, so a device at another
+// rate is not used (audioProblem() says ui.sample_rate_mismatch; play and record do nothing). A
+// device that stops during a Pass ends it where it stopped (Engine::deviceStopped): the Pass is
+// finished as usual, keeping what was captured, and reported as ui.audio_device_lost_during_pass
+// (an Alert). poll() also lists the cameras again when one is plugged in or out; the Armed camera
+// unplugged is closed and disarmed (ui.camera_disconnected, a Notice) at once, or after the Pass
+// when one runs: recording goes on and the Pass keeps the movie written until then.
+//
 // Message thread only.
 namespace overdub::ui
 {
@@ -85,6 +93,9 @@ struct AudioBinding
     std::vector<std::string> inputChannelNames;
     // The output device's name: with the camera's id, the key of this machine's camera calibration.
     std::string outputDeviceName = {};
+    // The device's sample rate in Hz; 0 when it reports none (taken to be the Song's). A device at
+    // another rate than the Song's is not used (issue #41, ADR 0004 amendment).
+    int sampleRate = 0;
 };
 
 class OpenSong
@@ -108,7 +119,12 @@ public:
     // Binds a (new) engine: loads the Song and seeks to its playhead. Call detachAudio() first, and
     // only once the previously bound engine has stopped rendering (its device closed or the engine
     // destroyed, as MainWindow does): the plugins are re-prepared here for the new device shape.
+    // A device at another rate than the Song's is not bound (see audioProblem()).
     void attachAudio (AudioBinding audio);
+    // Why the Song has no audio: ui.no_audio_device (no device is open), or ui.sample_rate_mismatch
+    // (song_rate, device_rate: the device runs at another rate, so it is not used). None when the
+    // engine is bound. Not logged here.
+    std::optional<core::Error> audioProblem() const;
     // Finishes a running Pass (waiting for the audio thread), stops the transport and leaves the
     // engine an empty Song. Returns the finishing errors, not logged.
     std::vector<core::Error> detachAudio();
@@ -133,7 +149,7 @@ public:
     // runs. With the transport stopped and the Song's pre-roll on (issue #32), playback starts that
     // many seconds before the playhead (at 0 at the earliest) and the Pass waits for the playhead,
     // its record point: only from there on is input captured.
-    // Errors: ui.no_audio_device, or PassRecorder::start's (capture.nothing_armed, ...).
+    // Errors: audioProblem()'s, or PassRecorder::start's (capture.nothing_armed, ...).
     core::Expected<void> record();
     // The record point while a Pass waits for it during pre-roll; none otherwise.
     std::optional<song::SampleCount> preRollRecordPoint() const;
@@ -248,6 +264,10 @@ private:
     // ui.plugin_crashed_repeatedly: slot_ids, names), after ui.export_plugin_crashed (path) when an
     // export was running: that export is discarded.
     std::vector<core::Error> handleCrashes();
+    // Lists the cameras again once the camera reports a change; the Armed camera gone is
+    // ui.camera_disconnected (camera_id, during_pass) and is disarmed now, or after the Pass.
+    std::vector<core::Error> handleCameraChanges();
+    void disarmLostCamera();
     juce::File exportDestination() const;
     // Stops the export (deleting the file of one that already finished) and reloads the engine.
     void discardExport();
@@ -267,6 +287,9 @@ private:
     capture::Camera* camera = nullptr;
     juce::File cameraCalibrationFile;
     std::vector<capture::CameraDevice> cameras;
+    bool cameraLostDuringPass = false; // disarmed once the Pass is finished
+    // Set while a device at another rate than the Song's is attached (ui.sample_rate_mismatch).
+    std::optional<core::Error> rateMismatch;
     std::unique_ptr<capture::PassRecorder> recorder;
     int recordingPass = 0;
     std::optional<song::SampleCount> preRollPoint; // the running Pass's record point, when it used pre-roll

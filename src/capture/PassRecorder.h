@@ -109,8 +109,11 @@ public:
 
     // Asks the audio thread to end the Pass at its next block.
     void requestStop();
-    // True once the audio thread has ended the Pass (stop requested, transport stopped or seeked).
+    // True once the audio thread has ended the Pass (stop requested, transport stopped or seeked),
+    // or the device stopped (Engine::deviceStopped).
     bool hasStopped() const;
+    // Why the Pass ended; valid once hasStopped().
+    engine::RecordStopReason stopReason() const;
     // The record point once the audio thread has begun the Pass and until it ends it; none before
     // (waiting for the transport, or for the record point during pre-roll) and after.
     std::optional<SampleCount> runningPassStart() const;

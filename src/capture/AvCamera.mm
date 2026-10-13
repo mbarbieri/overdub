@@ -8,6 +8,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 
+#include <atomic>
 #include <memory>
 #include <optional>
 
@@ -61,10 +62,28 @@ public:
         sessionQueue = dispatch_queue_create ("com.mbarbieri.overdub.camera-session", DISPATCH_QUEUE_SERIAL);
         delegate = [[OverdubCaptureVideoDelegate alloc] init];
         delegate.owner = this;
+
+        // A camera plugged in or out (issue #41): the owner lists devices() again at its next poll.
+        auto changed = devicesChanged;
+        auto note = ^(NSNotification* notification) {
+          auto* camera = (AVCaptureDevice*) notification.object;
+          if (camera != nil && ! [camera hasMediaType:AVMediaTypeVideo])
+              return;
+          changed->store (true);
+          core::logEvent (core::Level::info,
+                          "capture.camera_device_changed",
+                          { { "camera_id", camera != nil ? toStd (camera.uniqueID) : std::string {} },
+                            { "connected", [notification.name isEqualToString:AVCaptureDeviceWasConnectedNotification] ? true : false } });
+        };
+        auto* center = [NSNotificationCenter defaultCenter];
+        connectedObserver = [center addObserverForName:AVCaptureDeviceWasConnectedNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:note];
+        disconnectedObserver = [center addObserverForName:AVCaptureDeviceWasDisconnectedNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:note];
     }
 
     ~AvCamera() override
     {
+        [[NSNotificationCenter defaultCenter] removeObserver:connectedObserver];
+        [[NSNotificationCenter defaultCenter] removeObserver:disconnectedObserver];
         close();
         // No frame callback may still be running into this object.
         dispatch_sync (sessionQueue, ^ {
@@ -84,6 +103,8 @@ public:
             found.push_back (CameraDevice { toStd (camera.uniqueID), toStd (camera.localizedName) });
         return found;
     }
+
+    bool takeDevicesChanged() override { return devicesChanged->exchange (false); }
 
     core::Expected<CameraDevice> open (const std::string& cameraId) override
     {
@@ -257,6 +278,12 @@ private:
     dispatch_queue_t videoQueue = nil;
     dispatch_queue_t sessionQueue = nil;
     OverdubCaptureVideoDelegate* delegate = nil;
+
+    // Set by the connect / disconnect observers (main queue), taken by takeDevicesChanged.
+    // Shared, so an observer block never reaches into a destroyed camera.
+    std::shared_ptr<std::atomic<bool>> devicesChanged = std::make_shared<std::atomic<bool>> (false);
+    id connectedObserver = nil;
+    id disconnectedObserver = nil;
 
     // Message thread.
     AVCaptureSession* session = nil;

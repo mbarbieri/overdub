@@ -222,6 +222,11 @@ bool PassRecorder::hasStopped() const
     return session->state() == engine::RecordState::stopped;
 }
 
+engine::RecordStopReason PassRecorder::stopReason() const
+{
+    return session->stopReason();
+}
+
 std::optional<SampleCount> PassRecorder::runningPassStart() const
 {
     if (session->state() != engine::RecordState::recording)

@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 // A Camera for tests (ADR 0005): no AVFoundation. beginMovie writes a small placeholder file at the
@@ -19,6 +20,8 @@ struct FakeCamera final : public Camera
     std::optional<core::Error> beginError;
     std::optional<core::Error> endError;
     CameraMovie movie;
+    // Set by a test after changing `available`, as a camera plugged in or out would.
+    bool devicesChanged = false;
 
     std::vector<std::string> openRequests;
     std::optional<juce::File> writing;
@@ -27,6 +30,8 @@ struct FakeCamera final : public Camera
     int moviesCancelled = 0;
 
     std::vector<CameraDevice> devices() override { return available; }
+
+    bool takeDevicesChanged() override { return std::exchange (devicesChanged, false); }
 
     core::Expected<CameraDevice> open (const std::string& cameraId) override
     {
