@@ -19,6 +19,20 @@ open build/debug/src/app/Overdub_artefacts/Debug/Overdub.app
 
 Use `release` in place of `debug` for an optimised build. The first build compiles JUCE once into `overdub_juce` (about 1.5 minutes on an i7-9750H); later builds only recompile what changed.
 
+## Make targets
+
+A top-level `Makefile` wraps the presets; it holds no build logic.
+
+| Target | Does |
+| --- | --- |
+| `make app` | Initialises submodules if `external/*` is empty, builds the `release` preset's `Overdub` target, copies the signed bundle to `dist/Overdub.app`, runs `tests/packaging/verify_app_bundle.sh` on it (bundle id, version, camera and microphone descriptions, icon, `x86_64` only, no build-tree paths, `codesign --verify --deep --strict`) and prints the bundle path and signing identity. Re-running it is incremental. |
+| `make install` | `make app`, then copies the bundle to `/Applications`. Override with `PREFIX=<dir>` or `DEST=<dir>`. |
+| `make test` | Debug build plus the full `ctest --preset debug`. |
+| `make verify-app` | Re-runs the bundle checks on `dist/Overdub.app`. |
+| `make clean` | Removes `build/` and `dist/`. |
+
+Signing follows "Code signing" below: `OVERDUB_CODESIGN_IDENTITY` when it is in the keychain, otherwise ad-hoc with a configure warning; `make app` still succeeds. `dist/` is git-ignored.
+
 ## Layout
 
 - `src/<area>/`: one folder per feature area from ADR 0006 (`engine`, `plugin`, `song`, `capture`, `video`, `export`, `ui`, `app`), created when a slice needs it. Includes are rooted at `src/`: `#include "core/BuildInfo.h"`.

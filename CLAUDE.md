@@ -13,6 +13,7 @@ ctest --preset debug -R "<test case name regex>"    # a subset by name
 build/debug/tests/overdub_tests "[engine][pdc]"      # a subset by Catch2 tag
 ```
 
+- `make app` builds the release, signed `dist/Overdub.app` (and verifies it); `make install` copies it to `/Applications`; `make test` is the debug build plus full `ctest`. Details in `docs/building.md`.
 - Always use the presets: they set `x86_64`, which `CMakeLists.txt` requires (v1 is Intel-only). Keep code arm64-clean anyway: no SSE/AVX intrinsics or `x86_64` assumptions.
 - Configure applies `patches/*.patch` to `external/JUCE`; the submodule shows dirty on purpose. Never edit JUCE sources without regenerating the patch (see "Re-applying the JUCE patch" in `docs/building.md`). Patches keep CRLF bytes. If configure fails with `patch failed` after switching branches, the old patch is still applied: run `git -C external/JUCE checkout -- .` and configure again.
 - Link JUCE only through `overdub_core`, never `juce::juce_*` modules directly (duplicate symbols, second JUCE compile).
