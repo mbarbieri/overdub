@@ -19,12 +19,15 @@
 // frames onto an output grid of the Video Take's mean frame duration on the Song clock; the video
 // enters the composition half a grid step early so each grid point shows the nearest source
 // frame: up to ±½ frame per frame (a placement's phase on the grid), no systematic offset.
+// The mix file is padded with silence to the range's end, so a Song with no Clips (an empty mix)
+// still exports its Video Take, over silence (issue #67).
 //
 // Logs export.started (format mp4, path, video_take_id, length, start_sample, end_sample,
 // sample_rate) and export.finished (format, path, samples, elapsed_ms).
 //
-// Errors: export.nothing_to_export, export.cancelled, export.video_take_unreadable (path,
-// video_take_id, reason), export.movie_failed (step: compose_audio | compose_video | encode,
+// Errors: export.nothing_to_export (the range is empty: the Video Take ends before Song sample 0),
+// export.cancelled, export.video_take_unreadable (path, video_take_id, reason),
+// export.movie_failed (step: compose_audio | compose_video | encode,
 // detail), export.write_failed (as exportMix's).
 namespace overdub::exporting
 {

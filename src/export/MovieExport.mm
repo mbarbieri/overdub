@@ -99,7 +99,8 @@ core::Expected<AVMutableCompositionTrack*> composeVideo (AVMutableComposition* c
     return track;
 }
 
-core::Expected<void> composeAudio (AVMutableComposition* composition, const juce::File& mixFile, song::SampleCount rangeEnd, int sampleRate)
+// The mix file at time 0. It already runs to the range's end (writeMixFile pads it with silence).
+core::Expected<void> composeAudio (AVMutableComposition* composition, const juce::File& mixFile)
 {
     auto* asset = [AVURLAsset URLAssetWithURL:urlFor (mixFile) options:@{AVURLAssetPreferPreciseDurationAndTimingKey : @YES}];
     auto* source = firstTrack (asset, AVMediaTypeAudio);
@@ -109,11 +110,6 @@ core::Expected<void> composeAudio (AVMutableComposition* composition, const juce
     NSError* error = nil;
     if (! [track insertTimeRange:source.timeRange ofTrack:source atTime:kCMTimeZero error:&error])
         return std::unexpected (movieFailed ("compose_audio", describe (error, "insertTimeRange failed")));
-    // Silence after the mix, so the audio runs as long as a Video Take that outlasts it.
-    const auto mixEnd = source.timeRange.duration;
-    const auto end = samplesToTime (rangeEnd, sampleRate);
-    if (CMTimeCompare (mixEnd, end) < 0)
-        [track insertEmptyTimeRange:CMTimeRangeMake (mixEnd, CMTimeSubtract (end, mixEnd))];
     return {};
 }
 
@@ -196,8 +192,8 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest
     const auto sampleRate = render.sampleRate();
     const auto videoSpan = SampleRange { source.videoTake.startSample, video::videoTakeEnd (source.videoTake, *timing) };
     const auto range = movieExportRange (request.videoLength, render.totalSamples(), videoSpan);
-    if (range.length() <= 0 || render.totalSamples() <= 0)
-        return std::unexpected (core::Error { "export.nothing_to_export", "the Song has no Clips to export", {} });
+    if (range.length() <= 0)
+        return std::unexpected (core::Error { "export.nothing_to_export", "the MP4's range is empty", {} });
 
     if (auto folder = createExportFolder (request.destination); ! folder.has_value())
         return std::unexpected (folder.error());
@@ -220,7 +216,9 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest
         if (progress)
             progress (0.5 * fraction);
     };
-    if (auto mixed = writeMixFile (render, ExportFormat::wav, mixFile.file, halfProgress, shouldStop); ! mixed.has_value())
+    // Padded with silence to the range's end: a Video Take may outlast the mix, or the Song may
+    // have no Clips at all (an empty mix).
+    if (auto mixed = writeMixFile (render, ExportFormat::wav, mixFile.file, halfProgress, shouldStop, range.end); ! mixed.has_value())
         return std::unexpected (mixed.error());
 
     @autoreleasepool
@@ -237,7 +235,7 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest
         const auto leadSamples = fullSong ? (song::SampleCount) std::llround (0.5 * gridSeconds * sampleRate) : 0;
 
         auto* composition = [AVMutableComposition composition];
-        if (auto audio = composeAudio (composition, mixFile.file, range.end, sampleRate); ! audio.has_value())
+        if (auto audio = composeAudio (composition, mixFile.file); ! audio.has_value())
             return std::unexpected (audio.error());
         auto videoTrack = composeVideo (composition, sourceVideo, source.videoTake, leadSamples, sampleRate);
         if (! videoTrack.has_value())

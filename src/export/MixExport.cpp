@@ -41,9 +41,9 @@ core::Expected<void> moveExportIntoPlace (const juce::File& partial, const juce:
     });
 }
 
-core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop)
+core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop, song::SampleCount padToSamples)
 {
-    const auto total = render.totalSamples();
+    const auto total = std::max (render.totalSamples(), padToSamples);
     auto writer = MixFileWriter::create (file, format, render.sampleRate(), MixRender::numChannels);
     if (! writer.has_value())
     {
@@ -52,25 +52,33 @@ core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const
     }
 
     juce::AudioBuffer<float> block { MixRender::numChannels, render.maxBlockSize() };
+    song::SampleCount written = 0;
     while (true)
     {
         if (shouldStop && shouldStop())
         {
             (*writer).reset();
             file.deleteFile();
-            return std::unexpected (core::Error { "export.cancelled", "the export was stopped", { { "samples_written", render.renderedSamples() } } });
+            return std::unexpected (core::Error { "export.cancelled", "the export was stopped", { { "samples_written", written } } });
         }
-        const auto count = render.renderNext (block.getArrayOfWritePointers(), block.getNumSamples());
+        auto count = render.renderNext (block.getArrayOfWritePointers(), block.getNumSamples());
+        if (count == 0 && written < padToSamples)
+        {
+            // The mix has ended: silence up to padToSamples.
+            count = (int) std::min<song::SampleCount> (block.getNumSamples(), padToSamples - written);
+            block.clear();
+        }
         if (count == 0)
             break;
-        if (auto written = (*writer)->write (block.getArrayOfReadPointers(), count); ! written.has_value())
+        if (auto result = (*writer)->write (block.getArrayOfReadPointers(), count); ! result.has_value())
         {
             (*writer).reset();
             file.deleteFile();
-            return std::unexpected (written.error());
+            return std::unexpected (result.error());
         }
+        written += count;
         if (progress && total > 0)
-            progress ((double) render.renderedSamples() / (double) total);
+            progress ((double) written / (double) total);
     }
 
     if (auto closed = (*writer)->close(); ! closed.has_value())
