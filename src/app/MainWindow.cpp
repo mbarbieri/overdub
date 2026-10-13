@@ -32,6 +32,7 @@ constexpr int devicePanelHeight = 240;
 constexpr int calibrationPanelHeight = 520;
 constexpr int settingsWidth = 460;
 constexpr int latencyPollIntervalMs = 50;
+constexpr int deviceChangePollIntervalMs = 100;
 
 // The settings window's content: the device picker above the calibration panel.
 class SettingsContent final : public juce::Component
@@ -101,6 +102,7 @@ MainWindow::MainWindow (const juce::String& name, std::unique_ptr<LiveEngine> li
     appleMenuExtras.addItem (settingsItem, "Settings...");
     juce::MenuBarModel::setMacMainMenu (this, &appleMenuExtras);
 
+    watchDevices();
     setVisible (true);
     content.grabKeyboardFocus();
     if (live->engine() == nullptr)
@@ -111,6 +113,7 @@ MainWindow::MainWindow (const juce::String& name, std::unique_ptr<LiveEngine> li
 MainWindow::~MainWindow()
 {
     juce::MenuBarModel::setMacMainMenu (nullptr);
+    deviceChangePoll.stopTimer();
     latencyRunPoll.stopTimer();
     latencyRun.reset();
     settingsPanel = nullptr;
@@ -256,7 +259,22 @@ void MainWindow::openSongFrom (const juce::File& chosen)
 void MainWindow::showSong (std::unique_ptr<song::SongPackage> package, const std::vector<song::Notice>& notices)
 {
     closeSong();
+    // The Song's rate is fixed (ADR 0004): a device that offers it is switched to it.
+    const auto songRate = package->song().sampleRate;
+    const auto rateSwitch = engine::sampleRateForSong (live->sampleRate(), songRate, live->deviceChoices().sampleRates).has_value();
+    if (rateSwitch)
+    {
+        live.reset();
+        live = std::make_unique<LiveEngine> (songRate);
+        watchDevices();
+        if (settingsPanel != nullptr)
+            settingsPanel->show (live->deviceChoices());
+    }
     openSong = std::make_unique<ui::OpenSong> (std::move (package), live->audioBinding(), pluginLoader.instantiator());
+    if (const auto problem = openSong->audioProblem(); problem.has_value() && problem->code == "ui.sample_rate_mismatch")
+        content.handleError (*problem);
+    if (rateSwitch)
+        showLatencyNoticeIfUncalibrated();
     // A Song saved with its camera Armed opens it now; without camera access that is a Notice.
     if (auto attached = openSong->attachCamera (camera.get(), capture::defaultCameraCalibrationFile()); ! attached.has_value())
         content.handleError (attached.error());
@@ -325,13 +343,29 @@ void MainWindow::applyDeviceSettings (const engine::DeviceSettings& settings)
 
     // The engine's shape is fixed per device (engine/Engine.h), so a new choice builds a new
     // LiveEngine, which opens the saved choice (or falls back to the default and logs why).
-    detachAudio();
-    live.reset();
     if (auto written = engine::writeDeviceSettings (engine::defaultDeviceSettingsFile(), settings); ! written.has_value())
         content.handleError (written.error());
-    live = std::make_unique<LiveEngine>();
+    reopenAudio();
+}
+
+std::optional<int> MainWindow::openSongRate() const
+{
+    return openSong != nullptr ? std::optional<int> (openSong->song().sampleRate) : std::nullopt;
+}
+
+void MainWindow::reopenAudio()
+{
+    // Finishes a Pass (one the device cut short is already ended) before the device goes.
+    detachAudio();
+    live.reset();
+    live = std::make_unique<LiveEngine> (openSongRate());
+    watchDevices();
     if (openSong != nullptr)
+    {
         openSong->attachAudio (live->audioBinding());
+        if (const auto problem = openSong->audioProblem(); problem.has_value() && problem->code == "ui.sample_rate_mismatch")
+            content.handleError (*problem);
+    }
     content.refresh();
 
     if (settingsPanel != nullptr)
@@ -340,6 +374,36 @@ void MainWindow::applyDeviceSettings (const engine::DeviceSettings& settings)
     if (live->engine() == nullptr)
         content.showNotice ("ui.no_audio_device");
     showLatencyNoticeIfUncalibrated();
+}
+
+void MainWindow::watchDevices()
+{
+    // Never rebuilt from inside the LiveEngine's own callback: the poll answers it.
+    live->onDeviceChange = [this] (engine::DeviceChange change) {
+        pendingDeviceChange = change;
+        deviceChangePoll.startTimer (deviceChangePollIntervalMs);
+    };
+}
+
+void MainWindow::applyDeviceChange()
+{
+    if (! pendingDeviceChange.has_value())
+        return deviceChangePoll.stopTimer();
+
+    // A lost or reconfigured device is answered at once: a Pass it ran is already ended (the
+    // window's poll finishes it first) and an export cannot finish without it. A device that came
+    // back or appeared waits until nothing runs.
+    const auto change = *pendingDeviceChange;
+    const auto urgent = change == engine::DeviceChange::lost || change == engine::DeviceChange::reconfigured;
+    if (latencyMeasuring() || passRunning() || (! urgent && openSong != nullptr && openSong->isExporting()))
+        return;
+
+    deviceChangePoll.stopTimer();
+    pendingDeviceChange.reset();
+    core::logEvent (core::Level::info, "app.audio_reopened", { { "change", engine::deviceChangeName (change) } });
+    reopenAudio();
+    if (change == engine::DeviceChange::lost && live->engine() != nullptr)
+        content.showNotice ("ui.audio_device_lost");
 }
 
 //==============================================================================

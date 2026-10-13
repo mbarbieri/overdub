@@ -3,6 +3,7 @@
 #include "capture/PassRecorder.h"
 #include "core/RtEventRing.h"
 #include "engine/DeviceBinding.h"
+#include "engine/DeviceSettings.h"
 #include "engine/Engine.h"
 #include "engine/LatencyCalibration.h"
 #include "ui/DeviceSettingsPanel.h"
@@ -11,22 +12,30 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_events/juce_events.h>
 
+#include <functional>
 #include <memory>
 #include <optional>
 
 // The app's live audio: opens the audio device chosen on this machine (engine/DeviceSettings.h),
 // builds the Engine for that device's shape, and binds the two (engine/DeviceBinding.h). It also
 // runs what the engine itself does not: the RT event drain thread and the housekeeping timer.
-// Message thread only. A new device choice is applied by saving it and building a new LiveEngine;
-// handling devices that change on their own is slice 20.
+// Message thread only. A new device choice is applied by saving it and building a new LiveEngine.
+//
+// Device changes (issue #41, ADR 0004 amendment): it listens to the device manager and reports a
+// change that matters (engine/DeviceSettings.h, classifyDeviceChange) through onDeviceChange,
+// logged as app.device_changed. The owner answers by building a new LiveEngine, never from inside
+// the callback. A change is reported once: the same classification is not reported again until
+// another one was seen, so a saved choice that is plugged in but will not open causes no loop.
 namespace overdub::app
 {
-class LiveEngine final : private juce::Timer
+class LiveEngine final : private juce::Timer, private juce::ChangeListener
 {
 public:
     // Opens the saved device, or the system default when there is none or it fails to open.
-    // Writes the opened device as this machine's choice when no choice was saved yet.
-    LiveEngine();
+    // Writes the opened device as this machine's choice when no choice was saved yet. With
+    // songSampleRate (the open Song's rate), a device that runs at another rate but offers that one
+    // is switched to it (app.device_rate_matched); the saved choice keeps its own rate.
+    explicit LiveEngine (std::optional<int> songSampleRate = std::nullopt);
     // Stops the timer, unregisters the binding and closes the device; the members then go in
     // reverse declaration order (see below).
     ~LiveEngine() override;
@@ -66,8 +75,15 @@ public:
     // device's sample rates and buffer sizes, and the current choice.
     ui::DeviceChoices deviceChoices();
 
+    // Called (message thread, from the device manager's change message) with each device change
+    // that matters. The callee must not destroy this LiveEngine from inside the call.
+    std::function<void (engine::DeviceChange)> onDeviceChange;
+
 private:
     void timerCallback() override;
+    void changeListenerCallback (juce::ChangeBroadcaster* source) override;
+    engine::DeviceChange classifyNow();
+    void matchSongRate (int songSampleRate);
 
     void openDevice();
     void startEngine (juce::AudioIODevice& device);
@@ -79,6 +95,9 @@ private:
     engine::CalibrationKey key;
     std::optional<song::SampleCount> storedCalibration;
     int deviceSampleRate = 0;
+    std::optional<engine::DeviceSettings> savedChoice; // as read when opening
+    std::optional<engine::DeviceSettings> engineDevice; // what audioEngine was built for
+    engine::DeviceChange lastSeenChange = engine::DeviceChange::none;
     std::unique_ptr<engine::Engine> audioEngine;
     std::unique_ptr<engine::DeviceBinding> binding;
     std::optional<core::RtEventDrainThread> drainThread;
