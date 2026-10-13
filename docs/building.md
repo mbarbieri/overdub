@@ -30,6 +30,7 @@ A top-level `Makefile` wraps the presets; it holds no build logic.
 | `make test` | Debug build plus the full `ctest --preset debug`. |
 | `make verify-app` | Re-runs the bundle checks on `dist/Overdub.app`. |
 | `make separation-model` | Runs `scripts/separation-model/install.sh`: installs the Separation model on this Mac (needs Docker; see "Separation model" below). |
+| `make signing-identity` | Creates the `Overdub Local Development` signing identity in the login keychain (see "Code signing"). |
 | `make clean` | Removes `build/` and `dist/`. |
 
 Signing follows "Code signing" below: `OVERDUB_CODESIGN_IDENTITY` when it is in the keychain, otherwise ad-hoc with a configure warning; `make app` still succeeds. `dist/` is git-ignored.
@@ -152,4 +153,6 @@ When a patch file itself changes (a pull that edits `patches/`), a checkout that
 
 Overdub.app is signed after every build with the keychain identity named by the `OVERDUB_CODESIGN_IDENTITY` cache variable (default `Overdub Local Development`), without the hardened runtime. A stable identity keeps camera and microphone permissions across rebuilds (ADR 0001). If the identity is missing, configure warns and the app is signed ad-hoc: it still runs, but macOS asks for permissions again after each build.
 
-To create the identity once: Keychain Access → Certificate Assistant → Create a Certificate… → Name `Overdub Local Development`, Identity Type `Self Signed Root`, Certificate Type `Code Signing`. Then re-run `cmake --preset debug`. Check with `security find-identity -p codesigning` (a self-signed certificate may be listed as not trusted; codesign still uses it).
+To create the identity once, run `make signing-identity` (`scripts/create_signing_identity.sh`). It makes a self-signed code-signing certificate named `Overdub Local Development` with `/usr/bin/openssl` and imports it into the login keychain, allowing `/usr/bin/codesign` to use its key. If it already exists, it does nothing. Then re-run `cmake --preset debug` (or `make app`) so configure finds it. The first signing after that may show a keychain prompt for codesign: choose Always Allow. Check with `security find-identity -p codesigning`; the identity is listed as `CSSMERR_TP_NOT_TRUSTED`, which is expected, and codesign still uses it. To create it by hand instead: Keychain Access → Certificate Assistant → Create a Certificate… → Name `Overdub Local Development`, Identity Type `Self Signed Root`, Certificate Type `Code Signing`.
+
+Camera and microphone grants (TCC) are tied to the app's designated requirement, which for this identity is the bundle id plus the certificate. Every build signed with the same certificate keeps the grants; ad-hoc builds change it on every build. Recreating the certificate (a new key) asks once more. `tests/packaging/signing_identity_test.sh <repo root>` checks the script against a throwaway keychain.

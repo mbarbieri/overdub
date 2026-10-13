@@ -4,7 +4,7 @@ DIST_BUNDLE    := dist/Overdub.app
 PREFIX         ?= /Applications
 DEST           ?= $(PREFIX)
 
-.PHONY: app install test verify-app clean submodules separation-model
+.PHONY: app install test verify-app signing-identity clean submodules separation-model
 
 submodules:
 	@if [ -z "$$(ls -A external/JUCE 2>/dev/null)" ] || [ -z "$$(ls -A external/Catch2 2>/dev/null)" ] || [ -z "$$(ls -A external/json 2>/dev/null)" ] || [ -z "$$(ls -A external/pocketfft 2>/dev/null)" ]; then \
@@ -38,6 +38,9 @@ verify-app:
 
 separation-model:
 	scripts/separation-model/install.sh
+
+signing-identity:
+	scripts/create_signing_identity.sh
 
 clean:
 	rm -rf build dist
