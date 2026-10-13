@@ -38,6 +38,10 @@ OpenSong::~OpenSong()
 {
     for (const auto& error : detachAudio())
         core::logError (error);
+    // Closing the Song waits for a movie still completing (ADR 0003, issue #90 amendment).
+    if (recorder != nullptr)
+        for (const auto& error : finishPass (recorder->finish()))
+            core::logError (error);
     if (camera != nullptr)
         camera->close();
     if (inserts.takeStateChanged())
@@ -85,10 +89,14 @@ std::vector<core::Error> OpenSong::detachAudio()
     // The export renders the plugins the next engine is prepared for: it must stop first.
     stopExport ("audio_detached");
     std::vector<core::Error> errors;
-    if (recorder != nullptr)
+    if (recorder != nullptr && binding.engine != nullptr)
     {
         binding.engine->stop();
-        errors = finishPass (recorder->stop());
+        // The movie may complete after the engine is gone: poll() finishes the Pass then (issue #90).
+        if (auto ended = recorder->stopWithoutWaitingForMovie(); ! ended.has_value())
+            errors = finishPass (std::unexpected (ended.error()));
+        else if (recorder->isReadyToFinish())
+            errors = finishPass (recorder->finish());
     }
     if (binding.engine != nullptr)
     {

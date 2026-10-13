@@ -197,7 +197,10 @@ PassRecorder::~PassRecorder()
     if (finished || session == nullptr)
         return;
 
-    requestStop();
+    // A Pass the audio thread already ended (finishing off the message thread, issue #90) leaves
+    // the engine untouched: it may be gone.
+    if (! hasStopped())
+        requestStop();
     if (! waitUntilStopped (std::chrono::milliseconds (2000)))
     {
         // The audio thread may still write into the session: leaking it is the only safe choice.
@@ -252,6 +255,15 @@ core::Expected<RecordedPass> PassRecorder::stop (std::chrono::milliseconds timeo
     if (! waitUntilStopped (timeout))
         return std::unexpected (core::Error { "capture.stop_timeout", "the audio device did not end the Pass", { { "pass_id", passIdentifier }, { "timeout_ms", timeout.count() } } });
     return finish();
+}
+
+core::Expected<void> PassRecorder::stopWithoutWaitingForMovie (std::chrono::milliseconds timeout)
+{
+    requestStop();
+    if (! waitUntilStopped (timeout))
+        return std::unexpected (core::Error { "capture.stop_timeout", "the audio device did not end the Pass", { { "pass_id", passIdentifier }, { "timeout_ms", timeout.count() } } });
+    prepareFinish();
+    return {};
 }
 
 //==============================================================================

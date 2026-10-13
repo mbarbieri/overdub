@@ -256,3 +256,69 @@ TEST_CASE ("the window does not wait while a slow movie completes; the Pass is a
     CHECK (fixture.openSong->song().passes.empty());
     CHECK (fixture.openSong->song().videoTakes.empty());
 }
+
+TEST_CASE ("detaching the audio does not wait while a slow movie completes; the Pass is added once it has", "[ui][camera][record]")
+{
+    CameraFixture fixture;
+    REQUIRE (fixture.openSong->attachCamera (&fixture.camera, fixture.calibrationFile).has_value());
+    REQUIRE (fixture.openSong->setCameraArmed (true).has_value());
+    fixture.camera.movie.firstFrameHostNs = firstBlockHostNs + 100'000'000ULL;
+    fixture.camera.movie.frames = 10;
+    fixture.camera.finishGate = std::make_shared<MovieGate>();
+
+    REQUIRE (fixture.openSong->record().has_value());
+    fixture.device.run (fixture.engine, 50);
+    fixture.openSong->stop();
+    fixture.device.run (fixture.engine, 1);
+
+    constexpr auto oneFrame = std::chrono::microseconds (16'667);
+    const auto before = std::chrono::steady_clock::now();
+    const auto errors = fixture.openSong->detachAudio();
+    CHECK (std::chrono::steady_clock::now() - before < oneFrame);
+    CHECK (errors.empty());
+    CHECK (fixture.camera.moviesEnded == 1);
+    CHECK (fixture.openSong->isRecording());
+    CHECK (fixture.openSong->song().passes.empty());
+
+    fixture.camera.finishGate->release();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (5);
+    while (fixture.openSong->isRecording() && std::chrono::steady_clock::now() < deadline)
+    {
+        CHECK (fixture.openSong->poll().empty());
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    REQUIRE_FALSE (fixture.openSong->isRecording());
+    CHECK (fixture.openSong->song().passes.size() == 1);
+    CHECK (fixture.openSong->song().videoTakes.size() == 1);
+    CHECK (fixture.openSong->package().undoLabel() == "Record Pass 1");
+}
+
+TEST_CASE ("closing the Song while a movie completes still adds the Pass", "[ui][camera][record]")
+{
+    CameraFixture fixture;
+    REQUIRE (fixture.openSong->attachCamera (&fixture.camera, fixture.calibrationFile).has_value());
+    REQUIRE (fixture.openSong->setCameraArmed (true).has_value());
+    fixture.camera.movie.firstFrameHostNs = firstBlockHostNs + 100'000'000ULL;
+    fixture.camera.movie.frames = 10;
+    fixture.camera.finishGate = std::make_shared<MovieGate>();
+
+    REQUIRE (fixture.openSong->record().has_value());
+    fixture.device.run (fixture.engine, 50);
+    fixture.openSong->stop();
+    fixture.device.run (fixture.engine, 1);
+    REQUIRE (fixture.openSong->detachAudio().empty());
+    REQUIRE (fixture.openSong->isRecording());
+
+    std::thread releaser ([gate = fixture.camera.finishGate] {
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
+        gate->release();
+    });
+    const auto location = fixture.openSong->package().location();
+    fixture.openSong.reset(); // waits for the movie
+    releaser.join();
+
+    auto reopened = SongPackage::open (location);
+    REQUIRE (reopened.has_value());
+    CHECK (reopened->package->song().passes.size() == 1);
+    CHECK (reopened->package->song().videoTakes.size() == 1);
+}
