@@ -66,7 +66,7 @@
 // while a plan that may still render them is current: the device may call back at any moment. A
 // slot an edit removes during an export keeps rendering in it and stays hosted (its crash is still
 // heard) until the export ends: no slot is released while an export runs (issue #65). A slot
-// added meanwhile loads as usual; the export does not render it.
+// added once the export renders loads as usual; the export does not render it.
 //
 // Plugin crash recovery (issue #40, ADR 0002 amendment): when a plugin's hosting process dies, the
 // InsertHost marks its slot crashed and its nodes pass audio through at once. poll() reports it
@@ -74,7 +74,11 @@
 // plan without it (after the Pass, while one runs: recording goes on, Takes are dry anyway), and
 // reloads it from its slot's saved state once no Pass or export runs. An export whose plan
 // renders the crashed plugin is discarded (ui.export_plugin_crashed, an Alert): its file would miss
-// the effect. A crash in a plugin it does not render leaves it running (issue #65).
+// the effect. A crash in a plugin it does not render leaves it running (issue #65). While the
+// export still waits for the audio, its render is built later from the Song as it is then, so a
+// crash of any slot the Song plays (not bypassed) discards it, even one that loaded meanwhile,
+// and so does a played slot still crashed (and due to reload) when its render is built; one that
+// crashed for good is left out, as playback leaves it out (issue #78).
 //
 // Device changes (issue #41, ADR 0004 amendment): the Song's rate is fixed, so a device at another
 // rate is not used (audioProblem() says ui.sample_rate_mismatch; play and record do nothing). A
@@ -271,7 +275,10 @@ private:
     // Syncs the InsertHost with the Song and loads it into the engine. While an export runs, removed
     // slots stay hosted and the engine keeps its empty Song; after it, poll() reloads.
     void reloadEngine();
-    void startExportOnceAudioLetGo();
+    // Once the audio thread has let go of the plugins: builds the export's render and starts it,
+    // unless a slot the Song plays is crashed and would still reload (its effect would be missing):
+    // then the export is stopped and ui.export_plugin_crashed (path) returned (issue #78).
+    std::optional<core::Error> startExportOnceAudioLetGo();
     std::vector<core::Error> advanceExport (song::SongPackage::Clock::time_point now);
     // Once the export has waited exportAudioTimeout for the audio: stops it, reloads the engine and
     // returns ui.export_audio_unresponsive. None (nothing done) otherwise.
@@ -289,8 +296,8 @@ private:
     std::vector<core::Error> handleCameraChanges();
     void disarmLostCamera();
     juce::File exportDestination() const;
-    // Whether the export's plan renders this slot (while it waits for the audio: whether the Song's
-    // plan rendered it when the export was requested).
+    // Whether the export's plan renders this slot (while it waits for the audio: whether the Song
+    // plays it, not bypassed, whatever its load status, issue #78).
     bool exportRenders (const song::Id& slotId) const;
     // Stops the export (deleting the file of one that already finished) and reloads the engine.
     void discardExport();
@@ -318,7 +325,7 @@ private:
     std::optional<song::SampleCount> preRollPoint; // the running Pass's record point, when it used pre-roll
     video::VideoPlayback playback;
     std::optional<exporting::ExportRequest> exportWaiting; // until the audio thread takes the empty plan
-    std::set<song::Id> exportSlots;                        // with an export: the slots it renders (exportRenders)
+    std::set<song::Id> exportSlots;                        // with exportJob: the slots its built render plays (exportRenders)
     std::optional<exporting::MovieSource> movieWaiting;    // with exportWaiting, for an MP4
     song::SongPackage::Clock::time_point exportRequestedAt; // with exportWaiting
     std::unique_ptr<exporting::ExportJob> exportJob;

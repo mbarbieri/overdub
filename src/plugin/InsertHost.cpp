@@ -183,6 +183,15 @@ std::set<song::Id> InsertHost::renderedSlots (const song::Song& song) const
     return rendered;
 }
 
+std::set<song::Id> InsertHost::playedSlots (const song::Song& song) const
+{
+    std::set<song::Id> played;
+    for (const auto* slot : slotsOf (song))
+        if (! slot->bypassed)
+            played.insert (slot->id);
+    return played;
+}
+
 std::optional<InsertStatus> InsertHost::status (const song::Id& slotId) const
 {
     const auto found = entries.find (slotId);

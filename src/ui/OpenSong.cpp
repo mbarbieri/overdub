@@ -14,6 +14,11 @@ namespace
 {
 // Plugins are prepared for this block size when no device is open.
 constexpr int blockSizeWithoutDevice = 512;
+
+core::Error exportPluginCrashed (const juce::File& destination)
+{
+    return core::Error { "ui.export_plugin_crashed", "a plugin crashed during the export", { { "path", destination.getFullPathName().toStdString() } } };
+}
 } // namespace
 
 OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio, plugin::Instantiator instantiate)
@@ -403,7 +408,7 @@ std::vector<core::Error> OpenSong::handleCrashes()
     if (exportRendersCrashed)
     {
         // The export's plan passes the dead plugin's audio through dry: its file would be wrong.
-        errors.push_back (core::Error { "ui.export_plugin_crashed", "a plugin crashed during the export", { { "path", exportDestination().getFullPathName().toStdString() } } });
+        errors.push_back (exportPluginCrashed (exportDestination()));
         discardExport();
     }
 
@@ -614,13 +619,12 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, so
         fields["length"] = exporting::videoLengthName (request.videoLength);
     }
     core::logEvent (core::Level::info, "ui.export_requested", fields);
-    // Until its render is built, the export counts on the slots the Song's plan rendered.
-    exportSlots = inserts.renderedSlots (song());
     exportWaiting = std::move (request);
     movieWaiting = std::move (movie);
     exportRequestedAt = now;
     // Without audio nothing else renders the plugins: the export starts now.
-    startExportOnceAudioLetGo();
+    if (auto error = startExportOnceAudioLetGo())
+        return std::unexpected (std::move (*error));
     return {};
 }
 
@@ -636,10 +640,23 @@ double OpenSong::exportProgress() const
     return exportJob != nullptr ? exportJob->progress() : 0.0;
 }
 
-void OpenSong::startExportOnceAudioLetGo()
+std::optional<core::Error> OpenSong::startExportOnceAudioLetGo()
 {
     if (! exportWaiting.has_value() || (binding.engine != nullptr && binding.engine->hasPendingPlan()))
-        return;
+        return std::nullopt;
+    // A slot that crashed while the export waited (bypassed then, played now) is not reloaded
+    // during an export: rendering would pass it through dry. One that crashed for good stays out.
+    const auto played = inserts.playedSlots (song());
+    const auto missesCrashed = std::ranges::any_of (played, [this] (const song::Id& slotId) {
+        return inserts.status (slotId) == plugin::InsertStatus::crashed && ! inserts.crashedForGood (slotId);
+    });
+    if (missesCrashed)
+    {
+        auto error = exportPluginCrashed (exportWaiting->destination);
+        stopExport ("plugin_crashed");
+        reloadEngine();
+        return error;
+    }
     // The audio thread renders the empty plan now: the export may run the plugins.
     inserts.sync (song());
     exportSlots = inserts.renderedSlots (song());
@@ -650,6 +667,7 @@ void OpenSong::startExportOnceAudioLetGo()
         exportJob = std::make_unique<exporting::ExportJob> (std::move (render), std::move (*exportWaiting));
     exportWaiting.reset();
     movieWaiting.reset();
+    return std::nullopt;
 }
 
 std::optional<core::Error> OpenSong::stopExportIfAudioUnresponsive (song::SongPackage::Clock::time_point now)
@@ -671,7 +689,8 @@ std::optional<core::Error> OpenSong::stopExportIfAudioUnresponsive (song::SongPa
 
 std::vector<core::Error> OpenSong::advanceExport (song::SongPackage::Clock::time_point now)
 {
-    startExportOnceAudioLetGo();
+    if (auto error = startExportOnceAudioLetGo())
+        return { std::move (*error) };
     if (auto error = stopExportIfAudioUnresponsive (now))
         return { std::move (*error) };
     if (exportJob == nullptr || ! exportJob->isDone())
@@ -690,7 +709,10 @@ std::vector<core::Error> OpenSong::advanceExport (song::SongPackage::Clock::time
 
 bool OpenSong::exportRenders (const song::Id& slotId) const
 {
-    return isExporting() && exportSlots.contains (slotId);
+    // While it waits for the audio, its render will be built from the Song as it is then.
+    if (exportWaiting.has_value())
+        return inserts.playedSlots (song()).contains (slotId);
+    return exportJob != nullptr && exportSlots.contains (slotId);
 }
 
 juce::File OpenSong::exportDestination() const
