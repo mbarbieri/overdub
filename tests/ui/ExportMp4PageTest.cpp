@@ -321,6 +321,39 @@ TEST_CASE ("a Song with a Video Take but no Clips exports an MP4 over silence, a
     }
 }
 
+TEST_CASE ("an MP4 of a Video Take that ends before the Song starts is a Notice that says so, not one about Clips", "[ui][export][mp4][outside_song]")
+{
+    ExportFolder folder;
+    MainWindowFixture f;
+    auto& window = *f.window;
+    auto changed = f.song();
+    REQUIRE (overdub::exporting::lastClipEnd (changed) > 0);
+    // 1 s of frames from 2 s before Song sample 0: it ends 1 s before the Song starts.
+    const auto videoTake = overdub::video::testing::addSyntheticVideoTake (changed, f.openSong->package().location(), -2 * rate, 30);
+    REQUIRE (f.openSong->edit (changed, "Add Video Take").has_value());
+    window.tick();
+    REQUIRE (pressKey (window, '3'));
+    auto& page = window.exportPage;
+    click (page.mp4Button);
+    REQUIRE (page.trimButton.getToggleState());
+    const auto file = folder.root.getChildFile ("Before.mp4");
+    page.setDestination (file);
+
+    ScopedLogCapture capture;
+    click (page.exportButton);
+    tickUntilExported (f);
+    REQUIRE (! f.openSong->isExporting());
+    CHECK (f.alertsShown.empty());
+    CHECK (window.noticeLine.text() == juce::String ("The Video Take ends before the Song starts, so there is nothing to export."));
+    CHECK (eventsNamed (capture, "export.nothing_to_export").empty());
+    const auto refused = eventsNamed (capture, "export.video_take_outside_song");
+    REQUIRE (refused.size() == 1);
+    CHECK (refused[0]["lvl"] == "warn");
+    CHECK (refused[0]["video_take_id"] == videoTake);
+    CHECK (refused[0]["video_take_end_sample"] == -rate);
+    CHECK (! file.exists());
+}
+
 TEST_CASE ("snapshots of the Export page with MP4 trimmed and full-song", "[ui][snapshot]")
 {
     const std::string slice = "slice-17";
