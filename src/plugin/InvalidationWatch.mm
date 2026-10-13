@@ -7,6 +7,7 @@
 #include <AudioToolbox/AudioToolbox.h>
 #import <Foundation/Foundation.h>
 
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <mutex>
@@ -30,6 +31,8 @@ struct Registry
     std::map<std::uintptr_t, std::weak_ptr<InvalidationWatch::Observer>> observers;
 };
 
+std::atomic<InvalidationWatch::Receipt> receiptsSoFar { 0 };
+
 Registry& registry()
 {
     static Registry instance;
@@ -50,6 +53,8 @@ const void* audioUnitIn (CFDictionaryRef userInfo)
 
 void notified (CFNotificationCenterRef, void* observerKey, CFNotificationName, const void*, CFDictionaryRef userInfo)
 {
+    // Numbered before anything else: an AU that becomes ready from here on is not the one named.
+    const auto receipt = receiptsSoFar.fetch_add (1, std::memory_order_acq_rel) + 1;
     std::weak_ptr<InvalidationWatch::Observer> weak;
     {
         auto& known = registry();
@@ -60,7 +65,7 @@ void notified (CFNotificationCenterRef, void* observerKey, CFNotificationName, c
         weak = found->second;
     }
     const auto* audioUnit = audioUnitIn (userInfo);
-    juce::MessageManager::callAsync ([weak, audioUnit] {
+    juce::MessageManager::callAsync ([weak, audioUnit, receipt] {
         const auto alive = weak.lock();
         if (alive == nullptr)
             return;
@@ -69,10 +74,15 @@ void notified (CFNotificationCenterRef, void* observerKey, CFNotificationName, c
             core::logEvent (core::Level::debug, "plugin.invalidation_without_unit", {});
             return;
         }
-        alive->handler (audioUnit);
+        alive->handler (audioUnit, receipt);
     });
 }
 } // namespace
+
+InvalidationWatch::Receipt InvalidationWatch::lastReceipt()
+{
+    return receiptsSoFar.load (std::memory_order_acquire);
+}
 
 InvalidationWatch::InvalidationWatch (Handler handler) : observer (std::make_shared<Observer> (Observer { std::move (handler) }))
 {

@@ -10,9 +10,14 @@
 // than once, so the handler must be idempotent (plugin::InsertHost::audioUnitInvalidated is).
 //
 // The notification arrives on whatever thread Core Audio posts it from; the handler is called
-// later on the message thread with the AU instance (AudioUnit) its userInfo names. A notification
-// that names no instance is dropped (logged as plugin.invalidation_without_unit, debug). The
-// handler is never called once the watch is destroyed.
+// later on the message thread with the AU instance (AudioUnit) its userInfo names and the
+// notification's Receipt. A notification that names no instance is dropped (logged as
+// plugin.invalidation_without_unit, debug). The handler is never called once the watch is destroyed.
+//
+// Receipts (issue #66): by the time the handler runs, the named AU may be gone and a newly loaded
+// AU may have its address. Every notification is numbered when Core Audio delivers it, after every
+// one delivered before it (process-wide, across watches); an AU created after lastReceipt() was
+// N cannot be the one a notification with Receipt <= N names.
 //
 // Construct and destroy on the message thread.
 namespace overdub::plugin
@@ -20,7 +25,11 @@ namespace overdub::plugin
 class InvalidationWatch
 {
 public:
-    using Handler = std::function<void (const void* audioUnit)>;
+    using Receipt = std::uint64_t;
+    using Handler = std::function<void (const void* audioUnit, Receipt receipt)>;
+
+    // The Receipt of the last notification received so far (0 before the first). Any thread.
+    static Receipt lastReceipt();
 
     explicit InvalidationWatch (Handler handler);
     ~InvalidationWatch();

@@ -127,10 +127,12 @@ public:
     // used it) and tail_seconds (as loaded): a dead plugin is not asked,
     // out_of_process, crashes, will_reload).
     void pluginCrashed (const juce::AudioProcessor& processor);
-    // kAudioComponentInstanceInvalidationNotification named this AU instance (InvalidationWatch):
-    // pluginCrashed for the ready slot whose AU it is; plugin.invalidation_unmatched (debug:
-    // matched none) otherwise.
-    void audioUnitInvalidated (const void* audioUnit);
+    // kAudioComponentInstanceInvalidationNotification named this AU instance (InvalidationWatch),
+    // received as `receipt`: pluginCrashed for the ready slot whose AU it is, unless that slot's
+    // load was requested after the notification was received (its AU reuses a dead AU's address,
+    // issue #66); plugin.invalidation_unmatched (debug: reused_address, true when such a slot had
+    // the address) otherwise.
+    void audioUnitInvalidated (const void* audioUnit, InvalidationWatch::Receipt receipt);
     // True for a crashed slot that will not reload (it crashed more than maxCrashReloads times).
     bool crashedForGood (const song::Id& slotId) const;
     // Every crash since the last call, in the order they happened.
@@ -156,6 +158,9 @@ private:
         std::shared_ptr<std::atomic<bool>> crashedFlag;
         int crashes = 0;
         double tailSecondsAtLoad = 0.0; // read while alive: a dead AU is never asked again
+        // InvalidationWatch::lastReceipt() when its load was requested: no notification up to it
+        // names its AU, which did not exist yet.
+        InvalidationWatch::Receipt lastReceiptAtRequest = 0;
     };
 
     void request (const song::InsertSlot& slot);
@@ -179,6 +184,6 @@ private:
     // Expires with the host, so an instantiation that finishes later drops its processor.
     std::shared_ptr<int> lifetime = std::make_shared<int> (0);
     // Last: destroyed first, so no crash notification reaches a host being torn down.
-    InvalidationWatch invalidations { [this] (const void* audioUnit) { audioUnitInvalidated (audioUnit); } };
+    InvalidationWatch invalidations { [this] (const void* audioUnit, InvalidationWatch::Receipt receipt) { audioUnitInvalidated (audioUnit, receipt); } };
 };
 } // namespace overdub::plugin

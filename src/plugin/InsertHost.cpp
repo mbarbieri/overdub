@@ -74,6 +74,7 @@ void InsertHost::request (const song::InsertSlot& slot)
     entry.slot = slot;
     entry.status = InsertStatus::loading;
     entry.request = nextRequest++;
+    entry.lastReceiptAtRequest = InvalidationWatch::lastReceipt();
     core::logEvent (core::Level::debug, "plugin.insert_requested", { { "slot_id", slot.id }, { "component", componentText (slot.component) } });
 
     if (! instantiate)
@@ -262,15 +263,23 @@ void InsertHost::pluginCrashed (const juce::AudioProcessor& crashedProcessor)
     }
 }
 
-void InsertHost::audioUnitInvalidated (const void* audioUnit)
+void InsertHost::audioUnitInvalidated (const void* audioUnit, InvalidationWatch::Receipt receipt)
 {
+    bool reusedAddress = false;
     for (auto& [slotId, entry] : entries)
     {
-        if (entry.status == InsertStatus::ready && audioUnit != nullptr && audioUnitHandle (*entry.processor) == audioUnit)
-            return markCrashed (slotId, entry);
+        if (entry.status != InsertStatus::ready || audioUnit == nullptr || audioUnitHandle (*entry.processor) != audioUnit)
+            continue;
+        // Received before this slot's AU was requested: it names a dead AU whose address this one reuses.
+        if (receipt <= entry.lastReceiptAtRequest)
+        {
+            reusedAddress = true;
+            continue;
+        }
+        return markCrashed (slotId, entry);
     }
     // The notification comes more than once per crash, and for AUs other hosts' code made.
-    core::logEvent (core::Level::debug, "plugin.invalidation_unmatched", {});
+    core::logEvent (core::Level::debug, "plugin.invalidation_unmatched", { { "reused_address", reusedAddress } });
 }
 
 void InsertHost::markCrashed (const song::Id& slotId, Entry& entry)
