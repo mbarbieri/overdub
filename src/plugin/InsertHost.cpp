@@ -43,7 +43,7 @@ InsertHost::~InsertHost()
         release (entry);
 }
 
-void InsertHost::sync (const song::Song& song)
+void InsertHost::sync (const song::Song& song, RemovedSlots removed)
 {
     std::set<song::Id> wanted;
     for (const auto* slot : slotsOf (song))
@@ -53,6 +53,8 @@ void InsertHost::sync (const song::Song& song)
             request (*slot);
     }
 
+    if (removed == RemovedSlots::keep)
+        return;
     for (auto entry = entries.begin(); entry != entries.end();)
     {
         if (wanted.contains (entry->first))
@@ -169,6 +171,15 @@ engine::InsertFactory InsertHost::insertFactory()
                 nodes.push_back (std::make_unique<engine::SharedInsertNode> (found->second.processor, found->second.crashed));
         return nodes;
     };
+}
+
+std::set<song::Id> InsertHost::renderedSlots (const song::Song& song) const
+{
+    std::set<song::Id> rendered;
+    for (const auto* slot : slotsOf (song))
+        if (! slot->bypassed && status (slot->id) == InsertStatus::ready)
+            rendered.insert (slot->id);
+    return rendered;
 }
 
 std::optional<InsertStatus> InsertHost::status (const song::Id& slotId) const

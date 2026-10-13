@@ -462,9 +462,8 @@ TEST_CASE ("a plugin crash during an export stops it, leaves no file and reports
     REQUIRE (f.openSong->addInsert (f.trackNamed ("Guitar").id, testPlugin).has_value());
     auto* plugin = fake.succeed (0, 0);
     f.openSong->poll();
-    juce::TemporaryFile folder;
-    REQUIRE (folder.getFile().createDirectory());
-    const auto destination = folder.getFile().getChildFile ("Song.wav");
+    ExportFolder folder;
+    const auto destination = folder.root.getChildFile ("Song.wav");
 
     REQUIRE (f.openSong->startExport ({ overdub::exporting::ExportFormat::wav, destination }).has_value());
     f.device.run (f.engine, 1); // the audio thread lets go of the plugins
@@ -477,7 +476,6 @@ TEST_CASE ("a plugin crash during an export stops it, leaves no file and reports
     CHECK_FALSE (f.openSong->isExporting());
     CHECK_FALSE (destination.exists());
     CHECK_FALSE (f.openSong->lastExportedFile().has_value());
-    folder.getFile().deleteRecursively();
 }
 
 TEST_CASE ("a crash in a plugin the export does not render leaves the export running and its file intact", "[ui][open_song][inserts][crash][export]")
@@ -584,4 +582,23 @@ TEST_CASE ("an Insert removed during an export is released once the export ends"
 
     CHECK (f.openSong->lastExportedFile() == destination);
     CHECK_FALSE (f.openSong->insertStatus (slotId).has_value());
+}
+
+TEST_CASE ("an Insert added during an export loads at once, and its crash leaves the export running", "[ui][open_song][inserts][crash][export]")
+{
+    FakeInstantiator fake;
+    InsertsFixture f { fake.instantiator() };
+    ExportFolder folder;
+    const auto destination = folder.root.getChildFile ("Song.wav");
+    startRendering (f, destination);
+
+    REQUIRE (f.openSong->addInsert (f.trackNamed ("Guitar").id, testPlugin).has_value());
+    REQUIRE (fake.requests.size() == 1);
+    auto* plugin = fake.succeed (0, 0);
+    CHECK (f.openSong->insertStatus (f.guitarSlot().id) == InsertStatus::ready);
+    f.openSong->insertHost().pluginCrashed (*plugin);
+
+    CHECK (codesOf (f.openSong->poll()) == std::vector<std::string> { "ui.plugin_crashed" });
+    CHECK (codesOf (pollUntilExported (f)).empty());
+    CHECK (f.openSong->lastExportedFile() == destination);
 }

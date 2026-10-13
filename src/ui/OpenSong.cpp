@@ -7,8 +7,6 @@
 #include "ui/TrackRowEdits.h"
 
 #include <algorithm>
-#include <set>
-#include <vector>
 
 namespace overdub::ui
 {
@@ -16,21 +14,6 @@ namespace
 {
 // Plugins are prepared for this block size when no device is open.
 constexpr int blockSizeWithoutDevice = 512;
-
-// The Insert Chain slots of the Song a plan plays: every one not bypassed (the Tracks' and the Master's).
-std::set<song::Id> playedSlotsOf (const song::Song& song)
-{
-    std::set<song::Id> played;
-    const auto addChain = [&played] (const std::vector<song::InsertSlot>& chain) {
-        for (const auto& slot : chain)
-            if (! slot.bypassed)
-                played.insert (slot.id);
-    };
-    for (const auto& track : song.tracks)
-        addChain (track.insertChain);
-    addChain (song.master.insertChain);
-    return played;
-}
 } // namespace
 
 OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio, plugin::Instantiator instantiate)
@@ -591,10 +574,8 @@ void OpenSong::reloadEngine()
 {
     // While an export runs, a slot an edit removed stays hosted: the export's plan may render it,
     // and only a hosted plugin's crash is heard.
-    if (isExporting())
-        return;
-    inserts.sync (song());
-    if (binding.engine != nullptr)
+    inserts.sync (song(), isExporting() ? plugin::RemovedSlots::keep : plugin::RemovedSlots::release);
+    if (binding.engine != nullptr && ! isExporting())
         binding.engine->loadSong (songForEngine (song(), monitored), package_->location(), inserts.insertFactory());
 }
 
@@ -627,6 +608,8 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, so
         fields["length"] = exporting::videoLengthName (request.videoLength);
     }
     core::logEvent (core::Level::info, "ui.export_requested", fields);
+    // Until its render is built, the export counts on the slots the Song's plan rendered.
+    exportSlots = inserts.renderedSlots (song());
     exportWaiting = std::move (request);
     movieWaiting = std::move (movie);
     exportRequestedAt = now;
@@ -653,10 +636,7 @@ void OpenSong::startExportOnceAudioLetGo()
         return;
     // The audio thread renders the empty plan now: the export may run the plugins.
     inserts.sync (song());
-    exportSlots.clear();
-    for (const auto& slotId : playedSlotsOf (song()))
-        if (inserts.status (slotId) == plugin::InsertStatus::ready)
-            exportSlots.insert (slotId);
+    exportSlots = inserts.renderedSlots (song());
     auto render = std::make_unique<exporting::MixRender> (song(), package_->location(), blockSizeOf (binding), inserts.insertFactory());
     if (movieWaiting.has_value())
         exportJob = std::make_unique<exporting::ExportJob> (std::move (render), std::move (*exportWaiting), std::move (*movieWaiting));
@@ -704,10 +684,7 @@ std::vector<core::Error> OpenSong::advanceExport (song::SongPackage::Clock::time
 
 bool OpenSong::exportRenders (const song::Id& slotId) const
 {
-    if (exportJob != nullptr)
-        return exportSlots.contains (slotId);
-    // Not rendering yet: its plan will hold the Song's slots that are not bypassed.
-    return exportWaiting.has_value() && playedSlotsOf (song()).contains (slotId);
+    return isExporting() && exportSlots.contains (slotId);
 }
 
 juce::File OpenSong::exportDestination() const

@@ -62,7 +62,8 @@
 // ui.export_audio_unresponsive (path, waited_ms; an Alert). The plugins are never taken over
 // while a plan that may still render them is current: the device may call back at any moment. A
 // slot an edit removes during an export keeps rendering in it and stays hosted (its crash is still
-// heard) until the export ends; no slot is loaded or released while an export runs (issue #65).
+// heard) until the export ends: no slot is released while an export runs (issue #65). A slot
+// added meanwhile loads as usual; the export does not render it.
 //
 // Plugin crash recovery (issue #40, ADR 0002 amendment): when a plugin's hosting process dies, the
 // InsertHost marks its slot crashed and its nodes pass audio through at once. poll() reports it
@@ -264,8 +265,8 @@ public:
     std::vector<core::Error> poll (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
 
 private:
-    // Syncs the InsertHost with the Song and loads it into the engine. Does nothing while an export
-    // runs (the engine keeps its empty Song, removed slots stay hosted); after it, poll() reloads.
+    // Syncs the InsertHost with the Song and loads it into the engine. While an export runs, removed
+    // slots stay hosted and the engine keeps its empty Song; after it, poll() reloads.
     void reloadEngine();
     void startExportOnceAudioLetGo();
     std::vector<core::Error> advanceExport (song::SongPackage::Clock::time_point now);
@@ -285,7 +286,8 @@ private:
     std::vector<core::Error> handleCameraChanges();
     void disarmLostCamera();
     juce::File exportDestination() const;
-    // Whether the export's plan renders (or, while it waits for the audio, will render) this slot.
+    // Whether the export's plan renders this slot (while it waits for the audio: whether the Song's
+    // plan rendered it when the export was requested).
     bool exportRenders (const song::Id& slotId) const;
     // Stops the export (deleting the file of one that already finished) and reloads the engine.
     void discardExport();
@@ -313,7 +315,7 @@ private:
     std::optional<song::SampleCount> preRollPoint; // the running Pass's record point, when it used pre-roll
     video::VideoPlayback playback;
     std::optional<exporting::ExportRequest> exportWaiting; // until the audio thread takes the empty plan
-    std::set<song::Id> exportSlots;                        // the slots the running export's plan renders
+    std::set<song::Id> exportSlots;                        // with an export: the slots it renders (exportRenders)
     std::optional<exporting::MovieSource> movieWaiting;    // with exportWaiting, for an MP4
     song::SongPackage::Clock::time_point exportRequestedAt; // with exportWaiting
     std::unique_ptr<exporting::ExportJob> exportJob;
