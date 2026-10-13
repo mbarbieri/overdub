@@ -25,8 +25,8 @@
 // Logs export.started (format mp4, path, video_take_id, length, start_sample, end_sample,
 // sample_rate) and export.finished (format, path, samples, elapsed_ms).
 //
-// Errors: export.nothing_to_export (the range is empty: the Video Take ends before Song sample 0),
-// export.cancelled, export.video_take_unreadable (path, video_take_id, reason),
+// Errors: export.video_take_outside_song (video_take_id, end_sample: the range is empty because
+// the Video Take ends before Song sample 0), export.cancelled, export.video_take_unreadable (path, video_take_id, reason),
 // export.movie_failed (step: compose_audio | compose_video | encode,
 // detail), export.write_failed (as exportMix's).
 namespace overdub::exporting

@@ -336,3 +336,23 @@ TEST_CASE ("a stopped MP4 export of a Song with no Clips leaves no file", "[expo
     CHECK (exported.error().fields.at ("samples_written") == 3 * 256);
     CHECK (destination.getParentDirectory().findChildFiles (juce::File::findFilesAndDirectories, false, "*", juce::File::FollowSymlinks::no).isEmpty());
 }
+
+TEST_CASE ("an MP4 trimmed to a Video Take that ends before the Song starts is refused, not blamed on the Clips", "[export][mp4][outside_song]")
+{
+    FlashFixture f;
+    // The 10 s Video Take ends 1 s before Song sample 0; the Song keeps its Clips.
+    f.videoTake.startSample = -11 * testSampleRate;
+    MixRender render { f.mix, f.package.root, 256, {} };
+    REQUIRE (render.totalSamples() == mixLength);
+    const auto destination = f.package.root.getChildFile ("exports/Before.mp4");
+
+    core::ScopedLogCapture capture;
+    const auto exported = overdub::exporting::exportMovie (render, f.request (VideoLength::trimToVideoTake, destination), f.source());
+    REQUIRE_FALSE (exported.has_value());
+    CHECK (exported.error().code == "export.video_take_outside_song");
+    CHECK (exported.error().fields.at ("video_take_id") == "video-1");
+    CHECK (exported.error().fields.at ("end_sample") < 0);
+    CHECK_FALSE (destination.exists());
+    CHECK_FALSE (destination.getParentDirectory().exists()); // nothing was started
+    CHECK (eventsNamed (capture, "export.started").empty());
+}

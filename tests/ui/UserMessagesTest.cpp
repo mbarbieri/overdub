@@ -18,6 +18,8 @@ TEST_CASE ("situations the user need not decide on are Notices; lost data and fa
     CHECK (tierFor ("ui.calibration_running") == Tier::notice);
     CHECK (tierFor ("capture.calibration_timeout") == Tier::notice);
     CHECK (tierFor ("capture.clap_no_video_take") == Tier::notice);
+    CHECK (tierFor ("export.nothing_to_export") == Tier::notice);
+    CHECK (tierFor ("export.video_take_outside_song") == Tier::notice);
 
     CHECK (tierFor ("capture.take_write_failed") == Tier::alert);
     CHECK (tierFor ("song.import_unreadable") == Tier::alert);
