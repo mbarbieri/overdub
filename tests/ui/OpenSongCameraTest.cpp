@@ -6,10 +6,13 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <memory>
+#include <thread>
 
 using overdub::capture::RecordLatency;
 using overdub::capture::testing::FakeCamera;
+using overdub::capture::testing::MovieGate;
 using overdub::engine::Engine;
 using overdub::engine::EngineConfig;
 using overdub::song::SongPackage;
@@ -203,4 +206,53 @@ TEST_CASE ("the camera arm and choice are ignored while a Pass runs", "[ui][came
     REQUIRE (fixture.openSong->setCameraDevice ("camera-usb").has_value());
     CHECK_FALSE (fixture.openSong->song().cameraArmed);
     CHECK (fixture.openSong->song().cameraDeviceId.empty());
+}
+
+TEST_CASE ("the window does not wait while a slow movie completes; the Pass is added once it has", "[ui][camera][record]")
+{
+    CameraFixture fixture;
+    REQUIRE (fixture.openSong->attachCamera (&fixture.camera, fixture.calibrationFile).has_value());
+    REQUIRE (fixture.openSong->setCameraArmed (true).has_value());
+    fixture.camera.movie.firstFrameHostNs = firstBlockHostNs + 100'000'000ULL;
+    fixture.camera.movie.frames = 10;
+    fixture.camera.finishGate = std::make_shared<MovieGate>();
+
+    REQUIRE (fixture.openSong->record().has_value());
+    fixture.device.run (fixture.engine, 50);
+    fixture.openSong->stop();
+    fixture.device.run (fixture.engine, 1);
+
+    // No message-thread wait longer than a 60 Hz frame while the movie completes.
+    constexpr auto oneFrame = std::chrono::microseconds (16'667);
+    for (int poll = 0; poll < 3; ++poll)
+    {
+        const auto before = std::chrono::steady_clock::now();
+        CHECK (fixture.openSong->poll().empty());
+        CHECK (std::chrono::steady_clock::now() - before < oneFrame);
+    }
+    CHECK (fixture.camera.moviesEnded == 1);
+    // The Pass is not in the Song yet, and the Song stays as the Pass started.
+    CHECK (fixture.openSong->isRecording());
+    CHECK (fixture.openSong->song().passes.empty());
+    CHECK_FALSE (fixture.openSong->package().canUndo());
+
+    fixture.camera.finishGate->release();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (5);
+    // The finishing poll writes the Takes and song.json, as without a camera: not timed here.
+    while (fixture.openSong->isRecording() && std::chrono::steady_clock::now() < deadline)
+    {
+        CHECK (fixture.openSong->poll().empty());
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    REQUIRE_FALSE (fixture.openSong->isRecording());
+
+    // One undo step holds the Pass, its Take and its Video Take.
+    const auto& song = fixture.openSong->song();
+    CHECK (song.passes.size() == 1);
+    REQUIRE (song.videoTakes.size() == 1);
+    CHECK (song.videoTakes[0].passId == song.passes[0].id);
+    CHECK (fixture.openSong->package().undoLabel() == "Record Pass 1");
+    REQUIRE (fixture.openSong->undo().has_value());
+    CHECK (fixture.openSong->song().passes.empty());
+    CHECK (fixture.openSong->song().videoTakes.empty());
 }

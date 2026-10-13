@@ -359,8 +359,13 @@ std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point no
     for (auto& error : advanceExport (now))
         errors.push_back (std::move (error));
     if (recorder != nullptr && recorder->hasStopped())
-        for (auto& error : finishPass (recorder->finish (now)))
-            errors.push_back (std::move (error));
+    {
+        // The movie completes off this thread (issue #70): the Pass is finished once it has.
+        recorder->prepareFinish();
+        if (recorder->isReadyToFinish())
+            for (auto& error : finishPass (recorder->finish (now)))
+                errors.push_back (std::move (error));
+    }
 
     // A crashed plugin reloads only once no Pass or export runs (a Pass keeps its plan anyway).
     if (recorder == nullptr && ! isExporting())

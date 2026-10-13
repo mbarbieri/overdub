@@ -359,6 +359,32 @@ void PassRecorder::logPassStopped (const RecordedPass& pass, const char* outcome
                     });
 }
 
+void PassRecorder::prepareFinish()
+{
+    if (finishPrepared || ! hasStopped())
+        return;
+    finishPrepared = true;
+    stopIoThread();
+    for (auto& writer : writers)
+        writer->close();
+
+    // Only a Pass that will be kept ends its movie; finish() discards the others' movies.
+    const auto captured = session->capturedFrames() > 0;
+    const auto writeFailed = std::ranges::any_of (writers, [] (const auto& writer) { return writer->failed; });
+    if (movie.has_value() && captured && ! writeFailed)
+    {
+        movieEnding = options.camera->endMovie();
+        core::logEvent (core::Level::info, "capture.video_ending", { { "pass_id", passIdentifier }, { "video_take_id", movie->videoTakeId } });
+    }
+}
+
+bool PassRecorder::isReadyToFinish() const
+{
+    if (! finishPrepared)
+        return false;
+    return ! movieEnding.valid() || movieEnding.wait_for (std::chrono::seconds (0)) == std::future_status::ready;
+}
+
 core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::time_point now)
 {
     if (finished)
@@ -366,7 +392,7 @@ core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::tim
     if (! hasStopped())
         return std::unexpected (core::Error { "capture.not_stopped", "the audio thread has not ended the Pass yet", { { "pass_id", passIdentifier } } });
 
-    stopIoThread();
+    prepareFinish();
     finished = true;
 
     RecordedPass pass;
@@ -375,9 +401,6 @@ core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::tim
     pass.lengthSamples = session->capturedFrames();
     pass.anchors = std::move (anchors);
     pass.overrunFrames = session->overrunFrames();
-
-    for (auto& writer : writers)
-        writer->close();
 
     if (pass.lengthSamples == 0)
     {
@@ -492,7 +515,10 @@ void PassRecorder::discardMovie()
         return;
     const auto inProgress = std::move (*movie);
     movie.reset();
-    options.camera->cancelMovie();
+    if (movieEnding.valid())
+        (void) movieEnding.get(); // the camera no longer writes it, but completes it: wait, then delete
+    else
+        options.camera->cancelMovie();
     inProgress.tempFile.deleteFile();
     core::logEvent (core::Level::info, "capture.video_stopped", { { "pass_id", passIdentifier }, { "video_take_id", inProgress.videoTakeId }, { "outcome", "discarded" } });
 }
@@ -516,7 +542,10 @@ std::optional<song::VideoTake> PassRecorder::finishMovie (RecordedPass& pass)
         return std::nullopt;
     };
 
-    const auto ended = options.camera->endMovie();
+    // Invariant: prepareFinish() ended the movie of every Pass that reaches here.
+    if (! OVERDUB_CHECK (movieEnding.valid(), "capture.movie_not_ended", { "pass_id", passIdentifier }))
+        return failed (core::Error { "capture.movie_write_failed", "the movie was not ended", { { "pass_id", passIdentifier }, { "reason", "not ended" } } });
+    const auto ended = movieEnding.get();
     if (! ended.has_value())
         return failed (ended.error());
 

@@ -101,3 +101,7 @@ The Song's rate stays fixed. Overdub never plays or records a Song through a dev
 - **Between the device manager and the rebuild**: JUCE's device manager reopens a fallback device (or the same device at its new rate) itself, with the old binding still registered. Until the window's next device poll (≤ 100 ms) builds a new `LiveEngine`, the old engine may run on it with its transport stopped. A reconfigure during a Pass stops the device first (JUCE restarts it), so it too ends the Pass with `ui.audio_device_lost_during_pass` ("The audio device stopped during the Pass").
 - **Without a device**: `appeared` counts only an output device not listed when the `LiveEngine` was built: one listed then had already failed to open, and reopening it on every change message would loop.
 - **Known limit**: a device that stops calling back without the device manager stopping it (no `audioDeviceStopped`) is not detected. A Pass on it ends with `capture.stop_timeout` when it is stopped, as before. An export on it fails after 5 s with `ui.export_audio_unresponsive` (an Alert; issue #64) instead of waiting forever.
+
+## Amendment: plugin state is still read on the message thread (issue #70)
+
+- Capturing every plugin's state on each history step and debounced write, and listing the installed effects, stay synchronous on the message thread; the reasons are recorded in ADR 0003's issue #70 amendment, which moved the movie's completion off it.

@@ -5,8 +5,10 @@
 #include <juce_core/juce_core.h>
 
 #include <cstdint>
+#include <future>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 // The camera a Pass records its Video Take from (ADR 0003): a plain C++ interface over
@@ -37,6 +39,17 @@ struct CameraMovie
     double longestGapSeconds = 0.0;     // the longest interval between two written frames
 };
 
+// A movie being completed off the camera's calling thread (issue #70); ready once the file is.
+using MovieCompletion = std::future<core::Expected<CameraMovie>>;
+
+// A completion that is already ready: for a movie that could not be ended, or completed at once.
+inline MovieCompletion completedMovie (core::Expected<CameraMovie> result)
+{
+    std::promise<core::Expected<CameraMovie>> ready;
+    ready.set_value (std::move (result));
+    return ready.get_future();
+}
+
 class Camera
 {
 public:
@@ -61,10 +74,14 @@ public:
     // Starts writing every frame from the next one on into `movieFile` (H.264 QuickTime movie).
     // Errors: capture.camera_not_open, capture.movie_write_failed (path, reason).
     virtual core::Expected<void> beginMovie (const juce::File& movieFile) = 0;
-    // Stops writing and waits until the file is complete.
+    // Stops writing and returns at once; the file is completed off the calling thread (AVFoundation
+    // may take seconds, issue #70) and the future becomes ready once it is. The movie's facts (camera,
+    // clock rate, drops) are those of the moment it ended: the camera may close or begin the next
+    // movie meanwhile. Implementations complete it with std::async, whose future waits for the
+    // completion when destroyed.
     // Errors: capture.camera_not_open (no movie is being written, e.g. the camera closed),
     // capture.movie_no_frames, capture.movie_write_failed (path, reason).
-    virtual core::Expected<CameraMovie> endMovie() = 0;
+    virtual MovieCompletion endMovie() = 0;
     // Stops writing without finishing the file, and deletes it: a movie no Pass will keep.
     virtual void cancelMovie() = 0;
 

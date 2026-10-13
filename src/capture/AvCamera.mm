@@ -9,8 +9,10 @@
 #import <CoreMedia/CoreMedia.h>
 
 #include <atomic>
+#include <future>
 #include <memory>
 #include <optional>
+#include <system_error>
 
 // Compiled with ARC (src/capture/CMakeLists.txt).
 namespace overdub::capture
@@ -204,7 +206,7 @@ public:
         return {};
     }
 
-    core::Expected<CameraMovie> endMovie() override
+    MovieCompletion endMovie() override
     {
         __block std::unique_ptr<MovieWriter> finishing;
         __block std::optional<std::uint64_t> firstHostNs;
@@ -215,24 +217,45 @@ public:
           dropped = droppedFrames;
         });
         if (finishing == nullptr)
-            return std::unexpected (core::Error { "capture.camera_not_open", "no movie was being written: the camera closed", {} });
+            return completedMovie (std::unexpected (core::Error { "capture.camera_not_open", "no movie was being written: the camera closed", {} }));
 
-        const auto stats = finishing->finish();
-        if (! stats.has_value())
-            return std::unexpected (stats.error());
+        // Read now: the camera may close (or begin the next movie) while the file completes.
+        CameraMovie ended;
+        ended.cameraId = current.has_value() ? current->id : std::string {};
+        ended.captureClockRate = syncClock != nullptr ? CMSyncGetRelativeRate (syncClock, CMClockGetHostTimeClock()) : 1.0;
+        ended.droppedFrames = dropped;
+        const auto startHostNs = firstHostNs;
+        const auto path = finishing->file().getFullPathName().toStdString();
 
-        if (! firstHostNs.has_value())
-            return std::unexpected (core::Error { "capture.movie_write_failed", "the movie's start time is unknown", { { "path", finishing->file().getFullPathName().toStdString() }, { "reason", "no first frame host time" } } });
+        // AVFoundation may take seconds to complete the file (issue #70): never on the calling thread.
+        auto complete = [writer = std::move (finishing), startHostNs, ended]() mutable -> core::Expected<CameraMovie> {
+            const core::ScopedThreadRole role { core::ThreadRole::worker };
+            core::Expected<MovieWriterStats> stats;
+            @autoreleasepool // a plain thread has no pool of its own
+            {
+                stats = writer->finish();
+            }
+            if (! stats.has_value())
+                return std::unexpected (stats.error());
+            if (! startHostNs.has_value())
+                return std::unexpected (core::Error { "capture.movie_write_failed", "the movie's start time is unknown", { { "path", writer->file().getFullPathName().toStdString() }, { "reason", "no first frame host time" } } });
 
-        CameraMovie finished;
-        finished.cameraId = current.has_value() ? current->id : std::string {};
-        finished.firstFrameHostNs = *firstHostNs;
-        finished.captureClockRate = syncClock != nullptr ? CMSyncGetRelativeRate (syncClock, CMClockGetHostTimeClock()) : 1.0;
-        finished.frames = stats->frames;
-        finished.droppedFrames = dropped + stats->refusedFrames;
-        finished.durationSeconds = stats->durationSeconds();
-        finished.longestGapSeconds = (double) stats->longestGapNs / 1.0e9;
-        return finished;
+            auto finished = ended;
+            finished.firstFrameHostNs = *startHostNs;
+            finished.frames = stats->frames;
+            finished.droppedFrames += stats->refusedFrames;
+            finished.durationSeconds = stats->durationSeconds();
+            finished.longestGapSeconds = (double) stats->longestGapNs / 1.0e9;
+            return finished;
+        };
+        try
+        {
+            return std::async (std::launch::async, std::move (complete));
+        }
+        catch (const std::system_error& error) // no thread could be started
+        {
+            return completedMovie (std::unexpected (core::Error { "capture.movie_write_failed", "the movie could not be completed", { { "path", path }, { "reason", error.what() } } }));
+        }
     }
 
     void cancelMovie() override
