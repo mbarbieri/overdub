@@ -337,21 +337,26 @@ TEST_CASE ("a stopped MP4 export of a Song with no Clips leaves no file", "[expo
     CHECK (destination.getParentDirectory().findChildFiles (juce::File::findFilesAndDirectories, false, "*", juce::File::FollowSymlinks::no).isEmpty());
 }
 
-TEST_CASE ("an MP4 trimmed to a Video Take that ends before the Song starts is refused, not blamed on the Clips", "[export][mp4][outside_song]")
+TEST_CASE ("an MP4 of a Video Take that ends before the Song starts is refused, not blamed on the Clips", "[export][mp4][outside_song]")
 {
     FlashFixture f;
-    // The 10 s Video Take ends 1 s before Song sample 0; the Song keeps its Clips.
+    // The 10 s Video Take ends 1 s before Song sample 0. Trimmed, the Song keeps its Clips; the full
+    // song is empty only without Clips.
     f.videoTake.startSample = -11 * testSampleRate;
+    const auto length = GENERATE (VideoLength::trimToVideoTake, VideoLength::fullSong);
+    CAPTURE (overdub::exporting::videoLengthName (length));
+    if (length == VideoLength::fullSong)
+        f.mix.tracks.clear();
     MixRender render { f.mix, f.package.root, 256, {} };
-    REQUIRE (render.totalSamples() == mixLength);
+    REQUIRE (render.totalSamples() == (length == VideoLength::fullSong ? 0 : mixLength));
     const auto destination = f.package.root.getChildFile ("exports/Before.mp4");
 
     core::ScopedLogCapture capture;
-    const auto exported = overdub::exporting::exportMovie (render, f.request (VideoLength::trimToVideoTake, destination), f.source());
+    const auto exported = overdub::exporting::exportMovie (render, f.request (length, destination), f.source());
     REQUIRE_FALSE (exported.has_value());
     CHECK (exported.error().code == "export.video_take_outside_song");
     CHECK (exported.error().fields.at ("video_take_id") == "video-1");
-    CHECK (exported.error().fields.at ("end_sample") < 0);
+    CHECK (exported.error().fields.at ("video_take_end_sample") < 0);
     CHECK_FALSE (destination.exists());
     CHECK_FALSE (destination.getParentDirectory().exists()); // nothing was started
     CHECK (eventsNamed (capture, "export.started").empty());

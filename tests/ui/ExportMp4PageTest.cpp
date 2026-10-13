@@ -350,6 +350,7 @@ TEST_CASE ("an MP4 of a Video Take that ends before the Song starts is a Notice 
     REQUIRE (refused.size() == 1);
     CHECK (refused[0]["lvl"] == "warn");
     CHECK (refused[0]["video_take_id"] == videoTake);
+    CHECK (refused[0]["video_take_end_sample"] == -rate);
     CHECK (! file.exists());
 }
 
