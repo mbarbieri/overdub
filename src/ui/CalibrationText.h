@@ -25,4 +25,8 @@ std::string cameraCalibrationText (std::optional<double> storedOffsetMs);
 // played through, or that no clap was seen. An empty outputDevice (not known, e.g. a format 1 Video
 // Take) says that no calibration can be stored (issue #68).
 std::string clapResultText (const capture::ClapReport& report, const std::string& outputDevice);
+
+// What was just stored from a clap measurement, and for which output device: the panel's status
+// shows the calibration for the open device, which may be another one (issue #88).
+std::string cameraCalibrationSavedText (double offsetMs, const std::string& outputDevice);
 } // namespace overdub::ui

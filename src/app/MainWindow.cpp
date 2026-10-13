@@ -548,5 +548,7 @@ void MainWindow::saveCameraCalibration (const capture::CameraCalibrationKey& key
     if (auto written = capture::writeCameraCalibration (capture::defaultCameraCalibrationFile(), key, offsetMs); ! written.has_value())
         return content.handleError (written.error());
     refreshCalibrationPanel();
+    if (calibrationPanel != nullptr && ! latencyMeasuring())
+        calibrationPanel->showCameraSaved (key, offsetMs);
 }
 } // namespace overdub::app

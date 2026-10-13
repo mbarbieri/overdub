@@ -177,6 +177,25 @@ TEST_CASE ("measuring the last clap Pass offers the camera calibration it implie
     CHECK (textOf (panel.clapResultLabel) == "No Pass has a Video Take yet. Arm the camera and record a Pass clapping in frame.");
 }
 
+TEST_CASE ("a clap calibration saved for another output device is confirmed with that device, not read as Not calibrated", "[ui][calibration]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    CalibrationPanel panel;
+    layOut (panel, 460, 520);
+    panel.show (builtInDevices());
+    panel.onSaveCamera = [&] (const CameraCalibrationKey& key, double offsetMs) {
+        // What the app does: refresh from the stores (the open device has none), then confirm.
+        panel.show (builtInDevices());
+        panel.showCameraSaved (key, offsetMs);
+    };
+
+    panel.showClapResult (clapsWithMeanOffset (25.0, 480));
+    click (panel.saveCameraButton);
+
+    CHECK (textOf (panel.clapResultLabel).starts_with ("Saved: 35.0 ms (video late) for Scarlett 2i2 USB."));
+    CHECK_FALSE (isShown (panel.saveCameraButton));
+}
+
 TEST_CASE ("a clap Pass whose output device is not known offers no camera calibration and says why", "[ui][calibration]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
