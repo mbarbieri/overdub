@@ -90,8 +90,9 @@ public:
     // Presents a Notice-tier code that was already logged where it arose (e.g. song.history_dropped).
     void showNotice (const std::string& code);
 
-    // One poll: finish a stopped Pass, write a due song.json, refresh, present messages.
-    void tick();
+    // One poll at `now` (OpenSong::poll): finish a stopped Pass, write a due song.json, refresh,
+    // present messages.
+    void tick (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
     // One display refresh: shows the frame heard `refreshNs` after `nowHostNs` on the screens
     // that show playback.
     void refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs = defaultRefreshNs);

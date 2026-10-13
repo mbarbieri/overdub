@@ -269,6 +269,51 @@ TEST_CASE ("closing the audio stops a running export", "[ui][export]")
     CHECK (stopped[0]["phase"] == "waiting_for_audio");
 }
 
+TEST_CASE ("an export whose audio device stopped calling back fails with an Alert after a bounded wait", "[ui][export]")
+{
+    MainWindowFixture f;
+    ExportFolder folder;
+    auto& window = *f.window;
+    REQUIRE (pressKey (window, '3'));
+    f.engine.play();
+    f.runBlocks (2);
+    REQUIRE (f.engine.isPlaying());
+
+    // From here on the device never calls back: the audio thread never takes the empty plan.
+    ScopedLogCapture capture;
+    const auto destination = folder.root.getChildFile ("Song.wav");
+    const auto requestedAt = std::chrono::steady_clock::now();
+    REQUIRE (f.openSong->startExport ({ ExportFormat::wav, destination }, requestedAt).has_value());
+    window.tick (requestedAt + overdub::ui::OpenSong::exportAudioTimeout - std::chrono::milliseconds (1));
+    CHECK (f.openSong->exportPhase() == ExportPhase::waitingForAudio);
+    CHECK (f.alertsShown.empty());
+
+    window.tick (requestedAt + overdub::ui::OpenSong::exportAudioTimeout);
+    CHECK (! f.openSong->isExporting());
+    CHECK (f.alertsShown == std::vector<juce::String> { "The audio device stopped responding, so nothing was exported. Check the device, then export again." });
+    const auto failed = eventsNamed (capture, "ui.export_audio_unresponsive");
+    REQUIRE (failed.size() == 1);
+    CHECK (failed[0]["lvl"] == "error");
+    CHECK (failed[0]["path"] == destination.getFullPathName().toStdString());
+    CHECK (failed[0]["waited_ms"] == 5000);
+    const auto stopped = eventsNamed (capture, "ui.export_stopped");
+    REQUIRE (stopped.size() == 1);
+    CHECK (stopped[0]["reason"] == "audio_unresponsive");
+    CHECK (stopped[0]["phase"] == "waiting_for_audio");
+    CHECK (! destination.exists());
+    CHECK (window.exportPage.exportButton.isEnabled());
+    CHECK (window.exportPage.statusLabel.getText().isEmpty());
+
+    // Once the device calls back again it plays the Song, and the next export runs.
+    f.engine.play();
+    f.runBlocks (1);
+    CHECK (f.engine.isPlaying());
+    REQUIRE (f.openSong->startExport ({ ExportFormat::wav, destination }).has_value());
+    tickUntilExported (f);
+    CHECK (f.openSong->lastExportedFile() == destination);
+    CHECK (destination.existsAsFile());
+}
+
 TEST_CASE ("snapshots of the Export page with WAV selected, and after an export", "[ui][snapshot]")
 {
     const std::string slice = "slice-16";

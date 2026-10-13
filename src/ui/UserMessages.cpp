@@ -70,6 +70,7 @@ constexpr std::array codeTable {
     CodeEntry { "export.video_take_unreadable", Tier::alert, "The Video Take's movie could not be read; nothing was exported." },
     CodeEntry { "export.movie_failed", Tier::alert, "The MP4 could not be made." },
     CodeEntry { "ui.export_plugin_crashed", Tier::alert, "A plugin crashed during the export, so nothing was exported. Export again." },
+    CodeEntry { "ui.export_audio_unresponsive", Tier::alert, "The audio device stopped responding, so nothing was exported. Check the device, then export again." },
     CodeEntry { "engine.calibration_write_failed", Tier::alert, "The latency calibration could not be saved." },
     CodeEntry { "engine.calibration_unreadable", Tier::alert, "The latency calibration file is damaged and could not be updated." },
     CodeEntry { "capture.camera_calibration_write_failed", Tier::alert, "The camera calibration could not be saved." },
