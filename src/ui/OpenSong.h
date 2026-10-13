@@ -30,7 +30,7 @@
 // Invariant: every Pass it starts is finished by it. stop() asks the audio thread to
 // end the Pass; poll() (from the window's timer) ends its movie once the audio thread has ended
 // it, and finishes it once the camera has completed the movie, without waiting for it (issue #70:
-// AVFoundation may take seconds). Until then isRecording() stays true and the Song stays as the
+// AVFoundation may take seconds). Until then isRecording() stays true (isSavingPass() tells a stopped Pass from a capturing one) and the Song stays as the
 // Pass started. Detaching the audio or destroying it waits for the audio thread and the movie and
 // finishes it there.
 //
@@ -149,6 +149,9 @@ public:
 
     // True from record() until poll() or detachAudio() has finished the Pass (its movie completed).
     bool isRecording() const { return recorder != nullptr; }
+    // True while isRecording() but the audio thread has ended the Pass: nothing is captured any more,
+    // the Pass is only being saved (its movie completing, issue #91). Gestures stay refused.
+    bool isSavingPass() const;
     // The number of the Pass being recorded (from 1); 0 when not recording.
     int recordingPassNumber() const { return recordingPass; }
     bool isPlaying() const;

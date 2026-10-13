@@ -133,6 +133,11 @@ video::PlaybackClock OpenSong::playbackClock() const
     return clock;
 }
 
+bool OpenSong::isSavingPass() const
+{
+    return recorder != nullptr && recorder->hasStopped();
+}
+
 core::Expected<void> OpenSong::record()
 {
     if (recorder != nullptr)

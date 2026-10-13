@@ -18,6 +18,8 @@ std::string statusText (TransportStatus status)
         return "PRE-ROLL \xC2\xB7 " + preRollCountdownText (*status.preRollRemaining, status.sampleRate);
     if (status.recording)
         return std::format ("REC \xC2\xB7 PASS {}", status.passNumber);
+    if (status.saving)
+        return std::format ("SAVING \xC2\xB7 PASS {}", status.passNumber);
     return status.playing ? "PLAY" : "STOP";
 }
 

@@ -53,3 +53,8 @@ TEST_CASE ("the status line counts down the pre-roll, then shows the Pass", "[ui
     CHECK (statusText (TransportStatus { .playing = true, .recording = true, .passNumber = 2, .preRollRemaining = rate * 3 / 2, .sampleRate = rate }) == "PRE-ROLL \xC2\xB7 1.5 s");
     CHECK (statusText (TransportStatus { .playing = true, .recording = true, .passNumber = 2, .sampleRate = rate }) == "REC \xC2\xB7 PASS 2");
 }
+
+TEST_CASE ("the status line reads SAVING · PASS n while a stopped Pass is saved", "[ui][transport]")
+{
+    CHECK (statusText (TransportStatus { .saving = true, .passNumber = 4 }) == "SAVING \xC2\xB7 PASS 4");
+}
