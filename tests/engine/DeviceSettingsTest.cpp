@@ -149,3 +149,75 @@ TEST_CASE ("device settings log as the same fields the settings file stores", "[
     stored.erase ("version");
     CHECK (stored == fields);
 }
+
+namespace
+{
+using overdub::engine::AvailableDevices;
+using overdub::engine::classifyDeviceChange;
+using overdub::engine::DeviceChange;
+
+const DeviceSettings scarlett { "CoreAudio", "Scarlett 2i2 USB", "Scarlett 2i2 USB", 48000, 256 };
+const DeviceSettings builtIn { "CoreAudio", "MacBook Pro Microphone", "MacBook Pro Speakers", 48000, 512 };
+const AvailableDevices bothPresent { { "MacBook Pro Microphone", "Scarlett 2i2 USB" }, { "MacBook Pro Speakers", "Scarlett 2i2 USB" } };
+const AvailableDevices builtInOnly { { "MacBook Pro Microphone" }, { "MacBook Pro Speakers" } };
+} // namespace
+
+TEST_CASE ("a device change is classified from the engine's device, the running one, the saved choice and what is plugged in", "[engine][device][settings][device_change]")
+{
+    SECTION ("nothing changed for the engine's device")
+    {
+        CHECK (classifyDeviceChange (scarlett, scarlett, scarlett, bothPresent) == DeviceChange::none);
+    }
+    SECTION ("the engine's device closed, or the device manager replaced it with another: lost")
+    {
+        CHECK (classifyDeviceChange (scarlett, std::nullopt, scarlett, builtInOnly) == DeviceChange::lost);
+        CHECK (classifyDeviceChange (scarlett, builtIn, scarlett, builtInOnly) == DeviceChange::lost);
+    }
+    SECTION ("the same device now runs at another rate or buffer size: reconfigured")
+    {
+        auto other = scarlett;
+        other.sampleRate = 44100;
+        CHECK (classifyDeviceChange (scarlett, other, scarlett, bothPresent) == DeviceChange::reconfigured);
+        other = scarlett;
+        other.bufferSize = 128;
+        CHECK (classifyDeviceChange (scarlett, other, scarlett, bothPresent) == DeviceChange::reconfigured);
+    }
+    SECTION ("running on a fallback, the saved choice plugged back in is available")
+    {
+        CHECK (classifyDeviceChange (builtIn, builtIn, scarlett, bothPresent) == DeviceChange::savedChoiceAvailable);
+        CHECK (classifyDeviceChange (builtIn, builtIn, scarlett, builtInOnly) == DeviceChange::none);
+        // On the saved choice (at whatever rate), or without one, there is nothing to return to.
+        auto atSongRate = scarlett;
+        atSongRate.sampleRate = 44100;
+        CHECK (classifyDeviceChange (atSongRate, atSongRate, scarlett, bothPresent) == DeviceChange::none);
+        CHECK (classifyDeviceChange (builtIn, builtIn, std::nullopt, bothPresent) == DeviceChange::none);
+    }
+    SECTION ("a saved choice that names only an output device needs only that output")
+    {
+        const DeviceSettings outputOnly { "CoreAudio", "", "Scarlett 2i2 USB", 0, 0 };
+        CHECK (classifyDeviceChange (builtIn, builtIn, outputOnly, AvailableDevices { {}, { "Scarlett 2i2 USB" } }) == DeviceChange::savedChoiceAvailable);
+    }
+    SECTION ("without a device, any output device plugged in has appeared")
+    {
+        CHECK (classifyDeviceChange (std::nullopt, std::nullopt, scarlett, builtInOnly) == DeviceChange::appeared);
+        CHECK (classifyDeviceChange (std::nullopt, std::nullopt, scarlett, AvailableDevices {}) == DeviceChange::none);
+    }
+}
+
+TEST_CASE ("a device change logs under a stable name", "[engine][device][settings][device_change]")
+{
+    CHECK (std::string (overdub::engine::deviceChangeName (DeviceChange::none)) == "none");
+    CHECK (std::string (overdub::engine::deviceChangeName (DeviceChange::lost)) == "lost");
+    CHECK (std::string (overdub::engine::deviceChangeName (DeviceChange::reconfigured)) == "reconfigured");
+    CHECK (std::string (overdub::engine::deviceChangeName (DeviceChange::savedChoiceAvailable)) == "saved_choice_available");
+    CHECK (std::string (overdub::engine::deviceChangeName (DeviceChange::appeared)) == "appeared");
+}
+
+TEST_CASE ("the device is switched to the open Song's rate only when it runs at another one and offers it", "[engine][device][settings][sample_rate]")
+{
+    using overdub::engine::sampleRateForSong;
+    CHECK (sampleRateForSong (48000, 44100, { 44100, 48000, 96000 }) == 44100);
+    CHECK (sampleRateForSong (48000, 48000, { 44100, 48000 }) == std::nullopt);
+    CHECK (sampleRateForSong (48000, 44100, { 48000, 96000 }) == std::nullopt);
+    CHECK (sampleRateForSong (48000, 0, { 44100, 48000 }) == std::nullopt);
+}
