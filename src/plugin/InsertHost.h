@@ -133,7 +133,8 @@ public:
     // kAudioComponentInstanceInvalidationNotification named this AU instance (InvalidationWatch),
     // received as `receipt`: pluginCrashed for the ready slot whose AU it is, unless that slot's
     // load was requested after the notification was received (its AU reuses a dead AU's address,
-    // issue #66); plugin.invalidation_unmatched (debug: reused_address, true when such a slot had
+    // issue #66; a repeat for an already dead process carries its first Receipt, issue #79);
+    // plugin.invalidation_unmatched (debug: reused_address, true when such a slot had
     // the address) otherwise.
     void audioUnitInvalidated (const void* audioUnit, InvalidationWatch::Receipt receipt);
     // True for a crashed slot that will not reload (it crashed more than maxCrashReloads times).

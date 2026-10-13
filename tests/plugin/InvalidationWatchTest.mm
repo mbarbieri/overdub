@@ -11,8 +11,10 @@
 
 #include <atomic>
 #include <thread>
+#include <vector>
 
 using overdub::core::ScopedLogCapture;
+using overdub::plugin::audioUnitHandle;
 using overdub::plugin::AudioUnitLoader;
 using overdub::plugin::InsertHost;
 using overdub::plugin::InsertStatus;
@@ -33,10 +35,31 @@ void postInvalidation (NSDictionary* userInfo)
     poster.join();
 }
 
-void postInvalidationOf (const void* audioUnit)
+// A hosting process id no test used before (above macOS's highest pid, 99998): the watch
+// remembers every process whose death it heard, for the whole test run.
+int freshServicePid()
+{
+    static std::atomic<int> next { 1'000'000 };
+    return next++;
+}
+
+void postInvalidationOf (const void* audioUnit, int servicePid)
 {
     postInvalidation (@{@"audioUnit" : [NSValue valueWithPointer:audioUnit],
-                        @"Service PID" : @1});
+                        @"Service PID" : @(servicePid)});
+}
+
+void postInvalidationOf (const void* audioUnit)
+{
+    postInvalidationOf (audioUnit, freshServicePid());
+}
+
+bool unmatchedLogged (const ScopedLogCapture& capture, bool reusedAddress)
+{
+    for (const auto& event : capture.events())
+        if (event.at ("event") == "plugin.invalidation_unmatched" && event.at ("reused_address") == reusedAddress)
+            return true;
+    return false;
 }
 } // namespace
 
@@ -64,6 +87,38 @@ TEST_CASE ("an invalidation notification reaches the handler on the message thre
     CHECK (receipt == InvalidationWatch::lastReceipt());
 }
 
+TEST_CASE ("a repeated notification for a hosting process reaches the handler with the Receipt of the first", "[plugin][crash][invalidation]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    int fakeUnit = 0;
+    std::vector<InvalidationWatch::Receipt> receipts;
+    InvalidationWatch watch { [&] (const void*, InvalidationWatch::Receipt received) { receipts.push_back (received); } };
+    const auto deadService = freshServicePid();
+    ScopedLogCapture capture;
+
+    postInvalidationOf (&fakeUnit, deadService);
+    const auto first = InvalidationWatch::lastReceipt();
+    postInvalidationOf (&fakeUnit, deadService); // the same death, posted again
+    postInvalidationOf (&fakeUnit, freshServicePid()); // another process
+    const auto other = InvalidationWatch::lastReceipt();
+    postInvalidation (@ { @"audioUnit" : [NSValue valueWithPointer:&fakeUnit] }); // names no process
+    const auto unnamed = InvalidationWatch::lastReceipt();
+
+    REQUIRE (runMessagesUntil ([&] { return receipts.size() == 4; }, std::chrono::seconds (5)));
+    CHECK (receipts == std::vector<InvalidationWatch::Receipt> { first, first, other, unnamed });
+    CHECK (other == first + 2); // the repeat was numbered all the same
+    CHECK (unnamed == other + 1);
+    int repeatsLogged = 0;
+    for (const auto& event : capture.events())
+        if (event.at ("event") == "plugin.invalidation_repeat")
+        {
+            ++repeatsLogged;
+            CHECK (event.at ("service_pid") == deadService);
+            CHECK (event.at ("first_receipt") == first);
+        }
+    CHECK (repeatsLogged == 1);
+}
+
 TEST_CASE ("an invalidation that names no AU, or arrives after the watch is gone, calls nothing", "[plugin][crash][invalidation]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -71,7 +126,7 @@ TEST_CASE ("an invalidation that names no AU, or arrives after the watch is gone
     ScopedLogCapture capture;
     {
         InvalidationWatch watch { [&calls] (const void*, InvalidationWatch::Receipt) { ++calls; } };
-        postInvalidation (@{@"Service PID" : @1});
+        postInvalidation (@{@"Service PID" : @(freshServicePid())});
         REQUIRE (runMessagesUntil ([&] {
             for (const auto& event : capture.events())
                 if (event.at ("event") == "plugin.invalidation_without_unit")
@@ -169,5 +224,38 @@ TEST_CASE ("a notification received while a slot's AU loads still crashes it onc
     host.audioUnitInvalidated (audioUnit, receivedWhileLoading);
 
     CHECK (host.status ("slot-limiter") == InsertStatus::crashed);
+    CHECK (host.takeCrashes().size() == 1);
+}
+
+TEST_CASE ("a repeated notification for a dead AU leaves the AU reloaded at its address ready, while that AU's own crash still crashes it", "[plugin][au][crash]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    AudioUnitLoader loader;
+    InsertHost host { loader.instantiator(), {}, 48000.0, 256 };
+    auto song = overdub::song::makeEmptySong (48000);
+    song.master.insertChain = { peakLimiterSlot() };
+    host.sync (song);
+    REQUIRE (runMessagesUntil ([&] { return host.status ("slot-limiter") == InsertStatus::ready; }));
+    const auto deadService = freshServicePid();
+    postInvalidationOf (audioUnitHandle (*host.processor ("slot-limiter")), deadService);
+    REQUIRE (runMessagesUntil ([&] { return host.status ("slot-limiter") == InsertStatus::crashed; }, std::chrono::seconds (5)));
+    REQUIRE (host.takeCrashes().size() == 1);
+    REQUIRE (host.reloadCrashed (song) == 1);
+    REQUIRE (runMessagesUntil ([&] { return host.status ("slot-limiter") == InsertStatus::ready; }));
+    const auto* reloadedUnit = audioUnitHandle (*host.processor ("slot-limiter"));
+    REQUIRE (reloadedUnit != nullptr);
+    ScopedLogCapture capture;
+
+    // Core Audio repeats the dead process's notification after the reload was requested; the
+    // dead AU's address is the reloaded AU's.
+    postInvalidationOf (reloadedUnit, deadService);
+    REQUIRE (runMessagesUntil ([&] { return unmatchedLogged (capture, true); }, std::chrono::seconds (5)));
+
+    CHECK (host.status ("slot-limiter") == InsertStatus::ready);
+    CHECK (host.takeCrashes().empty());
+
+    // The reloaded AU's own hosting process dies.
+    postInvalidationOf (reloadedUnit, freshServicePid());
+    REQUIRE (runMessagesUntil ([&] { return host.status ("slot-limiter") == InsertStatus::crashed; }, std::chrono::seconds (5)));
     CHECK (host.takeCrashes().size() == 1);
 }
