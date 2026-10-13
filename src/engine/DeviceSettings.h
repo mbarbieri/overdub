@@ -73,11 +73,14 @@ enum class DeviceChange
 const char* deviceChangeName (DeviceChange change);
 
 // engineDevice: the device the live engine was built for (none without one); runningDevice: what
-// the device manager runs now; savedChoice: this machine's choice (none when never saved).
+// the device manager runs now; savedChoice: this machine's choice (none when never saved);
+// outputsWhenOpened: the output devices listed when the engine was built. Without a device, only
+// an output device not listed then has `appeared` (one listed then already failed to open).
 DeviceChange classifyDeviceChange (const std::optional<DeviceSettings>& engineDevice,
                                    const std::optional<DeviceSettings>& runningDevice,
                                    const std::optional<DeviceSettings>& savedChoice,
-                                   const AvailableDevices& available);
+                                   const AvailableDevices& available,
+                                   const std::vector<std::string>& outputsWhenOpened = {});
 
 // The rate to reopen the device at for an open Song of songRate Hz: songRate when the device runs
 // at another rate and offers it; none otherwise (already there, not offered, or no Song rate).

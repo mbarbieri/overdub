@@ -34,18 +34,19 @@ LiveEngine::LiveEngine (std::optional<int> songSampleRate)
     if (songSampleRate.has_value())
         matchSongRate (*songSampleRate);
     // Whatever the device manager says from here on is compared with what was opened now.
+    outputsWhenOpened = listDevices().outputs;
     deviceManager.addChangeListener (this);
 
     auto* device = deviceManager.getCurrentAudioDevice();
     if (device == nullptr)
     {
         core::logEvent (core::Level::error, "app.device_unavailable", {}, "no audio output device could be opened; the app runs silent");
-        lastSeenChange = classifyNow();
+        lastSeenChange = classifyCurrentDevice();
         return;
     }
 
     startEngine (*device);
-    lastSeenChange = classifyNow();
+    lastSeenChange = classifyCurrentDevice();
 }
 
 LiveEngine::~LiveEngine()
@@ -114,11 +115,8 @@ void LiveEngine::matchSongRate (int songSampleRate)
                     { { "from_rate", deviceRate }, { "song_rate", songSampleRate }, { "matched", error.isEmpty() }, { "reason", error.toStdString() } });
 }
 
-engine::DeviceChange LiveEngine::classifyNow()
+engine::AvailableDevices LiveEngine::listDevices()
 {
-    std::optional<engine::DeviceSettings> running;
-    if (deviceManager.getCurrentAudioDevice() != nullptr)
-        running = engine::deviceSettingsFrom (deviceManager.getCurrentAudioDeviceType(), deviceManager.getAudioDeviceSetup());
     engine::AvailableDevices available;
     if (auto* type = deviceManager.getCurrentDeviceTypeObject())
     {
@@ -127,12 +125,20 @@ engine::DeviceChange LiveEngine::classifyNow()
         for (const auto& name : type->getDeviceNames (false))
             available.outputs.push_back (name.toStdString());
     }
-    return engine::classifyDeviceChange (engineDevice, running, savedChoice, available);
+    return available;
+}
+
+engine::DeviceChange LiveEngine::classifyCurrentDevice()
+{
+    std::optional<engine::DeviceSettings> running;
+    if (deviceManager.getCurrentAudioDevice() != nullptr)
+        running = engine::deviceSettingsFrom (deviceManager.getCurrentAudioDeviceType(), deviceManager.getAudioDeviceSetup());
+    return engine::classifyDeviceChange (engineDevice, running, savedChoice, listDevices(), outputsWhenOpened);
 }
 
 void LiveEngine::changeListenerCallback (juce::ChangeBroadcaster*)
 {
-    const auto change = classifyNow();
+    const auto change = classifyCurrentDevice();
     if (change == lastSeenChange)
         return;
     lastSeenChange = change;

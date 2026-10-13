@@ -51,7 +51,7 @@ constexpr std::array codeTable {
     CodeEntry { "capture.movie_write_failed", Tier::alert, "The camera's video could not be written; this Pass has no Video Take." },
     CodeEntry { "capture.video_unplaced", Tier::alert, "The camera's video could not be placed; this Pass has no Video Take." },
     CodeEntry { "capture.camera_not_open", Tier::alert, "The camera closed; this Pass has no Video Take." },
-    CodeEntry { "ui.audio_device_lost_during_pass", Tier::alert, "The audio device was disconnected during the Pass. What was recorded until then is kept." },
+    CodeEntry { "ui.audio_device_lost_during_pass", Tier::alert, "The audio device stopped during the Pass. What was recorded until then is kept." },
     CodeEntry { "capture.stop_timeout", Tier::alert, "The audio device stopped responding; this Pass was not added." },
     CodeEntry { "song.write_failed", Tier::alert, "The Song could not be saved to disk." },
     CodeEntry { "song.json_unserializable", Tier::alert, "The Song could not be saved to disk." },

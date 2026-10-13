@@ -65,6 +65,8 @@ private:
     // Retried by deviceChangePoll until the reported change could be answered.
     void applyDeviceChange();
     std::optional<int> openSongRate() const;
+    // The open Song's ui.sample_rate_mismatch Notice, when its device runs at another rate.
+    void showRateMismatch();
     void showLatencyNoticeIfUncalibrated();
 
     ui::CalibrationStatus calibrationStatus() const;

@@ -92,8 +92,4 @@ void DeviceBinding::audioDeviceStopped()
                     });
     runningDevice = nullptr;
 }
-void DeviceBinding::audioDeviceError (const juce::String& errorMessage)
-{
-    core::logEvent (core::Level::warn, "engine.device_error", { { "reason", errorMessage.toStdString() } });
-}
 } // namespace overdub::engine

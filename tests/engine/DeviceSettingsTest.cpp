@@ -197,10 +197,18 @@ TEST_CASE ("a device change is classified from the engine's device, the running 
         const DeviceSettings outputOnly { "CoreAudio", "", "Scarlett 2i2 USB", 0, 0 };
         CHECK (classifyDeviceChange (builtIn, builtIn, outputOnly, AvailableDevices { {}, { "Scarlett 2i2 USB" } }) == DeviceChange::savedChoiceAvailable);
     }
-    SECTION ("without a device, any output device plugged in has appeared")
+    SECTION ("without a device, an output device plugged in since has appeared; one listed then had already failed to open")
     {
         CHECK (classifyDeviceChange (std::nullopt, std::nullopt, scarlett, builtInOnly) == DeviceChange::appeared);
         CHECK (classifyDeviceChange (std::nullopt, std::nullopt, scarlett, AvailableDevices {}) == DeviceChange::none);
+        CHECK (classifyDeviceChange (std::nullopt, std::nullopt, scarlett, builtInOnly, { "MacBook Pro Speakers" }) == DeviceChange::none);
+        CHECK (classifyDeviceChange (std::nullopt, std::nullopt, scarlett, bothPresent, { "MacBook Pro Speakers" }) == DeviceChange::appeared);
+    }
+    SECTION ("a new system default while the saved choice runs changes nothing")
+    {
+        // AirPods connected and made the default: the Scarlett keeps running.
+        const AvailableDevices withAirPods { bothPresent.inputs, { "MacBook Pro Speakers", "Scarlett 2i2 USB", "AirPods" } };
+        CHECK (classifyDeviceChange (scarlett, scarlett, scarlett, withAirPods) == DeviceChange::none);
     }
 }
 

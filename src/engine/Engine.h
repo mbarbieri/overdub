@@ -102,8 +102,9 @@ public:
     bool isMonitoring() const;
 
     // Device changes (issue #41). Non-audio thread, and only while process() is not running and
-    // cannot start concurrently: the device has stopped calling back (DeviceBinding calls it from
-    // audioDeviceStopped, under the device manager's callback lock). Stops the transport where it
+    // cannot start concurrently: the device has stopped calling back. DeviceBinding calls it from
+    // audioDeviceStopped, which JUCE calls after the device's IO proc has stopped (and with the
+    // device manager's callback lock, or after the callback was removed under that lock). Stops the transport where it
     // is and ends the Pass (running, or published and not yet taken) with
     // RecordStopReason::deviceStopped, keeping what it captured. Logs engine.device_stopped (info:
     // was_playing, pass_ended, captured_frames, position). The next device to call process() finds

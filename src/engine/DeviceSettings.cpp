@@ -149,10 +149,14 @@ const char* deviceChangeName (DeviceChange change)
 DeviceChange classifyDeviceChange (const std::optional<DeviceSettings>& engineDevice,
                                    const std::optional<DeviceSettings>& runningDevice,
                                    const std::optional<DeviceSettings>& savedChoice,
-                                   const AvailableDevices& available)
+                                   const AvailableDevices& available,
+                                   const std::vector<std::string>& outputsWhenOpened)
 {
     if (! engineDevice.has_value())
-        return available.outputs.empty() ? DeviceChange::none : DeviceChange::appeared;
+    {
+        const auto isNew = [&] (const std::string& output) { return ! std::ranges::contains (outputsWhenOpened, output); };
+        return std::ranges::any_of (available.outputs, isNew) ? DeviceChange::appeared : DeviceChange::none;
+    }
     if (! runningDevice.has_value() || ! sameDevices (*engineDevice, *runningDevice))
         return DeviceChange::lost;
     if (runningDevice->sampleRate != engineDevice->sampleRate || runningDevice->bufferSize != engineDevice->bufferSize)

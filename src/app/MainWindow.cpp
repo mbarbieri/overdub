@@ -271,8 +271,7 @@ void MainWindow::showSong (std::unique_ptr<song::SongPackage> package, const std
             settingsPanel->show (live->deviceChoices());
     }
     openSong = std::make_unique<ui::OpenSong> (std::move (package), live->audioBinding(), pluginLoader.instantiator());
-    if (const auto problem = openSong->audioProblem(); problem.has_value() && problem->code == "ui.sample_rate_mismatch")
-        content.handleError (*problem);
+    showRateMismatch();
     if (rateSwitch)
         showLatencyNoticeIfUncalibrated();
     // A Song saved with its camera Armed opens it now; without camera access that is a Notice.
@@ -363,8 +362,7 @@ void MainWindow::reopenAudio()
     if (openSong != nullptr)
     {
         openSong->attachAudio (live->audioBinding());
-        if (const auto problem = openSong->audioProblem(); problem.has_value() && problem->code == "ui.sample_rate_mismatch")
-            content.handleError (*problem);
+        showRateMismatch();
     }
     content.refresh();
 
@@ -374,6 +372,13 @@ void MainWindow::reopenAudio()
     if (live->engine() == nullptr)
         content.showNotice ("ui.no_audio_device");
     showLatencyNoticeIfUncalibrated();
+}
+
+void MainWindow::showRateMismatch()
+{
+    // ui.no_audio_device has its own Notice; only the rate is said here.
+    if (const auto problem = openSong->audioProblem(); problem.has_value() && problem->code == "ui.sample_rate_mismatch")
+        content.handleError (*problem);
 }
 
 void MainWindow::watchDevices()
@@ -388,7 +393,10 @@ void MainWindow::watchDevices()
 void MainWindow::applyDeviceChange()
 {
     if (! pendingDeviceChange.has_value())
-        return deviceChangePoll.stopTimer();
+    {
+        deviceChangePoll.stopTimer();
+        return;
+    }
 
     // A lost or reconfigured device is answered at once: a Pass it ran is already ended (the
     // window's poll finishes it first) and an export cannot finish without it. A device that came

@@ -39,8 +39,6 @@ public:
     // running Pass ends where the device stopped (issue #41).
     void audioDeviceAboutToStart (juce::AudioIODevice* device) override;
     void audioDeviceStopped() override;
-    // Logs engine.device_error (warn, `reason`); the device manager decides what follows.
-    void audioDeviceError (const juce::String& errorMessage) override;
 
 private:
     Engine& engine;

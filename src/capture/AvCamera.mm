@@ -73,7 +73,7 @@ public:
           core::logEvent (core::Level::info,
                           "capture.camera_device_changed",
                           { { "camera_id", camera != nil ? toStd (camera.uniqueID) : std::string {} },
-                            { "connected", [notification.name isEqualToString:AVCaptureDeviceWasConnectedNotification] ? true : false } });
+                            { "connected", [notification.name isEqualToString:AVCaptureDeviceWasConnectedNotification] == YES } });
         };
         auto* center = [NSNotificationCenter defaultCenter];
         connectedObserver = [center addObserverForName:AVCaptureDeviceWasConnectedNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:note];

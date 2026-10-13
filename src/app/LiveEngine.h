@@ -82,7 +82,8 @@ public:
 private:
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
-    engine::DeviceChange classifyNow();
+    engine::AvailableDevices listDevices();
+    engine::DeviceChange classifyCurrentDevice();
     void matchSongRate (int songSampleRate);
 
     void openDevice();
@@ -97,6 +98,7 @@ private:
     int deviceSampleRate = 0;
     std::optional<engine::DeviceSettings> savedChoice; // as read when opening
     std::optional<engine::DeviceSettings> engineDevice; // what audioEngine was built for
+    std::vector<std::string> outputsWhenOpened; // the output devices listed when the engine was built
     engine::DeviceChange lastSeenChange = engine::DeviceChange::none;
     std::unique_ptr<engine::Engine> audioEngine;
     std::unique_ptr<engine::DeviceBinding> binding;
