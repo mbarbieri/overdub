@@ -259,3 +259,38 @@ TEST_CASE ("a repeated notification for a dead AU leaves the AU reloaded at its 
     REQUIRE (runMessagesUntil ([&] { return host.status ("slot-limiter") == InsertStatus::crashed; }, std::chrono::seconds (5)));
     CHECK (host.takeCrashes().size() == 1);
 }
+
+TEST_CASE ("a repeat without Service PID for a dead AU's address crashes the AU reloaded there (ADR 0002)", "[plugin][au][crash]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    AudioUnitLoader loader;
+    InsertHost host { loader.instantiator(), {}, 48000.0, 256 };
+    auto song = overdub::song::makeEmptySong (48000);
+    song.master.insertChain = { peakLimiterSlot() };
+    host.sync (song);
+    REQUIRE (runMessagesUntil ([&] { return host.status ("slot-limiter") == InsertStatus::ready; }));
+    postInvalidationOf (audioUnitHandle (*host.processor ("slot-limiter")));
+    REQUIRE (runMessagesUntil ([&] { return host.status ("slot-limiter") == InsertStatus::crashed; }, std::chrono::seconds (5)));
+    REQUIRE (host.takeCrashes().size() == 1);
+    REQUIRE (host.reloadCrashed (song) == 1);
+    REQUIRE (runMessagesUntil ([&] { return host.status ("slot-limiter") == InsertStatus::ready; }));
+    const auto* reloadedUnit = audioUnitHandle (*host.processor ("slot-limiter"));
+    REQUIRE (reloadedUnit != nullptr);
+    ScopedLogCapture capture;
+
+    // Without a Service PID the watch cannot tell a repeat of the dead process's notification
+    // from the reloaded AU's own crash, so it keeps its own Receipt and the slot crashes.
+    postInvalidation (@{@"audioUnit" : [NSValue valueWithPointer:reloadedUnit]});
+    REQUIRE (runMessagesUntil ([&] { return host.status ("slot-limiter") == InsertStatus::crashed; }, std::chrono::seconds (5)));
+
+    CHECK (host.takeCrashes().size() == 1);
+    bool invalidatedLogged = false;
+    for (const auto& event : capture.events())
+    {
+        CHECK (event.at ("event") != "plugin.invalidation_repeat");
+        CHECK (event.at ("event") != "plugin.invalidation_unmatched");
+        if (event.at ("event") == "plugin.invalidated")
+            invalidatedLogged = event.at ("slot_id") == "slot-limiter";
+    }
+    CHECK (invalidatedLogged);
+}
