@@ -68,7 +68,7 @@ TEST_CASE ("the Export page's span and status read as the prototype's", "[ui][ex
 {
     using overdub::ui::exportSpanText;
     using overdub::ui::exportStatusText;
-    CHECK (exportSpanText (0, 48000) == "Whole mix: 0:00.0 \xe2\x80\x93 0:00.0, plus effect tails");
+    CHECK (exportSpanText (0, 48000) == "Nothing to export: the Song has no Clips");
     CHECK (exportSpanText (48000 * 83 + 24000, 48000) == "Whole mix: 0:00.0 \xe2\x80\x93 1:23.5, plus effect tails");
     CHECK (exportStatusText ({}) == "");
     CHECK (exportStatusText ({ .waitingForAudio = true }) == "Preparing\xe2\x80\xa6");

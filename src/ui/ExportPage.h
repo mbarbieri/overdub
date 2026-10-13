@@ -53,7 +53,8 @@ ExportSpanBarState exportSpanBar (exporting::ExportFormat format, exporting::Vid
 // A range's pixels on a bar `width` wide that spans [0, scaleEnd); empty when the scale is.
 juce::Range<int> spanBarPixels (exporting::SampleRange range, song::SampleCount scaleEnd, int width);
 
-// "Whole mix: 0:00.0 – 1:23.4, plus effect tails".
+// "Whole mix: 0:00.0 – 1:23.4, plus effect tails"; "Nothing to export: the Song has no Clips"
+// when clipsEnd is 0 (lastClipEnd without Clips), as the export is then refused.
 std::string exportSpanText (song::SampleCount clipsEnd, int sampleRate);
 // "Trimmed to Pass 2: 0:03.0 – 0:13.0" or "Full song: 0:00.0 – 0:13.0, black outside Pass 2".
 std::string movieSpanText (exporting::VideoLength length, const video::VideoTakeSpan& videoTake, exporting::SampleRange exported, int sampleRate);
