@@ -562,10 +562,10 @@ void MainComponent::presentMessages()
     }
 }
 
-void MainComponent::tick()
+void MainComponent::tick (song::SongPackage::Clock::time_point now)
 {
     if (openSong != nullptr)
-        handleErrors (openSong->poll());
+        handleErrors (openSong->poll (now));
     refresh();
     // Taken every poll, in every mode, so the meters show only what played since the last one.
     if (openSong != nullptr)

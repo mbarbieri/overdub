@@ -14,6 +14,7 @@
 
 #include <juce_core/juce_core.h>
 
+#include <chrono>
 #include <map>
 #include <memory>
 #include <optional>
@@ -55,9 +56,13 @@
 // runs, record and play are refused (ui.export_running), and edits change the Song but not the
 // engine; when it ends, poll() reloads the engine with the current Song. Without audio the export
 // starts at once. Detaching the audio stops a running export (logged as ui.export_stopped).
-// Known limit: an engine whose device has stopped calling back without being detached never takes
-// the empty plan, so the export waits ("Preparing…") until the device runs or is detached. A slot
-// an edit removes during an export keeps rendering in it (the plan holds the plugin) until it ends.
+// An engine whose device has stopped calling back without being detached never takes the empty
+// plan (issue #64): after exportAudioTimeout of waiting ("Preparing…"), poll() gives the export up
+// (ui.export_stopped, reason audio_unresponsive), reloads the engine with the Song and returns
+// ui.export_audio_unresponsive (path, waited_ms; an Alert). The plugins are never taken over
+// while a plan that may still render them is current: the device may call back at any moment. A
+// slot an edit removes during an export keeps rendering in it (the plan holds the plugin) until it
+// ends.
 //
 // Plugin crash recovery (issue #40, ADR 0002 amendment): when a plugin's hosting process dies, the
 // InsertHost marks its slot crashed and its nodes pass audio through at once. poll() reports it
@@ -197,11 +202,15 @@ public:
     std::optional<plugin::InsertStatus> insertStatus (const song::Id& slotId) const { return inserts.status (slotId); }
     plugin::InsertHost& insertHost() { return inserts; }
 
+    // How long an export waits for the audio thread to let go of the plugins before it fails.
+    static constexpr auto exportAudioTimeout = std::chrono::seconds (5);
+
     // Starts exporting the mix (with the request's Video Take for an MP4, issue #38) to the
-    // request's file (see the header comment). Ignored while an export runs.
+    // request's file (see the header comment); `now` starts exportAudioTimeout. Ignored while an
+    // export runs.
     // Errors: ui.stop_recording_first while a Pass runs, ui.no_video_take (an MP4 without a
     // Video Take of the Song).
-    core::Expected<void> startExport (exporting::ExportRequest request);
+    core::Expected<void> startExport (exporting::ExportRequest request, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
     ExportPhase exportPhase() const;
     bool isExporting() const { return exportPhase() != ExportPhase::idle; }
     // The fraction of the running export written, 0..1 (0 while it waits for the audio).
@@ -243,19 +252,21 @@ public:
     std::vector<core::Expected<song::Id>> importFiles (const std::vector<juce::File>& files);
 
     // Call regularly (window timer): advances an export (starts it once the audio has let go of
-    // the plugins; once it ends, reloads the engine and returns its Error), finishes a Pass the
-    // audio thread has ended, rebuilds the plan
-    // when a plugin loaded or changed its latency (not during a Pass), schedules a write when a
-    // plugin parameter changed, saves the playhead once the transport is stopped, and writes a due
-    // song.json, and handles plugin crashes (see the header comment). Returns the errors, not
-    // logged.
+    // the plugins, or gives it up after exportAudioTimeout; once it ends, reloads the engine and
+    // returns its Error), finishes a Pass the audio thread has ended, rebuilds the plan when a
+    // plugin loaded or changed its latency (not during a Pass), schedules a write when a plugin
+    // parameter changed, saves the playhead once the transport is stopped, writes a due song.json,
+    // and handles plugin crashes (see the header comment). Returns the errors, not logged.
     std::vector<core::Error> poll (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
 
 private:
     // Does nothing while an export runs (the engine keeps its empty Song); after it, poll() reloads.
     void reloadEngine();
     void startExportOnceAudioLetGo();
-    std::vector<core::Error> advanceExport();
+    std::vector<core::Error> advanceExport (song::SongPackage::Clock::time_point now);
+    // Once the export has waited exportAudioTimeout for the audio: stops it, reloads the engine and
+    // returns ui.export_audio_unresponsive. None (nothing done) otherwise.
+    std::optional<core::Error> stopExportIfAudioUnresponsive (song::SongPackage::Clock::time_point now);
     void stopExport (const char* reason);
     // After a history change: setMix when only the mix changed since `before`, else reloadEngine.
     void updateEngine (const song::Song& before);
@@ -296,6 +307,7 @@ private:
     video::VideoPlayback playback;
     std::optional<exporting::ExportRequest> exportWaiting; // until the audio thread takes the empty plan
     std::optional<exporting::MovieSource> movieWaiting;    // with exportWaiting, for an MP4
+    song::SongPackage::Clock::time_point exportRequestedAt; // with exportWaiting
     std::unique_ptr<exporting::ExportJob> exportJob;
     std::optional<juce::File> lastExport;
 };

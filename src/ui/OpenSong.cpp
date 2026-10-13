@@ -355,7 +355,7 @@ std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point no
     auto errors = handleCrashes();
     for (auto& error : handleCameraChanges())
         errors.push_back (std::move (error));
-    for (auto& error : advanceExport())
+    for (auto& error : advanceExport (now))
         errors.push_back (std::move (error));
     if (recorder != nullptr && recorder->hasStopped())
         for (auto& error : finishPass (recorder->finish (now)))
@@ -576,7 +576,7 @@ void OpenSong::reloadEngine()
         binding.engine->loadSong (songForEngine (song(), monitored), package_->location(), inserts.insertFactory());
 }
 
-core::Expected<void> OpenSong::startExport (exporting::ExportRequest request)
+core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, song::SongPackage::Clock::time_point now)
 {
     if (recorder != nullptr)
         return std::unexpected (core::Error { "ui.stop_recording_first", "a Pass is running", {} });
@@ -607,6 +607,7 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request)
     core::logEvent (core::Level::info, "ui.export_requested", fields);
     exportWaiting = std::move (request);
     movieWaiting = std::move (movie);
+    exportRequestedAt = now;
     // Without audio nothing else renders the plugins: the export starts now.
     startExportOnceAudioLetGo();
     return {};
@@ -639,9 +640,28 @@ void OpenSong::startExportOnceAudioLetGo()
     movieWaiting.reset();
 }
 
-std::vector<core::Error> OpenSong::advanceExport()
+std::optional<core::Error> OpenSong::stopExportIfAudioUnresponsive (song::SongPackage::Clock::time_point now)
+{
+    if (! exportWaiting.has_value())
+        return std::nullopt;
+    const auto waited = now - exportRequestedAt;
+    if (waited < exportAudioTimeout)
+        return std::nullopt;
+    // The audio thread may still render the plan that holds the plugins: they are not taken over.
+    const auto waitedMs = std::chrono::duration_cast<std::chrono::milliseconds> (waited).count();
+    core::Error error { "ui.export_audio_unresponsive",
+                        "the audio device stopped calling back before the export could start",
+                        { { "path", exportWaiting->destination.getFullPathName().toStdString() }, { "waited_ms", waitedMs } } };
+    stopExport ("audio_unresponsive");
+    reloadEngine();
+    return error;
+}
+
+std::vector<core::Error> OpenSong::advanceExport (song::SongPackage::Clock::time_point now)
 {
     startExportOnceAudioLetGo();
+    if (auto error = stopExportIfAudioUnresponsive (now))
+        return { std::move (*error) };
     if (exportJob == nullptr || ! exportJob->isDone())
         return {};
 
