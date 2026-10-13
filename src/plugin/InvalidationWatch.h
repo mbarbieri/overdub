@@ -23,8 +23,10 @@
 // new AU has taken a dead AU's address. When the userInfo names the hosting process ("Service
 // PID") and an earlier notification named the same process, the handler gets that earlier
 // notification's Receipt: the process was dead from then on, so no AU created later is hosted
-// there. A notification without a Service PID keeps its own Receipt. Assumption: a pid is not
-// reused by another hosting process while the app runs (macOS assigns pids up to 99998 in turn).
+// there. Such a repeat logs plugin.invalidation_repeat (debug: service_pid, receipt,
+// first_receipt) on the message thread. A notification without a Service PID keeps its own
+// Receipt. Assumption: a pid is not reused by another hosting process while the app runs (macOS
+// assigns pids up to 99998 in turn).
 //
 // Construct and destroy on the message thread.
 namespace overdub::plugin

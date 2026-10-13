@@ -94,6 +94,7 @@ TEST_CASE ("a repeated notification for a hosting process reaches the handler wi
     std::vector<InvalidationWatch::Receipt> receipts;
     InvalidationWatch watch { [&] (const void*, InvalidationWatch::Receipt received) { receipts.push_back (received); } };
     const auto deadService = freshServicePid();
+    ScopedLogCapture capture;
 
     postInvalidationOf (&fakeUnit, deadService);
     const auto first = InvalidationWatch::lastReceipt();
@@ -107,6 +108,15 @@ TEST_CASE ("a repeated notification for a hosting process reaches the handler wi
     CHECK (receipts == std::vector<InvalidationWatch::Receipt> { first, first, other, unnamed });
     CHECK (other == first + 2); // the repeat was numbered all the same
     CHECK (unnamed == other + 1);
+    int repeatsLogged = 0;
+    for (const auto& event : capture.events())
+        if (event.at ("event") == "plugin.invalidation_repeat")
+        {
+            ++repeatsLogged;
+            CHECK (event.at ("service_pid") == deadService);
+            CHECK (event.at ("first_receipt") == first);
+        }
+    CHECK (repeatsLogged == 1);
 }
 
 TEST_CASE ("an invalidation that names no AU, or arrives after the watch is gone, calls nothing", "[plugin][crash][invalidation]")

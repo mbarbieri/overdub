@@ -70,25 +70,31 @@ pid_t servicePidIn (CFDictionaryRef userInfo)
 void notified (CFNotificationCenterRef, void* observerKey, CFNotificationName, const void*, CFDictionaryRef userInfo)
 {
     // Numbered before anything else: an AU that becomes ready from here on is not the one named.
-    auto receipt = receiptsSoFar.fetch_add (1, std::memory_order_acq_rel) + 1;
+    const auto ownReceipt = receiptsSoFar.fetch_add (1, std::memory_order_acq_rel) + 1;
     const auto servicePid = servicePidIn (userInfo);
+    auto receipt = ownReceipt;
     std::weak_ptr<InvalidationWatch::Observer> weak;
     {
         auto& known = registry();
         const std::scoped_lock held { known.lock };
         // A repeat for a process already dead: it was dead from its first notification on.
         if (servicePid > 0)
-            receipt = known.deadServices.try_emplace (servicePid, receipt).first->second;
+            receipt = known.deadServices.try_emplace (servicePid, ownReceipt).first->second;
         const auto found = known.observers.find (reinterpret_cast<std::uintptr_t> (observerKey));
         if (found == known.observers.end())
             return;
         weak = found->second;
     }
     const auto* audioUnit = audioUnitIn (userInfo);
-    juce::MessageManager::callAsync ([weak, audioUnit, receipt] {
+    const bool repeat = receipt != ownReceipt;
+    juce::MessageManager::callAsync ([weak, audioUnit, receipt, ownReceipt, servicePid, repeat] {
         const auto alive = weak.lock();
         if (alive == nullptr)
             return;
+        if (repeat)
+            core::logEvent (core::Level::debug,
+                            "plugin.invalidation_repeat",
+                            { { "service_pid", servicePid }, { "receipt", ownReceipt }, { "first_receipt", receipt } });
         if (audioUnit == nullptr)
         {
             core::logEvent (core::Level::debug, "plugin.invalidation_without_unit", {});
