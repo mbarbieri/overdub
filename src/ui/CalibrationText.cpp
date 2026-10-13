@@ -50,6 +50,12 @@ std::string cameraCalibrationText (std::optional<double> storedOffsetMs)
     return "Calibrated: " + oneDecimal (*storedOffsetMs) + " ms (video " + (*storedOffsetMs >= 0.0 ? "late" : "early") + ").";
 }
 
+std::string cameraCalibrationSavedText (double offsetMs, const std::string& outputDevice)
+{
+    return "Saved: " + oneDecimal (offsetMs) + " ms (video " + (offsetMs >= 0.0 ? "late" : "early") + ") for " + outputDevice
+         + ". The camera status above shows the calibration for the output device open now.";
+}
+
 std::string clapResultText (const capture::ClapReport& report, const std::string& outputDevice)
 {
     if (! report.meanOffsetMs.has_value())

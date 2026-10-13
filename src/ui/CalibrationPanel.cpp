@@ -135,6 +135,13 @@ void CalibrationPanel::showClapResult (const core::Expected<capture::VideoTakeCl
     saveCameraButton.setVisible (cameraToStore.has_value());
 }
 
+void CalibrationPanel::showCameraSaved (const capture::CameraCalibrationKey& key, double offsetMs)
+{
+    cameraToStore.reset();
+    saveCameraButton.setVisible (false);
+    clapResultLabel.setText (utf8 (cameraCalibrationSavedText (offsetMs, key.outputDevice)), juce::dontSendNotification);
+}
+
 void CalibrationPanel::resized()
 {
     auto area = getLocalBounds().reduced (margin);

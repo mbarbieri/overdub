@@ -55,6 +55,9 @@ public:
     void showLatencyMeasuring();
     void showLatencyResult (const core::Expected<capture::LoopbackMeasurement>& result);
     void showClapResult (const core::Expected<capture::VideoTakeClaps>& result);
+    // After a clap calibration was stored (and show() refreshed the status): says what was stored
+    // and for which output device, which may not be the one open now (issue #88).
+    void showCameraSaved (const capture::CameraCalibrationKey& key, double offsetMs);
 
     void resized() override;
     void paint (juce::Graphics& g) override;
