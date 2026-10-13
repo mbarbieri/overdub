@@ -295,7 +295,7 @@ TEST_CASE ("an export whose audio device stopped calling back fails with an Aler
     REQUIRE (failed.size() == 1);
     CHECK (failed[0]["lvl"] == "error");
     CHECK (failed[0]["path"] == destination.getFullPathName().toStdString());
-    CHECK (failed[0]["waited_ms"] == 5000);
+    CHECK (failed[0]["waited_ms"] == std::chrono::milliseconds (overdub::ui::OpenSong::exportAudioTimeout).count());
     const auto stopped = eventsNamed (capture, "ui.export_stopped");
     REQUIRE (stopped.size() == 1);
     CHECK (stopped[0]["reason"] == "audio_unresponsive");

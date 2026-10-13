@@ -640,10 +640,12 @@ void OpenSong::startExportOnceAudioLetGo()
     movieWaiting.reset();
 }
 
-std::optional<core::Error> OpenSong::giveUpWaitingForAudio (song::SongPackage::Clock::time_point now)
+std::optional<core::Error> OpenSong::stopExportIfAudioUnresponsive (song::SongPackage::Clock::time_point now)
 {
+    if (! exportWaiting.has_value())
+        return std::nullopt;
     const auto waited = now - exportRequestedAt;
-    if (! exportWaiting.has_value() || waited < exportAudioTimeout)
+    if (waited < exportAudioTimeout)
         return std::nullopt;
     // The audio thread may still render the plan that holds the plugins: they are not taken over.
     const auto waitedMs = std::chrono::duration_cast<std::chrono::milliseconds> (waited).count();
@@ -658,7 +660,7 @@ std::optional<core::Error> OpenSong::giveUpWaitingForAudio (song::SongPackage::C
 std::vector<core::Error> OpenSong::advanceExport (song::SongPackage::Clock::time_point now)
 {
     startExportOnceAudioLetGo();
-    if (auto error = giveUpWaitingForAudio (now))
+    if (auto error = stopExportIfAudioUnresponsive (now))
         return { std::move (*error) };
     if (exportJob == nullptr || ! exportJob->isDone())
         return {};

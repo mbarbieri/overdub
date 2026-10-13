@@ -253,12 +253,10 @@ public:
 
     // Call regularly (window timer): advances an export (starts it once the audio has let go of
     // the plugins, or gives it up after exportAudioTimeout; once it ends, reloads the engine and
-    // returns its Error), finishes a Pass the
-    // audio thread has ended, rebuilds the plan
-    // when a plugin loaded or changed its latency (not during a Pass), schedules a write when a
-    // plugin parameter changed, saves the playhead once the transport is stopped, and writes a due
-    // song.json, and handles plugin crashes (see the header comment). Returns the errors, not
-    // logged.
+    // returns its Error), finishes a Pass the audio thread has ended, rebuilds the plan when a
+    // plugin loaded or changed its latency (not during a Pass), schedules a write when a plugin
+    // parameter changed, saves the playhead once the transport is stopped, writes a due song.json,
+    // and handles plugin crashes (see the header comment). Returns the errors, not logged.
     std::vector<core::Error> poll (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
 
 private:
@@ -266,8 +264,9 @@ private:
     void reloadEngine();
     void startExportOnceAudioLetGo();
     std::vector<core::Error> advanceExport (song::SongPackage::Clock::time_point now);
-    // ui.export_audio_unresponsive once the export has waited exportAudioTimeout for the audio.
-    std::optional<core::Error> giveUpWaitingForAudio (song::SongPackage::Clock::time_point now);
+    // Once the export has waited exportAudioTimeout for the audio: stops it, reloads the engine and
+    // returns ui.export_audio_unresponsive. None (nothing done) otherwise.
+    std::optional<core::Error> stopExportIfAudioUnresponsive (song::SongPackage::Clock::time_point now);
     void stopExport (const char* reason);
     // After a history change: setMix when only the mix changed since `before`, else reloadEngine.
     void updateEngine (const song::Song& before);
