@@ -35,13 +35,13 @@
       "name": "debug",
       "configurePreset": "debug",
       "output": { "outputOnFailure": true },
-      "execution": { "noTestsAction": "error" }
+      "execution": { "noTestsAction": "error", "jobs": 12 }
     },
     {
       "name": "release",
       "configurePreset": "release",
       "output": { "outputOnFailure": true },
-      "execution": { "noTestsAction": "error" }
+      "execution": { "noTestsAction": "error", "jobs": 12 }
     }
   ]
 }

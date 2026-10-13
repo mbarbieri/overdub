@@ -15,7 +15,7 @@ Every implementation slice must build and pass the full `ctest` suite, and it mu
 - A/V sync: the anchor fit, heard-time mapping, drift ratio and playback frame selection are pure functions with unit tests. Their synthetic anchors include injected ppm drift and camera stalls. Export is tested as a round trip. A synthetic movie with flash frames and a mix with clicks at known samples go through the real trimmed and full-song export, then the test decodes the MP4 and measures each marker.
 - A test-only allocation and lock guard wraps the callback under `ctest`. It is set through a thread-local flag and fails the test when the audio path allocates or locks. That includes allocations inside JUCE's graph.
 - Only real devices can prove loopback latency, camera offset and drift on a real interface. Those checks are app modes, `overdub --selftest loopback` and `overdub --selftest clap <dir>`, and each one writes a JSON pass/fail report. Only slices that touch capture or calibration carry "a human runs the selftest and pastes the JSON" as a HITL acceptance step. The user-facing calibration flow reuses the same measurement code.
-- Every slice runs the full suite, which stays under about 60 s (the export test uses a 10 s movie with a 1 s trim). If the suite grows, slow tests get a tag and a `ctest -L fast` inner loop, but the gate is still the full run.
+- Every slice runs the full suite, which stays under about 90 s through the test presets' parallel `jobs` (amended, issue #63; the export test uses a 10 s movie with a 1 s trim). If the suite grows, slow tests get a tag and a `ctest -L fast` inner loop, but the gate is still the full run.
 - These tolerances are part of the spec. Loosening one is a spec change, not a test fix:
 
   | Check | Tolerance |
@@ -52,3 +52,12 @@ The JUCE Component UI is checked the same way as audio: by computed expectations
 - **Events without a peer.** A synthesized `MouseEvent` (built on the desktop's main mouse source) works without an on-screen peer when it is delivered by calling the target Component's `mouseDown` / `mouseUp` handlers: a `Button` clicked that way fires `onClick` exactly as it does live. JUCE's own routing (`ComponentPeer::handleMouseEvent`) needs a peer, so tests never go through it. Keys are delivered to `keyPressed` as a `KeyPress`. A `ComboBox` popup needs a peer, so tests pick an item with `setSelectedItemIndex (…, sendNotificationSync)`, which runs the same `onChange` as a user's pick. The helpers are in `tests/ui/UiHarness.h`.
 - **Harness.** `tests/ui/UiHarness.h` (fixed-size layout, click, key, ComboBox pick, `isShown`, `writeSnapshot`) and `tests/ui/MainWindowFixture.h` (the real `ui::MainComponent` over a `ui::OpenSong`, with an `Engine` driven by the loopback fake device and injected Alert and file-chooser hooks). The fixture Song builder is `tests/song/FixtureSongBuilder.h`: Backing Tracks are generated sines imported through the real import path, plain Tracks are added as one "Add Tracks" step.
 - **Snapshots.** `[snapshot]` tests write `build/ui-snapshots/slice-NN/<surface>.png` (the path is fixed at configure time, whatever the preset). The window's timer never fires in tests; they call `MainComponent::tick()` where the timer would.
+
+## Amendment: suite time target (issue #63)
+
+Measured on a 6-core, 12-thread i7-9750H with 642 test cases: 444 s serial, 102 s at `-j8`, 82 s at `-j12`. No single case is the cause: the slowest is 6 s (the MP4 and `[snapshot]` cases at 3 to 6 s, under load), and the median is 0.6 s. Every case is its own ctest process, and launching `overdub_tests` costs about 0.5 s (dyld binding of the JUCE and Apple frameworks; the app binary pays the same, and `-dead_strip_dylibs` or `-no_fixup_chains` do not change it). That fixed cost times the case count is about 350 s serial and is the floor of the suite.
+
+- The target is about 90 s for the full `ctest --preset debug` run, which now runs `jobs: 12` by default. The earlier 60 s target predates 642 cases and was not reachable without batching cases into fewer processes, which would lose per-case `ctest -R` selection.
+- Running in parallel is reliable: test folders use UUID names (PR #56) and no test opens a device.
+- No tolerance in the table above changes.
+- If the suite outgrows 90 s, add the `fast` label described above before touching any tolerance.
