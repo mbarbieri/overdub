@@ -3,7 +3,9 @@
 
 #include "core/Log.h"
 #include "engine/EngineFixture.h"
+#include "engine/TestProcessors.h"
 #include "song/AudioFileDecode.h"
+#include "ui/ExportPage.h"
 
 #include <AudioToolbox/AudioToolbox.h>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -266,4 +268,30 @@ TEST_CASE ("the export format names, extensions and default file", "[export][for
     CHECK (defaultExportFile (music, "My Song", ExportFormat::wav) == music.getChildFile ("My Song.wav"));
     CHECK (defaultExportFile (music, "", ExportFormat::m4a) == music.getChildFile ("Untitled.m4a"));
     CHECK (defaultExportFile (music, "My Song", ExportFormat::mp4) == music.getChildFile ("My Song.mp4"));
+}
+
+TEST_CASE ("a Song without Clips whose Master chain reports a tail: the page and the export agree it is not exported", "[export][span]")
+{
+    TempPackage package;
+    auto mix = song::makeEmptySong (testSampleRate);
+    mix.tracks = { trackWith ("empty", {}) };
+    const overdub::engine::InsertFactory masterEcho = [] (const song::Id& trackId, const std::vector<song::InsertSlot>&) {
+        std::vector<std::unique_ptr<juce::AudioProcessor>> chain;
+        if (trackId.empty())
+            chain.push_back (std::make_unique<EchoProcessor> (480, testSampleRate));
+        return chain;
+    };
+
+    MixRender render { mix, package.root, 256, masterEcho };
+    REQUIRE (render.tailSamples() == 480); // the tail alone is non-zero: this is the case of issue #95
+    const auto destination = package.root.getChildFile ("tail-only.wav");
+
+    core::ScopedLogCapture capture;
+    const auto exported = overdub::exporting::exportMix (render, ExportRequest { ExportFormat::wav, destination });
+
+    REQUIRE (! exported.has_value());
+    CHECK (exported.error().code == "export.nothing_to_export");
+    CHECK (! destination.exists());
+    CHECK (eventsNamed (capture, "export.started").empty());
+    CHECK (overdub::ui::exportSpanText (overdub::exporting::lastClipEnd (mix), render.sampleRate()) == "Nothing to export: the Song has no Clips");
 }

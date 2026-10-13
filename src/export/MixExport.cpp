@@ -91,8 +91,9 @@ core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const
 
 core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& request, const ProgressFn& progress, const ShouldStopFn& shouldStop)
 {
+    // A tail alone is not a mix: without Clips there is no sound to ring out (issue #95).
     const auto total = render.totalSamples();
-    if (total <= 0)
+    if (render.songEnd() <= 0)
         return std::unexpected (core::Error { "export.nothing_to_export", "the Song has no Clips to export", {} });
 
     if (auto folder = createExportFolder (request.destination); ! folder.has_value())
