@@ -13,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -24,7 +25,8 @@
 //
 // - sync() follows the Song: a slot with no processor starts loading (its saved state, stateHash,
 //   is restored when it arrives), a slot the Song lost is released (plans that still run it keep
-//   it alive until the engine frees them, off the audio thread). A slot that failed stays failed:
+//   it alive until the engine frees them, off the audio thread), unless the caller keeps it hosted
+//   (RemovedSlots::keep: an export may still render it, and only a hosted plugin's crash is heard). A slot that failed stays failed:
 //   an inert placeholder, its Song entry and state kept.
 // - The engine plays only ready slots that are not bypassed (insertFactory(); issue #34: a
 //   bypassed slot is left out of the plan, latency included, and keeps its plugin and state).
@@ -71,6 +73,13 @@ using StateLoader = std::function<core::Expected<juce::MemoryBlock> (const std::
 // Stores state bytes and returns their hash (SongPackage::storePluginState).
 using StateStore = std::function<core::Expected<std::string> (const juce::MemoryBlock& state)>;
 
+// What sync() does with a hosted slot the Song no longer has.
+enum class RemovedSlots
+{
+    release,
+    keep
+};
+
 class InsertHost final : private juce::AudioProcessorListener
 {
 public:
@@ -84,12 +93,14 @@ public:
     // Starts loading every slot of the Song that has no processor, releases those of slots it no
     // longer has. Logs plugin.insert_requested (debug: slot_id, component) and
     // plugin.insert_released (debug: slot_id).
-    void sync (const song::Song& song);
+    void sync (const song::Song& song, RemovedSlots removed = RemovedSlots::release);
 
     // The engine's InsertFactory for the next plan: per chain, a SharedInsertNode for each ready
     // slot, in chain order (loading, failed and bypassed slots are left out). Remembers each latency it saw,
     // so the plan it builds is up to date: takeGraphChanged() is false until something changes.
     engine::InsertFactory insertFactory();
+    // The Song's slots a plan built by insertFactory() now renders: ready and not bypassed.
+    std::set<song::Id> renderedSlots (const song::Song& song) const;
 
     // The slot's status; none for a slot sync() has not seen.
     std::optional<InsertStatus> status (const song::Id& slotId) const;

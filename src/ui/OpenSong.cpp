@@ -393,7 +393,8 @@ std::vector<core::Error> OpenSong::handleCrashes()
         return {};
 
     std::vector<core::Error> errors;
-    if (isExporting())
+    const auto exportRendersCrashed = std::ranges::any_of (crashes, [this] (const plugin::InsertCrash& crash) { return exportRenders (crash.slotId); });
+    if (exportRendersCrashed)
     {
         // The export's plan passes the dead plugin's audio through dry: its file would be wrong.
         errors.push_back (core::Error { "ui.export_plugin_crashed", "a plugin crashed during the export", { { "path", exportDestination().getFullPathName().toStdString() } } });
@@ -571,7 +572,9 @@ void OpenSong::updateEngine (const song::Song& before)
 
 void OpenSong::reloadEngine()
 {
-    inserts.sync (song());
+    // While an export runs, a slot an edit removed stays hosted: the export's plan may render it,
+    // and only a hosted plugin's crash is heard.
+    inserts.sync (song(), isExporting() ? plugin::RemovedSlots::keep : plugin::RemovedSlots::release);
     if (binding.engine != nullptr && ! isExporting())
         binding.engine->loadSong (songForEngine (song(), monitored), package_->location(), inserts.insertFactory());
 }
@@ -605,6 +608,8 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, so
         fields["length"] = exporting::videoLengthName (request.videoLength);
     }
     core::logEvent (core::Level::info, "ui.export_requested", fields);
+    // Until its render is built, the export counts on the slots the Song's plan rendered.
+    exportSlots = inserts.renderedSlots (song());
     exportWaiting = std::move (request);
     movieWaiting = std::move (movie);
     exportRequestedAt = now;
@@ -631,6 +636,7 @@ void OpenSong::startExportOnceAudioLetGo()
         return;
     // The audio thread renders the empty plan now: the export may run the plugins.
     inserts.sync (song());
+    exportSlots = inserts.renderedSlots (song());
     auto render = std::make_unique<exporting::MixRender> (song(), package_->location(), blockSizeOf (binding), inserts.insertFactory());
     if (movieWaiting.has_value())
         exportJob = std::make_unique<exporting::ExportJob> (std::move (render), std::move (*exportWaiting), std::move (*movieWaiting));
@@ -674,6 +680,11 @@ std::vector<core::Error> OpenSong::advanceExport (song::SongPackage::Clock::time
         return { result->error() };
     lastExport = (*result)->file;
     return {};
+}
+
+bool OpenSong::exportRenders (const song::Id& slotId) const
+{
+    return isExporting() && exportSlots.contains (slotId);
 }
 
 juce::File OpenSong::exportDestination() const
