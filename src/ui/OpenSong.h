@@ -31,8 +31,9 @@
 // end the Pass; poll() (from the window's timer) ends its movie once the audio thread has ended
 // it, and finishes it once the camera has completed the movie, without waiting for it (issue #70:
 // AVFoundation may take seconds). Until then isRecording() stays true (isSavingPass() tells a stopped Pass from a capturing one) and the Song stays as the
-// Pass started. Detaching the audio or destroying it waits for the audio thread and the movie and
-// finishes it there.
+// Pass started. Detaching the audio waits for the audio thread only (issue #90): a Pass whose movie
+// is still completing stays pending and poll() finishes it, with no engine. Destroying the
+// OpenSong waits for the movie and finishes the Pass.
 //
 // While a Pass runs (pre-roll included), only stop, play/stop and rewind act: undo, redo, edits,
 // seeks, import, arm, input, pre-roll and Monitoring are ignored, so the Song and the engine's plan stay as the Pass started.
@@ -147,7 +148,7 @@ public:
     // The engine and its plan are untouched. A running Pass keeps the latency it started with.
     void setCalibrationOffset (song::SampleCount offsetSamples) { binding.latency.calibrationOffsetSamples = offsetSamples; }
 
-    // True from record() until poll() or detachAudio() has finished the Pass (its movie completed).
+    // True from record() until poll() (or detachAudio(), when the movie is complete) has finished the Pass (its movie completed).
     bool isRecording() const { return recorder != nullptr; }
     // True while isRecording() but the audio thread has ended the Pass: nothing is captured any more,
     // the Pass is only being saved (its movie completing, issue #91). Gestures stay refused.

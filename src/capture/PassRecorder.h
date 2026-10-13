@@ -150,6 +150,11 @@ public:
     // Errors: capture.stop_timeout (the device delivered no callback), or finish()'s.
     core::Expected<RecordedPass> stop (std::chrono::milliseconds timeout = std::chrono::milliseconds (2000));
 
+    // requestStop(), then waits up to `timeout` for the audio thread, then prepareFinish(): the
+    // movie completes off this thread (issue #90). The engine may go once this returns.
+    // Errors: capture.stop_timeout.
+    core::Expected<void> stopWithoutWaitingForMovie (std::chrono::milliseconds timeout = std::chrono::milliseconds (2000));
+
     const song::Id& passId() const { return passIdentifier; }
 
 private:
