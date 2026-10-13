@@ -1,5 +1,6 @@
 #include "ui/ExportPage.h"
 
+#include "export/MixRender.h"
 #include "export/Mp4Decode.h"
 #include "ui/MainWindowFixture.h"
 #include "video/SyntheticMovie.h"
@@ -255,6 +256,69 @@ TEST_CASE ("Export mode exports an MP4 of the chosen Video Take and stores the c
     CHECK (requested[0]["video_take_id"] == f.secondTake);
     CHECK (requested[0]["length"] == "trim");
     CHECK (eventsNamed (capture, "export.finished").size() == 1);
+}
+
+TEST_CASE ("a Song with a Video Take but no Clips exports an MP4 over silence, and WAV and M4A stay a Notice", "[ui][export][mp4]")
+{
+    ExportFolder folder;
+    MainWindowFixture f { overdub::song::testing::FixtureSongBuilder {}.track ("Guitar", true, { 0 }).build() };
+    auto& window = *f.window;
+    auto changed = f.song();
+    REQUIRE (overdub::exporting::lastClipEnd (changed) == 0);
+    const auto videoTake = overdub::video::testing::addSyntheticVideoTake (changed, f.openSong->package().location(), rate / 2, 30);
+    REQUIRE (f.openSong->edit (changed, "Add Video Take").has_value());
+    window.tick();
+    REQUIRE (pressKey (window, '3'));
+    auto& page = window.exportPage;
+
+    SECTION ("MP4: the Video Take over a silent mix")
+    {
+        click (page.mp4Button);
+        page.setDestination (folder.root.getChildFile ("Video only"));
+        CHECK (page.exportButton.isEnabled());
+
+        ScopedLogCapture capture;
+        click (page.exportButton);
+        tickUntilExported (f);
+        REQUIRE (! f.openSong->isExporting());
+        CHECK (f.alertsShown.empty());
+        CHECK (eventsNamed (capture, "export.nothing_to_export").empty());
+
+        const auto file = folder.root.getChildFile ("Video only.mp4");
+        REQUIRE (f.openSong->lastExportedFile() == file);
+        REQUIRE (file.existsAsFile());
+        // Trimmed to the Video Take: 1 s of its 30 frames, over 1 s of silence.
+        CHECK (std::abs (overdub::exporting::testing::movieDurationSeconds (file) - 1.0) < 1.0 / 30.0);
+        CHECK (overdub::exporting::testing::decodeVideoFrames (file).size() == 30);
+        const auto audio = overdub::exporting::testing::decodeAudio (file, (int) rate);
+        REQUIRE (audio.getNumSamples() > 0);
+        CHECK (std::abs (audio.getNumSamples() - (int) rate) < (int) rate / 30);
+        CHECK (audio.getMagnitude (0, audio.getNumSamples()) <= 1.0e-6f); // -120 dBFS, the null-test bound (ADR 0005)
+        const auto requested = eventsNamed (capture, "ui.export_requested");
+        REQUIRE (requested.size() == 1);
+        CHECK (requested[0]["video_take_id"] == videoTake);
+    }
+
+    SECTION ("WAV and M4A: there is no mix to export")
+    {
+        for (auto* button : { &page.wavButton, &page.m4aButton })
+        {
+            click (*button);
+            const auto file = folder.root.getChildFile (button == &page.wavButton ? "Empty.wav" : "Empty.m4a");
+            page.setDestination (file);
+            CAPTURE (file.getFileName());
+
+            ScopedLogCapture capture;
+            click (page.exportButton);
+            tickUntilExported (f);
+            REQUIRE (! f.openSong->isExporting());
+            CHECK (window.noticeLine.text() == juce::String ("The Song has no Clips to export."));
+            const auto refused = eventsNamed (capture, "export.nothing_to_export");
+            REQUIRE (refused.size() == 1);
+            CHECK (refused[0]["lvl"] == "warn");
+            CHECK (! file.exists());
+        }
+    }
 }
 
 TEST_CASE ("snapshots of the Export page with MP4 trimmed and full-song", "[ui][snapshot]")

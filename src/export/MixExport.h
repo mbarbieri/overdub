@@ -43,8 +43,10 @@ core::Expected<void> createExportFolder (const juce::File& destination);
 core::Expected<void> moveExportIntoPlace (const juce::File& partial, const juce::File& destination);
 
 // Renders the whole mix into `file` (no logging, no rename): what exportMix and exportMovie
-// share. On failure or a stop the file is deleted. Errors: as exportMix's, but folder and rename.
-core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop);
+// share. After the mix ends, silence is written up to `padToSamples` (exportMovie's range end, so
+// its audio is as long as its video, even for a Song with no Clips). On failure or a stop the file
+// is deleted. Errors: as exportMix's, but folder and rename.
+core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop, song::SampleCount padToSamples = 0);
 
 struct MovieSource; // export/MovieExport.h
 

@@ -6,10 +6,12 @@
 #include "export/Mp4Decode.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <utility>
 #include <vector>
 
 // Export to MP4 (issue #38) as a round trip (ADR 0005): a synthetic 10 s movie with flash frames
@@ -268,4 +270,69 @@ TEST_CASE ("a Video Take whose movie cannot be read is an explicit error and lea
     CHECK (exported.error().fields.at ("video_take_id") == "video-1");
     CHECK_FALSE (destination.exists());
     CHECK_FALSE (destination.getParentDirectory().exists()); // nothing was started
+}
+
+TEST_CASE ("a Song with a Video Take but no Clips exports an MP4 of the Video Take over silence", "[export][mp4][no_clips]")
+{
+    FlashFixture f;
+    f.mix.tracks.clear(); // the Video Take stays; nothing is heard
+    MixRender render { f.mix, f.package.root, 256, {} };
+    REQUIRE (render.totalSamples() == 0);
+
+    const auto [length, range] = GENERATE (std::pair { VideoLength::trimToVideoTake, SampleRange { videoStart, videoEnd() } },
+                                           std::pair { VideoLength::fullSong, SampleRange { 0, videoEnd() } });
+    CAPTURE (overdub::exporting::videoLengthName (length));
+    const auto destination = f.package.root.getChildFile ("exports/Silent.mp4");
+
+    core::ScopedLogCapture capture;
+    std::vector<double> progress;
+    const auto exported = overdub::exporting::exportMovie (render, f.request (length, destination), f.source(), [&progress] (double fraction) { progress.push_back (fraction); });
+    REQUIRE (exported.has_value());
+    REQUIRE (destination.existsAsFile());
+    // No partial movie and no mix file left beside it.
+    CHECK (destination.getParentDirectory().findChildFiles (juce::File::findFilesAndDirectories, false, "*", juce::File::FollowSymlinks::no).size() == 1);
+    CHECK (exported->samples == range.length());
+    CHECK (std::abs (movieDurationSeconds (destination) - (double) range.length() / testSampleRate) < 1.0 / fps);
+
+    // Every flash is in the movie, where its click would be.
+    const auto flashes = flashTimes (decodeVideoFrames (destination));
+    REQUIRE (flashes.size() == std::size (flashFrames));
+    for (std::size_t i = 0; i < flashes.size(); ++i)
+    {
+        const auto expected = (double) (clickSampleOf (flashFrames[i]) - range.start) / testSampleRate;
+        CAPTURE (i, flashes[i], expected);
+        CHECK (std::abs (flashes[i] - expected) <= halfFrame);
+    }
+
+    // The audio track is silence as long as the movie.
+    const auto audio = decodeAudio (destination, testSampleRate);
+    REQUIRE (audio.getNumChannels() > 0);
+    CHECK (std::abs ((double) audio.getNumSamples() - (double) range.length()) < (double) testSampleRate / fps);
+    CHECK (audio.getMagnitude (0, audio.getNumSamples()) <= 1.0e-6f); // -120 dBFS, the null-test bound (ADR 0005)
+
+    REQUIRE (! progress.empty());
+    CHECK (std::ranges::is_sorted (progress));
+    CHECK (std::abs (progress.back() - 1.0) < 1.0e-9);
+    const auto started = eventsNamed (capture, "export.started");
+    REQUIRE (started.size() == 1);
+    CHECK (started[0]["start_sample"] == range.start);
+    CHECK (started[0]["end_sample"] == range.end);
+    CHECK (eventsNamed (capture, "export.finished").size() == 1);
+    destination.deleteFile();
+}
+
+TEST_CASE ("a stopped MP4 export of a Song with no Clips leaves no file", "[export][mp4][no_clips]")
+{
+    FlashFixture f;
+    f.mix.tracks.clear();
+    MixRender render { f.mix, f.package.root, 256, {} };
+    const auto destination = f.package.root.getChildFile ("exports/Stopped.mp4");
+
+    // Stopped while the silent mix is written, before the encode starts.
+    int asked = 0;
+    const auto exported = overdub::exporting::exportMovie (render, f.request (VideoLength::fullSong, destination), f.source(), {}, [&asked] { return ++asked > 3; });
+    REQUIRE_FALSE (exported.has_value());
+    CHECK (exported.error().code == "export.cancelled");
+    CHECK (exported.error().fields.at ("samples_written") == 3 * 256);
+    CHECK (destination.getParentDirectory().findChildFiles (juce::File::findFilesAndDirectories, false, "*", juce::File::FollowSymlinks::no).isEmpty());
 }
