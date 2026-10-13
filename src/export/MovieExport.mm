@@ -191,7 +191,7 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest
 
     const auto sampleRate = render.sampleRate();
     const auto videoSpan = SampleRange { source.videoTake.startSample, video::videoTakeEnd (source.videoTake, *timing) };
-    const auto range = movieExportRange (request.videoLength, render.totalSamples(), videoSpan);
+    const auto range = movieExportRange (request.videoLength, render.songEnd() > 0 ? render.totalSamples() : 0, videoSpan);
     if (range.length() <= 0)
         return std::unexpected (core::Error { "export.video_take_outside_song",
                                               "the Video Take ends before the Song starts",

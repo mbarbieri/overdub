@@ -18,7 +18,7 @@
 // only once the file is complete, so a failed or cancelled export leaves no partial file and an
 // existing file is replaced whole. Logs export.started and export.finished (info).
 //
-// Errors: export.nothing_to_export (the Song has no Clips and no tail), export.cancelled,
+// Errors: export.nothing_to_export (the Song has no Clips, whatever its Insert Chains' tails), export.cancelled,
 // export.format_unavailable, export.write_failed (path, step: folder (detail) | create |
 // client_format | bit_rate | write | close (os_status) | rename (from)).
 namespace overdub::exporting
