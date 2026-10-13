@@ -584,13 +584,15 @@ void MainComponent::refresh()
         const auto& package = openSong->package();
         const auto recording = openSong->isRecording();
         state.playing = openSong->isPlaying();
-        state.recording = recording;
+        const auto saving = openSong->isSavingPass();
+        state.recording = recording && ! saving; // the top bar reads REC only while capturing
         const auto recordPoint = openSong->preRollRecordPoint();
         const auto position = openSong->position();
         state.clock = clockText (position, song.sampleRate);
         state.status = statusText (TransportStatus {
             .playing = state.playing,
-            .recording = recording,
+            .recording = state.recording,
+            .saving = saving,
             .passNumber = openSong->recordingPassNumber(),
             .preRollRemaining = recordPoint.has_value() ? std::optional<song::SampleCount> (*recordPoint - position) : std::nullopt,
             .sampleRate = song.sampleRate,

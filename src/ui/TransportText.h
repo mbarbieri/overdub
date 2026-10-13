@@ -13,7 +13,8 @@ namespace overdub::ui
 struct TransportStatus
 {
     bool playing = false;
-    bool recording = false; // a Pass is being recorded (or is being finished)
+    bool recording = false; // a Pass is being recorded
+    bool saving = false;    // a stopped Pass is being saved (its movie completing); not recording
     int passNumber = 0;     // the recording Pass's number, from 1
     std::optional<song::SampleCount> preRollRemaining; // samples to the record point during pre-roll
     int sampleRate = 0;
@@ -27,7 +28,7 @@ std::string clockText (song::SampleCount position, int sampleRate);
 std::string secondsText (song::SampleCount samples, int sampleRate);
 
 // "PRE-ROLL · 1.9 s" while pre-roll counts down to the record point, "REC · PASS n" while
-// recording, else "PLAY" or "STOP".
+// recording, "SAVING · PASS n" while a stopped Pass is saved (issue #91), else "PLAY" or "STOP".
 std::string statusText (TransportStatus status);
 
 // The pre-roll countdown, rounded up to a tenth so it reads 0.0 only at the record point: "1.9 s".

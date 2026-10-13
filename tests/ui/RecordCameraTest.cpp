@@ -133,6 +133,43 @@ TEST_CASE ("with the camera Armed a Pass from the window adds a Video Take, and 
     CHECK (f.page().cameraArmButton.isEnabled());
 }
 
+TEST_CASE ("the top bar stops reading REC once the Pass is stopped, while its movie completes, and gestures stay refused", "[ui][record_page][camera]")
+{
+    CameraWindowFixture f;
+    click (f.page().cameraArmButton);
+    f.camera.movie.firstFrameHostNs = f.device.hostTimeNs + 100'000'000ULL;
+    f.camera.movie.frames = 20;
+    f.camera.finishGate = std::make_shared<overdub::capture::testing::MovieGate>();
+
+    REQUIRE (pressKey (*f.window, 'r'));
+    f.runBlocks (200);
+    CHECK (f.window->topBar.clock.statusText() == juce::String (juce::CharPointer_UTF8 ("REC \xc2\xb7 PASS 1")));
+    CHECK (f.window->topBar.recordButton.getToggleState());
+
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+
+    // Stopped, the movie not complete: the Pass is not added yet, and the bar says it is saving.
+    REQUIRE (f.openSong->isRecording());
+    CHECK (f.song().passes.empty());
+    CHECK (f.window->topBar.clock.statusText() == juce::String (juce::CharPointer_UTF8 ("SAVING \xc2\xb7 PASS 1")));
+    CHECK_FALSE (f.window->topBar.recordButton.getToggleState());
+    // Gestures that must wait for the Pass to be added stay refused.
+    CHECK_FALSE (f.window->topBar.undoButton.isEnabled());
+    CHECK_FALSE (f.page().cameraArmButton.isEnabled());
+
+    f.camera.finishGate->release();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (5);
+    while (f.openSong->isRecording() && std::chrono::steady_clock::now() < deadline)
+    {
+        f.runBlocks (1);
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    REQUIRE_FALSE (f.openSong->isRecording());
+    CHECK (f.window->topBar.clock.statusText() == "STOP");
+    CHECK (f.song().passes.size() == 1);
+}
+
 TEST_CASE ("the camera controls follow the Song and the camera list", "[ui][record_page][camera]")
 {
     overdub::song::Song song;
