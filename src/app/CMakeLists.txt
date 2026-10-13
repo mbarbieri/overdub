@@ -5,6 +5,7 @@ juce_add_gui_app(Overdub
     BUNDLE_ID com.mbarbieri.overdub
     COMPANY_NAME "Overdub"
     VERSION "${PROJECT_VERSION}"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/AppIcon.png"
     HARDENED_RUNTIME_ENABLED FALSE
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "Overdub records your instruments and voice from your audio interface."
