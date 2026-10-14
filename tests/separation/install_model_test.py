@@ -95,7 +95,7 @@ class InstallTest(unittest.TestCase):
 
     def test_installs_the_exported_model_and_caches_the_checkpoint_under_unblends_name(self):
         exporter = FakeExporter()
-        self.assertEqual(self.run_install(exporter), "installed")
+        self.assertEqual(self.run_install(exporter), im.Result.INSTALLED)
         self.assertEqual(self.final_path.read_bytes(), EXPORTED_BYTES)
         self.assertEqual(sorted(p.name for p in self.models_dir.iterdir()), [im.MODEL_FILE_NAME])
         cached = self.cache_dir / f"{self.checkpoint.sha256[:16]}.safetensors"
@@ -143,7 +143,7 @@ class InstallTest(unittest.TestCase):
         out = io.StringIO()
         with redirect_stdout(out):
             result = im.install(self.models_dir, self.cache_dir, self.checkpoint, im.download_url, exporter.export, exporter.read_facts)
-        self.assertEqual(result, "already_installed")
+        self.assertEqual(result, im.Result.ALREADY_INSTALLED)
         self.assertEqual(exporter.calls, 0)
         self.assertIn("already installed", out.getvalue())
 
@@ -151,23 +151,36 @@ class InstallTest(unittest.TestCase):
         self.run_install(FakeExporter())
         self.final_path.unlink()
         self.source.unlink()
-        self.assertEqual(self.run_install(FakeExporter()), "installed")
+        self.assertEqual(self.run_install(FakeExporter()), im.Result.INSTALLED)
+
+    def test_invalid_existing_model_is_deleted_even_when_the_install_fails(self):
+        self.models_dir.mkdir(parents=True)
+        self.final_path.write_bytes(b"something else")
+        self.assert_failed_at("export", FakeExporter(fail=True))
+
+    def test_temp_folders_of_an_interrupted_run_are_removed(self):
+        stale = self.models_dir / ".install-abc123"
+        stale.mkdir(parents=True)
+        (stale / im.MODEL_FILE_NAME).write_bytes(b"half a graph")
+        self.run_install(FakeExporter())
+        self.assertEqual(sorted(p.name for p in self.models_dir.iterdir()), [im.MODEL_FILE_NAME])
+
+    def test_unwritable_cache_names_the_download_step(self):
+        self.cache_dir.parent.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.write_bytes(b"a file where the cache folder should be")
+        self.assert_failed_at("download", FakeExporter())
 
     def test_invalid_existing_model_is_replaced(self):
         self.models_dir.mkdir(parents=True)
         self.final_path.write_bytes(b"something else")
-        self.assertEqual(self.run_install(FakeExporter()), "installed")
+        self.assertEqual(self.run_install(FakeExporter()), im.Result.INSTALLED)
         self.assertEqual(self.final_path.read_bytes(), EXPORTED_BYTES)
 
     def test_main_reports_the_failed_step_and_exits_nonzero(self):
         err = io.StringIO()
-        original = im.PINNED_CHECKPOINT
-        im.PINNED_CHECKPOINT = im.Checkpoint(url=(Path(self.temp.name) / "absent").as_uri(), sha256=original.sha256)
-        try:
-            with redirect_stdout(io.StringIO()), redirect_stderr(err):
-                code = im.main(["--models-dir", str(self.models_dir), "--cache-dir", str(self.cache_dir)])
-        finally:
-            im.PINNED_CHECKPOINT = original
+        missing = im.Checkpoint(url=(Path(self.temp.name) / "absent").as_uri(), sha256=self.checkpoint.sha256)
+        with redirect_stdout(io.StringIO()), redirect_stderr(err):
+            code = im.main(["--models-dir", str(self.models_dir), "--cache-dir", str(self.cache_dir)], checkpoint=missing)
         self.assertEqual(code, 1)
         self.assertIn("[download] FAILED", err.getvalue())
 
@@ -185,6 +198,7 @@ class ModelProblemsTest(unittest.TestCase):
             "stft_hop_length": "1024",
             "stft_win_length": "4096",
             "stft_normalized": "true",
+            "stft_window": "hamming",
             "sources": '["bass", "drums", "other", "vocals"]',
         }
         for key, wrong in cases.items():

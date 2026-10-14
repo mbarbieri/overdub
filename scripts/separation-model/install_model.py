@@ -10,8 +10,8 @@ Runs inside the converter container (`install.sh` starts it). Steps, in order:
   install   rename the temp file to the final path
 
 Invariant: the final model path only ever receives a file through one os.replace after `check`
-passed, so any failure leaves no file there (or the previous one untouched). Every failure names
-its step.
+passed, and an invalid model found there is deleted at `existing`, so any failure leaves no file at
+the final path. Every failure, including an OSError, names its step.
 
 The module imports only the standard library at top level so its tests run on the host's python3
 (3.9 or later); onnx and unblend are imported inside the container-only functions.
@@ -58,6 +58,7 @@ EXPECTED_METADATA = {
     "stft_hop_length": 512,
     "stft_win_length": 2048,
     "stft_normalized": False,
+    "stft_window": "hann",
 }
 EXPECTED_INPUT_SHAPES = {
     "spec_real": [1, 2, 1025, 1151],
@@ -79,6 +80,20 @@ class InstallError(Exception):
         super().__init__(f"step '{step}' failed: {message}")
         self.step = step
         self.message = message
+
+
+class Step:
+    EXISTING = "existing"
+    DOWNLOAD = "download"
+    VERIFY = "verify"
+    EXPORT = "export"
+    CHECK = "check"
+    INSTALL = "install"
+
+
+class Result:
+    INSTALLED = "installed"
+    ALREADY_INSTALLED = "already_installed"
 
 
 def log(step: str, message: str) -> None:
@@ -178,99 +193,128 @@ def checkpoint_cache_path(cache_dir: Path, checkpoint: Checkpoint) -> Path:
 
 
 def existing_model_is_valid(final_path: Path, read_facts: Callable) -> bool:
+    """True when a valid model is at `final_path`. An invalid or unreadable one is deleted."""
     if not final_path.exists():
         return False
     try:
         problems = model_problems(read_facts(final_path))
-    except Exception as error:  # an unreadable file is replaced like an invalid one
-        log("existing", f"{final_path} is unreadable ({error}); it will be replaced")
-        return False
-    if problems:
-        log("existing", f"{final_path} is not the expected model ({'; '.join(problems)}); it will be replaced")
-        return False
-    return True
+    except Exception as error:  # an unreadable file is deleted like an invalid one
+        problems = [f"unreadable ({error})"]
+    if not problems:
+        return True
+    log(Step.EXISTING, f"{final_path} is not the expected model ({'; '.join(problems)}); deleting it")
+    try:
+        final_path.unlink()
+    except OSError as error:
+        raise InstallError(Step.EXISTING, f"cannot delete the invalid model {final_path}: {error}") from error
+    return False
+
+
+def remove_stale_temp_dirs(models_dir: Path) -> None:
+    """Deletes .install-* folders an interrupted run left behind."""
+    if not models_dir.is_dir():
+        return
+    for stale in models_dir.glob(".install-*"):
+        log(Step.EXISTING, f"removing {stale.name}, left by an interrupted install")
+        shutil.rmtree(stale, ignore_errors=True)
 
 
 def fetch_checkpoint(cache_dir: Path, checkpoint: Checkpoint, download: Callable) -> Path:
     """Returns the cached checkpoint, downloading it when absent or corrupt. Steps: download, verify."""
-    cache_dir.mkdir(parents=True, exist_ok=True)
     cached = checkpoint_cache_path(cache_dir, checkpoint)
-    if cached.exists():
-        if file_sha256(cached) == checkpoint.sha256:
-            log("download", f"using the cached checkpoint {cached}")
-            return cached
-        log("download", f"cached checkpoint {cached} has the wrong SHA-256; downloading it again")
-        cached.unlink()
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        if cached.exists():
+            if file_sha256(cached) == checkpoint.sha256:
+                log(Step.DOWNLOAD, f"using the cached checkpoint {cached}")
+                return cached
+            log(Step.DOWNLOAD, f"cached checkpoint {cached} has the wrong SHA-256; downloading it again")
+            cached.unlink()
+    except OSError as error:
+        raise InstallError(Step.DOWNLOAD, f"checkpoint cache {cache_dir}: {error}") from error
 
     partial = cache_dir / f".{cached.name}.partial"
     try:
-        log("download", f"downloading {checkpoint.url}")
+        log(Step.DOWNLOAD, f"downloading {checkpoint.url}")
         try:
             download(checkpoint.url, partial)
         except Exception as error:
-            raise InstallError("download", f"{checkpoint.url}: {error}") from error
+            raise InstallError(Step.DOWNLOAD, f"{checkpoint.url}: {error}") from error
 
-        actual = file_sha256(partial)
+        try:
+            actual = file_sha256(partial)
+        except OSError as error:
+            raise InstallError(Step.VERIFY, f"cannot read the download: {error}") from error
         if actual != checkpoint.sha256:
-            raise InstallError("verify", f"SHA-256 of the download is {actual}, expected {checkpoint.sha256}; refusing to continue")
-        log("verify", f"SHA-256 {actual} matches")
-        os.replace(partial, cached)
+            raise InstallError(Step.VERIFY, f"SHA-256 of the download is {actual}, expected {checkpoint.sha256}; refusing to continue")
+        log(Step.VERIFY, f"SHA-256 {actual} matches")
+        try:
+            os.replace(partial, cached)
+        except OSError as error:
+            raise InstallError(Step.VERIFY, f"cannot move the verified download into the cache: {error}") from error
         return cached
     finally:
         partial.unlink(missing_ok=True)
 
 
 def install(models_dir: Path, cache_dir: Path, checkpoint: Checkpoint, download: Callable, export: Callable, read_facts: Callable) -> str:
-    """Installs the model at models_dir/MODEL_FILE_NAME. Returns "already_installed" or "installed".
+    """Installs the model at models_dir/MODEL_FILE_NAME. Returns a Result.
 
     `download(url, path)`, `export(cache_dir, output_path)` and `read_facts(path) -> ModelFacts`
     are the side effects; tests pass fakes.
     """
     final_path = models_dir / MODEL_FILE_NAME
+    remove_stale_temp_dirs(models_dir)
     if existing_model_is_valid(final_path, read_facts):
-        log("existing", f"a valid model is already installed at {final_path}; nothing to do")
-        return "already_installed"
+        log(Step.EXISTING, f"a valid model is already installed at {final_path}; nothing to do")
+        return Result.ALREADY_INSTALLED
 
     fetch_checkpoint(cache_dir, checkpoint, download)
 
-    models_dir.mkdir(parents=True, exist_ok=True)
-    temp_dir = Path(tempfile.mkdtemp(prefix=".install-", dir=models_dir))
+    try:
+        models_dir.mkdir(parents=True, exist_ok=True)
+        temp_dir = Path(tempfile.mkdtemp(prefix=".install-", dir=models_dir))
+    except OSError as error:
+        raise InstallError(Step.EXPORT, f"cannot create a temp folder in {models_dir}: {error}") from error
     try:
         exported = temp_dir / MODEL_FILE_NAME
-        log("export", f"exporting {MODEL_NAME} to fp32 ONNX (opset {OPSET_VERSION}, static batch 1); this takes a few minutes")
+        log(Step.EXPORT, f"exporting {MODEL_NAME} to fp32 ONNX (opset {OPSET_VERSION}, static batch 1); this takes a few minutes")
         try:
             export(cache_dir, exported)
         except Exception as error:
-            raise InstallError("export", f"{type(error).__name__}: {error}") from error
+            raise InstallError(Step.EXPORT, f"{type(error).__name__}: {error}") from error
         if not exported.is_file():
-            raise InstallError("export", f"the exporter wrote no {exported.name}")
+            raise InstallError(Step.EXPORT, f"the exporter wrote no {exported.name}")
         extra = sorted(p.name for p in temp_dir.iterdir() if p.name != exported.name)
         if extra:
-            raise InstallError("export", f"the exporter wrote external data files {extra}; expected one self-contained file")
+            raise InstallError(Step.EXPORT, f"the exporter wrote external data files {extra}; expected one self-contained file")
 
         try:
             facts = read_facts(exported)
         except Exception as error:
-            raise InstallError("check", f"cannot read the exported model: {error}") from error
+            raise InstallError(Step.CHECK, f"cannot read the exported model: {error}") from error
         problems = model_problems(facts)
         if problems:
-            raise InstallError("check", "; ".join(problems))
-        log("check", "metadata, opset and input shapes match")
+            raise InstallError(Step.CHECK, "; ".join(problems))
+        log(Step.CHECK, "metadata, opset and input shapes match")
 
-        os.replace(exported, final_path)
-        log("install", f"installed {final_path}")
-        return "installed"
+        try:
+            os.replace(exported, final_path)
+        except OSError as error:
+            raise InstallError(Step.INSTALL, f"cannot rename the model to {final_path}: {error}") from error
+        log(Step.INSTALL, f"installed {final_path}")
+        return Result.INSTALLED
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def main(argv: list) -> int:
+def main(argv: list, checkpoint: Checkpoint = PINNED_CHECKPOINT) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--models-dir", type=Path, required=True)
     parser.add_argument("--cache-dir", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        install(args.models_dir, args.cache_dir, PINNED_CHECKPOINT, download_url, export_with_unblend, read_onnx_facts)
+        install(args.models_dir, args.cache_dir, checkpoint, download_url, export_with_unblend, read_onnx_facts)
     except InstallError as error:
         print(f"[{error.step}] FAILED: {error.message}", file=sys.stderr, flush=True)
         print("No model was installed.", file=sys.stderr, flush=True)

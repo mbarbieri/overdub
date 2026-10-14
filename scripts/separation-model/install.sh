@@ -6,6 +6,12 @@
 # it to fp32 ONNX and installs it. Re-running with a valid model installed does nothing.
 #
 # OVERDUB_MODELS_DIR and OVERDUB_MODEL_CACHE_DIR override the two folders (both outside the repo).
+#
+# Provenance: BS-RoFormer SW's original trainer is unidentified. jarredou published a repackaged
+# checkpoint (BS-ROFO-SW-Fixed); that account is deleted and the checkpoint survives only at
+# https://huggingface.co/enerjazzer/BS-ROFO-SW-Fixed ("License: unknown"). unblend's mirror, which
+# this script downloads, records it as "unlicensed". With no licence grant, the weights are never
+# bundled in Overdub.app, committed or attached to releases: each user installs them with this script.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
