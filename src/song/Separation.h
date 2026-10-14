@@ -35,8 +35,8 @@ inline constexpr std::array<SeparationPart, 6> separationParts { {
 
 // The Backing Track a Track can be separated from: the one every Clip of the Track plays.
 // Errors: song.track_not_found (track_id), song.track_not_separable (track_id, reason: "no_clips"
-// when the Track has no Clip, "not_one_backing_track" when a Clip plays a Take or the Clips play
-// different Backing Tracks).
+// when the Track has no Clip, "take_clips" when a Clip plays a Take, "several_backing_tracks" when
+// the Clips play different Backing Tracks, "backing_track_missing" when the Song lacks it).
 core::Expected<Id> separableBackingTrack (const Song& song, const Id& trackId);
 
 // The Song with the Separation applied: `parts` (one Backing Track per separationParts entry, in

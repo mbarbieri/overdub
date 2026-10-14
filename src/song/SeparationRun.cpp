@@ -3,6 +3,7 @@
 #include "core/Log.h"
 #include "song/BackingTrackImport.h"
 #include "song/Separation.h"
+#include "song/SeparationModel.h"
 
 #include <nlohmann/json.hpp>
 
@@ -12,10 +13,23 @@ namespace overdub::song
 {
 namespace
 {
+// The helper's own model checks: the installed model is missing or not the expected graph.
+bool isModelError (const std::string& helperError)
+{
+    return helperError == "separation.model_missing" || helperError == "separation.model_unloadable" || helperError == "separation.model_mismatch";
+}
+
 // The helper's stderr line is {"error": <code>, "message": ...}; anything else is kept as text.
+// A model the helper refuses is song.separation_model_invalid, so the user is told to install it.
 core::Error helperFailed (const HelperExit& exit)
 {
-    core::Fields fields { { "exit_code", exit.exitCode }, { "signal", exit.signal }, { "helper_error", "" }, { "helper_message", exit.errorLine } };
+    core::Fields fields {
+        { "exit_code", exit.exitCode },
+        { "signal", exit.signal },
+        { "helper_error", "" },
+        { "helper_message", exit.errorLine },
+        { "helper_error_line", exit.errorLine },
+    };
     const auto parsed = nlohmann::json::parse (exit.errorLine, nullptr, false);
     if (parsed.is_object())
     {
@@ -24,6 +38,8 @@ core::Error helperFailed (const HelperExit& exit)
         if (const auto message = parsed.find ("message"); message != parsed.end() && message->is_string())
             fields["helper_message"] = *message;
     }
+    if (isModelError (fields["helper_error"].get<std::string>()))
+        return core::Error { "song.separation_model_invalid", "the Separation helper refused the installed model", std::move (fields) };
     return core::Error { "song.separation_failed", "the Separation helper failed", std::move (fields) };
 }
 
@@ -41,8 +57,8 @@ core::Expected<std::unique_ptr<SeparationRun>> SeparationRun::start (SongPackage
         return std::unexpected (sourceId.error());
     if (! tools.startHelper)
         return std::unexpected (core::Error { "song.separation_unavailable", "this build has no Separation helper", {} });
-    if (! tools.model.existsAsFile())
-        return std::unexpected (core::Error { "song.separation_model_missing", "the Separation model is not installed", { { "path", pathOf (tools.model) } } });
+    if (auto checked = checkSeparationModel (tools.model); ! checked.has_value())
+        return std::unexpected (checked.error());
 
     const auto& backingTracks = package.song().backingTracks;
     const auto source = *std::ranges::find (backingTracks, *sourceId, &BackingTrack::id);
@@ -81,6 +97,24 @@ SeparationRun::~SeparationRun()
     output.deleteRecursively();
 }
 
+void SeparationRun::cancel (Clock::time_point now)
+{
+    if (helper == nullptr)
+        return;
+    helper->kill();
+    helper.reset();
+    output.deleteRecursively();
+    core::logEvent (core::Level::info,
+                    "song.separation_cancelled",
+                    {
+                        { "track_id", trackId },
+                        { "source_backing_track_id", sourceBackingTrackId },
+                        { "chunks_done", shownProgress.chunksDone },
+                        { "chunks", shownProgress.chunks },
+                        { "duration_ms", std::chrono::duration_cast<std::chrono::milliseconds> (now - startedAt).count() },
+                    });
+}
+
 std::optional<core::Expected<std::vector<Id>>> SeparationRun::advance (Clock::time_point now)
 {
     if (helper == nullptr)
@@ -102,7 +136,12 @@ void SeparationRun::readProgress (const std::vector<std::string>& lines)
     {
         const auto line = nlohmann::json::parse (text, nullptr, false);
         if (! line.is_object() || ! line.contains ("event") || ! line.at ("event").is_string())
+        {
+            // Capped: a noisy helper must not flood the log.
+            if (++ignoredLines <= maxLoggedIgnoredLines)
+                core::logEvent (core::Level::warn, "song.separation_line_ignored", { { "track_id", trackId }, { "line", text } });
             continue;
+        }
         const auto event = line.at ("event").get<std::string>();
         if (event == "separation.started")
             shownProgress.chunks = intField (line, "chunks");

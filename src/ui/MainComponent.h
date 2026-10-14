@@ -63,10 +63,11 @@
 // M and S (Record rows, Edit headers, Mixer strips) and the Mixer's faders and pan are undo steps
 // through OpenSong::edit; a Mixer drag in progress is heard through OpenSong::previewMix (issue #31).
 //
-// Separation (issue #114): Separate... in a Record row's menu (right-click) starts one (OpenSong::startSeparation). While
-// it runs the Separation dialog covers the window (modal: it takes every click, and keys and
-// commands do nothing), showing the helper's progress; when it ends the dialog goes and its Error,
-// if any, is presented by its tier.
+// Separation (issues #114, #115): Separate... in a Record row's menu (right-click) starts one
+// (OpenSong::startSeparation); disabled, the menu item says why. While it runs the Separation
+// dialog covers the window (modal: it takes every click, and keys and commands do nothing), showing
+// the helper's progress; it closes only when the Separation ends (its Error, if any, presented by
+// its tier) or its Cancel is clicked (OpenSong::cancelSeparation).
 //
 // Every 30 ms (and from tick() in tests) it polls the open Song, which finishes a stopped Pass,
 // refreshes the top bar and the page, feeds the Mixer's meters, and presents queued messages: Notices at once, Alerts only
@@ -173,6 +174,7 @@ private:
     void importFiles (const std::vector<juce::File>& files);
     void showTrackMenu (const song::Id& trackId);
     void startSeparation (const song::Id& trackId);
+    void cancelSeparation();
     bool separating() const { return openSong != nullptr && openSong->isSeparating(); }
     void startExport (const exporting::ExportRequest& request);
     void chooseExportFile (const juce::File& current);

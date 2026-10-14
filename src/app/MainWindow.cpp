@@ -129,6 +129,11 @@ void MainWindow::closeButtonPressed()
     juce::JUCEApplication::getInstance()->systemRequestedQuit();
 }
 
+bool MainWindow::mayQuitOrNotice()
+{
+    return workspace == nullptr || workspace->mayQuitOrNotice();
+}
+
 //==============================================================================
 // Menus
 

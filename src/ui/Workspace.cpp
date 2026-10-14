@@ -61,6 +61,14 @@ bool Workspace::idleOrNotice()
     return false;
 }
 
+bool Workspace::mayQuitOrNotice()
+{
+    if (song == nullptr || ! song->isSeparating())
+        return true;
+    content.showNotice ("ui.separation_running");
+    return false;
+}
+
 //==============================================================================
 // Songs
 

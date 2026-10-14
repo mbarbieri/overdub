@@ -6,10 +6,39 @@
 
 namespace overdub::ui
 {
-std::vector<TrackMenuItem> trackMenuFor (const song::Song& song, const song::Id& trackId, bool passRunning)
+namespace
 {
-    const auto separable = song::separableBackingTrack (song, trackId).has_value();
-    return { TrackMenuItem { TrackMenuAction::separate, "Separate...", separable && ! passRunning } };
+// Why a Track cannot be separated, from song.track_not_separable's reason.
+std::string notSeparableTooltip (const core::Error& error)
+{
+    if (error.code != "song.track_not_separable")
+        return "This Track is no longer in the Song";
+    const auto reason = error.fields.value ("reason", std::string());
+    if (reason == "no_clips")
+        return "This Track has no Clips";
+    if (reason == "take_clips")
+        return "This Track has recorded Takes";
+    if (reason == "several_backing_tracks")
+        return "This Track has more than one Backing Track";
+    return "This Track's Backing Track is missing";
+}
+
+std::string separateTooltip (const song::Song& song, const song::Id& trackId, TrackMenuState state)
+{
+    if (state.passRunning)
+        return "Stop recording first";
+    if (state.exportRunning)
+        return "Wait for the export to finish";
+    const auto separable = song::separableBackingTrack (song, trackId);
+    return separable.has_value() ? std::string() : notSeparableTooltip (separable.error());
+}
+} // namespace
+
+std::vector<TrackMenuItem> trackMenuFor (const song::Song& song, const song::Id& trackId, TrackMenuState state)
+{
+    auto tooltip = separateTooltip (song, trackId, state);
+    const auto enabled = tooltip.empty();
+    return { TrackMenuItem { TrackMenuAction::separate, "Separate...", enabled, std::move (tooltip) } };
 }
 
 std::vector<InputChoice> inputChoices (const std::vector<std::string>& inputChannelNames)

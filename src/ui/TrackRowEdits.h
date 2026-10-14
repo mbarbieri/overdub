@@ -53,13 +53,24 @@ struct TrackMenuItem
     TrackMenuAction action = TrackMenuAction::separate;
     std::string label;
     bool enabled = false;
+    std::string tooltip; // why a disabled item is disabled; empty when enabled
 
     bool operator== (const TrackMenuItem&) const = default;
 };
 
-// A Track's menu: "Separate..." (enabled when the Track's Clips all play one Backing Track,
-// song::separableBackingTrack, and no Pass runs).
-std::vector<TrackMenuItem> trackMenuFor (const song::Song& song, const song::Id& trackId, bool passRunning);
+// What runs in the open Song that a Track's menu depends on.
+struct TrackMenuState
+{
+    bool passRunning = false;
+    bool exportRunning = false;
+};
+
+// A Track's menu: "Separate..." (issue #115), enabled when the Track's Clips all play one Backing
+// Track (song::separableBackingTrack) and no Pass or export runs. Disabled, its tooltip says why:
+// "Stop recording first", "Wait for the export to finish", "This Track has no Clips", "This Track
+// has recorded Takes", "This Track has more than one Backing Track", "This Track's Backing Track is
+// missing".
+std::vector<TrackMenuItem> trackMenuFor (const song::Song& song, const song::Id& trackId, TrackMenuState state);
 
 // The number the next Pass gets: one more than the Song's Passes ("Record Pass <n>").
 int nextPassNumber (const song::Song& song);
