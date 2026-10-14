@@ -296,9 +296,13 @@ TEST_CASE ("a Separation without the model installed is an Alert that says how t
     SeparateFixture s;
     s.f.openSong->setSeparationTools (song::SeparationTools { .model = s.f.fixture->folder.getChildFile ("models/none.onnx"), .startHelper = fakeSeparationHelper ({}, s.log) });
     const auto before = s.f.song();
+    ScopedLogCapture capture;
 
     s.rightClickRow ("Band Mix");
 
+    const auto shown = firstEvent (capture, "ui.alert_shown");
+    CHECK (shown.at ("code") == "song.separation_model_missing");
+    CHECK (shown.at ("tier") == "alert");
     CHECK_FALSE (s.f.openSong->isSeparating());
     CHECK (s.log->starts.empty());
     REQUIRE (s.f.alertsShown.size() == 1);
@@ -314,4 +318,20 @@ TEST_CASE ("a snapshot of the Separation dialog over the Record page", "[ui][sep
     s.f.window->tick();
     s.f.window->tick();
     CHECK (writeSnapshot (*s.f.window, "issue-114", "separation-dialog").existsAsFile());
+}
+
+TEST_CASE ("a helper that fails is an Alert, the dialog closes and the Song is unchanged", "[ui][separation]")
+{
+    SeparateFixture s (FakeHelperScript { .exitCode = 1, .errorLine = R"({"error":"separation.inference_failed","message":"out of memory"})" });
+    const auto before = s.f.song();
+    ScopedLogCapture capture;
+
+    s.separate ("Band Mix");
+
+    const auto shown = firstEvent (capture, "ui.alert_shown");
+    CHECK (shown.at ("code") == "song.separation_failed");
+    CHECK (shown.at ("tier") == "alert");
+    CHECK (s.f.alertsShown.size() == 1);
+    CHECK_FALSE (isShown (s.f.window->separationDialog));
+    CHECK (s.f.song() == before);
 }

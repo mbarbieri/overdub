@@ -121,13 +121,9 @@ core::Expected<std::vector<Id>> SeparationRun::finish (const HelperExit& exit, C
     {
         const auto file = output.getChildFile (juce::String (std::string (part.fileStem)) + ".wav");
         if (! file.existsAsFile())
-        {
-            auto error = helperFailed (exit);
-            error.message = "the Separation helper did not write every part";
-            error.fields["reason"] = "part_missing";
-            error.fields["path"] = pathOf (file);
-            return std::unexpected (std::move (error));
-        }
+            return std::unexpected (core::Error { "song.separation_failed",
+                                                  "the Separation helper did not write every part",
+                                                  { { "reason", "part_missing" }, { "path", pathOf (file) } } });
         partFiles.push_back (file);
     }
 

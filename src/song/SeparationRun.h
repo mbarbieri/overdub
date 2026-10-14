@@ -17,12 +17,12 @@
 // a fresh output folder under the tools' work folder; advance() reads its progress lines and, once
 // it has exited with success, adds the six parts to the Song as one undo step
 // (SongPackage::addSeparation). Logs song.separation_started (info: track_id,
-// source_backing_track_id, model, input) and song.separation_finished (info: track_id,
+// source_backing_track_id, model, input, output) and song.separation_finished (info: track_id,
 // source_backing_track_id, backing_track_ids, model, duration_ms).
 //
 // A helper that fails (any non-zero exit, a signal, or a part missing after a success) is the Error
-// song.separation_failed (exit_code, signal, helper_error, helper_message; reason "part_missing"
-// and path for a missing part): the Song is unchanged. Every end, and destroying the run (which
+// song.separation_failed (exit_code, signal, helper_error, helper_message; or, for a part missing
+// after a success, reason "part_missing" and path): the Song is unchanged. Every end, and destroying the run (which
 // kills a helper that still runs), deletes the output folder.
 //
 // Message thread only. The package must outlive the run.
