@@ -153,6 +153,7 @@ private:
     void jumpToPass (const song::Id& passId);
     void splitSelectedClip();
     void deleteSelectedClip();
+    void nudgePlayhead (int seconds);
     void applyEdit (core::Expected<song::Song> changed, const std::string& label);
     void armCamera (bool armed);
     void setMute (const song::Id& trackId, bool mute);
