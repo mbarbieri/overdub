@@ -71,7 +71,7 @@ void DeviceBinding::audioDeviceAboutToStart (juce::AudioIODevice* device)
                         { "output_channels", device->getActiveOutputChannels().countNumberOfSetBits() },
                         { "input_latency_samples", device->getInputLatencyInSamples() },
                         { "output_latency_samples", device->getOutputLatencyInSamples() },
-                        { "calibration_offset_samples", calibrationOffset },
+                        { "calibration_offset_samples", calibrationOffset.load() },
                     });
     reportShapeMismatch (*device, engine.configuration());
 }

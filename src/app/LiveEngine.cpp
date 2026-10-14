@@ -189,6 +189,8 @@ void LiveEngine::setCalibrationOffset (song::SampleCount offsetSamples)
 {
     storedCalibration = offsetSamples;
     latency.calibrationOffsetSamples = offsetSamples;
+    if (binding != nullptr)
+        binding->setCalibrationOffset (offsetSamples);
 }
 
 core::Fields LiveEngine::deviceFields()

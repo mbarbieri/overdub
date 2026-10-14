@@ -7,6 +7,7 @@
 #include "engine/Engine.h"
 #include "engine/LatencyCalibration.h"
 #include "ui/DeviceSettingsPanel.h"
+#include "ui/LiveAudio.h"
 #include "ui/OpenSong.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
@@ -19,7 +20,8 @@
 // The app's live audio: opens the audio device chosen on this machine (engine/DeviceSettings.h),
 // builds the Engine for that device's shape, and binds the two (engine/DeviceBinding.h). It also
 // runs what the engine itself does not: the RT event drain thread and the housekeeping timer.
-// Message thread only. A new device choice is applied by saving it and building a new LiveEngine.
+// Message thread only. It is the app's ui::LiveAudio: a new device choice is applied by saving it
+// and building a new LiveEngine.
 //
 // Device changes (issue #41, ADR 0004 amendment): it listens to the device manager and reports a
 // change that matters (engine/DeviceSettings.h, classifyDeviceChange) through onDeviceChange,
@@ -28,7 +30,7 @@
 // another one was seen, so a saved choice that is plugged in but will not open causes no loop.
 namespace overdub::app
 {
-class LiveEngine final : private juce::Timer, private juce::ChangeListener
+class LiveEngine final : public ui::LiveAudio, private juce::Timer, private juce::ChangeListener
 {
 public:
     // Opens the saved device, or the system default when there is none or it fails to open.
@@ -44,24 +46,25 @@ public:
     LiveEngine& operator= (const LiveEngine&) = delete;
 
     // Null when no output device could be opened.
-    engine::Engine* engine() { return audioEngine.get(); }
+    engine::Engine* engine() override { return audioEngine.get(); }
 
     // The open device's reported input and output latency and this machine's calibration offset
     // for it (ADR 0002): what a Pass recorded now is placed with. All 0 without a device.
-    capture::RecordLatency recordLatency() const { return latency; }
+    capture::RecordLatency recordLatency() const override { return latency; }
 
     // The open device's key in this machine's latency calibration file (ADR 0002); empty names and
     // rate 0 without a device.
-    const engine::CalibrationKey& calibrationKey() const { return key; }
+    const engine::CalibrationKey& calibrationKey() const override { return key; }
     // The offset stored for calibrationKey(); none when the device was never calibrated at this rate
     // (or the file is unreadable): Takes are then placed with reported latency only.
-    std::optional<song::SampleCount> storedCalibrationOffset() const { return storedCalibration; }
+    std::optional<song::SampleCount> storedCalibrationOffset() const override { return storedCalibration; }
     // A calibration just stored for this device (issue #39): Passes recorded from now are placed
-    // with it. The device and the engine keep running.
-    void setCalibrationOffset (song::SampleCount offsetSamples);
+    // with it, and the device binding logs it if the device starts again. The device and the engine
+    // keep running.
+    void setCalibrationOffset (song::SampleCount offsetSamples) override;
 
     // The open device's sample rate in Hz; 0 without a device.
-    int sampleRate() const { return deviceSampleRate; }
+    int sampleRate() const override { return deviceSampleRate; }
 
     // The open device as report fields: device_type, input_device, output_device, sample_rate,
     // buffer_size. Empty without a device.
@@ -69,15 +72,11 @@ public:
 
     // What a OpenSong plays and records through: the engine (null without a device), the
     // record latency and the active input channel names, in process() order.
-    ui::AudioBinding audioBinding();
+    ui::AudioBinding audioBinding() override;
 
     // The settings window's offer: this device type's input and output devices, the open
     // device's sample rates and buffer sizes, and the current choice.
-    ui::DeviceChoices deviceChoices();
-
-    // Called (message thread, from the device manager's change message) with each device change
-    // that matters. The callee must not destroy this LiveEngine from inside the call.
-    std::function<void (engine::DeviceChange)> onDeviceChange;
+    ui::DeviceChoices deviceChoices() override;
 
 private:
     void timerCallback() override;
