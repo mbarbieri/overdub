@@ -2,14 +2,11 @@
 
 #include "app/LiveEngine.h"
 #include "capture/Camera.h"
-#include "capture/CameraCalibration.h"
-#include "capture/LoopbackRun.h"
 #include "plugin/AudioUnitLoader.h"
-#include "song/SongPackage.h"
 #include "ui/CalibrationPanel.h"
 #include "ui/DeviceSettingsPanel.h"
 #include "ui/MainComponent.h"
-#include "ui/OpenSong.h"
+#include "ui/Workspace.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -17,30 +14,12 @@
 
 namespace overdub::app
 {
-// The one top-level window (issue #27). Closing it quits the app. It owns the live audio, the
-// camera (issue #35, attached to each open Song), the open Song (a ui::OpenSong) and the content (ui::MainComponent), and runs what needs native
-// dialogs: the File menu (New Song, Open, Duplicate), Undo / Redo in the Edit menu, and the
-// settings window with the audio device picker and the calibration panel (per machine).
-//
-// Calibration (issue #39): a device opened without a stored latency calibration shows the
-// ui.latency_not_calibrated Notice. Measure Latency detaches the open Song from the engine, runs a
-// capture::LoopbackRun on the live device (polled by a timer) and binds the Song again; using a
-// result stores it (engine/LatencyCalibration.h) and applies it to the next Pass without reopening
-// the device. Measure Last Clap Pass measures the open Song's newest Video Take; using it stores the
-// camera calibration (capture/CameraCalibration.h) for that camera and the output device its Pass
-// played through (the Video Take keeps it, issue #68).
-// While a loopback run measures, the actions that would touch the engine show ui.calibration_running.
-//
-// Opening another Song, changing the device and closing the window each finish a running Pass
-// first (ui::OpenSong's invariant). While a Pass runs, those menu items are disabled.
-//
-// Device changes (issue #41, ADR 0004 amendment): opening a Song switches the device to the Song's
-// rate when the device offers it (a new LiveEngine); otherwise the Song opens without audio and
-// shows ui.sample_rate_mismatch. A device change the LiveEngine reports builds a new LiveEngine
-// with the same rule: at once when the device was lost or reconfigured (the Pass it cut short is
-// already ended and is finished first, its Alert shown), and once no Pass, export or loopback run
-// is running when the saved choice came back or a device appeared. A lost device that falls back to
-// another shows ui.audio_device_lost.
+// The one top-level window (issue #27). Closing it quits the app. It owns the camera (issue #35),
+// the content (ui::MainComponent) and the ui::Workspace, which holds the live audio and the open
+// Song and answers device changes and calibrations (issue #105). The window keeps what needs native
+// dialogs and windows: the File menu (New Song, Open, Duplicate), Undo / Redo in the Edit menu, and
+// the settings window with the audio device picker and the calibration panel (per machine). While
+// a Pass or a loopback calibration runs, the menu items that would interrupt it are disabled.
 class MainWindow final : public juce::DocumentWindow, private juce::MenuBarModel
 {
 public:
@@ -58,62 +37,19 @@ private:
     void chooseSongToOpen();
     void duplicateSong();
     void showSettings();
-    void applyDeviceSettings (const engine::DeviceSettings& settings);
-    // Closes the live audio and opens it again (the saved choice, or the default; at the open
-    // Song's rate when offered), binds the open Song and shows what the user needs to know.
-    void reopenAudio();
-    // Hooks the LiveEngine's device changes up to applyDeviceChange.
-    void watchDevices();
-    // Retried by deviceChangePoll until the reported change could be answered.
-    void applyDeviceChange();
-    std::optional<int> openSongRate() const;
-    // The open Song's ui.sample_rate_mismatch Notice, when its device runs at another rate.
-    void showRateMismatch();
-    void showLatencyNoticeIfUncalibrated();
-
-    ui::CalibrationStatus calibrationStatus() const;
-    void refreshCalibrationPanel();
-    // True from Measure Latency until the open Song is bound to the engine again.
-    bool latencyMeasuring() const;
-    void measureLatency();
-    void pollLatencyRun();
-    void saveLatencyCalibration (song::SampleCount offsetSamples);
-    void measureClapPass();
-    void saveCameraCalibration (const capture::CameraCalibrationKey& key, double offsetMs);
-
-    // Closes the open Song (finishing a running Pass) and shows this one.
-    void showSong (std::unique_ptr<song::SongPackage> package, const std::vector<song::Notice>& notices);
-    void openSongFrom (const juce::File& chosen);
-    void closeSong();
-    // Finishes a running Pass and unbinds the engine; errors go to the content's Alerts.
-    void detachAudio();
-    bool passRunning() const;
-    // True when neither a Pass nor a loopback run is running; otherwise shows the Notice that says
-    // which (ui.stop_recording_first, ui.calibration_running).
-    bool idleOrNotice();
     void updateTitle();
 
     juce::String appName;
-    // Creates every open Song's AUs out-of-process (issue #33); outlives them.
+    // Creates every open Song's AUs out-of-process (issue #33); outlives the Workspace.
     plugin::AudioUnitLoader pluginLoader;
-    // Invariant: declared before `openSong`, so the device keeps running while a Pass finishes.
-    std::unique_ptr<LiveEngine> live;
-    // Declared before `openSong`, which uses it until it closes.
+    // Outlives the Workspace, whose open Song uses it until it closes.
     std::unique_ptr<capture::Camera> camera;
-    std::unique_ptr<ui::OpenSong> openSong;
-    // After `live` and `openSong`: destroyed first, while the device still runs to stop its Pass.
-    std::unique_ptr<capture::LoopbackRun> latencyRun;
-    // The run's outcome, held until the audio thread lets go of the plans and the Song is bound again.
-    std::optional<core::Expected<capture::LoopbackMeasurement>> latencyOutcome;
-    juce::TimedCallback latencyRunPoll { [this] { pollLatencyRun(); } };
-    // The device change reported and not answered yet (the newest wins).
-    std::optional<engine::DeviceChange> pendingDeviceChange;
-    juce::TimedCallback deviceChangePoll { [this] { applyDeviceChange(); } };
     ui::MainComponent content;
+    // Destroyed in the destructor, while the content and the settings panels still exist.
+    std::unique_ptr<ui::Workspace> workspace;
+    juce::TimedCallback workspaceTick { [this] { workspace->tick(); } };
     std::unique_ptr<juce::FileChooser> chooser;
     std::unique_ptr<juce::DocumentWindow> settingsWindow;
-    ui::DeviceSettingsPanel* settingsPanel = nullptr;       // owned by settingsWindow
-    ui::CalibrationPanel* calibrationPanel = nullptr;       // owned by settingsWindow
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)
 };

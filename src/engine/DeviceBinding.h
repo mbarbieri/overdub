@@ -4,6 +4,8 @@
 
 #include <juce_audio_devices/juce_audio_devices.h>
 
+#include <atomic>
+
 // Binds a live JUCE AudioIODevice to the engine (ADR 0005): the device's callback calls
 // Engine::process with the device's buffers and output host time. Register it with
 // AudioDeviceManager::addAudioCallback. The binding starts no threads; the owner runs the
@@ -21,6 +23,9 @@ public:
     // calibrationOffsetSamples: this machine's loopback calibration for the device and rate
     // (engine/LatencyCalibration.h, ADR 0002), logged with engine.device_opened.
     explicit DeviceBinding (Engine& engine, song::SampleCount calibrationOffsetSamples = 0);
+
+    // A calibration stored since (message thread): logged when the device starts again.
+    void setCalibrationOffset (song::SampleCount offsetSamples) { calibrationOffset.store (offsetSamples); }
 
     // Audio thread. Marks the calling thread as `audio` for logging, then calls Engine::process.
     // When the device reports no host time, the time the callback ran is used instead.
@@ -42,7 +47,8 @@ public:
 
 private:
     Engine& engine;
-    song::SampleCount calibrationOffset;
+    // Set on the message thread, read by audioDeviceAboutToStart on the thread starting the device.
+    std::atomic<song::SampleCount> calibrationOffset;
     // Valid from audioDeviceAboutToStart until audioDeviceStopped; never read by the callback.
     juce::AudioIODevice* runningDevice = nullptr;
 };

@@ -189,6 +189,24 @@ TEST_CASE ("starting the device logs engine.device_opened with the device's shap
     CHECK (eventsNamed (capture, "engine.device_engine_mismatch").empty());
 }
 
+TEST_CASE ("a calibration stored after the binding was built is the one logged when the device starts again", "[engine][device][binding]")
+{
+    ScopedLogCapture capture;
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    DeviceBinding binding { engine, -821 };
+    FakeAudioIODevice device { FakeDeviceShape { .name = "Scarlett 2i2 USB", .numInputChannels = 2, .numOutputChannels = 2, .sampleRate = 48000.0, .bufferSize = 256 } };
+    binding.audioDeviceAboutToStart (&device);
+    binding.audioDeviceStopped();
+
+    binding.setCalibrationOffset (-600);
+    binding.audioDeviceAboutToStart (&device);
+
+    const auto opened = eventsNamed (capture, "engine.device_opened");
+    REQUIRE (opened.size() == 2);
+    CHECK (opened[0]["calibration_offset_samples"] == -821);
+    CHECK (opened[1]["calibration_offset_samples"] == -600);
+}
+
 TEST_CASE ("stopping the device logs engine.device_closed with the device's xrun count", "[engine][device][binding]")
 {
     ScopedLogCapture capture;

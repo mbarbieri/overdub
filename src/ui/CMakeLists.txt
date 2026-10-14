@@ -36,7 +36,8 @@ target_sources(overdub_ui PRIVATE
     TransportText.cpp
     UserMessages.cpp
     VideoPreviewWindow.cpp
-    VideoScreen.mm)
+    VideoScreen.mm
+    Workspace.cpp)
 
 set_source_files_properties(CameraStage.mm VideoScreen.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 
