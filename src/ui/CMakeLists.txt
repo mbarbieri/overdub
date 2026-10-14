@@ -13,6 +13,7 @@ target_sources(overdub_ui PRIVATE
     DeviceSettingsPanel.cpp
     EditPage.cpp
     ExportPage.cpp
+    ExportRun.cpp
     InsertChain.cpp
     Layout.cpp
     LookAheadStrip.cpp
