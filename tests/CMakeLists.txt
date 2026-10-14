@@ -112,3 +112,10 @@ include("${PROJECT_SOURCE_DIR}/external/Catch2/extras/Catch.cmake")
 # PRE_TEST: list tests when ctest runs, not as a post-build step, so a crashing test binary
 # shows up as a failing test instead of a failing build.
 catch_discover_tests(overdub_tests DISCOVERY_MODE PRE_TEST)
+
+# The Separation model install script (issue #112) is Python; its tests run on the host's python3 with
+# the standard library only (no network, torch or onnx).
+find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
+add_test(NAME "separation model install script"
+    COMMAND "${Python3_EXECUTABLE}" -B -m unittest -v install_model_test
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/separation")
