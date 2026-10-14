@@ -31,7 +31,8 @@
 // Pass's start). Along the bottom: the Backing Track look-ahead strip and the whole-Song overview
 // (a click moves the playhead). Under each row's name: the Track's Insert Chain (issue #34,
 // ui/InsertChain.h: add, open, bypass, remove, drag to reorder); the Monitoring button counts
-// the chain's active Inserts. Meters come later.
+// the chain's active Inserts. A right-click (or control-click) on a row asks for its Track's menu
+// (issue #114: Separate...). Meters come later.
 // Thin: it shows state and reports gestures by Track or Pass id; the strip, overview and Passes
 // rows are computed by ui/RecordView.h and ui/TakeLanes.h.
 namespace overdub::ui
@@ -111,6 +112,10 @@ public:
     std::function<void (bool on)> onMonitoring;
     std::function<void (bool mute)> onMute;
     std::function<void (bool solo)> onSolo;
+    // A right-click (or control-click) on the row, outside its controls.
+    std::function<void()> onMenu;
+
+    void mouseDown (const juce::MouseEvent& event) override;
 
     juce::TextButton armButton { "Arm" };
     juce::Label nameLabel;
@@ -149,6 +154,8 @@ public:
     std::function<void (const song::Id&, bool)> onMonitoring;
     std::function<void (const song::Id&, bool)> onMute;
     std::function<void (const song::Id&, bool)> onSolo;
+    // A row's menu was asked for (issue #114).
+    std::function<void (const song::Id&)> onTrackMenu;
     // The Insert Chains' gestures (every row's).
     InsertChainActions insertActions;
     std::function<void()> onAddTrack;

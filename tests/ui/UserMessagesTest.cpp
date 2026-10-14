@@ -38,6 +38,19 @@ TEST_CASE ("a crashed plugin is a Notice; an export it spoiled is an Alert", "[u
         CHECK (sentenceFor (code).find (code) == std::string::npos);
 }
 
+TEST_CASE ("a Separation the user must wait for or retarget is a Notice; one that cannot run or failed is an Alert", "[ui][messages][separation]")
+{
+    CHECK (tierFor ("ui.separation_running") == Tier::notice);
+    CHECK (tierFor ("song.track_not_separable") == Tier::notice);
+    for (const auto* code : { "song.separation_model_missing", "song.separation_unavailable", "song.separation_start_failed", "song.separation_failed", "song.separation_parts_invalid" })
+    {
+        INFO (code);
+        CHECK (tierFor (code) == Tier::alert);
+        CHECK (sentenceFor (code).find (code) == std::string::npos);
+    }
+    CHECK (sentenceFor ("song.separation_model_missing").find ("make separation-model") != std::string::npos);
+}
+
 TEST_CASE ("every code reads as a sentence; an unknown code falls back to one naming it", "[ui][messages]")
 {
     CHECK (sentenceFor ("song.history_dropped") != sentenceFor ("capture.nothing_armed"));

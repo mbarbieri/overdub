@@ -1,9 +1,17 @@
 #include "ui/TrackRowEdits.h"
 
+#include "song/Separation.h"
+
 #include <algorithm>
 
 namespace overdub::ui
 {
+std::vector<TrackMenuItem> trackMenuFor (const song::Song& song, const song::Id& trackId, bool passRunning)
+{
+    const auto separable = song::separableBackingTrack (song, trackId).has_value();
+    return { TrackMenuItem { TrackMenuAction::separate, "Separate...", separable && ! passRunning } };
+}
+
 std::vector<InputChoice> inputChoices (const std::vector<std::string>& inputChannelNames)
 {
     std::vector<InputChoice> choices { InputChoice { {}, "No input" } };

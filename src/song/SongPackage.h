@@ -149,6 +149,18 @@ public:
     // 0 and its own undo step. A failed file does not stop the others.
     std::vector<core::Expected<Id>> importBackingTracks (const std::vector<juce::File>& sources, Clock::time_point now = Clock::now());
 
+    // Adds a Separation's parts (issue #114, song/Separation.h): each of `partFiles` (one per
+    // separationParts entry, in that order: the helper's WAVs) becomes a Backing Track the way an
+    // import does (its original copy, a derived WAV at the Song's rate, peaks) that remembers the
+    // source Track's Backing Track and `model` (SeparationOrigin); then withSeparation as one undo
+    // step "Separate <source's original filename>". Returns the new Backing Track ids in part order.
+    // As with an import: until the history step is committed any failure leaves the Song unchanged
+    // and deletes every file this wrote; once committed, a failed song.json write is returned but
+    // the Separation stands. The files are never deleted by undo, so redo plays.
+    // Errors: separableBackingTrack's, song.separation_parts_invalid, writeBackingTrackFiles's,
+    // edit()'s.
+    core::Expected<std::vector<Id>> addSeparation (const Id& sourceTrackId, const std::vector<juce::File>& partFiles, const std::string& model, Clock::time_point now = Clock::now());
+
     // True when the Backing Track's derived file is not there to play (shown as missing).
     bool isBackingTrackMissing (const Id& backingTrackId) const;
 

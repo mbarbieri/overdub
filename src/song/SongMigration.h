@@ -36,6 +36,8 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
 // This build's steps, one per formatVersion after 1; add one per new formatVersion and bump
 // songFormatVersion.
 //   1 -> 2 (issue #68): every Video Take gains "outputDevice": "" (unknown).
+//   2 -> 3 (issue #114): every Backing Track gains "separatedFrom": { "backingTrackId": "",
+//           "model": "" } (imported, not separated).
 std::span<const MigrationStep> songMigrationSteps();
 
 // migrateDocument with songMigrationSteps().

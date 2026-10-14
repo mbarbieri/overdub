@@ -69,6 +69,7 @@ inline Song fullyPopulatedSong()
             .channels = 1,
             .formatName = "WAV",
             .lengthSamples = 4410000,
+            .separatedFrom = { .backingTrackId = "backing-1", .model = "bs_roformer_sw.fp32" },
         },
     };
     song.videoTakes = {

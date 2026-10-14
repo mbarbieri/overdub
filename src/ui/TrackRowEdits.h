@@ -42,6 +42,25 @@ song::Song withInputChannels (song::Song song, const song::Id& trackId, std::vec
 // this one, so it still records every Armed Track.
 song::Song songForEngine (song::Song song, const std::set<song::Id>& monitoredTrackIds);
 
+// One item of a Track row's menu (right-click, issue #114).
+enum class TrackMenuAction
+{
+    separate
+};
+
+struct TrackMenuItem
+{
+    TrackMenuAction action = TrackMenuAction::separate;
+    std::string label;
+    bool enabled = false;
+
+    bool operator== (const TrackMenuItem&) const = default;
+};
+
+// A Track's menu: "Separate..." (enabled when the Track's Clips all play one Backing Track,
+// song::separableBackingTrack, and no Pass runs).
+std::vector<TrackMenuItem> trackMenuFor (const song::Song& song, const song::Id& trackId, bool passRunning);
+
 // The number the next Pass gets: one more than the Song's Passes ("Record Pass <n>").
 int nextPassNumber (const song::Song& song);
 } // namespace overdub::ui

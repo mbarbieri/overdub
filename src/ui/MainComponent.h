@@ -8,6 +8,7 @@
 #include "ui/Pages.h"
 #include "ui/PluginWindows.h"
 #include "ui/RecordPage.h"
+#include "ui/SeparationDialog.h"
 #include "ui/TopBar.h"
 #include "ui/UserMessages.h"
 #include "ui/VideoPreviewWindow.h"
@@ -61,6 +62,11 @@
 //
 // M and S (Record rows, Edit headers, Mixer strips) and the Mixer's faders and pan are undo steps
 // through OpenSong::edit; a Mixer drag in progress is heard through OpenSong::previewMix (issue #31).
+//
+// Separation (issue #114): Separate... in a Record row's menu (right-click) starts one (OpenSong::startSeparation). While
+// it runs the Separation dialog covers the window (modal: it takes every click, and keys and
+// commands do nothing), showing the helper's progress; when it ends the dialog goes and its Error,
+// if any, is presented by its tier.
 //
 // Every 30 ms (and from tick() in tests) it polls the open Song, which finishes a stopped Pass,
 // refreshes the top bar and the page, feeds the Mixer's meters, and presents queued messages: Notices at once, Alerts only
@@ -121,6 +127,9 @@ public:
     // or none when dismissed (default: a pop-up menu by name).
     std::function<std::vector<plugin::AvailableAudioUnit>()> listInsertPlugins;
     std::function<void (const std::vector<plugin::AvailableAudioUnit>&, std::function<void (std::optional<std::size_t>)>)> chooseInsertPlugin;
+    // A Track row's menu (issue #114): how the user picks an item; calls back with the index
+    // picked, or none when dismissed (default: a pop-up menu, disabled items greyed out).
+    std::function<void (const std::vector<TrackMenuItem>&, std::function<void (std::optional<std::size_t>)>)> chooseTrackMenuItem;
     // Camera access before arming (issue #35): calls back with whether the app may use the camera
     // (default: capture::requestCameraAccess, the system prompt).
     std::function<void (std::function<void (bool granted)>)> askCameraAccess;
@@ -141,6 +150,7 @@ public:
     ExportPage exportPage;
     NoSongPage noSongPage;
     NoticeLine noticeLine;
+    SeparationDialog separationDialog;
     // The plugin editor windows; tests set showOnDesktop false before opening any.
     PluginWindows pluginWindows;
     // False in tests: the Video Preview is built, never put on the desktop.
@@ -161,6 +171,9 @@ private:
     // Adds an empty Track, Armed on the first input, as one undo step (issue #109).
     void addTrack();
     void importFiles (const std::vector<juce::File>& files);
+    void showTrackMenu (const song::Id& trackId);
+    void startSeparation (const song::Id& trackId);
+    bool separating() const { return openSong != nullptr && openSong->isSeparating(); }
     void startExport (const exporting::ExportRequest& request);
     void chooseExportFile (const juce::File& current);
     void chooseInsert (const song::Id& trackId);

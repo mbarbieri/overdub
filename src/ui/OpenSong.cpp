@@ -146,6 +146,8 @@ core::Expected<void> OpenSong::record()
 {
     if (recorder != nullptr)
         return {};
+    if (isSeparating())
+        return std::unexpected (core::Error { "ui.separation_running", "a Separation is running", {} });
     if (isExporting())
         return std::unexpected (core::Error { "ui.export_running", "an export is running", {} });
     if (binding.engine == nullptr)
@@ -226,7 +228,7 @@ void OpenSong::stop()
 
 void OpenSong::playOrStop()
 {
-    if (binding.engine == nullptr || isExporting())
+    if (binding.engine == nullptr || isExporting() || isSeparating())
         return;
     if (recorder != nullptr || binding.engine->isPlaying())
         stop();
@@ -260,7 +262,7 @@ void OpenSong::seek (song::SampleCount sample)
 
 core::Expected<void> OpenSong::edit (song::Song changed, std::string label)
 {
-    if (recorder != nullptr)
+    if (songLocked())
         return {};
     const auto before = song();
     auto result = package_->edit (std::move (changed), std::move (label));
@@ -270,7 +272,7 @@ core::Expected<void> OpenSong::edit (song::Song changed, std::string label)
 
 core::Expected<song::Id> OpenSong::addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin)
 {
-    if (recorder != nullptr)
+    if (songLocked())
         return song::Id {};
     const song::InsertSlot slot { .id = song::makeId(), .component = plugin.component, .name = plugin.name, .version = plugin.version };
     auto changed = song::addInsert (song(), trackId, slot);
@@ -311,7 +313,7 @@ const song::Peaks& OpenSong::peaks (const song::ClipSource& source)
 
 core::Expected<void> OpenSong::undo()
 {
-    if (recorder != nullptr)
+    if (songLocked())
         return {};
     const auto before = song();
     auto result = package_->undo();
@@ -321,7 +323,7 @@ core::Expected<void> OpenSong::undo()
 
 core::Expected<void> OpenSong::redo()
 {
-    if (recorder != nullptr)
+    if (songLocked())
         return {};
     const auto before = song();
     auto result = package_->redo();
@@ -358,11 +360,42 @@ void OpenSong::setMonitoring (const song::Id& trackId, bool on)
 
 std::vector<core::Expected<song::Id>> OpenSong::importFiles (const std::vector<juce::File>& files)
 {
-    if (recorder != nullptr)
+    if (songLocked())
         return {};
     auto results = package_->importBackingTracks (files);
     reloadEngine();
     return results;
+}
+
+core::Expected<void> OpenSong::startSeparation (const song::Id& trackId, song::SongPackage::Clock::time_point now)
+{
+    if (recorder != nullptr)
+        return std::unexpected (core::Error { "ui.stop_recording_first", "a Pass is running", {} });
+    if (isExporting())
+        return std::unexpected (core::Error { "ui.export_running", "an export is running", {} });
+    if (isSeparating())
+        return {};
+    auto started = song::SeparationRun::start (*package_, trackId, separationTools, now);
+    if (! started.has_value())
+        return std::unexpected (started.error());
+    separation = std::move (*started);
+    if (binding.engine != nullptr)
+        binding.engine->stop();
+    return {};
+}
+
+std::optional<core::Error> OpenSong::advanceSeparation (song::SongPackage::Clock::time_point now)
+{
+    if (separation == nullptr)
+        return std::nullopt;
+    auto ended = separation->advance (now);
+    if (! ended.has_value())
+        return std::nullopt;
+    separation.reset();
+    reloadEngine();
+    if (! ended->has_value())
+        return ended->error();
+    return std::nullopt;
 }
 
 std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point now)
@@ -377,6 +410,8 @@ std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point no
         if (auto finished = recorder->poll (now))
             for (auto& error : finishPass (std::move (*finished)))
                 errors.push_back (std::move (error));
+    if (auto error = advanceSeparation (now))
+        errors.push_back (std::move (*error));
 
     // A crashed plugin reloads only once no Pass or export runs (a Pass keeps its plan anyway).
     if (recorder == nullptr && ! isExporting())

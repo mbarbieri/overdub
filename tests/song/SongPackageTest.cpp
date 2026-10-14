@@ -650,7 +650,7 @@ TEST_CASE ("a newer formatVersion is refused with an Error and the package is le
     CHECK (leftoverTemp.existsAsFile());
 }
 
-TEST_CASE ("a v1 package opens with its Video Takes' output device unknown and song.json rewritten at v2", "[song][package][migration]")
+TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its Backing Tracks separated from nothing and song.json rewritten at the current version", "[song][package][migration]")
 {
     TempDirectory temp;
     createPackage (temp.package(), overdub::song::testing::fullyPopulatedSong());
@@ -659,6 +659,8 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown and s
         document["formatVersion"] = 1;
         for (auto& videoTake : document.at ("videoTakes"))
             videoTake.erase ("outputDevice");
+        for (auto& backingTrack : document.at ("backingTracks"))
+            backingTrack.erase ("separatedFrom");
         return document;
     };
     const auto songJson = temp.package().getChildFile ("song.json");
@@ -674,6 +676,8 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown and s
     auto expected = overdub::song::testing::fullyPopulatedSong();
     for (auto& videoTake : expected.videoTakes)
         videoTake.outputDevice = "";
+    for (auto& backingTrack : expected.backingTracks)
+        backingTrack.separatedFrom = {};
     CHECK (opened.package->song() == expected);
     CHECK (firstEvent (capture, "song.migrated").at ("from_version") == 1);
     CHECK (noticesWithCode (opened, "song.history_dropped").empty()); // the v1 snapshot migrates too
