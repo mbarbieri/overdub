@@ -1,11 +1,13 @@
 #include "ui/MainComponent.h"
 
 #include "export/MixRender.h"
+#include "separation/OnnxTestModel.h"
 #include "song/BackingTrackImport.h"
 #include "song/FakeSeparationHelper.h"
 #include "ui/MainWindowFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
@@ -125,8 +127,8 @@ TEST_CASE ("Separate... on a Backing Track's row opens a modal dialog whose prog
     s.rightClickRow ("Guitar");
     s.rightClickRow ("Band Mix");
     REQUIRE (s.menusShown.size() == 2);
-    CHECK (s.menusShown[0] == std::vector<TrackMenuItem> { { TrackMenuAction::separate, "Separate...", false } }); // no Clips
-    CHECK (s.menusShown[1] == std::vector<TrackMenuItem> { { TrackMenuAction::separate, "Separate...", true } });
+    CHECK (s.menusShown[0] == std::vector<TrackMenuItem> { { TrackMenuAction::separate, "Separate...", false, "This Track has no Clips" } });
+    CHECK (s.menusShown[1] == std::vector<TrackMenuItem> { { TrackMenuAction::separate, "Separate...", true, "" } });
     CHECK_FALSE (s.f.openSong->isSeparating());
 
     s.menuPick = 0;
@@ -334,4 +336,155 @@ TEST_CASE ("a helper that fails is an Alert, the dialog closes and the Song is u
     CHECK (s.f.alertsShown.size() == 1);
     CHECK_FALSE (isShown (s.f.window->separationDialog));
     CHECK (s.f.song() == before);
+}
+
+namespace
+{
+std::size_t countEvents (const ScopedLogCapture& capture, const std::string& name)
+{
+    return (std::size_t) std::ranges::count_if (capture.events(), [&name] (const nlohmann::json& event) { return event.at ("event") == name; });
+}
+
+// Every file in the package, relative to it, sorted.
+std::vector<std::string> packageFiles (const song::SongPackage& package)
+{
+    std::vector<std::string> paths;
+    for (const auto& file : package.location().findChildFiles (juce::File::findFiles, true))
+        paths.push_back (file.getRelativePathFrom (package.location()).toStdString());
+    std::ranges::sort (paths);
+    return paths;
+}
+} // namespace
+
+TEST_CASE ("the dialog's Cancel kills the helper at once, deletes its output and leaves the Song, history and package unchanged", "[ui][separation][cancel]")
+{
+    SeparateFixture s;
+    const auto before = s.f.song();
+    const auto undoLabel = s.f.openSong->package().undoLabel();
+    const auto canRedo = s.f.openSong->package().canRedo();
+    const auto files = packageFiles (s.f.openSong->package());
+    auto& dialog = s.f.window->separationDialog;
+    ScopedLogCapture capture;
+    s.rightClickRow ("Band Mix");
+    s.f.window->tick(); // started
+    s.f.window->tick(); // chunk 1
+    REQUIRE (s.log->starts.size() == 1);
+    const auto outputFolder = s.log->starts[0].outputFolder;
+    REQUIRE (outputFolder.createDirectory().wasOk());
+    REQUIRE (outputFolder.getChildFile ("bass.wav.tmp").replaceWithText ("part"));
+    REQUIRE (isShown (dialog.cancelButton));
+
+    dialog.cancelButton.onClick();
+
+    CHECK (s.log->killed);
+    CHECK_FALSE (s.f.openSong->isSeparating());
+    CHECK_FALSE (isShown (dialog));
+    CHECK_FALSE (outputFolder.exists());
+    CHECK (s.f.song() == before);
+    CHECK (s.f.openSong->package().undoLabel() == undoLabel);
+    CHECK (s.f.openSong->package().canRedo() == canRedo);
+    CHECK (packageFiles (s.f.openSong->package()) == files);
+    CHECK (s.f.alertsShown.empty());
+    const auto cancelled = firstEvent (capture, "song.separation_cancelled");
+    CHECK (cancelled.at ("track_id") == s.f.trackNamed ("Band Mix").id);
+    CHECK (cancelled.at ("chunks_done") == 1);
+
+    s.f.window->tick(); // nothing left to finish
+    CHECK (s.f.song() == before);
+    CHECK (countEvents (capture, "song.separation_finished") == 0);
+}
+
+TEST_CASE ("a helper that fails, crashes, never starts or ends without every part is an Alert, logged once, and leaves the Song unchanged", "[ui][separation][failure]")
+{
+    struct Case
+    {
+        FakeHelperScript script;
+        std::string code;
+    };
+    const auto c = GENERATE (
+        Case { FakeHelperScript { .exitCode = 1, .errorLine = R"({"error":"separation.inference_failed","message":"out of memory"})" }, "song.separation_failed" },
+        Case { FakeHelperScript { .signal = 9 }, "song.separation_failed" },
+        Case { FakeHelperScript { .partsWritten = 5 }, "song.separation_failed" },
+        Case { FakeHelperScript { .startError = overdub::core::Error { "song.separation_start_failed", "injected", { { "path", "/nowhere" }, { "errno", 2 } } } }, "song.separation_start_failed" });
+    CAPTURE (c.code, c.script.exitCode, c.script.signal, c.script.partsWritten);
+    SeparateFixture s (c.script);
+    const auto before = s.f.song();
+    const auto files = packageFiles (s.f.openSong->package());
+    ScopedLogCapture capture;
+
+    s.rightClickRow ("Band Mix");
+    for (int poll = 0; poll < 20 && s.f.openSong->isSeparating(); ++poll)
+        s.f.window->tick();
+
+    CHECK_FALSE (s.f.openSong->isSeparating());
+    CHECK_FALSE (isShown (s.f.window->separationDialog));
+    const auto shown = firstEvent (capture, "ui.alert_shown");
+    CHECK (shown.at ("code") == c.code);
+    CHECK (shown.at ("tier") == "alert");
+    CHECK (s.f.alertsShown.size() == 1);
+    CHECK (countEvents (capture, c.code) == 1); // the Error, logged once where it is handled
+    const auto logged = firstEvent (capture, c.code);
+    CHECK (logged.at ("lvl") == "error");
+    if (c.script.exitCode != 0 || c.script.signal != 0)
+    {
+        CHECK (logged.at ("exit_code") == (c.script.signal != 0 ? -1 : 1));
+        CHECK (logged.at ("signal") == c.script.signal);
+        CHECK (logged.at ("helper_error_line") == c.script.errorLine);
+    }
+    CHECK (s.f.song() == before);
+    CHECK (packageFiles (s.f.openSong->package()) == files);
+    for (const auto& start : s.log->starts)
+        CHECK_FALSE (start.outputFolder.exists());
+}
+
+TEST_CASE ("a Separation with an installed model that is not the expected graph says how to install it, without starting the helper", "[ui][separation][model]")
+{
+    SeparateFixture s;
+    auto wrong = overdub::separation::testing::separationModelMetadata();
+    wrong.erase ("architecture");
+    s.f.openSong->setSeparationTools (song::SeparationTools { .model = writeStandInModel (s.f.fixture->folder.getChildFile ("other"), wrong), .startHelper = fakeSeparationHelper ({}, s.log) });
+    const auto before = s.f.song();
+    ScopedLogCapture capture;
+
+    s.rightClickRow ("Band Mix");
+
+    const auto shown = firstEvent (capture, "ui.alert_shown");
+    CHECK (shown.at ("code") == "song.separation_model_invalid");
+    CHECK (shown.at ("tier") == "alert");
+    CHECK_FALSE (s.f.openSong->isSeparating());
+    CHECK (s.log->starts.empty());
+    REQUIRE (s.f.alertsShown.size() == 1);
+    CHECK (s.f.alertsShown[0].contains ("make separation-model"));
+    CHECK (s.f.song() == before);
+}
+
+TEST_CASE ("Separate... is disabled with a tooltip during a Pass", "[ui][separation][record]")
+{
+    SeparateFixture s;
+    s.menuPick = 0;
+    REQUIRE (s.f.openSong->record().has_value());
+
+    s.rightClickRow ("Band Mix");
+
+    REQUIRE (s.menusShown.size() == 1);
+    CHECK (s.menusShown[0] == std::vector<TrackMenuItem> { { TrackMenuAction::separate, "Separate...", false, "Stop recording first" } });
+    CHECK_FALSE (s.f.openSong->isSeparating());
+    CHECK (s.log->starts.empty());
+}
+
+TEST_CASE ("the Separation dialog closes only on success, Cancel or failure: clicks and keys do not close it", "[ui][separation]")
+{
+    SeparateFixture s;
+    auto& dialog = s.f.window->separationDialog;
+    s.rightClickRow ("Band Mix");
+    REQUIRE (isShown (dialog));
+
+    dialog.mouseDown (mouseEventAt (dialog, { 5.0f, 5.0f }, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier)));
+    pressKey (*s.f.window, juce::KeyPress (juce::KeyPress::escapeKey));
+    pressKey (*s.f.window, 'w', juce::ModifierKeys (juce::ModifierKeys::commandModifier));
+    s.rightClickRow ("Band Mix"); // the menu does not open under the dialog
+
+    CHECK (isShown (dialog));
+    CHECK (s.f.openSong->isSeparating());
+    CHECK (s.menusShown.size() == 1);
 }

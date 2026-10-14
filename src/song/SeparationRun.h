@@ -21,9 +21,16 @@
 // source_backing_track_id, backing_track_ids, model, duration_ms).
 //
 // A helper that fails (any non-zero exit, a signal, or a part missing after a success) is the Error
-// song.separation_failed (exit_code, signal, helper_error, helper_message; or, for a part missing
-// after a success, reason "part_missing" and path): the Song is unchanged. Every end, and destroying the run (which
-// kills a helper that still runs), deletes the output folder.
+// song.separation_failed (exit_code, signal, helper_error, helper_message, helper_error_line: its
+// raw stderr; or, for a part missing after a success, reason "part_missing" and path), or
+// song.separation_model_invalid with the same fields when the helper refused the model
+// (separation.model_missing, model_unloadable, model_mismatch). Writing the parts into the package
+// after a success can fail too (SongPackage::addSeparation's Errors, which leave no file and no
+// undo step). In every case the Song is unchanged. A stdout line that is not a JSON event is
+// skipped (song.separation_line_ignored, warn: track_id, line). cancel() kills the helper at once
+// (SIGKILL, not waiting for a chunk) and logs song.separation_cancelled (info: track_id,
+// source_backing_track_id, chunks_done, chunks, duration_ms). Every end, cancel and destroying the
+// run (which kills a helper that still runs) deletes the output folder.
 //
 // Message thread only. The package must outlive the run.
 namespace overdub::song
@@ -54,8 +61,9 @@ public:
 
     // `now` starts the duration logged when it finishes.
     // Errors: separableBackingTrack's (song.track_not_found, song.track_not_separable),
-    // song.separation_unavailable (no helper to start), song.separation_model_missing (path: the
-    // model is not installed), the helper's start Error (song.separation_start_failed).
+    // song.separation_unavailable (no helper to start), checkSeparationModel's
+    // (song.separation_model_missing, song.separation_model_invalid), the helper's start Error
+    // (song.separation_start_failed).
     static core::Expected<std::unique_ptr<SeparationRun>> start (SongPackage& package, const Id& trackId, const SeparationTools& tools, Clock::time_point now);
 
     ~SeparationRun();
@@ -72,6 +80,10 @@ public:
     // Reads the helper's lines; once it has ended, returns the new Backing Track ids (the
     // Separation is in the Song) or the Error. None while it runs. The run is over once it returns.
     std::optional<core::Expected<std::vector<Id>>> advance (Clock::time_point now);
+
+    // Kills a helper that still runs, deletes its output folder and logs song.separation_cancelled;
+    // the Song is unchanged. Nothing once the run is over.
+    void cancel (Clock::time_point now);
 
 private:
     SeparationRun (SongPackage& package, Id trackId, Id sourceBackingTrackId, std::string sourceName, std::string model, juce::File output, Clock::time_point startedAt);

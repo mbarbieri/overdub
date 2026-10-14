@@ -45,7 +45,7 @@ constexpr std::array codeTable {
     CodeEntry { "ui.audio_device_lost", Tier::notice, "The audio device was disconnected. Overdub switched to another device." },
     CodeEntry { "ui.camera_disconnected", Tier::notice, "The camera was disconnected and is no longer Armed." },
     CodeEntry { "capture.clap_no_video_take", Tier::notice, "No Pass has a Video Take yet. Arm the camera and record a Pass clapping in frame." },
-    CodeEntry { "ui.separation_running", Tier::notice, "Wait for the Separation to finish." },
+    CodeEntry { "ui.separation_running", Tier::notice, "Wait for the Separation to finish, or cancel it." },
     CodeEntry { "song.track_not_separable", Tier::notice, "Only a Track whose Clips all play one Backing Track can be separated." },
 
     // Alerts: an action failed or data may be lost.
@@ -80,6 +80,7 @@ constexpr std::array codeTable {
     CodeEntry { "capture.camera_calibration_unreadable", Tier::alert, "The camera calibration file is damaged and could not be updated." },
     CodeEntry { "engine.device_settings_write_failed", Tier::alert, "The audio device choice could not be saved for next time." },
     CodeEntry { "song.separation_model_missing", Tier::alert, "The Separation model is not installed. Run \"make separation-model\" in the Overdub source folder (it needs Docker), then separate again." },
+    CodeEntry { "song.separation_model_invalid", Tier::alert, "The installed Separation model is not the expected one. Run \"make separation-model\" in the Overdub source folder (it needs Docker) to install it again, then separate again." },
     CodeEntry { "song.separation_unavailable", Tier::alert, "This build of Overdub cannot separate Backing Tracks." },
     CodeEntry { "song.separation_start_failed", Tier::alert, "The Separation could not be started; the Song is unchanged." },
     CodeEntry { "song.separation_failed", Tier::alert, "The Separation failed; the Song is unchanged." },

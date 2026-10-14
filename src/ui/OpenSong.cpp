@@ -384,6 +384,15 @@ core::Expected<void> OpenSong::startSeparation (const song::Id& trackId, song::S
     return {};
 }
 
+void OpenSong::cancelSeparation (song::SongPackage::Clock::time_point now)
+{
+    if (separation == nullptr)
+        return;
+    separation->cancel (now);
+    separation.reset();
+    reloadEngine();
+}
+
 std::optional<core::Error> OpenSong::advanceSeparation (song::SongPackage::Clock::time_point now)
 {
     if (separation == nullptr)

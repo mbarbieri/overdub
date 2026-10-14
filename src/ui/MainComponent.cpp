@@ -49,12 +49,18 @@ void choosePluginFromMenu (const std::vector<plugin::AvailableAudioUnit>& plugin
     });
 }
 
-// A pop-up menu of the items; none picked when dismissed.
+// A pop-up menu of the items; none picked when dismissed. JUCE menus have no tooltips, so a
+// disabled item's tooltip shows dimmed at its right, where a shortcut would.
 void chooseTrackMenuItemFromMenu (const std::vector<TrackMenuItem>& items, std::function<void (std::optional<std::size_t>)> whenChosen)
 {
     juce::PopupMenu menu;
     for (std::size_t i = 0; i < items.size(); ++i)
-        menu.addItem ((int) i + 1, juce::String::fromUTF8 (items[i].label.c_str()), items[i].enabled);
+    {
+        juce::PopupMenu::Item item { juce::String::fromUTF8 (items[i].label.c_str()) };
+        item.setID ((int) i + 1).setEnabled (items[i].enabled);
+        item.shortcutKeyDescription = juce::String::fromUTF8 (items[i].tooltip.c_str());
+        menu.addItem (std::move (item));
+    }
     menu.showMenuAsync (juce::PopupMenu::Options(), [done = std::move (whenChosen)] (int picked) {
         done (picked > 0 ? std::optional<std::size_t> ((std::size_t) picked - 1) : std::nullopt);
     });
@@ -93,6 +99,7 @@ MainComponent::MainComponent()
     revealInFinder = [] (const juce::File& file) { file.revealToUser(); };
 
     topBar.onCommand = [this] (Command command) { perform (command); };
+    separationDialog.onCancel = [this] { cancelSeparation(); };
     recordPage.onArm = [this] (const song::Id& trackId, bool armed) {
         if (openSong != nullptr)
             openSong->setArmed (trackId, armed);
@@ -488,7 +495,7 @@ void MainComponent::showTrackMenu (const song::Id& trackId)
 {
     if (openSong == nullptr || separating() || ! chooseTrackMenuItem)
         return;
-    auto items = trackMenuFor (openSong->song(), trackId, openSong->isRecording());
+    auto items = trackMenuFor (openSong->song(), trackId, TrackMenuState { .passRunning = openSong->isRecording(), .exportRunning = openSong->isExporting() });
     chooseTrackMenuItem (items, [safeThis = juce::Component::SafePointer<MainComponent> (this), trackId, items] (std::optional<std::size_t> picked) {
         if (safeThis == nullptr || ! picked.has_value() || *picked >= items.size() || ! items[*picked].enabled)
             return;
@@ -506,6 +513,15 @@ void MainComponent::startSeparation (const song::Id& trackId)
     if (auto started = openSong->startSeparation (trackId); ! started.has_value())
         handleError (started.error());
     refresh();
+}
+
+void MainComponent::cancelSeparation()
+{
+    if (openSong == nullptr)
+        return;
+    openSong->cancelSeparation();
+    refresh();
+    takeKeyboardFocus();
 }
 
 void MainComponent::chooseInsert (const song::Id& trackId)

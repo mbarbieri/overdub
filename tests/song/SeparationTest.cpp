@@ -1,6 +1,7 @@
 #include "song/Separation.h"
 #include "song/BackingTrackImport.h"
 #include "song/Peaks.h"
+#include "song/SeparationModel.h"
 #include "song/SeparationRun.h"
 #include "song/SongPackage.h"
 
@@ -160,6 +161,7 @@ TEST_CASE ("only a Track whose Clips all play one Backing Track can be separated
 {
     auto song = handBuiltSong();
     song.tracks.push_back (Track { .id = "track-empty", .name = "Empty" });
+    song.tracks.push_back (Track { .id = "track-lost", .name = "Lost", .clips = { Clip { .id = "clip-7", .source = { ClipSourceKind::backing, "backing-gone" } } } });
     song.tracks.push_back (Track { .id = "track-mixed",
                                    .name = "Mixed",
                                    .clips = { Clip { .id = "clip-5", .source = { ClipSourceKind::backing, "backing-mix" } }, Clip { .id = "clip-6", .source = { ClipSourceKind::backing, "backing-click" } } } });
@@ -167,7 +169,7 @@ TEST_CASE ("only a Track whose Clips all play one Backing Track can be separated
     CHECK (separableBackingTrack (song, "track-mix") == Id ("backing-mix"));
     CHECK (separableBackingTrack (song, "track-click") == Id ("backing-click"));
     CHECK (separableBackingTrack (song, "track-gone").error().code == "song.track_not_found");
-    for (const auto& [trackId, reason] : std::vector<std::pair<Id, std::string>> { { "track-empty", "no_clips" }, { "track-vocals", "not_one_backing_track" }, { "track-mixed", "not_one_backing_track" } })
+    for (const auto& [trackId, reason] : std::vector<std::pair<Id, std::string>> { { "track-empty", "no_clips" }, { "track-vocals", "take_clips" }, { "track-mixed", "several_backing_tracks" }, { "track-lost", "backing_track_missing" } })
     {
         INFO ("Track " << trackId);
         const auto refused = separableBackingTrack (song, trackId);
@@ -371,12 +373,61 @@ TEST_CASE ("a SeparationRun refuses a missing model and a Track it cannot separa
     CHECK (f.log->starts.empty());
 }
 
-TEST_CASE ("a helper that fails, or ends without every part, leaves the Song unchanged", "[song][separation][run]")
+namespace
 {
-    const auto script = GENERATE (FakeHelperScript { .exitCode = 1, .errorLine = R"({"error":"separation.inference_failed","message":"out of memory"})" },
-                                  FakeHelperScript { .writeParts = false });
+// Every file in the package, as paths relative to it, sorted. A *.tmp is left out: an injected
+// write failure leaves it on purpose, as a crash would (song/AtomicWrite.h), and
+// SongPackage::open deletes it.
+std::vector<std::string> packageFiles (const SongPackage& package)
+{
+    std::vector<std::string> paths;
+    for (const auto& file : package.location().findChildFiles (juce::File::findFiles, true))
+        if (file.getFileExtension() != ".tmp")
+            paths.push_back (file.getRelativePathFrom (package.location()).toStdString());
+    std::ranges::sort (paths);
+    return paths;
+}
+
+// What a Separation that does not finish must leave exactly as it was.
+struct PackageSnapshot
+{
+    Song song;
+    bool canUndo = false;
+    std::string undoLabel;
+    bool canRedo = false;
+    std::vector<std::string> files;
+
+    explicit PackageSnapshot (const SongPackage& package)
+        : song (package.song()),
+          canUndo (package.canUndo()),
+          undoLabel (package.undoLabel()),
+          canRedo (package.canRedo()),
+          files (packageFiles (package))
+    {
+    }
+
+    void checkUnchanged (const SongPackage& package) const
+    {
+        CHECK (package.song() == song);
+        CHECK (package.canUndo() == canUndo);
+        CHECK (package.undoLabel() == undoLabel);
+        CHECK (package.canRedo() == canRedo);
+        CHECK (packageFiles (package) == files);
+    }
+};
+
+const std::string inferenceFailedLine = R"({"error":"separation.inference_failed","message":"out of memory"})";
+} // namespace
+
+TEST_CASE ("a helper that exits non-zero, dies from a signal, or ends without every part leaves the Song, history and package unchanged", "[song][separation][run]")
+{
+    const auto script = GENERATE (FakeHelperScript { .exitCode = 1, .errorLine = inferenceFailedLine },
+                                  FakeHelperScript { .signal = 9 },
+                                  FakeHelperScript { .partsWritten = 0 },
+                                  FakeHelperScript { .partsWritten = 4 });
+    CAPTURE (script.exitCode, script.signal, script.partsWritten);
     RunFixture f (script);
-    const auto before = f.package().song();
+    const PackageSnapshot before (f.package());
     const auto now = SeparationRun::Clock::now();
     auto run = SeparationRun::start (f.package(), f.sourceTrackId(), f.tools, now);
     REQUIRE (run.has_value());
@@ -389,16 +440,205 @@ TEST_CASE ("a helper that fails, or ends without every part, leaves the Song unc
     if (script.exitCode == 1)
     {
         CHECK (ended.error().fields.at ("exit_code") == 1);
+        CHECK (ended.error().fields.at ("signal") == 0);
         CHECK (ended.error().fields.at ("helper_error") == "separation.inference_failed");
         CHECK (ended.error().fields.at ("helper_message") == "out of memory");
+        CHECK (ended.error().fields.at ("helper_error_line") == inferenceFailedLine);
+    }
+    else if (script.signal != 0)
+    {
+        CHECK (ended.error().fields.at ("exit_code") == -1);
+        CHECK (ended.error().fields.at ("signal") == 9);
+        CHECK (ended.error().fields.at ("helper_error_line") == "");
     }
     else
     {
         CHECK (ended.error().fields.at ("reason") == "part_missing");
+        CHECK (ended.error().fields.at ("path").get<std::string>().ends_with (std::string (separationParts[script.partsWritten].fileStem) + ".wav"));
     }
-    CHECK (f.package().song() == before);
-    CHECK_FALSE (f.package().canRedo());
+    before.checkUnchanged (f.package());
     CHECK_FALSE (outputFolder.exists());
+}
+
+TEST_CASE ("a helper that refuses the model is song.separation_model_invalid, so the user is told to install it", "[song][separation][run]")
+{
+    const auto helperError = GENERATE (std::string ("separation.model_missing"), std::string ("separation.model_unloadable"), std::string ("separation.model_mismatch"));
+    const auto line = R"({"error":")" + helperError + R"(","message":"no"})";
+    RunFixture f (FakeHelperScript { .exitCode = 1, .errorLine = line });
+    const PackageSnapshot before (f.package());
+    const auto now = SeparationRun::Clock::now();
+    auto run = SeparationRun::start (f.package(), f.sourceTrackId(), f.tools, now);
+    REQUIRE (run.has_value());
+
+    const auto ended = runToEnd (**run, now);
+
+    REQUIRE_FALSE (ended.has_value());
+    CHECK (ended.error().code == "song.separation_model_invalid");
+    CHECK (ended.error().fields.at ("helper_error") == helperError);
+    CHECK (ended.error().fields.at ("exit_code") == 1);
+    before.checkUnchanged (f.package());
+}
+
+TEST_CASE ("a helper that never starts leaves no output folder and the Song unchanged", "[song][separation][run]")
+{
+    RunFixture f (FakeHelperScript { .startError = overdub::core::Error { "song.separation_start_failed", "injected", { { "path", "/nowhere" }, { "errno", 2 } } } });
+    const PackageSnapshot before (f.package());
+
+    const auto run = SeparationRun::start (f.package(), f.sourceTrackId(), f.tools, SeparationRun::Clock::now());
+
+    REQUIRE_FALSE (run.has_value());
+    CHECK (run.error().code == "song.separation_start_failed");
+    REQUIRE (f.log->starts.size() == 1);
+    CHECK_FALSE (f.log->starts[0].outputFolder.exists());
+    before.checkUnchanged (f.package());
+}
+
+TEST_CASE ("progress lines that are not JSON events are skipped and logged, and the Separation goes on", "[song][separation][run]")
+{
+    RunFixture f (FakeHelperScript { .malformedLines = true });
+    ScopedLogCapture capture;
+    const auto now = SeparationRun::Clock::now();
+    auto run = SeparationRun::start (f.package(), f.sourceTrackId(), f.tools, now);
+    REQUIRE (run.has_value());
+
+    CHECK_FALSE ((*run)->advance (now).has_value()); // separation.started
+    CHECK_FALSE ((*run)->advance (now).has_value()); // garbage, then chunk 1
+    CHECK ((*run)->progress().chunksDone == 1);
+    CHECK ((*run)->progress().chunks == 3);
+    const auto ended = runToEnd (**run, now);
+
+    REQUIRE (ended.has_value());
+    CHECK (ended->size() == 6);
+    const auto ignored = firstEvent (capture, "song.separation_line_ignored");
+    CHECK (ignored.at ("lvl") == "warn");
+    CHECK (ignored.at ("track_id") == f.sourceTrackId());
+    CHECK (ignored.at ("line") == "onnxruntime warning: not json");
+}
+
+TEST_CASE ("cancelling a SeparationRun mid-run kills the helper, deletes its output and leaves the Song, history and package unchanged", "[song][separation][run]")
+{
+    RunFixture f;
+    const PackageSnapshot before (f.package());
+    ScopedLogCapture capture;
+    const auto start = SeparationRun::Clock::now();
+    auto run = SeparationRun::start (f.package(), f.sourceTrackId(), f.tools, start);
+    REQUIRE (run.has_value());
+    const auto outputFolder = (*run)->outputFolder();
+    CHECK_FALSE ((*run)->advance (start).has_value()); // started
+    CHECK_FALSE ((*run)->advance (start).has_value()); // chunk 1
+    // A part the helper had written, and one it was writing, before the cancel.
+    REQUIRE (outputFolder.createDirectory().wasOk());
+    REQUIRE (outputFolder.getChildFile ("bass.wav").replaceWithText ("part"));
+    REQUIRE (outputFolder.getChildFile ("drums.wav.tmp").replaceWithText ("part"));
+
+    (*run)->cancel (start + std::chrono::seconds (12));
+
+    CHECK (f.log->killed);
+    CHECK_FALSE (outputFolder.exists());
+    CHECK_FALSE ((*run)->advance (start).has_value()); // over: nothing more
+    before.checkUnchanged (f.package());
+    const auto cancelled = firstEvent (capture, "song.separation_cancelled");
+    CHECK (cancelled.at ("lvl") == "info");
+    CHECK (cancelled.at ("track_id") == f.sourceTrackId());
+    CHECK (cancelled.at ("source_backing_track_id") == f.package().song().backingTracks.front().id);
+    CHECK (cancelled.at ("chunks_done") == 1);
+    CHECK (cancelled.at ("chunks") == 3);
+    CHECK (cancelled.at ("duration_ms") == 12000);
+}
+
+TEST_CASE ("a failure writing the parts into the package after the helper succeeded leaves no undo step and no file", "[song][separation][run][package]")
+{
+    // The 3rd part's derived WAV fails, or the history step fails after every part is written.
+    const auto failHistory = GENERATE (false, true);
+    CAPTURE (failHistory);
+    RunFixture f;
+    const auto location = f.package().location();
+    f.fixture->package.reset();
+    PackageOptions options;
+    auto backingWrites = std::make_shared<int> (0);
+    options.beforeRename = [failHistory, backingWrites] (const juce::File& destination) -> std::optional<overdub::core::Error> {
+        const auto folder = destination.getParentDirectory().getFileName();
+        if (failHistory && folder == "history")
+            return overdub::core::Error { "song.write_failed", "injected", {} };
+        if (! failHistory && folder == "backing" && ++*backingWrites == 6)
+            return overdub::core::Error { "song.write_failed", "injected", {} };
+        return std::nullopt;
+    };
+    auto reopened = SongPackage::open (location, options);
+    REQUIRE (reopened.has_value());
+    f.fixture->package = std::move (reopened->package);
+    const PackageSnapshot before (f.package());
+    const auto now = SeparationRun::Clock::now();
+    auto run = SeparationRun::start (f.package(), f.sourceTrackId(), f.tools, now);
+    REQUIRE (run.has_value());
+    const auto outputFolder = (*run)->outputFolder();
+
+    const auto ended = runToEnd (**run, now);
+
+    REQUIRE_FALSE (ended.has_value());
+    CHECK (ended.error().code == "song.write_failed");
+    before.checkUnchanged (f.package());
+    CHECK_FALSE (outputFolder.exists());
+}
+
+TEST_CASE ("the app checks the installed model by its ONNX metadata before starting the helper", "[song][separation][model]")
+{
+    RunFixture f;
+    const auto folder = f.fixture->folder.getChildFile ("other-models");
+    REQUIRE (folder.createDirectory().wasOk());
+
+    CHECK (checkSeparationModel (f.tools.model).has_value());
+
+    auto metadata = overdub::separation::testing::separationModelMetadata();
+    metadata["sources"] = R"(["bass","drums","other","vocals","guitar","piano"])"; // spacing is not compared
+    CHECK (checkSeparationModel (writeStandInModel (folder, metadata)).has_value());
+
+    const auto missing = checkSeparationModel (folder.getChildFile ("none.onnx"));
+    CHECK (missing.error().code == "song.separation_model_missing");
+
+    const auto text = folder.getChildFile ("text.onnx");
+    REQUIRE (text.replaceWithText ("stand-in"));
+    const auto notOnnx = checkSeparationModel (text);
+    CHECK (notOnnx.error().code == "song.separation_model_invalid");
+    CHECK (notOnnx.error().fields.at ("reason") == "not_onnx");
+
+    struct Case
+    {
+        std::string key;
+        std::optional<std::string> value; // nullopt: the key is absent
+        std::string actual;
+    };
+    for (const auto& c : std::vector<Case> {
+             { "architecture", "htdemucs", "htdemucs" },
+             { "architecture", std::nullopt, "missing" },
+             { "sources", R"(["vocals","other"])", R"(["vocals","other"])" },
+         })
+    {
+        INFO ("key " << c.key << " actual " << c.actual);
+        auto wrong = overdub::separation::testing::separationModelMetadata();
+        if (c.value.has_value())
+            wrong[c.key] = *c.value;
+        else
+            wrong.erase (c.key);
+        const auto refused = checkSeparationModel (writeStandInModel (folder, wrong));
+        REQUIRE_FALSE (refused.has_value());
+        CHECK (refused.error().code == "song.separation_model_invalid");
+        CHECK (refused.error().fields.at ("key") == c.key);
+        CHECK (refused.error().fields.at ("actual") == c.actual);
+    }
+}
+
+TEST_CASE ("a SeparationRun refuses a model that is not the expected graph without starting the helper", "[song][separation][run][model]")
+{
+    RunFixture f;
+    auto wrong = overdub::separation::testing::separationModelMetadata();
+    wrong["architecture"] = "htdemucs";
+    f.tools.model = writeStandInModel (f.fixture->folder, wrong);
+
+    const auto refused = SeparationRun::start (f.package(), f.sourceTrackId(), f.tools, SeparationRun::Clock::now());
+
+    CHECK (refused.error().code == "song.separation_model_invalid");
+    CHECK (f.log->starts.empty());
 }
 
 TEST_CASE ("destroying a running SeparationRun kills the helper and deletes its output folder", "[song][separation][run]")

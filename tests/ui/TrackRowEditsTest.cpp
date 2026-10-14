@@ -86,20 +86,33 @@ TEST_CASE ("the Pass being recorded is numbered after the Song's Passes", "[ui][
     CHECK (nextPassNumber (song) == 2);
 }
 
-TEST_CASE ("a Track's menu offers Separate... only on a Track whose Clips all play one Backing Track, and not during a Pass", "[ui][separation]")
+TEST_CASE ("a Track's menu offers Separate... only on a Track whose Clips all play one Backing Track, and its tooltip says why not", "[ui][separation]")
 {
     using namespace overdub::song;
     Song song = makeEmptySong (48000);
-    song.backingTracks = { BackingTrack { .id = "backing-1", .originalFilename = "Band Mix.wav" } };
+    song.backingTracks = {
+        BackingTrack { .id = "backing-1", .originalFilename = "Band Mix.wav" },
+        BackingTrack { .id = "backing-2", .originalFilename = "Click.wav" },
+    };
+    song.takes = { Take { .id = "take-1", .trackId = "track-vocals", .passId = "pass-1", .lengthSamples = 100 } };
     song.tracks = {
         Track { .id = "track-mix", .name = "Band Mix", .clips = { Clip { .id = "clip-1", .source = { ClipSourceKind::backing, "backing-1" }, .length = 100 } } },
         Track { .id = "track-guitar", .name = "Guitar" },
+        Track { .id = "track-vocals",
+                .name = "Vocals",
+                .clips = { Clip { .id = "clip-2", .source = { ClipSourceKind::backing, "backing-1" }, .length = 100 }, Clip { .id = "clip-3", .source = { ClipSourceKind::take, "take-1" }, .length = 100 } } },
+        Track { .id = "track-mixed",
+                .name = "Mixed",
+                .clips = { Clip { .id = "clip-4", .source = { ClipSourceKind::backing, "backing-1" }, .length = 100 }, Clip { .id = "clip-5", .source = { ClipSourceKind::backing, "backing-2" }, .length = 100 } } },
+    };
+    const auto disabledBecause = [] (std::string tooltip) {
+        return std::vector<TrackMenuItem> { { TrackMenuAction::separate, "Separate...", false, std::move (tooltip) } };
     };
 
-    const TrackMenuItem separate { TrackMenuAction::separate, "Separate...", true };
-    auto disabled = separate;
-    disabled.enabled = false;
-    CHECK (trackMenuFor (song, "track-mix", false) == std::vector<TrackMenuItem> { separate });
-    CHECK (trackMenuFor (song, "track-mix", true) == std::vector<TrackMenuItem> { disabled });
-    CHECK (trackMenuFor (song, "track-guitar", false) == std::vector<TrackMenuItem> { disabled });
+    CHECK (trackMenuFor (song, "track-mix", {}) == std::vector<TrackMenuItem> { { TrackMenuAction::separate, "Separate...", true, "" } });
+    CHECK (trackMenuFor (song, "track-mix", { .passRunning = true }) == disabledBecause ("Stop recording first"));
+    CHECK (trackMenuFor (song, "track-mix", { .exportRunning = true }) == disabledBecause ("Wait for the export to finish"));
+    CHECK (trackMenuFor (song, "track-guitar", {}) == disabledBecause ("This Track has no Clips"));
+    CHECK (trackMenuFor (song, "track-vocals", {}) == disabledBecause ("This Track has recorded Takes"));
+    CHECK (trackMenuFor (song, "track-mixed", {}) == disabledBecause ("This Track has more than one Backing Track"));
 }

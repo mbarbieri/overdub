@@ -1,5 +1,6 @@
 #include "ui/SeparationDialog.h"
 
+#include "song/Separation.h"
 #include "ui/Colours.h"
 
 #include <cmath>
@@ -9,12 +10,24 @@ namespace overdub::ui
 namespace
 {
 constexpr int panelWidth = 460;
-constexpr int panelHeight = 150;
+constexpr int panelHeight = 186;
 } // namespace
 
 std::string separationTitleText (const std::string& sourceName)
 {
     return "Separating " + sourceName;
+}
+
+std::string separationHintText()
+{
+    std::string parts;
+    for (std::size_t i = 0; i < song::separationParts.size(); ++i)
+    {
+        if (i > 0)
+            parts += i + 1 == song::separationParts.size() ? " and " : ", ";
+        parts += song::separationParts[i].fileStem;
+    }
+    return "Splitting it into " + parts + ". This takes several times the song's length.";
 }
 
 std::string separationStatusText (const song::SeparationProgress& progress)
@@ -29,7 +42,7 @@ SeparationDialog::SeparationDialog()
 {
     title.setFont (juce::FontOptions (16.0f, juce::Font::bold));
     title.setColour (juce::Label::textColourId, colours::text);
-    hint.setText ("Splitting it into bass, drums, other, vocals, guitar and piano. This takes several times the song's length.", juce::dontSendNotification);
+    hint.setText (juce::String::fromUTF8 (separationHintText().c_str()), juce::dontSendNotification);
     hint.setColour (juce::Label::textColourId, colours::dimText);
     hint.setFont (juce::FontOptions (12.0f));
     statusLabel.setColour (juce::Label::textColourId, colours::dimText);
@@ -37,6 +50,11 @@ SeparationDialog::SeparationDialog()
     addAndMakeVisible (hint);
     addAndMakeVisible (progressBar);
     addAndMakeVisible (statusLabel);
+    addAndMakeVisible (cancelButton);
+    cancelButton.onClick = [this] {
+        if (onCancel)
+            onCancel();
+    };
     // Covers the window: every click lands here, none on the page under it.
     setInterceptsMouseClicks (true, true);
 }
@@ -63,6 +81,8 @@ void SeparationDialog::resized()
     progressBar.setBounds (area.removeFromTop (8));
     area.removeFromTop (8);
     statusLabel.setBounds (area.removeFromTop (20));
+    area.removeFromTop (8);
+    cancelButton.setBounds (area.removeFromTop (26).removeFromRight (90));
 }
 
 void SeparationDialog::paint (juce::Graphics& g)

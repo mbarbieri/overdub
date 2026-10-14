@@ -2,6 +2,7 @@
 
 #include "capture/FakeCamera.h"
 #include "core/Log.h"
+#include "song/FakeSeparationHelper.h"
 #include "song/FixtureSongBuilder.h"
 #include "ui/FakeLiveAudio.h"
 #include "ui/UiHarness.h"
@@ -411,4 +412,33 @@ TEST_CASE ("opening a Song, changing the device and calibrating are refused whil
     CHECK (f.opened.size() == 1);
     CHECK (f.song().isRecording());
     CHECK (contains (messageCodes (capture), "ui.stop_recording_first"));
+}
+
+TEST_CASE ("opening another Song, changing the device and quitting are refused while a Separation runs, until it is cancelled", "[ui][workspace][separation]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    auto log = std::make_shared<overdub::song::testing::FakeHelperLog>();
+    f.song().setSeparationTools (overdub::song::SeparationTools {
+        .model = overdub::song::testing::writeStandInModel (f.folder),
+        .startHelper = overdub::song::testing::fakeSeparationHelper ({}, log),
+        .workFolder = f.folder.getChildFile ("work"),
+    });
+    REQUIRE (f.song().startSeparation (f.song().song().tracks.front().id).has_value());
+    overdub::core::ScopedLogCapture capture;
+
+    CHECK_FALSE (f.workspace->isIdle());
+    CHECK_FALSE (f.workspace->idleOrNotice());
+    f.workspace->applyDeviceSettings (f.audio().deviceChoices().current);
+    CHECK_FALSE (f.workspace->mayQuit());
+
+    CHECK (f.opened.size() == 1);
+    CHECK (f.song().isSeparating());
+    const auto codes = messageCodes (capture);
+    CHECK (std::ranges::count (codes, std::string ("ui.separation_running")) == 3);
+
+    f.song().cancelSeparation();
+    CHECK (f.workspace->isIdle());
+    CHECK (f.workspace->mayQuit());
 }

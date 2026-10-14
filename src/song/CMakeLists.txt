@@ -16,6 +16,7 @@ target_sources(overdub_song PRIVATE
     Peaks.cpp
     Separation.cpp
     SeparationHelper.cpp
+    SeparationModel.cpp
     SeparationRun.cpp
     Song.cpp
     SongJson.cpp

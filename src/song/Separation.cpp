@@ -20,12 +20,15 @@ core::Expected<Id> separableBackingTrack (const Song& song, const Id& trackId)
     if (track->clips.empty())
         return std::unexpected (notSeparable (trackId, "no_clips"));
 
+    const auto playsTake = [] (const Clip& clip) { return clip.source.kind != ClipSourceKind::backing; };
+    if (std::ranges::any_of (track->clips, playsTake))
+        return std::unexpected (notSeparable (trackId, "take_clips"));
     const auto& first = track->clips.front().source;
     const auto playsFirst = [&first] (const Clip& clip) { return clip.source == first; };
-    if (first.kind != ClipSourceKind::backing || ! std::ranges::all_of (track->clips, playsFirst))
-        return std::unexpected (notSeparable (trackId, "not_one_backing_track"));
+    if (! std::ranges::all_of (track->clips, playsFirst))
+        return std::unexpected (notSeparable (trackId, "several_backing_tracks"));
     if (! std::ranges::contains (song.backingTracks, first.id, &BackingTrack::id))
-        return std::unexpected (notSeparable (trackId, "not_one_backing_track"));
+        return std::unexpected (notSeparable (trackId, "backing_track_missing"));
     return first.id;
 }
 

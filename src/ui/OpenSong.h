@@ -87,7 +87,8 @@
 // advances it, and once it ends reloads the engine (the six new Tracks, the source Track muted) and
 // returns its Error. While it runs, record (ui.separation_running), play, edits, undo, redo and
 // import are refused: the Separation dialog is modal. It is refused while a Pass
-// (ui.stop_recording_first) or an export (ui.export_running) runs. Closing the Song kills the helper.
+// (ui.stop_recording_first) or an export (ui.export_running) runs. cancelSeparation() (the dialog's
+// Cancel) and closing the Song kill the helper; the Song is unchanged.
 //
 // Message thread only.
 namespace overdub::ui
@@ -261,6 +262,9 @@ public:
     // Errors: ui.stop_recording_first, ui.export_running, song::SeparationRun::start's.
     core::Expected<void> startSeparation (const song::Id& trackId, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
     bool isSeparating() const { return separation != nullptr; }
+    // Cancels the running Separation (song::SeparationRun::cancel: the helper is killed, its
+    // output deleted, the Song unchanged) and reloads the engine. Nothing when none runs.
+    void cancelSeparation (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
     // The running Separation's progress and source file name; empty when none runs.
     song::SeparationProgress separationProgress() const { return separation != nullptr ? separation->progress() : song::SeparationProgress {}; }
     std::string separationSourceName() const { return separation != nullptr ? separation->sourceName() : std::string(); }
