@@ -91,11 +91,8 @@ std::vector<core::Error> OpenSong::detachAudio()
     if (recorder != nullptr && binding.engine != nullptr)
     {
         binding.engine->stop();
-        // The movie may complete after the engine is gone: poll() finishes the Pass then (issue #90).
-        if (auto ended = recorder->stopWithoutWaitingForMovie(); ! ended.has_value())
-            errors = finishPass (std::unexpected (ended.error()));
-        else if (recorder->isReadyToFinish())
-            errors = finishPass (recorder->finish());
+        if (auto finished = recorder->release()) // a movie still completing: poll() finishes the Pass
+            errors = finishPass (std::move (*finished));
     }
     if (binding.engine != nullptr)
     {
@@ -142,7 +139,7 @@ video::PlaybackClock OpenSong::playbackClock() const
 
 bool OpenSong::isSavingPass() const
 {
-    return recorder != nullptr && recorder->hasStopped();
+    return recorder != nullptr && recorder->phase() == capture::PassPhase::saving;
 }
 
 core::Expected<void> OpenSong::record()
@@ -190,7 +187,7 @@ core::Expected<void> OpenSong::record()
 
 std::optional<song::SampleCount> OpenSong::preRollRecordPoint() const
 {
-    if (recorder == nullptr || ! preRollPoint.has_value() || recorder->hasStopped() || recorder->runningPassStart().has_value())
+    if (recorder == nullptr || ! preRollPoint.has_value() || recorder->phase() != capture::PassPhase::waiting)
         return std::nullopt;
     return preRollPoint;
 }
@@ -376,14 +373,10 @@ std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point no
     if (exportRun.has_value())
         if (auto error = endExportIfEnded (exportRun->advance (now, audioLetGoOfPlugins())))
             errors.push_back (std::move (*error));
-    if (recorder != nullptr && recorder->hasStopped())
-    {
-        // The movie completes off this thread (issue #70): the Pass is finished once it has.
-        recorder->prepareFinish();
-        if (recorder->isReadyToFinish())
-            for (auto& error : finishPass (recorder->finish (now)))
+    if (recorder != nullptr)
+        if (auto finished = recorder->poll (now))
+            for (auto& error : finishPass (std::move (*finished)))
                 errors.push_back (std::move (error));
-    }
 
     // A crashed plugin reloads only once no Pass or export runs (a Pass keeps its plan anyway).
     if (recorder == nullptr && ! isExporting())
@@ -436,9 +429,9 @@ std::vector<core::Error> OpenSong::handleCrashes()
     return errors;
 }
 
-std::vector<core::Error> OpenSong::finishPass (core::Expected<capture::RecordedPass> finished)
+std::vector<core::Error> OpenSong::finishPass (capture::FinishedPass finished)
 {
-    const auto deviceLost = recorder->stopReason() == engine::RecordStopReason::deviceStopped;
+    const auto deviceLost = finished.stopReason == engine::RecordStopReason::deviceStopped;
     const auto passNumber = recordingPass;
     recorder.reset();
     recordingPass = 0;
@@ -452,15 +445,15 @@ std::vector<core::Error> OpenSong::finishPass (core::Expected<capture::RecordedP
     if (deviceLost)
         errors.push_back (core::Error { "ui.audio_device_lost_during_pass",
                                         "the audio device stopped during the Pass",
-                                        { { "pass_number", passNumber }, { "kept", finished.has_value() } } });
-    if (! finished.has_value())
+                                        { { "pass_number", passNumber }, { "kept", finished.pass.has_value() } } });
+    if (! finished.pass.has_value())
     {
         // A Pass the device stopped before it began captured nothing: the Alert above says why.
-        if (! (deviceLost && finished.error().code == "capture.pass_empty"))
-            errors.push_back (finished.error());
+        if (! (deviceLost && finished.pass.error().code == "capture.pass_empty"))
+            errors.push_back (finished.pass.error());
         return errors;
     }
-    for (auto& notice : finished->notices) // the Pass stands; its Video Take may not
+    for (auto& notice : finished.pass->notices) // the Pass stands; its Video Take may not
         errors.push_back (std::move (notice));
     return errors;
 }

@@ -266,7 +266,7 @@ private:
     std::optional<core::Error> endExportIfEnded (std::optional<ExportEnd> end);
     // After a history change: setMix when only the mix changed since `before`, else reloadEngine.
     void updateEngine (const song::Song& before);
-    std::vector<core::Error> finishPass (core::Expected<capture::RecordedPass> finished);
+    std::vector<core::Error> finishPass (capture::FinishedPass finished);
     // The crashes the InsertHost heard since the last poll, as Notice errors (ui.plugin_crashed,
     // ui.plugin_crashed_repeatedly: slot_ids, names), after the export's Error when they end it.
     std::vector<core::Error> handleCrashes();

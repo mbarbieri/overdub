@@ -84,12 +84,13 @@ RecordedPass recordPass (RecordingFixture& fixture, Engine& engine, LoopbackDevi
     device.run (engine, blocks);
     recorder.requestStop();
     device.run (engine, 1);
-    REQUIRE (recorder.hasStopped());
+    REQUIRE (recorder.phase() == overdub::capture::PassPhase::saving);
 
-    auto finished = recorder.finish();
-    if (! finished.has_value())
-        FAIL ("finish failed: " << finished.error().code << " " << finished.error().fields.dump());
-    return *finished;
+    auto finished = recorder.poll (overdub::song::SongPackage::Clock::now());
+    REQUIRE (finished.has_value()); // no camera: the first poll after the stop finishes the Pass
+    if (! finished->pass.has_value())
+        FAIL ("finish failed: " << finished->pass.error().code << " " << finished->pass.error().fields.dump());
+    return *finished->pass;
 }
 
 const overdub::song::Take& takeOnTrack (const Song& song, const std::string& trackId)
@@ -415,7 +416,7 @@ TEST_CASE ("a Pass stopped before any block played captures nothing and changes 
     REQUIRE (started.has_value());
     (*started)->requestStop();
 
-    const auto finished = (*started)->finish();
+    const auto finished = (*started)->finish().pass;
     REQUIRE_FALSE (finished.has_value());
     CHECK (finished.error().code == "capture.pass_empty");
     CHECK (fixture.package->song() == before);
@@ -445,10 +446,41 @@ TEST_CASE ("a Pass that overran its FIFO keeps its full length on the timeline",
     device.run (engine, 40);
     (*started)->requestStop();
     device.run (engine, 1);
-    const auto pass = (*started)->finish();
+    const auto pass = (*started)->finish().pass;
     REQUIRE (pass.has_value());
 
     CHECK (pass->overrunFrames > 0);
     CHECK (pass->lengthSamples == 40 * blockSize);
     CHECK (takeOnTrack (fixture.package->song(), "track-guitar").lengthSamples == 40 * blockSize);
+}
+
+TEST_CASE ("a Pass without a camera goes from waiting to capturing to saving, and the first poll after the stop finishes it", "[capture][record]")
+{
+    RecordingFixture fixture;
+    fixture.addArmedTrack ("track-guitar", { 0 });
+    fixture.commitSetup();
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = blockSize } };
+    engine.loadSong (fixture.package->song(), fixture.root());
+    LoopbackDevice device { 2, blockSize, 512 };
+    auto started = PassRecorder::start (*fixture.package, engine, RecordLatency {});
+    REQUIRE (started.has_value());
+    auto& recorder = **started;
+    CHECK (recorder.phase() == overdub::capture::PassPhase::waiting);
+    CHECK_FALSE (recorder.poll (overdub::song::SongPackage::Clock::now()).has_value());
+
+    engine.play();
+    device.run (engine, 10);
+    CHECK (recorder.phase() == overdub::capture::PassPhase::capturing);
+    CHECK_FALSE (recorder.poll (overdub::song::SongPackage::Clock::now()).has_value());
+
+    recorder.requestStop();
+    device.run (engine, 1);
+    CHECK (recorder.phase() == overdub::capture::PassPhase::saving);
+    const auto finished = recorder.poll (overdub::song::SongPackage::Clock::now());
+
+    REQUIRE (finished.has_value());
+    CHECK (finished->stopReason == overdub::engine::RecordStopReason::requested);
+    REQUIRE (finished->pass.has_value());
+    CHECK (finished->pass->lengthSamples == 10 * blockSize);
+    CHECK (recorder.phase() == overdub::capture::PassPhase::finished);
 }

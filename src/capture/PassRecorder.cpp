@@ -225,9 +225,20 @@ bool PassRecorder::hasStopped() const
     return session->state() == engine::RecordState::stopped;
 }
 
-engine::RecordStopReason PassRecorder::stopReason() const
+PassPhase PassRecorder::phase() const
 {
-    return session->stopReason();
+    if (finished)
+        return PassPhase::finished;
+    switch (session->state())
+    {
+        case engine::RecordState::waiting:
+            return PassPhase::waiting;
+        case engine::RecordState::recording:
+            return PassPhase::capturing;
+        case engine::RecordState::stopped:
+            return PassPhase::saving;
+    }
+    return PassPhase::saving;
 }
 
 std::optional<SampleCount> PassRecorder::runningPassStart() const
@@ -249,21 +260,25 @@ bool PassRecorder::waitUntilStopped (std::chrono::milliseconds timeout) const
     return true;
 }
 
-core::Expected<RecordedPass> PassRecorder::stop (std::chrono::milliseconds timeout)
+std::optional<FinishedPass> PassRecorder::poll (song::SongPackage::Clock::time_point now)
 {
-    requestStop();
-    if (! waitUntilStopped (timeout))
-        return std::unexpected (core::Error { "capture.stop_timeout", "the audio device did not end the Pass", { { "pass_id", passIdentifier }, { "timeout_ms", timeout.count() } } });
-    return finish();
+    if (finished || ! hasStopped())
+        return std::nullopt;
+    // The movie completes off this thread (issue #70): the Pass is finished once it has.
+    prepareFinish();
+    if (! isReadyToFinish())
+        return std::nullopt;
+    return finish (now);
 }
 
-core::Expected<void> PassRecorder::stopWithoutWaitingForMovie (std::chrono::milliseconds timeout)
+std::optional<FinishedPass> PassRecorder::release (std::chrono::milliseconds timeout)
 {
     requestStop();
     if (! waitUntilStopped (timeout))
-        return std::unexpected (core::Error { "capture.stop_timeout", "the audio device did not end the Pass", { { "pass_id", passIdentifier }, { "timeout_ms", timeout.count() } } });
-    prepareFinish();
-    return {};
+        return FinishedPass { engine::RecordStopReason::none,
+                              std::unexpected (core::Error { "capture.stop_timeout", "the audio device did not end the Pass", { { "pass_id", passIdentifier }, { "timeout_ms", timeout.count() } } }) };
+    // The movie may complete after the engine is gone: poll() finishes the Pass then (issue #90).
+    return poll();
 }
 
 //==============================================================================
@@ -397,7 +412,14 @@ bool PassRecorder::isReadyToFinish() const
     return ! movieEnding.valid() || movieEnding.wait_for (std::chrono::seconds (0)) == std::future_status::ready;
 }
 
-core::Expected<RecordedPass> PassRecorder::finish (song::SongPackage::Clock::time_point now)
+FinishedPass PassRecorder::finish (song::SongPackage::Clock::time_point now)
+{
+    // The reason is read once addPass has seen the audio thread end the Pass (it is valid only then).
+    auto pass = addPass (now);
+    return FinishedPass { session->stopReason(), std::move (pass) };
+}
+
+core::Expected<RecordedPass> PassRecorder::addPass (song::SongPackage::Clock::time_point now)
 {
     if (finished)
         return std::unexpected (core::Error { "capture.already_finished", "the Pass was already finished", { { "pass_id", passIdentifier } } });

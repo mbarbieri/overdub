@@ -209,8 +209,8 @@ TEST_CASE ("AUPeakLimiter's latency is compensated sample-exact in Take placemen
     device.run (engine, 40);
     recorder.requestStop();
     device.run (engine, 1);
-    REQUIRE (recorder.hasStopped());
-    auto finished = recorder.finish();
+    REQUIRE (recorder.phase() == overdub::capture::PassPhase::saving);
+    auto finished = recorder.finish().pass;
     REQUIRE (finished.has_value());
 
     const auto& recorded = package.song();
