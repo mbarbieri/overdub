@@ -104,6 +104,7 @@ TEST_CASE ("a Track's menu offers Separate... only on a Track whose Clips all pl
         Track { .id = "track-mixed",
                 .name = "Mixed",
                 .clips = { Clip { .id = "clip-4", .source = { ClipSourceKind::backing, "backing-1" }, .length = 100 }, Clip { .id = "clip-5", .source = { ClipSourceKind::backing, "backing-2" }, .length = 100 } } },
+        Track { .id = "track-lost", .name = "Lost", .clips = { Clip { .id = "clip-6", .source = { ClipSourceKind::backing, "backing-gone" }, .length = 100 } } },
     };
     const auto disabledBecause = [] (std::string tooltip) {
         return std::vector<TrackMenuItem> { { TrackMenuAction::separate, "Separate...", false, std::move (tooltip) } };
@@ -115,4 +116,6 @@ TEST_CASE ("a Track's menu offers Separate... only on a Track whose Clips all pl
     CHECK (trackMenuFor (song, "track-guitar", {}) == disabledBecause ("This Track has no Clips"));
     CHECK (trackMenuFor (song, "track-vocals", {}) == disabledBecause ("This Track has recorded Takes"));
     CHECK (trackMenuFor (song, "track-mixed", {}) == disabledBecause ("This Track has more than one Backing Track"));
+    CHECK (trackMenuFor (song, "track-lost", {}) == disabledBecause ("This Track's Backing Track is missing"));
+    CHECK (trackMenuFor (song, "track-gone", {}) == disabledBecause ("This Track is no longer in the Song"));
 }

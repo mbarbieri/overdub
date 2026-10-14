@@ -137,7 +137,9 @@ void SeparationRun::readProgress (const std::vector<std::string>& lines)
         const auto line = nlohmann::json::parse (text, nullptr, false);
         if (! line.is_object() || ! line.contains ("event") || ! line.at ("event").is_string())
         {
-            core::logEvent (core::Level::warn, "song.separation_line_ignored", { { "track_id", trackId }, { "line", text } });
+            // Capped: a noisy helper must not flood the log.
+            if (++ignoredLines <= maxLoggedIgnoredLines)
+                core::logEvent (core::Level::warn, "song.separation_line_ignored", { { "track_id", trackId }, { "line", text } });
             continue;
         }
         const auto event = line.at ("event").get<std::string>();

@@ -92,7 +92,7 @@ public:
     // Whether the app may quit now: not while a Separation runs (its dialog is modal and closes
     // only on success, Cancel or failure; ui.separation_running is shown). A Pass is finished on
     // quit as on close.
-    bool mayQuit();
+    bool mayQuitOrNotice();
 
     // Closes the open Song (finishing a running Pass) and shows this one (see the header comment
     // for its rate). The package's open Notices are shown.

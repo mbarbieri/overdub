@@ -129,9 +129,9 @@ void MainWindow::closeButtonPressed()
     juce::JUCEApplication::getInstance()->systemRequestedQuit();
 }
 
-bool MainWindow::mayQuit()
+bool MainWindow::mayQuitOrNotice()
 {
-    return workspace == nullptr || workspace->mayQuit();
+    return workspace == nullptr || workspace->mayQuitOrNotice();
 }
 
 //==============================================================================

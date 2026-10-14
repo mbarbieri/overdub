@@ -61,7 +61,7 @@ bool Workspace::idleOrNotice()
     return false;
 }
 
-bool Workspace::mayQuit()
+bool Workspace::mayQuitOrNotice()
 {
     if (song == nullptr || ! song->isSeparating())
         return true;

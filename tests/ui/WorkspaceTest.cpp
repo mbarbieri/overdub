@@ -431,7 +431,7 @@ TEST_CASE ("opening another Song, changing the device and quitting are refused w
     CHECK_FALSE (f.workspace->isIdle());
     CHECK_FALSE (f.workspace->idleOrNotice());
     f.workspace->applyDeviceSettings (f.audio().deviceChoices().current);
-    CHECK_FALSE (f.workspace->mayQuit());
+    CHECK_FALSE (f.workspace->mayQuitOrNotice());
 
     CHECK (f.opened.size() == 1);
     CHECK (f.song().isSeparating());
@@ -440,5 +440,5 @@ TEST_CASE ("opening another Song, changing the device and quitting are refused w
 
     f.song().cancelSeparation();
     CHECK (f.workspace->isIdle());
-    CHECK (f.workspace->mayQuit());
+    CHECK (f.workspace->mayQuitOrNotice());
 }

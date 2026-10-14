@@ -27,8 +27,8 @@ public:
     ~MainWindow() override;
 
     void closeButtonPressed() override;
-    // ui::Workspace::mayQuit: false (with a Notice) while a Separation runs.
-    bool mayQuit();
+    // ui::Workspace::mayQuitOrNotice: false (with a Notice) while a Separation runs.
+    bool mayQuitOrNotice();
 
 private:
     juce::StringArray getMenuBarNames() override;

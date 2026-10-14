@@ -27,7 +27,7 @@
 // (separation.model_missing, model_unloadable, model_mismatch). Writing the parts into the package
 // after a success can fail too (SongPackage::addSeparation's Errors, which leave no file and no
 // undo step). In every case the Song is unchanged. A stdout line that is not a JSON event is
-// skipped (song.separation_line_ignored, warn: track_id, line). cancel() kills the helper at once
+// skipped (song.separation_line_ignored, warn: track_id, line; the first 5 per run). cancel() kills the helper at once
 // (SIGKILL, not waiting for a chunk) and logs song.separation_cancelled (info: track_id,
 // source_backing_track_id, chunks_done, chunks, duration_ms). Every end, cancel and destroying the
 // run (which kills a helper that still runs) deletes the output folder.
@@ -99,6 +99,8 @@ private:
     juce::File output;
     Clock::time_point startedAt;
     SeparationProgress shownProgress;
+    static constexpr int maxLoggedIgnoredLines = 5;
+    int ignoredLines = 0;
     std::unique_ptr<SeparationHelperRun> helper;
 };
 } // namespace overdub::song
