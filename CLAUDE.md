@@ -45,6 +45,6 @@ build/debug/tests/overdub_tests "[engine][pdc]"      # a subset by Catch2 tag
 ## Workflow
 
 - Work arrives as GitHub issues. Before implementing, read the issue with `gh issue view <N>` and cover every Acceptance bullet with a test.
-- Branches: `slice/<issue>-<name>`, `spike/…`, `research/…`, `prototype/…`. Commit subjects describe the observable behavior and end with `(issue #N)`.
-- PR title `Slice N: <summary>`, body starts `Closes #N.`, ends with the test plan and pass count.
+- Branches: `<issue>-<name>`, `spike/…`, `research/…`, `prototype/…`. Commit subjects describe the observable behavior and end with `(issue #N)`.
+- PR title is a short summary of the change; body starts `Closes #N.`, ends with the test plan and pass count.
 - PRs need no GitHub review: reviews are done by a local agent. Merging without a GitHub approval is fine; don't request or wait for one.

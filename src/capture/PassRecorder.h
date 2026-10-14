@@ -41,15 +41,17 @@
 // finish(), so during pre-roll it holds frames from before the record point; they are placed
 // before the Pass start like any other frame.
 //
-// Finishing without waiting (issue #70): AVFoundation may take seconds to complete the movie. The
-// message thread calls prepareFinish() once hasStopped(), which ends the movie (Camera::endMovie
-// completes it off that thread), polls isReadyToFinish(), and then calls finish(), which no longer
-// waits. The Pass and its Video Take are still one undo step, added once the movie is complete.
-// finish() alone (stop(), detaching the audio, tests) waits for the movie.
+// Finishing without waiting (issues #70, #90, #104): AVFoundation may take seconds to complete the
+// movie. The owner calls poll() regularly: once the audio thread has ended the Pass (phase() is
+// saving), poll() closes the Take files and ends the movie (Camera::endMovie completes it off the
+// calling thread), and once the movie is complete it adds the Pass and returns it, once, as a
+// FinishedPass with its stop reason. The Pass and its Video Take are one undo step. release() asks
+// the audio thread to end the Pass and waits for it only, so the engine may go; poll() still
+// finishes the Pass afterwards. finish() waits for the movie (closing the Song, tests).
 //
-// Threads: start(), prepareFinish(), isReadyToFinish(), finish(), stop() and the destructor run on
-// one non-audio thread (the message thread in the app); the package is single-threaded and only
-// touched there. The destructor waits for a movie being completed and deletes it.
+// Threads: start(), poll(), release(), finish() and the destructor run on one non-audio thread (the
+// message thread in the app); the package is single-threaded and only touched there. The
+// destructor waits for a movie being completed and deletes it.
 namespace overdub::capture
 {
 using song::SampleCount;
@@ -81,6 +83,15 @@ struct PassRecorderOptions
     std::string outputDevice;
 };
 
+// Where a Pass is, as the owner sees it.
+enum class PassPhase
+{
+    waiting,   // for the transport, or for the record point during pre-roll: nothing captured yet
+    capturing, // the audio thread captures input
+    saving,    // the audio thread ended the Pass; it is being saved (its movie completing)
+    finished   // poll(), release() or finish() returned it
+};
+
 // What a finished Pass produced, beyond what the Song now holds.
 struct RecordedPass
 {
@@ -96,6 +107,13 @@ struct RecordedPass
     // Notice-tier problems that did not stop the Pass (the movie failed, frames were dropped);
     // not logged here: whoever presents them logs them once.
     std::vector<core::Error> notices;
+};
+
+// A Pass that is over: why the audio thread ended it, and the Pass or why it was not added.
+struct FinishedPass
+{
+    engine::RecordStopReason stopReason = engine::RecordStopReason::none;
+    core::Expected<RecordedPass> pass;
 };
 
 class PassRecorder
@@ -118,42 +136,35 @@ public:
     PassRecorder (const PassRecorder&) = delete;
     PassRecorder& operator= (const PassRecorder&) = delete;
 
-    // Asks the audio thread to end the Pass at its next block.
+    // Asks the audio thread to end the Pass at its next block (it may also end it itself: transport
+    // stopped or seeked, the device stopped, Engine::deviceStopped).
     void requestStop();
-    // True once the audio thread has ended the Pass (stop requested, transport stopped or seeked),
-    // or the device stopped (Engine::deviceStopped).
-    bool hasStopped() const;
-    // Why the Pass ended; valid once hasStopped().
-    engine::RecordStopReason stopReason() const;
+    PassPhase phase() const;
     // The record point once the audio thread has begun the Pass and until it ends it; none before
     // (waiting for the transport, or for the record point during pre-roll) and after.
     std::optional<SampleCount> runningPassStart() const;
 
-    // Requires hasStopped() (does nothing before, and after the first call). Stops the io thread,
-    // closes the Take files and ends the movie of a Pass that will be kept, without waiting for the
-    // camera to complete it.
-    void prepareFinish();
-    // True once prepareFinish() was called and the movie, if any, is complete: finish() then does
-    // not wait for the camera.
-    bool isReadyToFinish() const;
+    // Call regularly. Once the audio thread has ended the Pass, prepares it without waiting (see the
+    // header comment); returns the FinishedPass once its movie, if any, is complete. Returns it once;
+    // none before and after.
+    std::optional<FinishedPass> poll (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
 
-    // Requires hasStopped(). prepareFinish() if not done yet, waits for the movie to complete, writes the rest of every Take, renames the files into audio/, writes
-    // peaks, and adds the Pass as one undo step. Logs capture.pass_stopped (Pass id, Tracks,
-    // start sample, length, overrun and dropped counts, stop reason) whatever the outcome.
-    // A failed peaks write is only logged (capture.peaks_write_failed, warn): it is a cache.
-    // Errors: capture.not_stopped, capture.already_finished, capture.pass_empty (nothing was captured; temp files deleted),
-    // capture.take_write_failed (track_id, take_id, path), song.write_failed (rename),
-    // the package edit's Errors (the Take files are kept).
-    core::Expected<RecordedPass> finish (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
+    // requestStop(), then waits up to `timeout` for the audio thread and prepares the Pass without
+    // waiting for the movie (issue #90): the engine may go once this returns. Returns the
+    // FinishedPass when it is already complete (poll() returns it otherwise), or capture.stop_timeout
+    // with no stop reason (the device delivered no callback: the Pass is not finished, and the owner
+    // destroys the recorder).
+    std::optional<FinishedPass> release (std::chrono::milliseconds timeout = std::chrono::milliseconds (2000));
 
-    // requestStop(), then waits up to `timeout` for the audio thread, then finish().
-    // Errors: capture.stop_timeout (the device delivered no callback), or finish()'s.
-    core::Expected<RecordedPass> stop (std::chrono::milliseconds timeout = std::chrono::milliseconds (2000));
-
-    // requestStop(), then waits up to `timeout` for the audio thread, then prepareFinish(): the
-    // movie completes off this thread (issue #90). The engine may go once this returns.
-    // Errors: capture.stop_timeout.
-    core::Expected<void> stopWithoutWaitingForMovie (std::chrono::milliseconds timeout = std::chrono::milliseconds (2000));
+    // Requires the audio thread to have ended the Pass. Prepares it if not done yet, waits for the
+    // movie to complete, writes the rest of every Take, renames the files into audio/, writes peaks,
+    // and adds the Pass as one undo step. Logs capture.pass_stopped (Pass id, Tracks, start sample,
+    // length, overrun and dropped counts, stop reason) whatever the outcome. A failed peaks write
+    // is only logged (capture.peaks_write_failed, warn): it is a cache.
+    // Errors: capture.not_stopped, capture.already_finished, capture.pass_empty (nothing was
+    // captured; temp files deleted), capture.take_write_failed (track_id, take_id, path),
+    // song.write_failed (rename), the package edit's Errors (the Take files are kept).
+    FinishedPass finish (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
 
     const song::Id& passId() const { return passIdentifier; }
 
@@ -169,6 +180,14 @@ private:
 
     PassRecorder (song::SongPackage& package, engine::Engine& engine, RecordLatency latency, PassRecorderOptions options);
 
+    bool hasStopped() const;
+    // Requires hasStopped() (does nothing before, and after the first call). Stops the io thread,
+    // closes the Take files and ends the movie of a Pass that will be kept, without waiting for the
+    // camera to complete it.
+    void prepareFinish();
+    // True once prepareFinish() was called and the movie, if any, is complete.
+    bool isReadyToFinish() const;
+    core::Expected<RecordedPass> addPass (song::SongPackage::Clock::time_point now);
     void runIoThread();
     void drainOnce();
     void logPassStartedOnce();

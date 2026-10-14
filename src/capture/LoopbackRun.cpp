@@ -103,7 +103,8 @@ std::optional<core::Expected<LoopbackRunResult>> LoopbackRun::poll (Clock::time_
         recorder->requestStop();
         stopRequested = true;
     }
-    if (! recorder->hasStopped())
+    auto finished = recorder->poll (now);
+    if (! finished.has_value())
     {
         if (! timedOut)
             return std::nullopt;
@@ -116,11 +117,10 @@ std::optional<core::Expected<LoopbackRunResult>> LoopbackRun::poll (Clock::time_
 
     done = true;
     engine.stop();
-    auto pass = recorder->finish();
     recorder.reset();
-    if (! pass.has_value())
-        return std::unexpected (pass.error());
-    return measure (*pass);
+    if (! finished->pass.has_value())
+        return std::unexpected (finished->pass.error());
+    return measure (*finished->pass);
 }
 
 core::Expected<LoopbackRunResult> LoopbackRun::measure (const RecordedPass& pass)
