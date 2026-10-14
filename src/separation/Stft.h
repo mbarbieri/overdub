@@ -11,8 +11,8 @@ namespace overdub::separation
 {
 struct StftConfig
 {
-    int fftSize = 2048;
-    int hop = 512;
+    int fftSize = 0; // also the window length
+    int hop = 0;
     bool normalized = false;
 
     int bins() const { return fftSize / 2 + 1; }

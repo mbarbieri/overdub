@@ -87,6 +87,16 @@ GraphShape expectedGraphShape()
     return GraphShape { .parts = (int) expectedParts.size(), .channels = 2, .segment = 588800, .stft = StftConfig { .fftSize = 2048, .hop = 512, .normalized = false } };
 }
 
+std::vector<std::int64_t> inputTensorShape (const GraphShape& shape)
+{
+    return { 1, shape.channels, shape.stft.bins(), shape.stft.framesFor (shape.segment) };
+}
+
+std::vector<std::int64_t> outputTensorShape (const GraphShape& shape)
+{
+    return { 1, shape.parts, shape.channels, shape.stft.bins(), shape.stft.framesFor (shape.segment) };
+}
+
 core::Expected<GraphShape> checkModelFacts (const ModelFacts& facts, const std::string& path)
 {
     for (const auto& expected : expectedMetadata())
@@ -99,13 +109,11 @@ core::Expected<GraphShape> checkModelFacts (const ModelFacts& facts, const std::
     }
 
     const auto shape = expectedGraphShape();
-    const std::vector<std::int64_t> inputShape { 1, shape.channels, shape.stft.bins(), shape.stft.framesFor (shape.segment) };
-    const std::vector<std::int64_t> outputShape { 1, shape.parts, shape.channels, shape.stft.bins(), shape.stft.framesFor (shape.segment) };
-    for (const auto* name : { "spec_real", "spec_imag" })
-        if (auto problem = checkTensor (facts.inputShapes, name, inputShape, path))
+    for (const auto* name : { inputRealName, inputImagName })
+        if (auto problem = checkTensor (facts.inputShapes, name, inputTensorShape (shape), path))
             return std::unexpected (*problem);
-    for (const auto* name : { "out_spec_real", "out_spec_imag" })
-        if (auto problem = checkTensor (facts.outputShapes, name, outputShape, path))
+    for (const auto* name : { outputRealName, outputImagName })
+        if (auto problem = checkTensor (facts.outputShapes, name, outputTensorShape (shape), path))
             return std::unexpected (*problem);
     return shape;
 }

@@ -1,5 +1,7 @@
 #include "separation/Stft.h"
 
+#include "separation/ModelCheck.h"
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -55,7 +57,7 @@ TEST_CASE ("The periodic Hann window matches torch.hann_window (periodic=True)",
 
 TEST_CASE ("STFT then iSTFT of a sine reconstructs it within float tolerance", "[separation][stft]")
 {
-    const StftConfig config; // n_fft 2048, hop 512: the Separation graph's
+    const auto config = overdub::separation::expectedGraphShape().stft; // n_fft 2048, hop 512
     const int length = 44100;
     const auto signal = sine (length, 440.0, 0.5f);
     const auto spectrum = spectrumOf (signal, config);
@@ -66,12 +68,12 @@ TEST_CASE ("STFT then iSTFT of a sine reconstructs it within float tolerance", "
     float worst = 0.0f;
     for (std::size_t i = 0; i < signal.size(); ++i)
         worst = std::max (worst, std::abs (reconstructed[i] - signal[i]));
-    CHECK (worst < 1e-5f);
+    CHECK (worst < 1e-6f); // -120 dBFS, ADR 0005's null-test tolerance
 }
 
 TEST_CASE ("The STFT of a sine peaks in its bin with the Hann window's gain", "[separation][stft]")
 {
-    const StftConfig config;
+    const auto config = overdub::separation::expectedGraphShape().stft;
     const int bin = 100; // 100 x 44100 / 2048 = 2153.3 Hz, exactly on a bin
     const float amplitude = 0.25f;
     const int length = 44100;
@@ -91,8 +93,8 @@ TEST_CASE ("The STFT of a sine peaks in its bin with the Hann window's gain", "[
             peak = k;
     CHECK (peak == bin);
     // A sine of amplitude A on bin k through a periodic Hann window of N: |X[k]| = A x N / 4.
-    CHECK (magnitude (bin) == Catch::Approx (amplitude * config.fftSize / 4.0f).epsilon (1e-4));
+    CHECK (magnitude (bin) == Catch::Approx (amplitude * (float) config.fftSize / 4.0f).epsilon (1e-4));
     // The Hann window leaks only into the neighbouring bins, each at half the peak.
-    CHECK (magnitude (bin + 1) == Catch::Approx (amplitude * config.fftSize / 8.0f).epsilon (1e-3));
+    CHECK (magnitude (bin + 1) == Catch::Approx (amplitude * (float) config.fftSize / 8.0f).epsilon (1e-3));
     CHECK (magnitude (bin + 2) < 1e-2f);
 }

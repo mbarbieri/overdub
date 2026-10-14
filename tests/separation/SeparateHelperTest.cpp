@@ -174,7 +174,7 @@ TEST_CASE ("overdub-separate writes six 32-bit float stereo parts as long as the
         for (int c = 0; c < 2; ++c)
             for (int i = 0; i < length; ++i)
                 worst = std::max (worst, std::abs (part.audio.getSample (c, i) - original->getSample (c, i)));
-        CHECK (worst < 1e-5f); // the identity model: every part is the input
+        CHECK (worst < 1e-6f); // the identity model: every part nulls against the input to -120 dBFS (ADR 0005)
     }
     CHECK (fixture.output.findChildFiles (juce::File::findFiles, false, "*.tmp").isEmpty());
 }

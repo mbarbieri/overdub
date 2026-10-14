@@ -16,9 +16,9 @@ namespace overdub::separation
 {
 struct GraphShape
 {
-    int parts = 6;
-    int channels = 2;
-    int segment = 588800; // samples per chunk
+    int parts = 0;
+    int channels = 0;
+    int segment = 0; // samples per chunk
     StftConfig stft;
 
     // Floats in one [bin][frame] plane of a chunk's spectrum.

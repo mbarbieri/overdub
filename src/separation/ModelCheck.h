@@ -26,7 +26,16 @@ struct ModelFacts
 };
 
 // The graph BS-RoFormer SW's export must be: 6 parts, stereo, 588800-sample chunks, STFT 2048/512.
+// The one place these numbers are written down in C++.
 GraphShape expectedGraphShape();
+
+// The graph's tensors: [1, channels, bins, frames] in, [1, parts, channels, bins, frames] out.
+inline constexpr const char* inputRealName = "spec_real";
+inline constexpr const char* inputImagName = "spec_imag";
+inline constexpr const char* outputRealName = "out_spec_real";
+inline constexpr const char* outputImagName = "out_spec_imag";
+std::vector<std::int64_t> inputTensorShape (const GraphShape& shape);
+std::vector<std::int64_t> outputTensorShape (const GraphShape& shape);
 
 // The shape to run when `facts` describe the expected graph. Errors: separation.model_mismatch
 // (path, key: the metadata key or tensor name that differs, expected, actual; actual is "missing"

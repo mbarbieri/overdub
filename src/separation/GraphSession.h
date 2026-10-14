@@ -23,7 +23,8 @@ public:
     // The model's metadata and tensor shapes, for checkModelFacts.
     core::Expected<ModelFacts> facts() const;
 
-    // Runs the graph for separateAudio. `shape` must be the one checkModelFacts returned.
+    // Runs the graph for separateAudio. `shape` must be the one checkModelFacts returned. The
+    // returned function uses this session: it must not be called after the session is destroyed.
     // Errors: separation.inference_failed (detail).
     RunGraph runner (const GraphShape& shape);
 

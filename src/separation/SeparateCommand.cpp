@@ -26,14 +26,23 @@ void writeLine (std::ostream& stream, const nlohmann::json& line)
     stream << line.dump() << std::endl; // endl flushes: the parent reads progress as it happens
 }
 
-int fail (std::ostream& err, const core::Error& error)
+int fail (std::ostream& err, const core::Error& error, int exitCode = exitFailure)
 {
     nlohmann::json line { { "error", error.code }, { "message", error.message } };
     if (error.fields.is_object())
         for (const auto& [key, value] : error.fields.items())
             line[key] = value;
     writeLine (err, line);
-    return error.code == "separation.usage" ? exitUsage : exitFailure;
+    return exitCode;
+}
+
+// A separation.* Error caused by another area's Error: its fields, plus `path` and `cause` (its code).
+core::Error causedBy (const core::Error& cause, const char* code, const char* message, const juce::File& file)
+{
+    auto fields = cause.fields.is_object() ? cause.fields : nlohmann::json::object();
+    fields["path"] = file.getFullPathName().toStdString();
+    fields["cause"] = cause.code;
+    return core::Error { code, message, fields };
 }
 
 std::string pathOf (const juce::File& file)
@@ -83,12 +92,7 @@ core::Expected<juce::AudioBuffer<float>> decodeInput (const juce::File& input)
 {
     auto decoded = song::decodeAudioFile (input, modelSampleRate);
     if (! decoded.has_value())
-    {
-        auto fields = decoded.error().fields.is_object() ? decoded.error().fields : nlohmann::json::object();
-        fields["path"] = pathOf (input);
-        fields["cause"] = decoded.error().code;
-        return std::unexpected (core::Error { "separation.input_unreadable", "the input audio file could not be decoded", fields });
-    }
+        return std::unexpected (causedBy (decoded.error(), "separation.input_unreadable", "the input audio file could not be decoded", input));
     if (decoded->audio.getNumSamples() == 0)
         return std::unexpected (core::Error { "separation.input_unreadable", "the input audio file is empty", { { "path", pathOf (input) }, { "cause", "empty" } } });
 
@@ -107,12 +111,7 @@ core::Expected<void> writeParts (const std::vector<juce::AudioBuffer<float>>& pa
     {
         const auto destination = folder.getChildFile (juce::String (expectedParts[p]) + ".wav");
         if (auto written = song::writeFloatWavAtomically (destination, parts[p], modelSampleRate, {}); ! written.has_value())
-        {
-            auto fields = written.error().fields.is_object() ? written.error().fields : nlohmann::json::object();
-            fields["path"] = pathOf (destination);
-            fields["cause"] = written.error().code;
-            return std::unexpected (core::Error { "separation.part_write_failed", "a part file could not be written", fields });
-        }
+            return std::unexpected (causedBy (written.error(), "separation.part_write_failed", "a part file could not be written", destination));
         writeLine (out, { { "event", "separation.part_written" }, { "part", expectedParts[p] }, { "path", pathOf (destination) } });
     }
     return {};
@@ -122,7 +121,7 @@ int runChecked (const std::vector<std::string>& arguments, std::ostream& out, st
 {
     const auto started = std::chrono::steady_clock::now();
     if (arguments.size() != 3)
-        return fail (err, core::Error { "separation.usage", "usage: overdub-separate <model.onnx> <input audio file> <output folder>", { { "arguments", arguments.size() } } });
+        return fail (err, core::Error { "separation.usage", "usage: overdub-separate <model.onnx> <input audio file> <output folder>", { { "arguments", arguments.size() } } }, exitUsage);
 
     const auto modelFile = resolve (arguments[0]);
     const auto inputFile = resolve (arguments[1]);

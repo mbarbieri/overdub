@@ -82,7 +82,7 @@ void requirePartsEqualInput (const Run& run, const juce::AudioBuffer<float>& inp
     {
         REQUIRE (part.getNumChannels() == 2);
         REQUIRE (part.getNumSamples() == input.getNumSamples());
-        CHECK (worstDifference (part, input) < 1e-5f);
+        CHECK (worstDifference (part, input) < 1e-6f); // -120 dBFS, ADR 0005's null-test tolerance
     }
 }
 } // namespace

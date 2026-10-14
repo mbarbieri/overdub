@@ -82,10 +82,8 @@ core::Expected<ModelFacts> GraphSession::facts() const
 
 RunGraph GraphSession::runner (const GraphShape& shape)
 {
-    const auto bins = (std::int64_t) shape.stft.bins();
-    const auto frames = (std::int64_t) shape.stft.framesFor (shape.segment);
-    const std::array<std::int64_t, 4> inputShape { 1, shape.channels, bins, frames };
-    const std::array<std::int64_t, 5> outputShape { 1, shape.parts, shape.channels, bins, frames };
+    const auto inputShape = inputTensorShape (shape);
+    const auto outputShape = outputTensorShape (shape);
 
     return [this, inputShape, outputShape] (std::span<const float> specReal, std::span<const float> specImag, std::span<float> outReal, std::span<float> outImag) -> core::Expected<void> {
         try
@@ -100,8 +98,8 @@ RunGraph GraphSession::runner (const GraphShape& shape)
                 Ort::Value::CreateTensor<float> (memory, outReal.data(), outReal.size(), outputShape.data(), outputShape.size()),
                 Ort::Value::CreateTensor<float> (memory, outImag.data(), outImag.size(), outputShape.data(), outputShape.size()),
             };
-            const std::array<const char*, 2> inputNames { "spec_real", "spec_imag" };
-            const std::array<const char*, 2> outputNames { "out_spec_real", "out_spec_imag" };
+            const std::array<const char*, 2> inputNames { inputRealName, inputImagName };
+            const std::array<const char*, 2> outputNames { outputRealName, outputImagName };
             state->session.Run (Ort::RunOptions { nullptr }, inputNames.data(), inputs.data(), inputs.size(), outputNames.data(), outputs.data(), outputs.size());
             return {};
         }
