@@ -328,6 +328,14 @@ void MainComponent::perform (Command command)
             if (currentMode == Mode::edit)
                 deleteSelectedClip();
             break;
+        case Command::nudgeBack:
+            if (currentMode == Mode::edit)
+                nudgePlayhead (-nudgeSeconds);
+            break;
+        case Command::nudgeForward:
+            if (currentMode == Mode::edit)
+                nudgePlayhead (nudgeSeconds);
+            break;
         case Command::showRecord:
         case Command::showEdit:
         case Command::showExport:
@@ -355,6 +363,13 @@ void MainComponent::deleteSelectedClip()
     if (! selected.has_value() || passRunning())
         return;
     applyEdit (song::deleteClip (openSong->song(), *selected), song::deleteClipLabel);
+}
+
+// OpenSong::seek clamps at the Song's start and ignores seeks while a Pass runs.
+void MainComponent::nudgePlayhead (int seconds)
+{
+    const auto offset = (song::SampleCount) seconds * openSong->song().sampleRate;
+    openSong->seek (openSong->position() + offset);
 }
 
 void MainComponent::applyEdit (core::Expected<song::Song> changed, const std::string& label)

@@ -252,6 +252,35 @@ TEST_CASE ("clicking the ruler moves the playhead there", "[ui][edit]")
     CHECK (f.openSong->position() == 100 * f.samplesPerPixel());
 }
 
+TEST_CASE ("the left and right arrows move the playhead back and forward by 5 seconds, not before the start", "[ui][edit]")
+{
+    EditFixture f;
+    const SampleCount nudge = 5 * f.song().sampleRate;
+    f.openSong->seek (3 * nudge);
+
+    REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::rightKey)));
+    CHECK (f.openSong->position() == 4 * nudge);
+
+    REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::leftKey)));
+    REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::leftKey)));
+    CHECK (f.openSong->position() == 2 * nudge);
+
+    f.openSong->seek (nudge / 2);
+    REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::leftKey)));
+    CHECK (f.openSong->position() == 0);
+}
+
+TEST_CASE ("the arrows do not move the playhead outside Edit mode", "[ui][edit]")
+{
+    EditFixture f;
+    REQUIRE (pressKey (*f.window, '1'));
+    f.openSong->seek (100000);
+
+    REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::rightKey)));
+    REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::leftKey)));
+    CHECK (f.openSong->position() == 100000);
+}
+
 TEST_CASE ("the zoom buttons halve and double the samples per pixel, and Clips redraw to match", "[ui][edit]")
 {
     EditFixture f;

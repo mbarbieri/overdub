@@ -50,3 +50,13 @@ TEST_CASE ("S splits a Clip and backspace or forward delete deletes one", "[ui][
     CHECK (modeFor (Command::splitClip) == std::nullopt);
     CHECK (modeFor (Command::deleteClip) == std::nullopt);
 }
+
+TEST_CASE ("the left and right arrows nudge the playhead back and forward", "[ui][commands]")
+{
+    CHECK (commandForKey (KeyChord { overdub::ui::leftArrowCharacter }) == Command::nudgeBack);
+    CHECK (commandForKey (KeyChord { overdub::ui::rightArrowCharacter }) == Command::nudgeForward);
+    CHECK (commandForKey (KeyChord { overdub::ui::leftArrowCharacter, true, false }) == std::nullopt);
+    CHECK (commandForKey (KeyChord { overdub::ui::rightArrowCharacter, false, true }) == std::nullopt);
+    CHECK (modeFor (Command::nudgeBack) == std::nullopt);
+    CHECK (modeFor (Command::nudgeForward) == std::nullopt);
+}

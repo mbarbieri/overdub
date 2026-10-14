@@ -35,6 +35,8 @@ std::optional<Command> commandForKey (KeyChord key)
         case U's': return Command::splitClip;
         case backspaceCharacter:
         case forwardDeleteCharacter: return Command::deleteClip;
+        case leftArrowCharacter: return Command::nudgeBack;
+        case rightArrowCharacter: return Command::nudgeForward;
         default: return std::nullopt;
     }
 }
@@ -53,6 +55,8 @@ std::optional<Mode> modeFor (Command command)
         case Command::redo:
         case Command::splitClip:
         case Command::deleteClip:
+        case Command::nudgeBack:
+        case Command::nudgeForward:
             return std::nullopt;
     }
     return std::nullopt;
