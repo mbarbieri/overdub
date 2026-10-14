@@ -1,2 +1,7 @@
 build/
 dist/
+# Separation model weights are never committed (ADR 0007, issue #112).
+*.onnx
+*.safetensors
+*.ckpt
+*.pth

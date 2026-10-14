@@ -4,7 +4,7 @@ DIST_BUNDLE    := dist/Overdub.app
 PREFIX         ?= /Applications
 DEST           ?= $(PREFIX)
 
-.PHONY: app install test verify-app clean submodules
+.PHONY: app install test verify-app clean submodules separation-model
 
 submodules:
 	@if [ -z "$$(ls -A external/JUCE 2>/dev/null)" ] || [ -z "$$(ls -A external/Catch2 2>/dev/null)" ] || [ -z "$$(ls -A external/json 2>/dev/null)" ]; then \
@@ -35,6 +35,9 @@ test: submodules
 
 verify-app:
 	tests/packaging/verify_app_bundle.sh $(DIST_BUNDLE) "$(CURDIR)"
+
+separation-model:
+	scripts/separation-model/install.sh
 
 clean:
 	rm -rf build dist
