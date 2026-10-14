@@ -42,6 +42,9 @@ add_subdirectory(src/video)
 # Export mode's mixdown: the offline render of the Song's graph to WAV or M4A (issue #37).
 add_subdirectory(src/export)
 
+# Separation: the overdub-separate helper and the signal processing around its graph (ADR 0007).
+add_subdirectory(src/separation)
+
 # The main window's Components and the pure UI logic under them (issue #27).
 add_subdirectory(src/ui)
 

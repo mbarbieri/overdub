@@ -7,7 +7,7 @@ DEST           ?= $(PREFIX)
 .PHONY: app install test verify-app clean submodules separation-model
 
 submodules:
-	@if [ -z "$$(ls -A external/JUCE 2>/dev/null)" ] || [ -z "$$(ls -A external/Catch2 2>/dev/null)" ] || [ -z "$$(ls -A external/json 2>/dev/null)" ]; then \
+	@if [ -z "$$(ls -A external/JUCE 2>/dev/null)" ] || [ -z "$$(ls -A external/Catch2 2>/dev/null)" ] || [ -z "$$(ls -A external/json 2>/dev/null)" ] || [ -z "$$(ls -A external/pocketfft 2>/dev/null)" ]; then \
 		echo "make: initialising submodules"; \
 		git submodule update --init --recursive; \
 	fi

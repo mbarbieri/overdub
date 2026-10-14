@@ -44,6 +44,11 @@ target_sources(overdub_tests PRIVATE
     plugin/InsertBypassTest.cpp
     plugin/InsertHostTest.cpp
     plugin/InvalidationWatchTest.mm
+    separation/CrossFadeTest.cpp
+    separation/ModelCheckTest.cpp
+    separation/SeparateHelperTest.cpp
+    separation/SeparationPipelineTest.cpp
+    separation/StftTest.cpp
     song/BackingTrackImportTest.cpp
     song/ClipEditsTest.cpp
     song/InsertEditsTest.cpp
@@ -99,9 +104,15 @@ set_source_files_properties(export/Mp4Decode.mm plugin/InvalidationWatchTest.mm 
 # makes ld warn about duplicate libraries.
 target_link_libraries(overdub_tests PRIVATE
     overdub_ui
+    overdub_separation
     overdub_rt_guard
     Catch2::Catch2WithMain
     juce::juce_recommended_warning_flags)
+
+# [separation][helper] tests run the overdub-separate binary as a child process (issue #113).
+add_dependencies(overdub_tests overdub-separate)
+target_compile_definitions(overdub_tests PRIVATE
+    OVERDUB_SEPARATE_HELPER="$<TARGET_FILE:overdub-separate>")
 
 # [snapshot] tests write PNGs here, one folder per slice, for a session to look at (ADR 0005).
 target_compile_definitions(overdub_tests PRIVATE

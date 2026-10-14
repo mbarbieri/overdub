@@ -43,7 +43,22 @@ else()
     set(overdub_sign_with "${OVERDUB_CODESIGN_IDENTITY}")
 endif()
 
+# The Separation helper (ADR 0007): overdub-separate in Contents/MacOS, the ONNX Runtime dylib in
+# Contents/Frameworks (the helper's rpath), the licences in Contents/Resources. ONNX Runtime is
+# never linked into the Overdub binary itself. Nested code is signed before the bundle.
+add_dependencies(Overdub overdub-separate)
+set(overdub_bundle_contents "$<TARGET_BUNDLE_CONTENT_DIR:Overdub>")
+set(overdub_bundled_helper "${overdub_bundle_contents}/MacOS/overdub-separate")
+set(overdub_bundled_ort "${overdub_bundle_contents}/Frameworks/${OVERDUB_ORT_DYLIB_NAME}")
+
 add_custom_command(TARGET Overdub POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${overdub_bundle_contents}/Frameworks" "${overdub_bundle_contents}/Resources"
+    COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:overdub-separate>" "${overdub_bundled_helper}"
+    COMMAND "${CMAKE_COMMAND}" -E copy "${OVERDUB_ORT_DYLIB}" "${overdub_bundled_ort}"
+    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES" "${overdub_bundle_contents}/Resources/THIRD_PARTY_NOTICES"
+    COMMAND "${CMAKE_COMMAND}" -E copy "${OVERDUB_ORT_ROOT}/ThirdPartyNotices.txt" "${overdub_bundle_contents}/Resources/onnxruntime-ThirdPartyNotices.txt"
+    COMMAND codesign --force --sign "${overdub_sign_with}" --timestamp=none "${overdub_bundled_ort}"
+    COMMAND codesign --force --sign "${overdub_sign_with}" --timestamp=none "${overdub_bundled_helper}"
     COMMAND codesign --force --sign "${overdub_sign_with}" --timestamp=none "$<TARGET_BUNDLE_DIR:Overdub>"
-    COMMENT "Signing Overdub.app (${overdub_sign_with})"
+    COMMENT "Bundling overdub-separate and ONNX Runtime, then signing Overdub.app (${overdub_sign_with})"
     VERBATIM)
