@@ -42,10 +42,10 @@ TopBarLayout topBarLayout (juce::Rectangle<int> bar);
 
 // Record mode (issues #27, #32, #35, issue #9 resolution, variant C): on the left the stage bar
 // (the pre-roll picker after its caption at its left end; the camera arm, then the camera picker,
-// at its right end) over the camera stage; in a
-// right column of trackColumnWidth the Track rows, the Import button under the last row, then the
-// Passes list filling the rest. Along the bottom, full width, the Backing Track look-ahead strip
-// and under it the whole-Song overview.
+// at its right end) over the camera stage; in a right column of trackColumnWidth the Track rows,
+// the Add Track and Import buttons side by side under the last row, then the Passes list filling
+// the rest. Along the bottom, full width, the Backing Track look-ahead strip and under it the
+// whole-Song overview.
 inline constexpr int stageBarHeight = 30;
 inline constexpr int lookAheadStripHeight = 124;
 inline constexpr int songOverviewHeight = 40;
@@ -58,6 +58,7 @@ struct RecordPageLayout
     juce::Rectangle<int> cameraPicker;
     juce::Rectangle<int> stage;
     std::vector<juce::Rectangle<int>> rows;
+    juce::Rectangle<int> addTrackButton;
     juce::Rectangle<int> importButton;
     juce::Rectangle<int> passes;
     juce::Rectangle<int> lookAhead;

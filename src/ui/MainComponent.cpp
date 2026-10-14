@@ -8,6 +8,7 @@
 #include "song/InsertEdits.h"
 #include "song/MixEdits.h"
 #include "song/TakeEdits.h"
+#include "song/TrackEdits.h"
 
 #include "ui/Colours.h"
 #include "ui/Layout.h"
@@ -134,6 +135,7 @@ MainComponent::MainComponent()
         if (openSong != nullptr)
             openSong->notePluginStateChanged();
     };
+    recordPage.onAddTrack = [this] { addTrack(); };
     recordPage.onImport = [this] {
         if (openSong == nullptr || openSong->isRecording() || ! chooseFilesToImport)
             return;
@@ -425,6 +427,18 @@ void MainComponent::showMode (Mode mode)
         core::logEvent (core::Level::debug, "ui.mode_changed", { { "mode", modeName (mode) } });
     currentMode = mode;
     refresh();
+}
+
+void MainComponent::addTrack()
+{
+    if (openSong == nullptr || passRunning())
+        return;
+    // Ready to record: Armed on the device's first input, or on none when it has no inputs.
+    auto inputChannels = openSong->audio().inputChannelNames.empty() ? std::vector<int> {} : std::vector<int> { 0 };
+    auto added = song::addTrack (openSong->song(), std::move (inputChannels));
+    core::logEvent (core::Level::info, "ui.track_added", { { "track_id", added.trackId }, { "input_channels", added.song.tracks.back().inputChannels } });
+    applyEdit (std::move (added.song), added.label);
+    takeKeyboardFocus();
 }
 
 void MainComponent::importFiles (const std::vector<juce::File>& files)

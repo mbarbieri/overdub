@@ -51,10 +51,12 @@ TEST_CASE ("Record mode stacks one row per Track, the Import button and the Pass
     const auto layout = recordPageLayout (page, 3);
 
     REQUIRE (layout.rows.size() == 3);
-    checkInsideAndApart (page, { layout.preRollCaption, layout.preRollPicker, layout.cameraArm, layout.cameraPicker, layout.stage, layout.rows[0], layout.rows[1], layout.rows[2], layout.importButton, layout.passes, layout.lookAhead, layout.overview });
+    checkInsideAndApart (page, { layout.preRollCaption, layout.preRollPicker, layout.cameraArm, layout.cameraPicker, layout.stage, layout.rows[0], layout.rows[1], layout.rows[2], layout.addTrackButton, layout.importButton, layout.passes, layout.lookAhead, layout.overview });
     CHECK (layout.rows[0].getHeight() == trackRowHeight);
     CHECK (layout.rows[1].getY() > layout.rows[0].getBottom() - 1);
     CHECK (layout.rows[2].getBottom() < layout.importButton.getY());
+    CHECK (layout.addTrackButton.getY() == layout.importButton.getY());
+    CHECK (layout.addTrackButton.getRight() < layout.importButton.getX());
     CHECK (layout.importButton.getBottom() < layout.passes.getY());
     CHECK (layout.passes.getWidth() == trackColumnWidth);
     CHECK (layout.stage.getRight() < layout.rows[0].getX());
@@ -80,6 +82,7 @@ TEST_CASE ("Record mode stacks one row per Track, the Import button and the Pass
 
     const auto empty = recordPageLayout (page, 0);
     CHECK (empty.rows.empty());
+    CHECK (page.contains (empty.addTrackButton));
     CHECK (page.contains (empty.importButton));
 }
 

@@ -54,7 +54,7 @@ struct TrackRowState
 struct RecordPageState
 {
     std::vector<TrackRowState> rows;
-    bool canImport = true;
+    bool canAddTracks = true; // Add Track and Import; false while a Pass runs
     song::PreRoll preRoll = song::PreRoll::off;
     bool canChangePreRoll = true; // false while a Pass runs
 };
@@ -151,6 +151,7 @@ public:
     std::function<void (const song::Id&, bool)> onSolo;
     // The Insert Chains' gestures (every row's).
     InsertChainActions insertActions;
+    std::function<void()> onAddTrack;
     std::function<void()> onImport;
     std::function<void (song::PreRoll)> onPreRoll;
     std::function<void (bool armed)> onCameraArm;
@@ -164,6 +165,7 @@ public:
     PeaksLookup peaksFor;
 
     std::vector<std::unique_ptr<TrackRow>> rows;
+    juce::TextButton addTrackButton { "Add Track" };
     juce::TextButton importButton { "Import..." };
     juce::Label emptyLabel;
     juce::Label preRollCaption { {}, "Pre-roll" };
