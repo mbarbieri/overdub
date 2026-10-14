@@ -8,3 +8,7 @@
 [submodule "external/json"]
 	path = external/json
 	url = https://github.com/nlohmann/json.git
+[submodule "external/pocketfft"]
+	path = external/pocketfft
+	url = https://github.com/mreineck/pocketfft.git
+	branch = cpp
