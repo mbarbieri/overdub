@@ -51,7 +51,7 @@ RecordPageState recordPageStateFor (const song::Song& song,
                                     const InsertStatusLookup& insertStatus)
 {
     RecordPageState state;
-    state.canImport = ! passRunning;
+    state.canAddTracks = ! passRunning;
     state.preRoll = song.preRoll;
     state.canChangePreRoll = ! passRunning;
     const auto choices = inputChoices (inputChannelNames);
@@ -169,12 +169,17 @@ void TrackRow::paint (juce::Graphics& g)
 
 RecordPage::RecordPage()
 {
+    addTrackButton.setWantsKeyboardFocus (false);
+    addTrackButton.onClick = [this] {
+        if (onAddTrack)
+            onAddTrack();
+    };
     importButton.setWantsKeyboardFocus (false);
     importButton.onClick = [this] {
         if (onImport)
             onImport();
     };
-    emptyLabel.setText ("No Tracks yet. Import an audio file to play along to.", juce::dontSendNotification);
+    emptyLabel.setText ("No Tracks yet. Add a Track to record on, or import a Backing Track.", juce::dontSendNotification);
     emptyLabel.setColour (juce::Label::textColourId, colours::dimText);
 
     preRollCaption.setColour (juce::Label::textColourId, colours::dimText);
@@ -226,6 +231,7 @@ RecordPage::RecordPage()
             onSeek (sample);
     };
 
+    addAndMakeVisible (addTrackButton);
     addAndMakeVisible (importButton);
     addChildComponent (emptyLabel);
     addAndMakeVisible (preRollCaption);
@@ -279,7 +285,8 @@ void RecordPage::show (const RecordPageState& state)
 
     for (std::size_t i = 0; i < rows.size(); ++i)
         rows[i]->show (state.rows[i]);
-    importButton.setEnabled (state.canImport);
+    addTrackButton.setEnabled (state.canAddTracks);
+    importButton.setEnabled (state.canAddTracks);
     emptyLabel.setVisible (rows.empty());
 
     shownPreRoll = state.preRoll;
@@ -347,8 +354,9 @@ void RecordPage::resized()
     cameraPicker.setBounds (layout.cameraPicker);
     for (std::size_t i = 0; i < rows.size(); ++i)
         rows[i]->setBounds (layout.rows[i]);
+    addTrackButton.setBounds (layout.addTrackButton);
     importButton.setBounds (layout.importButton);
-    emptyLabel.setBounds (layout.importButton.withWidth (trackColumnWidth).translated (0, layout.importButton.getHeight() + 6));
+    emptyLabel.setBounds (layout.addTrackButton.withWidth (trackColumnWidth).translated (0, layout.addTrackButton.getHeight() + 6));
     preRollCaption.setBounds (layout.preRollCaption);
     preRollPicker.setBounds (layout.preRollPicker);
     passesList.setBounds (layout.passes);

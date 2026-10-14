@@ -53,6 +53,7 @@ target_sources(overdub_tests PRIVATE
     song/PeaksTest.cpp
     song/SongPackageTest.cpp
     song/TakeEditsTest.cpp
+    song/TrackEditsTest.cpp
     support/RealtimeGuardTest.cpp
     support/RealtimeGuardCatchTest.cpp
     ui/CalibrationPanelTest.cpp
@@ -75,6 +76,7 @@ target_sources(overdub_tests PRIVATE
     ui/PreRollTest.cpp
     ui/RecordCameraTest.cpp
     ui/RecordInsertsTest.cpp
+    ui/AddTrackTest.cpp
     ui/RecordPageTest.cpp
     ui/RecordViewTest.cpp
     ui/SnapshotTest.cpp

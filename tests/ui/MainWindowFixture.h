@@ -34,10 +34,12 @@ struct MainWindowFixture
     std::unique_ptr<MainComponent> window;
     std::vector<juce::String> alertsShown;
 
-    explicit MainWindowFixture (std::unique_ptr<song::testing::FixtureSong> songFixture = song::testing::threeTrackFixture(), plugin::Instantiator instantiate = {})
+    explicit MainWindowFixture (std::unique_ptr<song::testing::FixtureSong> songFixture = song::testing::threeTrackFixture(),
+                                plugin::Instantiator instantiate = {},
+                                std::vector<std::string> inputChannelNames = { "In 1", "In 2", "In 3", "In 4" })
         : fixture (std::move (songFixture))
     {
-        openSong = std::make_unique<OpenSong> (std::move (fixture->package), AudioBinding { &engine, {}, { "In 1", "In 2", "In 3", "In 4" } }, std::move (instantiate));
+        openSong = std::make_unique<OpenSong> (std::move (fixture->package), AudioBinding { &engine, {}, std::move (inputChannelNames) }, std::move (instantiate));
         window = std::make_unique<MainComponent>();
         REQUIRE (openSong->attachCamera (&camera, juce::File {}).has_value()); // no calibration file: 0 ms
         window->showAlert = [this] (const juce::String& sentence) { alertsShown.push_back (sentence); };

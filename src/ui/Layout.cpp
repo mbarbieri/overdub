@@ -80,7 +80,10 @@ RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks)
         column.removeFromTop (rowGap);
     }
     column.removeFromTop (gap);
-    layout.importButton = column.removeFromTop (importButtonHeight).removeFromLeft (120);
+    auto buttons = column.removeFromTop (importButtonHeight);
+    layout.addTrackButton = buttons.removeFromLeft (120);
+    buttons.removeFromLeft (gap);
+    layout.importButton = buttons.removeFromLeft (120);
     column.removeFromTop (margin);
     layout.passes = column;
     return layout;

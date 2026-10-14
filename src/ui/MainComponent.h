@@ -157,6 +157,8 @@ private:
     void armCamera (bool armed);
     void setMute (const song::Id& trackId, bool mute);
     void setSolo (const song::Id& trackId, bool solo);
+    // Adds an empty Track, Armed on the first input, as one undo step (issue #109).
+    void addTrack();
     void importFiles (const std::vector<juce::File>& files);
     void startExport (const exporting::ExportRequest& request);
     void chooseExportFile (const juce::File& current);
