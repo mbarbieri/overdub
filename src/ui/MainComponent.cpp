@@ -49,6 +49,17 @@ void choosePluginFromMenu (const std::vector<plugin::AvailableAudioUnit>& plugin
     });
 }
 
+// A pop-up menu of the items; none picked when dismissed.
+void chooseTrackMenuItemFromMenu (const std::vector<TrackMenuItem>& items, std::function<void (std::optional<std::size_t>)> whenChosen)
+{
+    juce::PopupMenu menu;
+    for (std::size_t i = 0; i < items.size(); ++i)
+        menu.addItem ((int) i + 1, juce::String::fromUTF8 (items[i].label.c_str()), items[i].enabled);
+    menu.showMenuAsync (juce::PopupMenu::Options(), [done = std::move (whenChosen)] (int picked) {
+        done (picked > 0 ? std::optional<std::size_t> ((std::size_t) picked - 1) : std::nullopt);
+    });
+}
+
 // The fields of the ui.* events that name a message.
 core::Fields messageFields (const UserMessage& message)
 {
@@ -75,6 +86,7 @@ MainComponent::MainComponent()
 {
     chooseFilesToImport = chooseFilesWithNativeDialog;
     chooseInsertPlugin = choosePluginFromMenu;
+    chooseTrackMenuItem = chooseTrackMenuItemFromMenu;
     showAlert = showAlertWithNativeDialog;
     askCameraAccess = capture::requestCameraAccess;
     chooseExportDestination = chooseExportFileWithNativeDialog;
@@ -136,6 +148,7 @@ MainComponent::MainComponent()
             openSong->notePluginStateChanged();
     };
     recordPage.onAddTrack = [this] { addTrack(); };
+    recordPage.onTrackMenu = [this] (const song::Id& trackId) { showTrackMenu (trackId); };
     recordPage.onImport = [this] {
         if (openSong == nullptr || openSong->isRecording() || ! chooseFilesToImport)
             return;
@@ -196,6 +209,7 @@ MainComponent::MainComponent()
     addChildComponent (exportPage);
     addChildComponent (noSongPage);
     addChildComponent (noticeLine);
+    addChildComponent (separationDialog); // last: on top of everything
 
     setWantsKeyboardFocus (true);
     setSize (1200, 800);
@@ -296,6 +310,9 @@ void MainComponent::chooseExportFile (const juce::File& current)
 
 void MainComponent::perform (Command command)
 {
+    // The Separation dialog is modal: nothing acts while it shows.
+    if (separating())
+        return;
     if (const auto mode = modeFor (command))
     {
         showMode (*mode);
@@ -465,6 +482,30 @@ void MainComponent::importFiles (const std::vector<juce::File>& files)
             handleError (result.error());
     refresh();
     takeKeyboardFocus();
+}
+
+void MainComponent::showTrackMenu (const song::Id& trackId)
+{
+    if (openSong == nullptr || separating() || ! chooseTrackMenuItem)
+        return;
+    auto items = trackMenuFor (openSong->song(), trackId, openSong->isRecording());
+    chooseTrackMenuItem (items, [safeThis = juce::Component::SafePointer<MainComponent> (this), trackId, items] (std::optional<std::size_t> picked) {
+        if (safeThis == nullptr || ! picked.has_value() || *picked >= items.size() || ! items[*picked].enabled)
+            return;
+        switch (items[*picked].action)
+        {
+            case TrackMenuAction::separate: safeThis->startSeparation (trackId); break;
+        }
+    });
+}
+
+void MainComponent::startSeparation (const song::Id& trackId)
+{
+    if (openSong == nullptr)
+        return;
+    if (auto started = openSong->startSeparation (trackId); ! started.has_value())
+        handleError (started.error());
+    refresh();
 }
 
 void MainComponent::chooseInsert (const song::Id& trackId)
@@ -663,6 +704,9 @@ void MainComponent::refresh()
     recordPage.setVisible (songOpen && currentMode == Mode::record);
     editPage.setVisible (songOpen && currentMode == Mode::edit);
     exportPage.setVisible (songOpen && currentMode == Mode::exportSong);
+    if (separating())
+        separationDialog.show (openSong->separationSourceName(), openSong->separationProgress());
+    separationDialog.setVisible (separating());
     syncVideoPreview();
 }
 
@@ -674,6 +718,9 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
         .command = modifiers.isCommandDown(),
         .shift = modifiers.isShiftDown(),
     });
+    // The Separation dialog is modal: it swallows every key while it shows.
+    if (separating())
+        return true;
     if (! command.has_value())
         return false;
     perform (*command);
@@ -693,6 +740,7 @@ void MainComponent::resized()
     for (auto* page : std::initializer_list<juce::Component*> { &recordPage, &editPage, &exportPage, &noSongPage })
         page->setBounds (layout.page);
     noticeLine.setBounds (layout.noticeLine);
+    separationDialog.setBounds (getLocalBounds());
 }
 
 void MainComponent::paint (juce::Graphics& g)

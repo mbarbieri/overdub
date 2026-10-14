@@ -59,12 +59,23 @@ core::Expected<nlohmann::json> addVideoTakeOutputDevice (nlohmann::json document
             videoTake["outputDevice"] = "";
     return document;
 }
+
+core::Expected<nlohmann::json> addBackingTrackSeparatedFrom (nlohmann::json document)
+{
+    const auto backingTracks = document.find ("backingTracks");
+    if (backingTracks == document.end() || ! backingTracks->is_array())
+        return document; // reading the migrated document reports what is missing
+    for (auto& backingTrack : *backingTracks)
+        if (backingTrack.is_object())
+            backingTrack["separatedFrom"] = { { "backingTrackId", "" }, { "model", "" } };
+    return document;
+}
 } // namespace
 
 std::span<const MigrationStep> songMigrationSteps()
 {
     // songFormatVersion must equal songMigrationSteps().size() + 1.
-    static const std::array<MigrationStep, 1> steps { addVideoTakeOutputDevice };
+    static const std::array<MigrationStep, 2> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom };
     static_assert (std::tuple_size_v<decltype (steps)> + 1 == songFormatVersion);
     return steps;
 }

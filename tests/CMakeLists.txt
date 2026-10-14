@@ -56,6 +56,8 @@ target_sources(overdub_tests PRIVATE
     song/SongJsonTest.cpp
     song/SongMigrationTest.cpp
     song/PeaksTest.cpp
+    song/SeparationHelperProcessTest.cpp
+    song/SeparationTest.cpp
     song/SongPackageTest.cpp
     song/TakeEditsTest.cpp
     song/TrackEditsTest.cpp
@@ -84,6 +86,7 @@ target_sources(overdub_tests PRIVATE
     ui/AddTrackTest.cpp
     ui/RecordPageTest.cpp
     ui/RecordViewTest.cpp
+    ui/SeparateTest.cpp
     ui/SnapshotTest.cpp
     ui/SongFilesTest.cpp
     ui/TakeLanesTest.cpp

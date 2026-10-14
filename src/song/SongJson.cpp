@@ -282,6 +282,7 @@ json backingTrackToJson (const BackingTrack& backing)
         { "channels", backing.channels },
         { "formatName", backing.formatName },
         { "lengthSamples", backing.lengthSamples },
+        { "separatedFrom", { { "backingTrackId", backing.separatedFrom.backingTrackId }, { "model", backing.separatedFrom.model } } },
     };
 }
 
@@ -368,6 +369,7 @@ Take readTake (const Reader& reader)
 
 BackingTrack readBackingTrack (const Reader& reader)
 {
+    const auto separatedFrom = reader.object ("separatedFrom");
     return BackingTrack {
         .id = reader.string ("id"),
         .originalFilename = reader.string ("originalFilename"),
@@ -376,6 +378,7 @@ BackingTrack readBackingTrack (const Reader& reader)
         .channels = reader.channels ("channels"),
         .formatName = reader.string ("formatName"),
         .lengthSamples = reader.integer ("lengthSamples"),
+        .separatedFrom = { .backingTrackId = separatedFrom.string ("backingTrackId"), .model = separatedFrom.string ("model") },
     };
 }
 

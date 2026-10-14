@@ -107,6 +107,7 @@ TrackRow::TrackRow()
     inputPicker.setWantsKeyboardFocus (false);
 
     addAndMakeVisible (armButton);
+    nameLabel.setInterceptsMouseClicks (false, false); // a click on the name is the row's
     addAndMakeVisible (nameLabel);
     addAndMakeVisible (muteButton);
     addAndMakeVisible (soloButton);
@@ -154,6 +155,12 @@ void TrackRow::resized()
     inputPicker.setBounds (layout.input);
     monitoringButton.setBounds (layout.monitoring);
     insertChain.setBounds (layout.insertChain);
+}
+
+void TrackRow::mouseDown (const juce::MouseEvent& event)
+{
+    if (event.mods.isPopupMenu() && onMenu)
+        onMenu();
 }
 
 void TrackRow::paint (juce::Graphics& g)
@@ -275,6 +282,10 @@ void RecordPage::show (const RecordPageState& state)
             row->onSolo = [this, trackId] (bool solo) {
                 if (onSolo)
                     onSolo (trackId, solo);
+            };
+            row->onMenu = [this, trackId] {
+                if (onTrackMenu)
+                    onTrackMenu (trackId);
             };
             row->insertChain.actions = &insertActions;
             addAndMakeVisible (*row);

@@ -14,6 +14,8 @@ WorkspaceFiles WorkspaceFiles::defaults()
         .deviceSettings = engine::defaultDeviceSettingsFile(),
         .latencyCalibration = engine::defaultLatencyCalibrationFile(),
         .cameraCalibration = capture::defaultCameraCalibrationFile(),
+        .separationModel = song::defaultSeparationModelFile(),
+        .separationHelper = song::defaultSeparationHelperFile(),
     };
 }
 
@@ -45,14 +47,17 @@ Workspace::~Workspace()
 
 bool Workspace::isIdle() const
 {
-    return ! latencyMeasuring() && ! (song != nullptr && song->isRecording());
+    return ! latencyMeasuring() && ! (song != nullptr && (song->isRecording() || song->isSeparating()));
 }
 
 bool Workspace::idleOrNotice()
 {
     if (isIdle())
         return true;
-    content.showNotice (latencyMeasuring() ? "ui.calibration_running" : "ui.stop_recording_first");
+    if (latencyMeasuring())
+        content.showNotice ("ui.calibration_running");
+    else
+        content.showNotice (song->isSeparating() ? "ui.separation_running" : "ui.stop_recording_first");
     return false;
 }
 
@@ -74,6 +79,8 @@ void Workspace::showSong (std::unique_ptr<song::SongPackage> package, const std:
             devicePanel->show (live->deviceChoices());
     }
     song = std::make_unique<OpenSong> (std::move (package), live->audioBinding(), instantiate);
+    if (files.separationHelper != juce::File())
+        song->setSeparationTools (song::SeparationTools { .model = files.separationModel, .startHelper = song::separationHelperProcess (files.separationHelper) });
     showRateMismatch();
     if (rateSwitch)
         showLatencyNoticeIfUncalibrated();

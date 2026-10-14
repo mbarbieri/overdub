@@ -8,6 +8,7 @@
 #include "export/MovieExport.h"
 #include "plugin/AudioUnitLoader.h"
 #include "plugin/InsertHost.h"
+#include "song/SeparationRun.h"
 #include "song/SongPackage.h"
 #include "ui/ExportRun.h"
 #include "video/FrameSelection.h"
@@ -80,6 +81,13 @@
 // (an Alert). poll() also lists the cameras again when one is plugged in or out; the Armed camera
 // unplugged is closed and disarmed (ui.camera_disconnected, a Notice) at once, or after the Pass
 // when one runs: recording goes on and the Pass keeps the movie written until then.
+//
+// Separation (issue #114, ADR 0007): startSeparation stops the transport and starts a
+// song::SeparationRun on a Track's Backing Track with the tools set by setSeparationTools; poll()
+// advances it, and once it ends reloads the engine (the six new Tracks, the source Track muted) and
+// returns its Error. While it runs, record (ui.separation_running), play, edits, undo, redo and
+// import are refused: the Separation dialog is modal. It is refused while a Pass
+// (ui.stop_recording_first) or an export (ui.export_running) runs. Closing the Song kills the helper.
 //
 // Message thread only.
 namespace overdub::ui
@@ -247,6 +255,16 @@ public:
     // One Backing Track import per file (SongPackage::importBackingTracks); empty during a Pass.
     std::vector<core::Expected<song::Id>> importFiles (const std::vector<juce::File>& files);
 
+    // The model and helper a Separation uses (none by default: Separation is unavailable).
+    void setSeparationTools (song::SeparationTools tools) { separationTools = std::move (tools); }
+    // Starts separating the Track's Backing Track (see the header comment). Ignored while one runs.
+    // Errors: ui.stop_recording_first, ui.export_running, song::SeparationRun::start's.
+    core::Expected<void> startSeparation (const song::Id& trackId, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
+    bool isSeparating() const { return separation != nullptr; }
+    // The running Separation's progress and source file name; empty when none runs.
+    song::SeparationProgress separationProgress() const { return separation != nullptr ? separation->progress() : song::SeparationProgress {}; }
+    std::string separationSourceName() const { return separation != nullptr ? separation->sourceName() : std::string(); }
+
     // Call regularly (window timer): advances an export (starts it once the audio has let go of
     // the plugins, or gives it up after ExportRun::audioTimeout; once it ends, reloads the engine and
     // returns its Error), finishes a Pass the audio thread has ended, rebuilds the plan when a
@@ -264,6 +282,10 @@ private:
     // When the ExportRun says it ended: destroys it, reloads the engine and keeps its file.
     // Returns its Error; none (nothing done) while it runs.
     std::optional<core::Error> endExportIfEnded (std::optional<ExportEnd> end);
+    // True while a Pass or a Separation runs: the Song may not change by a gesture.
+    bool songLocked() const { return recorder != nullptr || separation != nullptr; }
+    // Advances a running Separation; once it ends, reloads the engine and returns its Error.
+    std::optional<core::Error> advanceSeparation (song::SongPackage::Clock::time_point now);
     // After a history change: setMix when only the mix changed since `before`, else reloadEngine.
     void updateEngine (const song::Song& before);
     std::vector<core::Error> finishPass (capture::FinishedPass finished);
@@ -282,6 +304,9 @@ private:
     static int blockSizeOf (const AudioBinding& audio);
 
     std::unique_ptr<song::SongPackage> package_;
+    // After package_: destroyed before it (the run kills its helper and deletes its output folder).
+    song::SeparationTools separationTools;
+    std::unique_ptr<song::SeparationRun> separation;
     // After package_: destroyed first, once the destructor has captured its state and unhooked it.
     plugin::InsertHost inserts;
     AudioBinding binding;

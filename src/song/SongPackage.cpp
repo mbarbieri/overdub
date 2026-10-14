@@ -3,6 +3,7 @@
 #include "song/BackingTrackImport.h"
 #include "song/PackageFolders.h"
 #include "song/PluginBlobStore.h"
+#include "song/Separation.h"
 #include "song/SongJson.h"
 #include "song/SongMigration.h"
 
@@ -254,6 +255,59 @@ std::vector<core::Expected<Id>> SongPackage::importBackingTracks (const std::vec
     for (const auto& source : sources)
         results.push_back (importBackingTrack (source, now));
     return results;
+}
+
+core::Expected<std::vector<Id>> SongPackage::addSeparation (const Id& sourceTrackId, const std::vector<juce::File>& partFiles, const std::string& model, Clock::time_point now)
+{
+    const auto sourceId = separableBackingTrack (currentSong, sourceTrackId);
+    if (! sourceId.has_value())
+        return std::unexpected (sourceId.error());
+    if (partFiles.size() != separationParts.size())
+        return std::unexpected (core::Error {
+            "song.separation_parts_invalid",
+            "a Separation needs one file per part",
+            { { "expected", separationParts.size() }, { "found", partFiles.size() } },
+        });
+
+    std::vector<BackingTrack> parts;
+    const auto deleteWritten = [this, &parts] {
+        for (const auto& part : parts)
+            deleteBackingTrackFiles (root, part);
+    };
+    for (const auto& partFile : partFiles)
+    {
+        auto part = writeBackingTrackFiles (root, partFile, currentSong.sampleRate, options.beforeRename);
+        if (! part.has_value())
+        {
+            deleteWritten();
+            return std::unexpected (part.error());
+        }
+        part->separatedFrom = SeparationOrigin { *sourceId, model };
+        parts.push_back (std::move (*part));
+    }
+
+    const auto source = std::ranges::find (currentSong.backingTracks, *sourceId, &BackingTrack::id);
+    const auto label = separationStepLabel (*source);
+    auto changed = withSeparation (currentSong, sourceTrackId, parts);
+    if (! changed.has_value())
+    {
+        deleteWritten();
+        return std::unexpected (changed.error());
+    }
+    auto edited = commitEdit (std::move (*changed), label, now);
+    if (! edited.committed)
+    {
+        deleteWritten();
+        return std::unexpected (edited.result.error());
+    }
+
+    // Committed: the Separation stands even when its song.json write failed (that write stays pending).
+    if (! edited.result.has_value())
+        return std::unexpected (edited.result.error());
+    std::vector<Id> ids;
+    for (const auto& part : parts)
+        ids.push_back (part.id);
+    return ids;
 }
 
 bool SongPackage::isBackingTrackMissing (const Id& backingTrackId) const

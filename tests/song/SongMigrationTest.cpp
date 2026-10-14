@@ -44,11 +44,28 @@ TEST_CASE ("a v1 Song's Video Takes migrate to v2 with no output device known", 
 
     REQUIRE (migrated.has_value());
     CHECK (migrated->fromVersion == 1);
-    CHECK (migrated->document.at ("formatVersion") == 2);
+    CHECK (migrated->document.at ("formatVersion") == overdub::song::songFormatVersion);
     for (const auto& migratedTake : migrated->document.at ("videoTakes"))
     {
         CHECK (migratedTake.at ("outputDevice") == "");
         CHECK (migratedTake.at ("cameraId") == "camera-facetime");
+    }
+}
+
+TEST_CASE ("a v2 Song's Backing Tracks migrate to v3 as imported, separated from nothing", "[song][migration]")
+{
+    const json backingTrack = { { "id", "backing-1" }, { "originalFilename", "Band Mix.mp3" } };
+    const json document = { { "formatVersion", 2 }, { "sampleRate", 48000 }, { "backingTracks", json::array ({ backingTrack, backingTrack }) } };
+
+    const auto migrated = overdub::song::migrateSongDocument (document);
+
+    REQUIRE (migrated.has_value());
+    CHECK (migrated->fromVersion == 2);
+    CHECK (migrated->document.at ("formatVersion") == 3);
+    for (const auto& migratedBackingTrack : migrated->document.at ("backingTracks"))
+    {
+        CHECK (migratedBackingTrack.at ("separatedFrom") == json { { "backingTrackId", "" }, { "model", "" } });
+        CHECK (migratedBackingTrack.at ("originalFilename") == "Band Mix.mp3");
     }
 }
 

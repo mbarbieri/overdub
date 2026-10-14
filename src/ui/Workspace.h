@@ -56,6 +56,10 @@ struct WorkspaceFiles
     juce::File deviceSettings;
     juce::File latencyCalibration;
     juce::File cameraCalibration;
+    // Separation (issue #114): the installed model and the overdub-separate helper. Empty: a
+    // Separation is unavailable (song.separation_unavailable or song.separation_model_missing).
+    juce::File separationModel = {};
+    juce::File separationHelper = {};
 
     static WorkspaceFiles defaults();
 };
@@ -81,7 +85,7 @@ public:
     // Null while no Song is open.
     OpenSong* openSong() const { return song.get(); }
     LiveAudio& liveAudio() const { return *live; }
-    // True when neither a Pass nor a loopback run is running.
+    // True when no Pass, Separation or loopback run is running.
     bool isIdle() const;
     // isIdle(), or false after showing the Notice that says what runs.
     bool idleOrNotice();

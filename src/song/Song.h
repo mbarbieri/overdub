@@ -23,7 +23,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 2;
+inline constexpr int songFormatVersion = 3;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -148,6 +148,18 @@ struct Take
     bool operator== (const Take&) const = default;
 };
 
+// Where a Backing Track made by a Separation came from (issue #114, ADR 0007): the Backing Track
+// it was separated from and the model's name. Empty for an imported Backing Track. Only a record:
+// nothing behaves differently because of it.
+struct SeparationOrigin
+{
+    Id backingTrackId; // may dangle once that Backing Track is gone
+    std::string model; // the model file's name without ".onnx", e.g. "bs_roformer_sw.fp32"
+
+    bool isEmpty() const { return backingTrackId.empty(); }
+    bool operator== (const SeparationOrigin&) const = default;
+};
+
 // Fields per the issue #14 amendment of ADR 0004. Files: backing/<id>.orig.<originalExtension>
 // (untouched original) and backing/<id>.wav (derived, Song rate). No content hash.
 struct BackingTrack
@@ -159,6 +171,7 @@ struct BackingTrack
     int channels = 1; // 1 or 2
     std::string formatName;
     SampleCount lengthSamples = 0; // at the Song's rate
+    SeparationOrigin separatedFrom; // empty unless a Separation made it (format 3)
 
     bool operator== (const BackingTrack&) const = default;
 };
