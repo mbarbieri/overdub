@@ -114,6 +114,22 @@ TEST_CASE ("a Track row puts its Insert Chain under the name", "[ui][layout][ins
     CHECK (layout.monitoring.getWidth() >= 110);
 }
 
+TEST_CASE ("a Track row puts its volume fader along the bottom, under the Insert Chain, with the dB text at its right", "[ui][layout][record_fader]")
+{
+    const Rectangle<int> row { 800, 100, trackColumnWidth, trackRowHeight };
+    const auto layout = trackRowLayout (row);
+
+    checkInsideAndApart (row, { layout.arm, layout.name, layout.mute, layout.solo, layout.input, layout.monitoring, layout.insertChain, layout.volumeFader, layout.volumeText });
+    CHECK (layout.volumeFader.getY() >= layout.insertChain.getBottom());
+    CHECK (layout.volumeFader.getX() == layout.name.getX());
+    CHECK (layout.volumeFader.getHeight() == trackRowFaderHeight);
+    CHECK (layout.volumeText.getX() > layout.volumeFader.getRight());
+    CHECK (layout.volumeText.getRight() == layout.monitoring.getRight());
+    CHECK (layout.volumeText.getWidth() == trackRowVolumeTextWidth);
+    // Room to drag: a pixel is well under a dB below 0 dB.
+    CHECK (layout.volumeFader.getWidth() >= 300);
+}
+
 TEST_CASE ("a horizontal Insert Chain puts + Insert first, then the chips left to right, cutting off what does not fit", "[ui][layout][inserts]")
 {
     const Rectangle<int> area { 50, 40, 400, insertChipHeight };

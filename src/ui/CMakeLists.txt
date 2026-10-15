@@ -19,6 +19,7 @@ target_sources(overdub_ui PRIVATE
     Layout.cpp
     LookAheadStrip.cpp
     MainComponent.cpp
+    MixFocus.cpp
     Mixer.cpp
     MixerGeometry.cpp
     OpenSong.cpp

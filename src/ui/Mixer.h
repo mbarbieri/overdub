@@ -4,13 +4,12 @@
 #include "engine/RenderPlan.h"
 #include "song/Song.h"
 #include "ui/InsertChain.h"
+#include "ui/MixFocus.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-#include <chrono>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -19,38 +18,14 @@
 // (name, Insert Chain, fader, meter, value) at the right edge. Thin over ui/MixerGeometry.h and
 // song/MixEdits.h. The Insert Chains (issue #34, ui/InsertChain.h) report through insertActions.
 //
-// A fader or pan drag is previewed while it moves (onPreview: the Song as the drag would make it,
-// heard through OpenSong::previewMix) and reported once, on mouse up, as one Song and its undo
-// label (onEdit: "Guitar Volume", "Guitar Pan", "Master Volume"); a drag that ends where it
-// started previews the Song as it was and reports nothing. Drags stick at 0 dB and C for
-// detentPixels (MixerGeometry.h). A double-click sets 0 dB or C, one undo step with the same label
-// (none when already there). M and S report at once ("Mute Guitar", "Solo Guitar").
-//
-// Keyboard focus (issue #129): grabbing a fader or pan focuses it (an accent outline); the window
-// sends it keys first (handleKey). The arrows adjust it by faderKeyStepDb / panKeyStep, each press
-// previewed at once; a burst of presses on one control is one undo step, labelled like its drag,
-// committed keyBurstDuration after the last press (commitKeyBurstIfDue), or sooner by commitKeyBurst
-// (focus moving or released, another Mixer gesture, or the window's own triggers). Esc releases
-// focus. The focus is the Mixer's own state, not JUCE's keyboard focus, which stays on the window.
+// The controls' behaviour (drag previews, undo steps, double-click, keyboard focus and the arrow
+// keys' bursts) is the Mixer's MixFocus (ui/MixFocus.h); the strips draw it and report gestures.
+// Drags stick at 0 dB and C for detentPixels (MixerGeometry.h). M and S report at once ("Mute
+// Guitar", "Solo Guitar").
 //
 // While a Pass runs (not editable) no control acts and nothing has focus; the meters still move.
 namespace overdub::ui
 {
-enum class MixerControlKind
-{
-    volume,
-    pan
-};
-
-// One focusable control: a Track's fader or pan, or (empty trackId) the Master fader.
-struct MixerControl
-{
-    song::Id trackId;
-    MixerControlKind kind = MixerControlKind::volume;
-
-    bool operator== (const MixerControl&) const = default;
-};
-
 // A fader: dragging moves it relative to where it was grabbed (faderDragDb), up or right is
 // louder. Its behaviour is the same in both orientations.
 class MixerFader final : public juce::Component
@@ -197,10 +172,6 @@ private:
 class Mixer final : public juce::Component
 {
 public:
-    using Clock = std::chrono::steady_clock;
-    // How long after the last arrow press a burst of presses becomes its undo step.
-    static constexpr auto keyBurstDuration = std::chrono::seconds (1);
-
     Mixer();
 
     // The Song whose mix the strips show; not editable while a Pass runs.
@@ -210,26 +181,8 @@ public:
     void resized() override;
     void paint (juce::Graphics& g) override;
 
-    // Keyboard focus: the control that takes the arrow keys, if any.
-    const std::optional<MixerControl>& focusedControl() const { return focused; }
     // True when `component` is the focused control or inside it.
     bool isFocusedControl (const juce::Component* component);
-    // Focuses a control (committing a burst on another one).
-    void focus (const MixerControl& control);
-    // Commits the burst, if any, and leaves no control focused.
-    void releaseFocus();
-    // A key press while a control has focus: the arrows adjust it, Esc releases it. Returns
-    // whether the key was used; every other key is left to the window.
-    bool handleKey (const juce::KeyPress& key, Clock::time_point now);
-
-    bool hasKeyBurst() const { return keyBurst.has_value(); }
-    // Reports the burst of arrow presses (if any) as one undo step now.
-    void commitKeyBurst();
-    // Commits the burst once keyBurstDuration has passed since its last press.
-    void commitKeyBurstIfDue (Clock::time_point now);
-    // An edit made from the Song before the burst was committed, with the burst's value carried into
-    // it, unless the edit set that control itself (or removed its Track).
-    song::Song withKeyBurstCarried (song::Song changed) const;
 
     // The Song a gesture in progress would make (the mix only).
     std::function<void (const song::Song& preview)> onPreview;
@@ -240,29 +193,16 @@ public:
     // Each slot's plugin status, for the chips; none: every plugin reads as ready.
     InsertStatusLookup insertStatusOf;
 
+    // The controls' focus, arrow keys and undo steps; the window sends it keys and commit triggers.
+    MixFocus mix;
     std::vector<std::unique_ptr<MixerStrip>> strips;
     MixerStrip masterStrip { true };
 
 private:
-    struct KeyBurst
-    {
-        MixerControl control;
-        double value = 0.0;
-        Clock::time_point deadline;
-    };
-
     void rebuildStrips();
     void connectStrip (MixerStrip& strip, const song::Id& trackId);
     MixerStrip* stripFor (const song::Id& trackId);
-    double shownValue (const MixerControl& control, double songValue) const;
     void showFocus();
-    void preview (core::Expected<song::Song> candidate);
-    void report (core::Expected<song::Song> changed, const std::string& label);
-
-    song::Song current;
-    bool editable = true;
-    std::optional<MixerControl> focused;
-    std::optional<KeyBurst> keyBurst;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Mixer)
 };

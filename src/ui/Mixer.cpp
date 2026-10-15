@@ -22,34 +22,6 @@ void paintFocusOutline (juce::Graphics& g, const juce::Component& control)
     g.setColour (colours::accent);
     g.drawRoundedRectangle (control.getLocalBounds().toFloat().reduced (0.5f), 3.0f, 1.0f);
 }
-
-std::optional<double> mixValue (const song::Song& song, const MixerControl& control)
-{
-    if (control.trackId.empty())
-        return song.master.volumeDb;
-    const auto* track = song::findTrack (song, control.trackId);
-    if (track == nullptr)
-        return std::nullopt;
-    return control.kind == MixerControlKind::volume ? track->volumeDb : track->pan;
-}
-
-core::Expected<song::Song> withMixValue (const song::Song& song, const MixerControl& control, double value)
-{
-    if (control.trackId.empty())
-        return song::setMasterVolume (song, value);
-    if (control.kind == MixerControlKind::volume)
-        return song::setTrackVolume (song, control.trackId, value);
-    return song::setTrackPan (song, control.trackId, value);
-}
-
-std::string mixLabel (const song::Song& song, const MixerControl& control)
-{
-    if (control.trackId.empty())
-        return song::masterVolumeLabel;
-    if (control.kind == MixerControlKind::volume)
-        return song::volumeLabel (song, control.trackId);
-    return song::panLabel (song, control.trackId);
-}
 } // namespace
 
 //==============================================================================
@@ -401,6 +373,19 @@ void MixerStrip::paint (juce::Graphics& g)
 
 Mixer::Mixer()
 {
+    mix.onFocusChanged = [this] { showFocus(); };
+    mix.onKeyValue = [this] (const MixerControl& control, double value) {
+        if (auto* strip = stripFor (control.trackId))
+            strip->showControlValue (control.kind, value);
+    };
+    mix.onPreview = [this] (const song::Song& preview) {
+        if (onPreview)
+            onPreview (preview);
+    };
+    mix.onEdit = [this] (song::Song changed, std::string label) {
+        if (onEdit)
+            onEdit (std::move (changed), std::move (label));
+    };
     masterStrip.insertChain.actions = &insertActions;
     connectStrip (masterStrip, {});
     addAndMakeVisible (masterStrip);
@@ -409,24 +394,19 @@ Mixer::Mixer()
 void Mixer::show (const song::Song& song, bool isEditable)
 {
     const auto sameTracks = std::ranges::equal (strips, song.tracks, {}, &MixerStrip::trackId, &song::Track::id);
-    current = song;
-    editable = isEditable;
+    mix.show (song, isEditable);
     if (! sameTracks)
         rebuildStrips();
-    // Nothing has focus while a Pass runs, nor once its Track is gone (a burst was committed first).
-    if (focused.has_value() && (! editable || ! mixValue (current, *focused).has_value()))
-    {
-        focused.reset();
-        keyBurst.reset();
-    }
 
+    const auto& current = mix.song();
+    const auto editable = mix.isEditable();
     for (std::size_t i = 0; i < strips.size(); ++i)
     {
         const auto& track = current.tracks[i];
         strips[i]->show ({ .trackId = track.id,
                            .name = track.name,
-                           .volumeDb = shownValue ({ track.id, MixerControlKind::volume }, track.volumeDb),
-                           .pan = shownValue ({ track.id, MixerControlKind::pan }, track.pan),
+                           .volumeDb = mix.shownValue ({ track.id, MixerControlKind::volume }, track.volumeDb),
+                           .pan = mix.shownValue ({ track.id, MixerControlKind::pan }, track.pan),
                            .mute = track.mute,
                            .solo = track.solo,
                            .inserts = insertChipsFor (track.insertChain, insertStatusOf),
@@ -434,17 +414,10 @@ void Mixer::show (const song::Song& song, bool isEditable)
     }
     masterStrip.show ({ .trackId = {},
                         .name = "Master",
-                        .volumeDb = shownValue ({ {}, MixerControlKind::volume }, current.master.volumeDb),
+                        .volumeDb = mix.shownValue ({ {}, MixerControlKind::volume }, current.master.volumeDb),
                         .inserts = insertChipsFor (current.master.insertChain, insertStatusOf),
                         .enabled = editable });
     showFocus();
-}
-
-double Mixer::shownValue (const MixerControl& control, double songValue) const
-{
-    if (keyBurst.has_value() && keyBurst->control == control)
-        return keyBurst->value;
-    return songValue;
 }
 
 void Mixer::showMeters (const engine::MeterPeaks& peaks)
@@ -469,6 +442,7 @@ MixerStrip* Mixer::stripFor (const song::Id& trackId)
 
 bool Mixer::isFocusedControl (const juce::Component* component)
 {
+    const auto& focused = mix.focusedControl();
     if (! focused.has_value() || component == nullptr)
         return false;
     auto* strip = stripFor (focused->trackId);
@@ -478,24 +452,9 @@ bool Mixer::isFocusedControl (const juce::Component* component)
     return component == &control || control.isParentOf (component);
 }
 
-void Mixer::focus (const MixerControl& control)
-{
-    if (focused == control)
-        return;
-    commitKeyBurst();
-    focused = control;
-    showFocus();
-}
-
-void Mixer::releaseFocus()
-{
-    commitKeyBurst();
-    focused.reset();
-    showFocus();
-}
-
 void Mixer::showFocus()
 {
+    const auto& focused = mix.focusedControl();
     masterStrip.fader.setFocusShown (focused == MixerControl { {}, MixerControlKind::volume });
     for (auto& strip : strips)
     {
@@ -504,81 +463,10 @@ void Mixer::showFocus()
     }
 }
 
-bool Mixer::handleKey (const juce::KeyPress& key, Clock::time_point now)
-{
-    if (! focused.has_value() || ! editable)
-        return false;
-    if (key.getKeyCode() == juce::KeyPress::escapeKey)
-    {
-        releaseFocus();
-        return true;
-    }
-    const auto modifiers = key.getModifiers();
-    if (modifiers.isCommandDown() || modifiers.isCtrlDown() || modifiers.isAltDown())
-        return false;
-
-    const auto code = key.getKeyCode();
-    const auto fine = modifiers.isShiftDown();
-    const auto control = *focused;
-    const auto from = keyBurst.has_value() && keyBurst->control == control ? keyBurst->value : mixValue (current, control).value_or (0.0);
-    double to = from;
-    if (control.kind == MixerControlKind::volume)
-    {
-        if (code == juce::KeyPress::upKey || code == juce::KeyPress::rightKey)
-            to = faderKeyStepDb (from, true, fine);
-        else if (code == juce::KeyPress::downKey || code == juce::KeyPress::leftKey)
-            to = faderKeyStepDb (from, false, fine);
-        else
-            return false;
-    }
-    else
-    {
-        if (code == juce::KeyPress::rightKey)
-            to = panKeyStep (from, true, fine);
-        else if (code == juce::KeyPress::leftKey)
-            to = panKeyStep (from, false, fine);
-        else
-            return false;
-    }
-
-    keyBurst = KeyBurst { .control = control, .value = to, .deadline = now + keyBurstDuration };
-    if (auto* strip = stripFor (control.trackId))
-        strip->showControlValue (control.kind, to);
-    preview (withMixValue (current, control, to));
-    return true;
-}
-
-void Mixer::commitKeyBurst()
-{
-    if (! keyBurst.has_value())
-        return;
-    const auto burst = *keyBurst;
-    keyBurst.reset(); // before reporting: the edit comes back here through show
-    report (withMixValue (current, burst.control, burst.value), mixLabel (current, burst.control));
-}
-
-void Mixer::commitKeyBurstIfDue (Clock::time_point now)
-{
-    if (keyBurst.has_value() && now >= keyBurst->deadline)
-        commitKeyBurst();
-}
-
-song::Song Mixer::withKeyBurstCarried (song::Song changed) const
-{
-    if (! keyBurst.has_value())
-        return changed;
-    const auto before = mixValue (current, keyBurst->control);
-    const auto edited = mixValue (changed, keyBurst->control);
-    if (! before.has_value() || ! edited.has_value() || ! juce::exactlyEqual (*before, *edited))
-        return changed;
-    auto carried = withMixValue (changed, keyBurst->control, keyBurst->value);
-    return carried.has_value() ? std::move (*carried) : changed;
-}
-
 void Mixer::rebuildStrips()
 {
     strips.clear();
-    for (const auto& track : current.tracks)
+    for (const auto& track : mix.song().tracks)
     {
         auto strip = std::make_unique<MixerStrip> (false);
         strip->insertChain.actions = &insertActions;
@@ -591,49 +479,20 @@ void Mixer::rebuildStrips()
 
 void Mixer::connectStrip (MixerStrip& strip, const song::Id& trackId)
 {
-    // Every gesture starts from `current`, the Song as shown: a drag's preview never accumulates.
-    // A gesture that changes the Song commits a pending key burst first, so it builds on the burst.
-    strip.onGrab = [this, trackId] (MixerControlKind kind) { focus ({ trackId, kind }); };
-    strip.onDrag = [this, trackId] (MixerControlKind kind, double value) {
-        preview (withMixValue (current, { trackId, kind }, value));
-    };
-    strip.onChanged = [this, trackId] (MixerControlKind kind, double value) {
-        commitKeyBurst();
-        const MixerControl control { trackId, kind };
-        report (withMixValue (current, control, value), mixLabel (current, control));
-    };
-    strip.onReset = [this, trackId] (MixerControlKind kind) {
-        commitKeyBurst();
-        const MixerControl control { trackId, kind };
-        report (withMixValue (current, control, 0.0), mixLabel (current, control));
-    };
-    strip.onGestureAbandoned = [this] {
-        if (onPreview)
-            onPreview (current);
-    };
+    strip.onGrab = [this, trackId] (MixerControlKind kind) { mix.focus ({ trackId, kind }); };
+    strip.onDrag = [this, trackId] (MixerControlKind kind, double value) { mix.drag ({ trackId, kind }, value); };
+    strip.onChanged = [this, trackId] (MixerControlKind kind, double value) { mix.set ({ trackId, kind }, value); };
+    strip.onReset = [this, trackId] (MixerControlKind kind) { mix.set ({ trackId, kind }, 0.0); };
+    strip.onGestureAbandoned = [this] { mix.abandon(); };
+    // M and S build on a pending burst: it is committed before the Song they change is read.
     strip.onMute = [this, trackId] (bool mute) {
-        commitKeyBurst();
-        report (song::setTrackMute (current, trackId, mute), song::muteLabel (current, trackId, mute));
+        mix.commitKeyBurst();
+        mix.report (song::setTrackMute (mix.song(), trackId, mute), song::muteLabel (mix.song(), trackId, mute));
     };
     strip.onSolo = [this, trackId] (bool solo) {
-        commitKeyBurst();
-        report (song::setTrackSolo (current, trackId, solo), song::soloLabel (current, trackId, solo));
+        mix.commitKeyBurst();
+        mix.report (song::setTrackSolo (mix.song(), trackId, solo), song::soloLabel (mix.song(), trackId, solo));
     };
-}
-
-void Mixer::preview (core::Expected<song::Song> candidate)
-{
-    if (candidate.has_value() && onPreview)
-        onPreview (*candidate);
-}
-
-void Mixer::report (core::Expected<song::Song> changed, const std::string& label)
-{
-    // The strips exist only for the shown Song's Tracks, so the Track is there.
-    if (! editable || ! OVERDUB_CHECK (changed.has_value(), "ui.mixer_edit_failed", { "label", label }))
-        return;
-    if (*changed != current && onEdit)
-        onEdit (std::move (*changed), label);
 }
 
 void Mixer::resized()

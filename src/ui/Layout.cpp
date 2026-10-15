@@ -96,6 +96,11 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row)
     const auto armColumn = area.removeFromLeft (44);
     layout.arm = armColumn.withHeight (28);
     area.removeFromLeft (gap);
+    auto volumeLine = area.removeFromBottom (trackRowFaderHeight);
+    layout.volumeText = volumeLine.removeFromRight (trackRowVolumeTextWidth);
+    volumeLine.removeFromRight (gap);
+    layout.volumeFader = volumeLine;
+    area.removeFromBottom (4);
     layout.insertChain = area.removeFromBottom (insertChipHeight);
     area.removeFromBottom (4);
     layout.monitoring = area.removeFromRight (116);

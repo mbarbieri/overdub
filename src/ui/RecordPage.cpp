@@ -2,6 +2,7 @@
 
 #include "ui/Colours.h"
 #include "ui/Layout.h"
+#include "ui/MixerGeometry.h"
 #include "ui/MuteSoloButtons.h"
 #include "ui/TakeLanes.h"
 
@@ -54,6 +55,7 @@ RecordPageState recordPageStateFor (const song::Song& song,
     state.canAddTracks = ! passRunning;
     state.preRoll = song.preRoll;
     state.canChangePreRoll = ! passRunning;
+    state.canChangeMix = ! passRunning;
     const auto choices = inputChoices (inputChannelNames);
     for (const auto& track : song.tracks)
     {
@@ -66,6 +68,7 @@ RecordPageState recordPageStateFor (const song::Song& song,
             .choices = choices,
             .selectedChoice = choiceIndexFor (choices, track.inputChannels),
             .monitoring = isMonitoring (track.id),
+            .volumeDb = track.volumeDb,
             .inserts = insertChipsFor (track.insertChain, insertStatus),
             .activeInserts = activeInsertCount (track.insertChain, insertStatus),
             .enabled = ! passRunning,
@@ -84,6 +87,10 @@ TrackRow::TrackRow()
     nameLabel.setColour (juce::Label::textColourId, colours::text);
     nameLabel.setFont (juce::FontOptions (14.0f));
     inputPicker.setTextWhenNothingSelected ("Input?");
+    volumeLabel.setColour (juce::Label::textColourId, colours::dimText);
+    volumeLabel.setFont (juce::FontOptions (11.0f));
+    volumeLabel.setJustificationType (juce::Justification::centredRight);
+    volumeLabel.setInterceptsMouseClicks (false, false);
 
     armButton.onClick = [this] {
         if (onArm)
@@ -102,6 +109,30 @@ TrackRow::TrackRow()
         onInput (current.choices[(std::size_t) index].channels);
     };
 
+    fader.onGrab = [this] {
+        if (onVolumeGrab)
+            onVolumeGrab();
+    };
+    fader.onDrag = [this] (double db) {
+        showVolume (db);
+        if (onVolumeDrag)
+            onVolumeDrag (db);
+    };
+    fader.onRelease = [this] (double startDb, double endDb) {
+        showVolume (endDb);
+        if (juce::exactlyEqual (startDb, endDb))
+        {
+            if (onVolumeAbandoned)
+                onVolumeAbandoned();
+        }
+        else if (onVolumeChanged)
+            onVolumeChanged (endDb);
+    };
+    fader.onReset = [this] {
+        if (onVolumeReset)
+            onVolumeReset();
+    };
+
     for (auto* button : { &armButton, &monitoringButton })
         button->setWantsKeyboardFocus (false);
     inputPicker.setWantsKeyboardFocus (false);
@@ -114,6 +145,8 @@ TrackRow::TrackRow()
     addAndMakeVisible (inputPicker);
     addAndMakeVisible (monitoringButton);
     addAndMakeVisible (insertChain);
+    addAndMakeVisible (fader);
+    addAndMakeVisible (volumeLabel);
 }
 
 void TrackRow::show (const TrackRowState& state)
@@ -140,9 +173,16 @@ void TrackRow::show (const TrackRowState& state)
     else
         inputPicker.setSelectedId (0, juce::dontSendNotification);
 
-    for (auto* control : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &inputPicker, &monitoringButton })
+    for (auto* control : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &inputPicker, &monitoringButton, &fader })
         control->setEnabled (state.enabled);
+    showVolume (state.volumeDb);
     repaint();
+}
+
+void TrackRow::showVolume (double db)
+{
+    fader.setDb (db); // a drag in progress keeps its own value
+    volumeLabel.setText (juce::String (volumeText (fader.db())), juce::dontSendNotification);
 }
 
 void TrackRow::resized()
@@ -155,6 +195,8 @@ void TrackRow::resized()
     inputPicker.setBounds (layout.input);
     monitoringButton.setBounds (layout.monitoring);
     insertChain.setBounds (layout.insertChain);
+    fader.setBounds (layout.volumeFader);
+    volumeLabel.setBounds (layout.volumeText);
 }
 
 void TrackRow::mouseDown (const juce::MouseEvent& event)
@@ -237,6 +279,11 @@ RecordPage::RecordPage()
         if (onSeek)
             onSeek (sample);
     };
+    mix.onFocusChanged = [this] { showFocus(); };
+    mix.onKeyValue = [this] (const MixerControl& control, double value) {
+        if (auto* row = rowFor (control.trackId))
+            row->showVolume (value);
+    };
 
     addAndMakeVisible (addTrackButton);
     addAndMakeVisible (importButton);
@@ -252,8 +299,9 @@ RecordPage::RecordPage()
     addAndMakeVisible (overview);
 }
 
-void RecordPage::show (const RecordPageState& state)
+void RecordPage::show (const RecordPageState& state, const song::Song& song)
 {
+    mix.show (song, state.canChangeMix);
     const auto sameTracks = rows.size() == state.rows.size()
                          && std::equal (rows.begin(), rows.end(), state.rows.begin(), [] (const auto& row, const auto& rowState) { return row->trackId() == rowState.trackId; });
     if (! sameTracks)
@@ -262,31 +310,7 @@ void RecordPage::show (const RecordPageState& state)
         for (const auto& rowState : state.rows)
         {
             auto row = std::make_unique<TrackRow>();
-            const auto trackId = rowState.trackId;
-            row->onArm = [this, trackId] (bool armed) {
-                if (onArm)
-                    onArm (trackId, armed);
-            };
-            row->onInput = [this, trackId] (std::vector<int> channels) {
-                if (onInput)
-                    onInput (trackId, std::move (channels));
-            };
-            row->onMonitoring = [this, trackId] (bool on) {
-                if (onMonitoring)
-                    onMonitoring (trackId, on);
-            };
-            row->onMute = [this, trackId] (bool mute) {
-                if (onMute)
-                    onMute (trackId, mute);
-            };
-            row->onSolo = [this, trackId] (bool solo) {
-                if (onSolo)
-                    onSolo (trackId, solo);
-            };
-            row->onMenu = [this, trackId] {
-                if (onTrackMenu)
-                    onTrackMenu (trackId);
-            };
+            connectRow (*row, rowState.trackId);
             row->insertChain.actions = &insertActions;
             addAndMakeVisible (*row);
             rows.push_back (std::move (row));
@@ -295,7 +319,12 @@ void RecordPage::show (const RecordPageState& state)
     }
 
     for (std::size_t i = 0; i < rows.size(); ++i)
-        rows[i]->show (state.rows[i]);
+    {
+        auto rowState = state.rows[i];
+        rowState.volumeDb = mix.shownValue ({ rowState.trackId, MixerControlKind::volume }, rowState.volumeDb);
+        rows[i]->show (rowState);
+    }
+    showFocus();
     addTrackButton.setEnabled (state.canAddTracks);
     importButton.setEnabled (state.canAddTracks);
     emptyLabel.setVisible (rows.empty());
@@ -303,6 +332,64 @@ void RecordPage::show (const RecordPageState& state)
     shownPreRoll = state.preRoll;
     preRollPicker.setSelectedItemIndex (preRollChoiceIndex (state.preRoll), juce::dontSendNotification);
     preRollPicker.setEnabled (state.canChangePreRoll);
+}
+
+void RecordPage::connectRow (TrackRow& row, const song::Id& trackId)
+{
+    row.onArm = [this, trackId] (bool armed) {
+        if (onArm)
+            onArm (trackId, armed);
+    };
+    row.onInput = [this, trackId] (std::vector<int> channels) {
+        if (onInput)
+            onInput (trackId, std::move (channels));
+    };
+    row.onMonitoring = [this, trackId] (bool on) {
+        if (onMonitoring)
+            onMonitoring (trackId, on);
+    };
+    row.onMute = [this, trackId] (bool mute) {
+        if (onMute)
+            onMute (trackId, mute);
+    };
+    row.onSolo = [this, trackId] (bool solo) {
+        if (onSolo)
+            onSolo (trackId, solo);
+    };
+    row.onMenu = [this, trackId] {
+        if (onTrackMenu)
+            onTrackMenu (trackId);
+    };
+    const MixerControl volume { trackId, MixerControlKind::volume };
+    row.onVolumeGrab = [this, volume] { mix.focus (volume); };
+    row.onVolumeDrag = [this, volume] (double db) { mix.drag (volume, db); };
+    row.onVolumeChanged = [this, volume] (double db) { mix.set (volume, db); };
+    row.onVolumeAbandoned = [this] { mix.abandon(); };
+    row.onVolumeReset = [this, volume] { mix.set (volume, 0.0); };
+}
+
+TrackRow* RecordPage::rowFor (const song::Id& trackId)
+{
+    for (auto& row : rows)
+        if (row->trackId() == trackId)
+            return row.get();
+    return nullptr;
+}
+
+bool RecordPage::isFocusedControl (const juce::Component* component)
+{
+    const auto& focused = mix.focusedControl();
+    if (! focused.has_value() || component == nullptr)
+        return false;
+    auto* row = rowFor (focused->trackId);
+    return row != nullptr && (component == &row->fader || row->fader.isParentOf (component));
+}
+
+void RecordPage::showFocus()
+{
+    const auto& focused = mix.focusedControl();
+    for (auto& row : rows)
+        row->fader.setFocusShown (focused == MixerControl { row->trackId(), MixerControlKind::volume });
 }
 
 void RecordPage::showSong (const song::Song& song, const RecordTransport& newTransport, bool editable)

@@ -88,6 +88,7 @@ target_sources(overdub_tests PRIVATE
     ui/RecordCameraTest.cpp
     ui/RecordInsertsTest.cpp
     ui/AddTrackTest.cpp
+    ui/RecordFaderUiTest.cpp
     ui/RecordPageTest.cpp
     ui/RecordViewTest.cpp
     ui/SeparateTest.cpp
