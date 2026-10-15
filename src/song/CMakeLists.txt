@@ -13,6 +13,7 @@ target_sources(overdub_song PRIVATE
     MixEdits.cpp
     TakeEdits.cpp
     TrackEdits.cpp
+    VideoTakeEdits.cpp
     Peaks.cpp
     Separation.cpp
     SeparationHelper.cpp

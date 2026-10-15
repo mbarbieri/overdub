@@ -24,8 +24,9 @@
 
 // The main window's content (issue #27, issue #9 resolution): the top bar over the current mode's
 // page (Record, Edit (issue #28), or Export (issue #37)), the Notice line, and Alerts.
-// In Edit mode S splits the selected Clip at the playhead and backspace deletes it, each one
-// undo step through OpenSong::edit; in the other modes both keys do nothing. It translates
+// In Edit mode S splits the selected Clip at the playhead and backspace deletes the selected Clip
+// or Video Take (issue #128), each one undo step through OpenSong::edit; in the other modes both
+// keys do nothing. It translates
 // keys and clicks into Commands and OpenSong calls; the logic lives in the pure functions and
 // in OpenSong.
 //
@@ -165,7 +166,7 @@ private:
     void showMode (Mode mode);
     void jumpToPass (const song::Id& passId);
     void splitSelectedClip();
-    void deleteSelectedClip();
+    void deleteSelection();
     void nudgePlayhead (int seconds);
     void applyEdit (core::Expected<song::Song> changed, const std::string& label);
     void armCamera (bool armed);

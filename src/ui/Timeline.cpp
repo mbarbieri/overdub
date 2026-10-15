@@ -3,6 +3,7 @@
 #include "core/Error.h"
 #include "song/ClipEdits.h"
 #include "song/TakeEdits.h"
+#include "song/VideoTakeEdits.h"
 #include "ui/Colours.h"
 #include "ui/FileDrop.h"
 #include "ui/MuteSoloButtons.h"
@@ -204,6 +205,8 @@ void Timeline::show (const TimelineState& state)
     {
         if (selected.has_value() && song::findClip (current.song, *selected) == nullptr)
             selectClip (std::nullopt);
+        if (selectedVideo.has_value() && song::findVideoTake (current.song, *selectedVideo) == nullptr)
+            selectVideoTake (std::nullopt);
         rebuildHeaders();
         refreshTakeLanes();
         revealNewTracks (previousTrackIds);
@@ -377,12 +380,32 @@ void Timeline::zoomOut()
 
 void Timeline::selectClip (std::optional<song::Id> clipId)
 {
-    if (clipId == selected)
+    setSelection (std::move (clipId), std::nullopt);
+}
+
+void Timeline::selectVideoTake (std::optional<song::Id> videoTakeId)
+{
+    setSelection (std::nullopt, std::move (videoTakeId));
+}
+
+void Timeline::setSelection (std::optional<song::Id> clipId, std::optional<song::Id> videoTakeId)
+{
+    if (clipId == selected && videoTakeId == selectedVideo)
         return;
     selected = std::move (clipId);
+    selectedVideo = std::move (videoTakeId);
     repaint();
     if (onSelectionChanged)
         onSelectionChanged();
+}
+
+std::optional<song::Id> Timeline::videoTakeAt (juce::Point<int> position) const
+{
+    // Later blocks are drawn on top: search from the last.
+    for (auto span = current.videoTakes.rbegin(); span != current.videoTakes.rend(); ++span)
+        if (videoTakeBounds (span->videoTakeId).contains (position))
+            return span->videoTakeId;
+    return std::nullopt;
 }
 
 juce::Rectangle<int> Timeline::clipBounds (const song::Id& clipId) const
@@ -484,6 +507,17 @@ void Timeline::mouseDown (const juce::MouseEvent& event)
         seeking = true;
         if (onSeek)
             onSeek (std::max<song::SampleCount> (0, sampleForX (timelineView, position.x)));
+        return;
+    }
+
+    if (layout.cameraLane.contains (position))
+    {
+        const auto videoTakeId = videoTakeAt (position);
+        auto fields = core::Fields { { "hit", videoTakeId.has_value() } };
+        if (videoTakeId.has_value())
+            fields["video_take_id"] = *videoTakeId;
+        core::logEvent (core::Level::debug, "ui.camera_lane_clicked", fields);
+        selectVideoTake (videoTakeId);
         return;
     }
 
@@ -694,10 +728,11 @@ void Timeline::paintCameraLane (juce::Graphics& g) const
         const auto block = videoTakeBounds (span.videoTakeId);
         if (block.isEmpty())
             continue;
+        const auto isSelected = selectedVideo == span.videoTakeId;
         g.setColour (span.readable ? colours::videoTake : colours::videoTake.withAlpha (0.4f));
         g.fillRoundedRectangle (block.toFloat(), 4.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.4f));
-        g.drawRoundedRectangle (block.toFloat().reduced (0.5f), 4.0f, 1.0f);
+        g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.4f));
+        g.drawRoundedRectangle (block.toFloat().reduced (isSelected ? 1.0f : 0.5f), 4.0f, isSelected ? 2.0f : 1.0f);
         g.setColour (colours::text);
         if (span.readable)
             g.drawText (juce::String::fromUTF8 (span.title.c_str()), block.reduced (6, 0), juce::Justification::centredLeft, true);

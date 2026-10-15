@@ -7,6 +7,7 @@
 #include "ui/TakeLanes.h"
 #include "ui/Timeline.h"
 #include "ui/TransportText.h"
+#include "video/FrameSelection.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -17,7 +18,7 @@
 #include <vector>
 
 // Edit mode's page (issues #28, #29, issue #9 resolution, variant C): the Clip toolbar (the
-// selected Clip's name, Track, start and length; its fade-in, fade-out and gain fields; Split,
+// selected Clip's name, Track, start and length, or the selected Video Take's (issue #128); its fade-in, fade-out and gain fields; Split,
 // Delete; zoom; the Video toggle (issue #36: the floating Video Preview, which the window owns);
 // the Mixer toggle) over the Timeline, and under a draggable divider the Mixer
 // (ui/Mixer.h, issue #31), which the toggle hides and shows. Thin: Split and Delete are reported to the
@@ -31,7 +32,7 @@ namespace overdub::ui
 {
 struct ClipToolbarState
 {
-    bool hasClip = false;
+    bool hasSelection = false;
     std::string details; // "Pass 2 on Guitar · start 1.250 s · length 3.000 s", or a hint
     bool canSplit = false;  // the playhead is strictly inside the selected Clip
     bool canDelete = false;
@@ -50,6 +51,12 @@ std::optional<double> parseDecibels (const std::string& text);
 
 // The toolbar for the selected Clip (none, or one the Song no longer has: the hint).
 ClipToolbarState clipToolbarStateFor (const song::Song& song, const std::optional<song::Id>& selectedClip, song::SampleCount playhead, bool editable);
+
+// The toolbar for the selected Video Take (issue #128): "Video Take · Pass 2 · start 1.000 s ·
+// length 4.000 s" ("movie missing" in place of the length when its movie cannot be read), Delete
+// enabled while editable; no Split, fades or gain. A Video Take the Song or the Camera lane's
+// spans no longer have: the hint, as with no selection.
+ClipToolbarState videoTakeToolbarStateFor (const song::Song& song, const std::vector<video::VideoTakeSpan>& videoTakes, const song::Id& videoTakeId, bool editable);
 
 class ClipToolbar final : public juce::Component
 {
