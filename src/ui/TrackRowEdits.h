@@ -4,7 +4,6 @@
 
 #include <cstddef>
 #include <optional>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -35,12 +34,6 @@ std::optional<std::size_t> choiceIndexFor (const std::vector<InputChoice>& choic
 // The Song with that Track's Armed flag / input channels set. An unknown Track id changes nothing.
 song::Song withArmed (song::Song song, const song::Id& trackId, bool armed);
 song::Song withInputChannels (song::Song song, const song::Id& trackId, std::vector<int> inputChannels);
-
-// The Song as the engine should render it: Monitoring is per Track and transient (not in the
-// Song), and the engine monitors every Armed Track (engine/TrackPlayer.h), so a Track whose
-// Monitoring is off is handed to the engine as not Armed. Recording reads the package's Song, not
-// this one, so it still records every Armed Track.
-song::Song songForEngine (song::Song song, const std::set<song::Id>& monitoredTrackIds);
 
 // One item of a Track row's menu (right-click, issue #114).
 enum class TrackMenuAction

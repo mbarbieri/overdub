@@ -63,21 +63,6 @@ TEST_CASE ("arming and picking an input change only that Track", "[ui][inputs]")
     CHECK (withArmed (song, "missing", true) == song);
 }
 
-TEST_CASE ("the engine hears live input only on Armed Tracks with Monitoring on", "[ui][inputs]")
-{
-    auto song = twoTrackSong();
-    song.tracks[0].armed = true;
-
-    const auto heard = songForEngine (song, { "vocals" });
-    CHECK (! heard.tracks[0].armed);
-    CHECK (heard.tracks[1].armed);
-    CHECK (heard.tracks[1].inputChannels == std::vector<int> { 1 });
-
-    const auto none = songForEngine (song, {});
-    CHECK (! none.tracks[0].armed);
-    CHECK (! none.tracks[1].armed);
-}
-
 TEST_CASE ("the Pass being recorded is numbered after the Song's Passes", "[ui][inputs]")
 {
     auto song = twoTrackSong();

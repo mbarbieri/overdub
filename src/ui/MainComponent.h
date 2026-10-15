@@ -70,6 +70,8 @@
 // committed by the poll once due, and at once before undo, redo, record, an import, a Separation
 // or any other edit (which keeps the burst's value unless it set that control itself).
 //
+// Record starting a Pass puts out every Record row's clip indicator (issue #131).
+//
 // Separation (issues #114, #115): Separate... in a Record row's menu (right-click) starts one
 // (OpenSong::startSeparation); disabled, the menu item says why. While it runs the Separation
 // dialog covers the window (modal: it takes every click, and keys and commands do nothing), showing
@@ -77,7 +79,8 @@
 // its tier) or its Cancel is clicked (OpenSong::cancelSeparation).
 //
 // Every 30 ms (and from tick() in tests) it polls the open Song, which finishes a stopped Pass,
-// refreshes the top bar and the page, feeds the Mixer's meters, and presents queued messages: Notices at once, Alerts only
+// refreshes the top bar and the page, feeds the Mixer's and the Record rows' meters from one
+// poll of the engine's peaks, and presents queued messages: Notices at once, Alerts only
 // when no Pass runs (ADR 0006). Logs ui.mode_changed (debug), ui.notice_shown, ui.alert_shown and
 // ui.alert_deferred (info), each with `code` and `tier` where it names a message.
 namespace overdub::ui

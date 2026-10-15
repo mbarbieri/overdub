@@ -20,6 +20,9 @@ inline constexpr double faderUnityPosition = 0.75;
 // The shown meter level is multiplied by this at each poll without a higher peak (about -1 dB per
 // 30 ms poll).
 inline constexpr float meterFallPerPoll = 0.89f;
+// An Armed Track's input peak at or over this (linear, about -0.01 dBFS) lights its Record row's
+// clip indicator (issue #131).
+inline constexpr float clipPeak = 0.999f;
 
 // Position (clamped to [0, 1]) -> dB in [song::minVolumeDb, song::maxVolumeDb].
 double faderPositionToDb (double position);

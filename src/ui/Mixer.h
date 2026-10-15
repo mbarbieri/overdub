@@ -4,6 +4,7 @@
 #include "engine/RenderPlan.h"
 #include "song/Song.h"
 #include "ui/InsertChain.h"
+#include "ui/Layout.h"
 #include "ui/MixFocus.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -37,7 +38,7 @@ public:
         horizontal
     };
 
-    static constexpr int thumbSize = 10;
+    static constexpr int thumbSize = faderThumbSize;
 
     explicit MixerFader (Orientation orientation = Orientation::vertical);
 
@@ -101,17 +102,23 @@ private:
     bool focusShown = false;
 };
 
-// A vertical peak meter on the fader's scale (meterPosition).
+// A peak meter on the fader's scale (meterPosition): vertical (lit from the bottom) on a Mixer
+// strip, horizontal (lit from the left) under a Record row's fader.
 class LevelMeter final : public juce::Component
 {
 public:
+    explicit LevelMeter (MixerFader::Orientation orientation = MixerFader::Orientation::vertical);
+
     // Takes a poll's peak; the shown level falls back slowly (nextMeterLevel).
     void addPeak (float peak);
     float level() const { return shownLevel; }
+    // The lit part for the shown level, in the meter's coordinates; empty when silent.
+    juce::Rectangle<float> litArea() const;
 
     void paint (juce::Graphics& g) override;
 
 private:
+    MixerFader::Orientation orientation;
     float shownLevel = 0.0f;
 };
 

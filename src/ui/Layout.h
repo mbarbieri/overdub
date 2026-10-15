@@ -15,7 +15,7 @@ inline constexpr int minimumWindowHeight = 600;
 inline constexpr int topBarHeight = 52;
 inline constexpr int noticeLineHeight = 28;
 inline constexpr int trackColumnWidth = 460;
-inline constexpr int trackRowHeight = 88;
+inline constexpr int trackRowHeight = 98;
 
 struct MainLayout
 {
@@ -69,16 +69,25 @@ RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks);
 
 // Top line, left to right: arm, name, mute, solo, input picker, Monitoring (with its count of
 // active Inserts). Middle line, under the name: the Track's Insert Chain (issue #34), laid out by
-// insertChainLayout (horizontal). Bottom line, from the name's left edge: the horizontal volume
-// fader (issue #130), then its dB text at the right.
+// insertChainLayout (horizontal). Next line, from the name's left edge: the horizontal volume
+// fader (issue #130), then its dB text at the right. Bottom line: the fader's level meter (issue
+// #131), spanning the thumb's travel so a peak lines up with the thumb at the same dB, and the clip
+// indicator at the meter's right end.
 inline constexpr int trackRowFaderHeight = 18;
 inline constexpr int trackRowVolumeTextWidth = 56;
+inline constexpr int trackRowMeterHeight = 6;
+inline constexpr int trackRowClipSize = 8;
+// A fader's thumb length along its travel (ui/Mixer.h MixerFader): the travel is the fader's length
+// less one thumb, so its ends sit half a thumb in from the fader's.
+inline constexpr int faderThumbSize = 10;
 
 struct TrackRowLayout
 {
     juce::Rectangle<int> insertChain;
     juce::Rectangle<int> volumeFader;
     juce::Rectangle<int> volumeText;
+    juce::Rectangle<int> volumeMeter;
+    juce::Rectangle<int> clipIndicator;
     juce::Rectangle<int> arm;
     juce::Rectangle<int> name;
     juce::Rectangle<int> mute;

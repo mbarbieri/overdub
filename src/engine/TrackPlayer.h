@@ -17,7 +17,7 @@ class TrackPlayer final : public PlainProcessor
 public:
     // `sources` keeps every buffer the segments point into alive for the player's lifetime.
     // `liveInput` (owned by the plan) is read on every block; `monitorChannels` are the device
-    // input channels this Track hears while Monitoring (empty = none: not Armed).
+    // input channels this Track hears while Monitoring (empty = none: not Armed, or not monitored).
     TrackPlayer (juce::String trackId, std::vector<ClipSegment> segments, std::vector<SourceAudio> sources, const LiveInput& liveInput, std::vector<int> monitorChannels);
 
     const juce::String getName() const override { return "Track " + trackId; }

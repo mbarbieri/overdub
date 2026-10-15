@@ -351,10 +351,15 @@ void MainComponent::perform (Command command)
     switch (command)
     {
         case Command::record:
+        {
             commitKeyBursts();
+            const auto passWasRunning = openSong->isRecording();
             if (auto started = openSong->record(); ! started.has_value())
                 handleError (started.error());
+            else if (! passWasRunning)
+                recordPage.clearClipIndicators();
             break;
+        }
         case Command::playOrStop: openSong->playOrStop(); break;
         case Command::rewind: openSong->rewind(); break;
         case Command::undo:
@@ -728,7 +733,11 @@ void MainComponent::tick (song::SongPackage::Clock::time_point now)
     refresh();
     // Taken every poll, in every mode, so the meters show only what played since the last one.
     if (openSong != nullptr)
-        editPage.mixer.showMeters (openSong->meterPeaks());
+    {
+        const auto peaks = openSong->meterPeaks();
+        editPage.mixer.showMeters (peaks);
+        recordPage.showMeters (peaks);
+    }
     presentMessages();
 }
 

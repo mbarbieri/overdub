@@ -10,12 +10,12 @@ void StripControl::setGains (ChannelGains gains) noexcept
     rightGain.store (gains.right, std::memory_order_relaxed);
 }
 
-float StripControl::takePeak() noexcept
+float PeakHold::take() noexcept
 {
     return peak.exchange (0.0f, std::memory_order_relaxed);
 }
 
-void StripControl::raisePeak (float blockPeak) noexcept
+void PeakHold::raise (float blockPeak) noexcept
 {
     auto current = peak.load (std::memory_order_relaxed);
     while (blockPeak > current && ! peak.compare_exchange_weak (current, blockPeak, std::memory_order_relaxed))
@@ -48,6 +48,6 @@ void MixStripNode::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
         blockPeak = std::max (blockPeak, buffer.getMagnitude (channel, 0, numSamples));
     }
     applied = target;
-    control.raisePeak (blockPeak);
+    control.peak.raise (blockPeak);
 }
 } // namespace overdub::engine

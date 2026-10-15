@@ -96,10 +96,15 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row)
     const auto armColumn = area.removeFromLeft (44);
     layout.arm = armColumn.withHeight (28);
     area.removeFromLeft (gap);
+    const auto meterLine = area.removeFromBottom (trackRowClipSize);
+    area.removeFromBottom (2);
     auto volumeLine = area.removeFromBottom (trackRowFaderHeight);
     layout.volumeText = volumeLine.removeFromRight (trackRowVolumeTextWidth);
     volumeLine.removeFromRight (gap);
     layout.volumeFader = volumeLine;
+    const auto travelInset = faderThumbSize / 2;
+    layout.volumeMeter = { volumeLine.getX() + travelInset, meterLine.getCentreY() - trackRowMeterHeight / 2, volumeLine.getWidth() - 2 * travelInset, trackRowMeterHeight };
+    layout.clipIndicator = { layout.volumeMeter.getRight() + 2, meterLine.getY(), trackRowClipSize, trackRowClipSize };
     area.removeFromBottom (4);
     layout.insertChain = area.removeFromBottom (insertChipHeight);
     area.removeFromBottom (4);

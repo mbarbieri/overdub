@@ -217,6 +217,10 @@ void PanControl::paint (juce::Graphics& g)
 
 //==============================================================================
 
+LevelMeter::LevelMeter (MixerFader::Orientation meterOrientation) : orientation (meterOrientation)
+{
+}
+
 void LevelMeter::addPeak (float peak)
 {
     const auto next = nextMeterLevel (shownLevel, peak);
@@ -226,16 +230,26 @@ void LevelMeter::addPeak (float peak)
     repaint();
 }
 
-void LevelMeter::paint (juce::Graphics& g)
+juce::Rectangle<float> LevelMeter::litArea() const
 {
     const auto area = getLocalBounds().toFloat();
-    g.setColour (colours::background.darker (0.4f));
-    g.fillRoundedRectangle (area, 2.0f);
-
     const auto position = (float) meterPosition (shownLevel);
     if (position <= 0.0f)
+        return {};
+    if (orientation == MixerFader::Orientation::vertical)
+        return area.withTop (area.getBottom() - position * area.getHeight());
+    return area.withWidth (position * area.getWidth());
+}
+
+void LevelMeter::paint (juce::Graphics& g)
+{
+    g.setColour (colours::background.darker (0.4f));
+    g.fillRoundedRectangle (getLocalBounds().toFloat(), 2.0f);
+
+    const auto lit = litArea();
+    if (lit.isEmpty())
         return;
-    const auto lit = area.withTop (area.getBottom() - position * area.getHeight());
+    const auto position = (float) meterPosition (shownLevel);
     const auto colour = position > 0.75f ? colours::rec : (position > 0.66f ? colours::solo : juce::Colour (0xff3fbf6f));
     g.setColour (colour);
     g.fillRoundedRectangle (lit, 2.0f);

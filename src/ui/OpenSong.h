@@ -253,7 +253,7 @@ public:
     void* cameraPreviewLayer() const;
 
     // Monitoring is transient (not in the Song): hearing an Armed Track's live input. Ignored while
-    // a Pass or a Separation runs.
+    // a Pass or a Separation runs. The engine is given the monitored Tracks with the Song.
     void setMonitoring (const song::Id& trackId, bool on);
     bool isMonitoring (const song::Id& trackId) const { return monitored.contains (trackId); }
 

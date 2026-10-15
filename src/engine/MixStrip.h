@@ -14,17 +14,25 @@
 // linearly from the previous gains to the new ones, so a fader move does not click.
 namespace overdub::engine
 {
+// The largest |sample| since the last take: the audio thread raises it, a non-audio thread takes
+// it (a meter's poll), so each poll covers only the blocks since the previous one.
+struct PeakHold
+{
+    std::atomic<float> peak { 0.0f };
+
+    // The peak since the previous call; starts the next one from 0.
+    float take() noexcept;
+    // Audio thread.
+    void raise (float blockPeak) noexcept;
+};
+
 struct StripControl
 {
     std::atomic<float> leftGain { 1.0f };
     std::atomic<float> rightGain { 1.0f };
-    std::atomic<float> peak { 0.0f }; // the largest |sample| since the last takePeak, post-gain
+    PeakHold peak; // post-gain
 
     void setGains (ChannelGains gains) noexcept;
-    // The peak since the previous call; starts the next one from 0.
-    float takePeak() noexcept;
-    // Audio thread.
-    void raisePeak (float blockPeak) noexcept;
 };
 
 class MixStripNode final : public PlainProcessor

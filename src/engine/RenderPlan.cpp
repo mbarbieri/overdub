@@ -112,7 +112,7 @@ private:
     std::map<std::string, SourceAudio> loaded;
 };
 
-std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLoader& loader, const LiveInput& liveInput)
+std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLoader& loader, const LiveInput& liveInput, bool monitored)
 {
     std::vector<LayeredClip> layered;
     std::vector<SourceAudio> sources;
@@ -123,8 +123,8 @@ std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLo
         if (audio != nullptr)
             sources.push_back (std::move (audio));
     }
-    // Only an Armed Track hears its input; an unarmed Track's input channels stay silent.
-    auto monitorChannels = track.armed ? track.inputChannels : std::vector<int> {};
+    // Only a monitored Armed Track hears its input; any other Track's input channels stay silent.
+    auto monitorChannels = track.armed && monitored ? track.inputChannels : std::vector<int> {};
     return std::make_unique<TrackPlayer> (juce::String (track.id), flattenClips (layered), std::move (sources), liveInput, std::move (monitorChannels));
 }
 
@@ -167,13 +167,20 @@ std::vector<std::unique_ptr<juce::AudioProcessor>> makeChain (const InsertFactor
 }
 } // namespace
 
-RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& engineConfig, const InsertFactory& makeInserts)
+RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& engineConfig, const InsertFactory& makeInserts, const MonitoredTracks& monitoredTracks)
     : config (engineConfig), songSampleRate (song.sampleRate), trackCount ((int) song.tracks.size())
 {
     for (const auto& track : song.tracks)
     {
         trackIds.push_back (track.id);
         trackStrips.push_back (std::make_unique<StripControl>());
+        if (track.armed)
+        {
+            auto tap = std::make_unique<InputTap>();
+            tap->trackId = track.id;
+            tap->channels = track.inputChannels;
+            inputTaps.push_back (std::move (tap));
+        }
     }
     // Before the strip nodes are made: each starts from its control's gains, without a ramp.
     applyMix (song);
@@ -197,7 +204,8 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
     {
         const auto& track = song.tracks[trackIndex];
         clipCount += (int) track.clips.size();
-        const auto player = graph.addNode (makeTrackPlayer (track, loader, liveInput), {}, Graph::UpdateKind::none)->nodeID;
+        const auto monitored = ! monitoredTracks.has_value() || monitoredTracks->contains (track.id);
+        const auto player = graph.addNode (makeTrackPlayer (track, loader, liveInput, monitored), {}, Graph::UpdateKind::none)->nodeID;
 
         const auto chain = addChain (graph, makeChain (makeInserts, track.id, track.insertChain));
         insertCount += chain.count;
@@ -264,14 +272,33 @@ MeterPeaks RenderPlan::takeMeterPeaks()
 {
     MeterPeaks peaks;
     for (std::size_t i = 0; i < trackStrips.size(); ++i)
-        peaks.tracks[trackIds[i]] = trackStrips[i]->takePeak();
-    peaks.master = masterStrip.takePeak();
+        peaks.tracks[trackIds[i]] = trackStrips[i]->peak.take();
+    for (auto& tap : inputTaps)
+        peaks.inputs[tap->trackId] = tap->peak.take();
+    peaks.master = masterStrip.peak.take();
     return peaks;
+}
+
+void RenderPlan::tapInputs (const LiveInput& input, int numSamples) noexcept
+{
+    for (auto& tap : inputTaps)
+    {
+        float blockPeak = 0.0f;
+        for (const auto channel : tap->channels)
+        {
+            if (input.channels == nullptr || channel < 0 || channel >= input.numChannels || input.channels[channel] == nullptr)
+                continue;
+            const auto range = juce::FloatVectorOperations::findMinAndMax (input.channels[channel], numSamples);
+            blockPeak = std::max ({ blockPeak, range.getEnd(), -range.getStart() });
+        }
+        tap->peak.raise (blockPeak);
+    }
 }
 
 std::uint64_t RenderPlan::render (float* const* outputs, const LiveInput& input, int numSamples, std::int64_t renderSample, bool playing) noexcept
 {
     liveInput = input;
+    tapInputs (input, numSamples);
     playHead.renderSample = renderSample;
     playHead.playing = playing;
 

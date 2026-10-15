@@ -26,6 +26,7 @@ target_sources(overdub_tests PRIVATE
     engine/EngineClipEditTest.cpp
     engine/EngineClipGainFadeTest.cpp
     engine/EngineEventsTest.cpp
+    engine/EngineInputMeterTest.cpp
     engine/EngineInsertChainTest.cpp
     engine/EngineRealtimeTest.cpp
     engine/EngineRecordTest.cpp
@@ -89,6 +90,7 @@ target_sources(overdub_tests PRIVATE
     ui/RecordInsertsTest.cpp
     ui/AddTrackTest.cpp
     ui/RecordFaderUiTest.cpp
+    ui/RecordMeterUiTest.cpp
     ui/RecordPageTest.cpp
     ui/RecordViewTest.cpp
     ui/SeparateTest.cpp

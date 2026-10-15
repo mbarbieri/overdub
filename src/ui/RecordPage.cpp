@@ -79,6 +79,35 @@ RecordPageState recordPageStateFor (const song::Song& song,
 
 //==============================================================================
 
+void ClipIndicator::light()
+{
+    if (lit)
+        return;
+    lit = true;
+    repaint();
+}
+
+void ClipIndicator::clear()
+{
+    if (! lit)
+        return;
+    lit = false;
+    repaint();
+}
+
+void ClipIndicator::mouseDown (const juce::MouseEvent&)
+{
+    clear();
+}
+
+void ClipIndicator::paint (juce::Graphics& g)
+{
+    g.setColour (lit ? colours::rec : colours::background.darker (0.4f));
+    g.fillEllipse (getLocalBounds().toFloat());
+}
+
+//==============================================================================
+
 TrackRow::TrackRow()
 {
     armButton.setColour (juce::TextButton::buttonOnColourId, colours::rec);
@@ -147,6 +176,8 @@ TrackRow::TrackRow()
     addAndMakeVisible (insertChain);
     addAndMakeVisible (fader);
     addAndMakeVisible (volumeLabel);
+    addAndMakeVisible (meter);
+    addAndMakeVisible (clip);
 }
 
 void TrackRow::show (const TrackRowState& state)
@@ -185,6 +216,16 @@ void TrackRow::showVolume (double db)
     volumeLabel.setText (juce::String (volumeText (fader.db())), juce::dontSendNotification);
 }
 
+void TrackRow::showMeters (const engine::MeterPeaks& peaks)
+{
+    const auto& source = current.armed ? peaks.inputs : peaks.tracks;
+    const auto found = source.find (current.trackId);
+    const auto peak = found != source.end() ? found->second : 0.0f;
+    meter.addPeak (peak);
+    if (current.armed && peak >= clipPeak)
+        clip.light();
+}
+
 void TrackRow::resized()
 {
     const auto layout = trackRowLayout (getLocalBounds());
@@ -197,6 +238,8 @@ void TrackRow::resized()
     insertChain.setBounds (layout.insertChain);
     fader.setBounds (layout.volumeFader);
     volumeLabel.setBounds (layout.volumeText);
+    meter.setBounds (layout.volumeMeter);
+    clip.setBounds (layout.clipIndicator);
 }
 
 void TrackRow::mouseDown (const juce::MouseEvent& event)
@@ -332,6 +375,18 @@ void RecordPage::show (const RecordPageState& state, const song::Song& song)
     shownPreRoll = state.preRoll;
     preRollPicker.setSelectedItemIndex (preRollChoiceIndex (state.preRoll), juce::dontSendNotification);
     preRollPicker.setEnabled (state.canChangePreRoll);
+}
+
+void RecordPage::showMeters (const engine::MeterPeaks& peaks)
+{
+    for (auto& row : rows)
+        row->showMeters (peaks);
+}
+
+void RecordPage::clearClipIndicators()
+{
+    for (auto& row : rows)
+        row->clip.clear();
 }
 
 void RecordPage::connectRow (TrackRow& row, const song::Id& trackId)

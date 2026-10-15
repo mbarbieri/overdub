@@ -130,6 +130,21 @@ TEST_CASE ("a Track row puts its volume fader along the bottom, under the Insert
     CHECK (layout.volumeFader.getWidth() >= 300);
 }
 
+TEST_CASE ("a Track row puts its level meter under the fader along the thumb's travel, and the clip dot at the meter's right end", "[ui][layout][record_meter]")
+{
+    const Rectangle<int> row { 800, 100, trackColumnWidth, trackRowHeight };
+    const auto layout = trackRowLayout (row);
+
+    checkInsideAndApart (row, { layout.arm, layout.name, layout.mute, layout.solo, layout.input, layout.monitoring, layout.insertChain, layout.volumeFader, layout.volumeText, layout.volumeMeter, layout.clipIndicator });
+    CHECK (layout.volumeMeter.getY() >= layout.volumeFader.getBottom());
+    CHECK (layout.volumeMeter.getHeight() == trackRowMeterHeight);
+    // The thumb's centre travels from half a thumb in from the fader's left to half a thumb in from its right.
+    CHECK (layout.volumeMeter.getX() == layout.volumeFader.getX() + faderThumbSize / 2);
+    CHECK (layout.volumeMeter.getRight() == layout.volumeFader.getRight() - faderThumbSize / 2);
+    CHECK (layout.clipIndicator.getX() > layout.volumeMeter.getRight());
+    CHECK (layout.clipIndicator.getCentreY() == layout.volumeMeter.getCentreY());
+}
+
 TEST_CASE ("a horizontal Insert Chain puts + Insert first, then the chips left to right, cutting off what does not fit", "[ui][layout][inserts]")
 {
     const Rectangle<int> area { 50, 40, 400, insertChipHeight };
