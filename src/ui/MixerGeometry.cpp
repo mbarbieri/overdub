@@ -21,16 +21,16 @@ double roundTo (double value, double step)
 
 // The drag travel that counts once the detent is taken out: `moved` pixels along the drag, with
 // the neutral value `toNeutral` pixels from the start (same sign convention). nullopt: held at
-// neutral.
+// neutral. A drag that starts at neutral does not cross it: no detent.
 std::optional<double> pastDetent (double moved, double toNeutral)
 {
-    if (toNeutral >= 0.0 && moved >= toNeutral)
+    if (toNeutral > 0.0 && moved >= toNeutral)
     {
         if (moved <= toNeutral + detentPixels)
             return std::nullopt;
         return moved - detentPixels;
     }
-    if (toNeutral <= 0.0 && moved <= toNeutral)
+    if (toNeutral < 0.0 && moved <= toNeutral)
     {
         if (moved >= toNeutral - detentPixels)
             return std::nullopt;

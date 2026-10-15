@@ -413,11 +413,11 @@ void Mixer::show (const song::Song& song, bool isEditable)
     editable = isEditable;
     if (! sameTracks)
         rebuildStrips();
-    // Nothing has focus while a Pass runs, nor once its Track is gone (a run was committed first).
+    // Nothing has focus while a Pass runs, nor once its Track is gone (a burst was committed first).
     if (focused.has_value() && (! editable || ! mixValue (current, *focused).has_value()))
     {
         focused.reset();
-        keyRun.reset();
+        keyBurst.reset();
     }
 
     for (std::size_t i = 0; i < strips.size(); ++i)
@@ -442,8 +442,8 @@ void Mixer::show (const song::Song& song, bool isEditable)
 
 double Mixer::shownValue (const MixerControl& control, double songValue) const
 {
-    if (keyRun.has_value() && keyRun->control == control)
-        return keyRun->value;
+    if (keyBurst.has_value() && keyBurst->control == control)
+        return keyBurst->value;
     return songValue;
 }
 
@@ -482,14 +482,14 @@ void Mixer::focus (const MixerControl& control)
 {
     if (focused == control)
         return;
-    commitKeyRun();
+    commitKeyBurst();
     focused = control;
     showFocus();
 }
 
 void Mixer::releaseFocus()
 {
-    commitKeyRun();
+    commitKeyBurst();
     focused.reset();
     showFocus();
 }
@@ -520,7 +520,7 @@ bool Mixer::handleKey (const juce::KeyPress& key, Clock::time_point now)
     const auto code = key.getKeyCode();
     const auto fine = modifiers.isShiftDown();
     const auto control = *focused;
-    const auto from = keyRun.has_value() && keyRun->control == control ? keyRun->value : mixValue (current, control).value_or (0.0);
+    const auto from = keyBurst.has_value() && keyBurst->control == control ? keyBurst->value : mixValue (current, control).value_or (0.0);
     double to = from;
     if (control.kind == MixerControlKind::volume)
     {
@@ -541,37 +541,37 @@ bool Mixer::handleKey (const juce::KeyPress& key, Clock::time_point now)
             return false;
     }
 
-    keyRun = KeyRun { .control = control, .value = to, .deadline = now + keyRunDuration };
+    keyBurst = KeyBurst { .control = control, .value = to, .deadline = now + keyBurstDuration };
     if (auto* strip = stripFor (control.trackId))
         strip->showControlValue (control.kind, to);
     preview (withMixValue (current, control, to));
     return true;
 }
 
-void Mixer::commitKeyRun()
+void Mixer::commitKeyBurst()
 {
-    if (! keyRun.has_value())
+    if (! keyBurst.has_value())
         return;
-    const auto run = *keyRun;
-    keyRun.reset(); // before reporting: the edit comes back here through show
-    report (withMixValue (current, run.control, run.value), mixLabel (current, run.control));
+    const auto burst = *keyBurst;
+    keyBurst.reset(); // before reporting: the edit comes back here through show
+    report (withMixValue (current, burst.control, burst.value), mixLabel (current, burst.control));
 }
 
-void Mixer::commitKeyRunIfDue (Clock::time_point now)
+void Mixer::commitKeyBurstIfDue (Clock::time_point now)
 {
-    if (keyRun.has_value() && now >= keyRun->deadline)
-        commitKeyRun();
+    if (keyBurst.has_value() && now >= keyBurst->deadline)
+        commitKeyBurst();
 }
 
-song::Song Mixer::withKeyRunCarried (song::Song changed) const
+song::Song Mixer::withKeyBurstCarried (song::Song changed) const
 {
-    if (! keyRun.has_value())
+    if (! keyBurst.has_value())
         return changed;
-    const auto before = mixValue (current, keyRun->control);
-    const auto edited = mixValue (changed, keyRun->control);
+    const auto before = mixValue (current, keyBurst->control);
+    const auto edited = mixValue (changed, keyBurst->control);
     if (! before.has_value() || ! edited.has_value() || ! juce::exactlyEqual (*before, *edited))
         return changed;
-    auto carried = withMixValue (changed, keyRun->control, keyRun->value);
+    auto carried = withMixValue (changed, keyBurst->control, keyBurst->value);
     return carried.has_value() ? std::move (*carried) : changed;
 }
 
@@ -592,18 +592,18 @@ void Mixer::rebuildStrips()
 void Mixer::connectStrip (MixerStrip& strip, const song::Id& trackId)
 {
     // Every gesture starts from `current`, the Song as shown: a drag's preview never accumulates.
-    // A gesture that changes the Song commits a pending key run first, so it builds on the run.
+    // A gesture that changes the Song commits a pending key burst first, so it builds on the burst.
     strip.onGrab = [this, trackId] (MixerControlKind kind) { focus ({ trackId, kind }); };
     strip.onDrag = [this, trackId] (MixerControlKind kind, double value) {
         preview (withMixValue (current, { trackId, kind }, value));
     };
     strip.onChanged = [this, trackId] (MixerControlKind kind, double value) {
-        commitKeyRun();
+        commitKeyBurst();
         const MixerControl control { trackId, kind };
         report (withMixValue (current, control, value), mixLabel (current, control));
     };
     strip.onReset = [this, trackId] (MixerControlKind kind) {
-        commitKeyRun();
+        commitKeyBurst();
         const MixerControl control { trackId, kind };
         report (withMixValue (current, control, 0.0), mixLabel (current, control));
     };
@@ -612,11 +612,11 @@ void Mixer::connectStrip (MixerStrip& strip, const song::Id& trackId)
             onPreview (current);
     };
     strip.onMute = [this, trackId] (bool mute) {
-        commitKeyRun();
+        commitKeyBurst();
         report (song::setTrackMute (current, trackId, mute), song::muteLabel (current, trackId, mute));
     };
     strip.onSolo = [this, trackId] (bool solo) {
-        commitKeyRun();
+        commitKeyBurst();
         report (song::setTrackSolo (current, trackId, solo), song::soloLabel (current, trackId, solo));
     };
 }

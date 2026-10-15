@@ -28,8 +28,8 @@
 //
 // Keyboard focus (issue #129): grabbing a fader or pan focuses it (an accent outline); the window
 // sends it keys first (handleKey). The arrows adjust it by faderKeyStepDb / panKeyStep, each press
-// previewed at once; a run of presses on one control is one undo step, labelled like its drag,
-// committed keyRunDuration after the last press (commitKeyRunIfDue), or sooner by commitKeyRun
+// previewed at once; a burst of presses on one control is one undo step, labelled like its drag,
+// committed keyBurstDuration after the last press (commitKeyBurstIfDue), or sooner by commitKeyBurst
 // (focus moving or released, another Mixer gesture, or the window's own triggers). Esc releases
 // focus. The focus is the Mixer's own state, not JUCE's keyboard focus, which stays on the window.
 //
@@ -198,8 +198,8 @@ class Mixer final : public juce::Component
 {
 public:
     using Clock = std::chrono::steady_clock;
-    // How long after the last arrow press a run of presses becomes its undo step.
-    static constexpr auto keyRunDuration = std::chrono::seconds (1);
+    // How long after the last arrow press a burst of presses becomes its undo step.
+    static constexpr auto keyBurstDuration = std::chrono::seconds (1);
 
     Mixer();
 
@@ -214,22 +214,22 @@ public:
     const std::optional<MixerControl>& focusedControl() const { return focused; }
     // True when `component` is the focused control or inside it.
     bool isFocusedControl (const juce::Component* component);
-    // Focuses a control (committing a run on another one).
+    // Focuses a control (committing a burst on another one).
     void focus (const MixerControl& control);
-    // Commits the run, if any, and leaves no control focused.
+    // Commits the burst, if any, and leaves no control focused.
     void releaseFocus();
     // A key press while a control has focus: the arrows adjust it, Esc releases it. Returns
     // whether the key was used; every other key is left to the window.
     bool handleKey (const juce::KeyPress& key, Clock::time_point now);
 
-    bool hasKeyRun() const { return keyRun.has_value(); }
-    // Reports the run of arrow presses (if any) as one undo step now.
-    void commitKeyRun();
-    // Commits the run once keyRunDuration has passed since its last press.
-    void commitKeyRunIfDue (Clock::time_point now);
-    // An edit made from the Song before the run was committed, with the run's value carried into
+    bool hasKeyBurst() const { return keyBurst.has_value(); }
+    // Reports the burst of arrow presses (if any) as one undo step now.
+    void commitKeyBurst();
+    // Commits the burst once keyBurstDuration has passed since its last press.
+    void commitKeyBurstIfDue (Clock::time_point now);
+    // An edit made from the Song before the burst was committed, with the burst's value carried into
     // it, unless the edit set that control itself (or removed its Track).
-    song::Song withKeyRunCarried (song::Song changed) const;
+    song::Song withKeyBurstCarried (song::Song changed) const;
 
     // The Song a gesture in progress would make (the mix only).
     std::function<void (const song::Song& preview)> onPreview;
@@ -244,7 +244,7 @@ public:
     MixerStrip masterStrip { true };
 
 private:
-    struct KeyRun
+    struct KeyBurst
     {
         MixerControl control;
         double value = 0.0;
@@ -262,7 +262,7 @@ private:
     song::Song current;
     bool editable = true;
     std::optional<MixerControl> focused;
-    std::optional<KeyRun> keyRun;
+    std::optional<KeyBurst> keyBurst;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Mixer)
 };

@@ -334,7 +334,7 @@ TEST_CASE ("after clicking a fader the arrow keys move it by 1 dB, 0.1 with shif
     for (int i = 0; i < 3; ++i)
         CHECK (f.press (juce::KeyPress::downKey, shift));
     expectDb (-0.3);
-    f.window->tick(); // a poll shows the run's value, not the Song's
+    f.window->tick(); // a poll shows the burst's value, not the Song's
     expectDb (-0.3);
     CHECK (f.press (juce::KeyPress::upKey));
     expectDb (0.0);
@@ -407,7 +407,7 @@ TEST_CASE ("other keys still reach the window while a fader has focus", "[ui][mi
     CHECK (f.openSong->isPlaying());
 }
 
-TEST_CASE ("a run of arrow presses is one undo step once 1 s passes with no press", "[ui][mixer][keys]")
+TEST_CASE ("a burst of arrow presses is one undo step once 1 s passes with no press", "[ui][mixer][keys]")
 {
     MixerFixture f;
     f.useFixedClock();
@@ -438,13 +438,13 @@ TEST_CASE ("a run of arrow presses is one undo step once 1 s passes with no pres
     CHECK_THAT (fader.db(), WithinAbs (0.0, 1.0e-9));
 }
 
-TEST_CASE ("a run of arrow presses is committed at once by focus loss, a mode change, another edit, undo or a Pass starting", "[ui][mixer][keys]")
+TEST_CASE ("a burst of arrow presses is committed at once by focus loss, a mode change, another edit, undo or a Pass starting", "[ui][mixer][keys]")
 {
     MixerFixture f;
     f.useFixedClock();
     const auto guitarId = f.trackNamed ("Guitar").id;
     auto& fader = f.stripNamed ("Guitar").fader;
-    const auto startRun = [&] {
+    const auto startBurst = [&] {
         clickAt (fader, fader.thumbCentre());
         REQUIRE (f.press (juce::KeyPress::downKey));
         REQUIRE (f.press (juce::KeyPress::downKey));
@@ -453,21 +453,21 @@ TEST_CASE ("a run of arrow presses is committed at once by focus loss, a mode ch
 
     SECTION ("Esc")
     {
-        startRun();
+        startBurst();
         REQUIRE (f.press (juce::KeyPress::escapeKey));
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
         CHECK (f.undoLabel() == "Guitar Volume");
     }
     SECTION ("a click elsewhere")
     {
-        startRun();
+        startBurst();
         f.mouseDownOn (f.window->editPage.timeline);
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
         CHECK (f.undoLabel() == "Guitar Volume");
     }
     SECTION ("grabbing another control")
     {
-        startRun();
+        startBurst();
         auto& pan = f.stripNamed ("Guitar").panControl;
         clickAt (pan, pan.getLocalBounds().getCentre());
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
@@ -475,15 +475,15 @@ TEST_CASE ("a run of arrow presses is committed at once by focus loss, a mode ch
     }
     SECTION ("a mode change")
     {
-        startRun();
+        startBurst();
         REQUIRE (pressKey (*f.window, '1'));
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
         CHECK (f.undoLabel() == "Guitar Volume");
         CHECK (! f.mixer().focusedControl().has_value());
     }
-    SECTION ("another edit keeps the run as its own step before it")
+    SECTION ("another edit keeps the burst as its own step before it")
     {
-        startRun();
+        startBurst();
         click (f.headerNamed ("Band Mix").muteButton);
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
         CHECK (f.trackNamed ("Band Mix").mute);
@@ -492,28 +492,39 @@ TEST_CASE ("a run of arrow presses is committed at once by focus loss, a mode ch
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
         CHECK (f.undoLabel() == "Guitar Volume");
     }
-    SECTION ("a double-click on the same fader after the run")
+    SECTION ("a double-click on the same fader after the burst")
     {
-        startRun();
+        startBurst();
         doubleClickAt (fader, fader.thumbCentre());
         CHECK_THAT (guitarDb(), WithinAbs (0.0, 1.0e-9));
         f.undo();
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
     }
-    SECTION ("undo commits the run, then undoes all of it")
+    SECTION ("undo commits the burst, then undoes all of it")
     {
         const auto before = f.song();
         const auto labelBefore = f.undoLabel();
-        startRun();
+        startBurst();
         f.undo();
         CHECK (f.song() == before);
         CHECK (f.undoLabel() == labelBefore);
         CHECK (f.openSong->package().redoLabel() == "Guitar Volume");
         CHECK_THAT (fader.db(), WithinAbs (0.0, 1.0e-9));
     }
+    SECTION ("redo commits the burst, which leaves nothing to redo")
+    {
+        click (f.headerNamed ("Band Mix").muteButton);
+        f.undo();
+        REQUIRE (f.openSong->package().canRedo());
+        startBurst();
+        REQUIRE (pressKey (*f.window, 'z', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier));
+        CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
+        CHECK (f.undoLabel() == "Guitar Volume");
+        CHECK (! f.trackNamed ("Band Mix").mute);
+    }
     SECTION ("a Pass starting")
     {
-        startRun();
+        startBurst();
         REQUIRE (pressKey (*f.window, 'r'));
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
         CHECK (f.undoLabel() == "Guitar Volume");
@@ -549,4 +560,30 @@ TEST_CASE ("while a Pass runs, double-click and the arrow keys change nothing in
 
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
     f.runBlocks (1);
+}
+
+TEST_CASE ("a horizontal fader behaves as a vertical one along its width: right is louder, with the same detent", "[ui][mixer]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    MixerFader fader (MixerFader::Orientation::horizontal);
+    layOut (fader, 210, 20);
+    REQUIRE (fader.travel() == 200);
+    fader.setDb (-20.0);
+    double released = 0.0;
+    fader.onRelease = [&released] (double, double endDb) { released = endDb; };
+
+    const auto grab = fader.thumbCentre();
+    CHECK (grab == juce::Point<int> { 5 + 100, 10 }); // position 0.5 of 200 px, after half a thumb
+    drag (fader, grab, grab.translated (54, 0));
+    CHECK_THAT (released, WithinAbs (faderDragDb (-20.0, 54, 200), 1.0e-9));
+    CHECK_THAT (released, WithinAbs (0.0, 1.0e-9)); // within the detent
+
+    drag (fader, fader.thumbCentre(), fader.thumbCentre().translated (-25, 0));
+    CHECK_THAT (released, WithinAbs (faderDragDb (0.0, -25, 200), 1.0e-9));
+    CHECK (released < -5.0);
+
+    bool reset = false;
+    fader.onReset = [&reset] { reset = true; };
+    doubleClickAt (fader, fader.thumbCentre());
+    CHECK (reset);
 }

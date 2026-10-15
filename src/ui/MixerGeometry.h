@@ -6,7 +6,7 @@
 // a fader or pan drag -> its new value, the meters' scale and fall, and the strips' texts.
 // Positions are fractions of a control's travel: 0 = bottom (or hard left), 1 = top (hard right).
 //
-// The detent: a drag that reaches 0 dB (fader) or C (pan), or starts there, holds at exactly that
+// The detent: a drag that reaches 0 dB (fader) or C (pan) from either side holds at exactly that
 // value for detentPixels of further travel, then continues, so every value stays reachable. An
 // arrow key press that would cross 0 dB or C stops there first.
 //

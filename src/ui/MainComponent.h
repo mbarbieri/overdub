@@ -65,9 +65,9 @@
 // through OpenSong::edit; a Mixer drag in progress is heard through OpenSong::previewMix (issue #31).
 // In Edit mode the Mixer's focused fader or pan takes keys first (issue #129, Mixer::handleKey):
 // its arrows do not move the playhead. Its focus is released by a mouse down anywhere outside it
-// (the window listens to every child's mouse), Esc or a mode change. Its run of arrow presses is
+// (the window listens to every child's mouse), Esc or a mode change. Its burst of arrow presses is
 // committed by the poll once due, and at once before undo, redo, record, an import, a Separation
-// or any other edit (which keeps the run's value unless it set that control itself).
+// or any other edit (which keeps the burst's value unless it set that control itself).
 //
 // Separation (issues #114, #115): Separate... in a Record row's menu (right-click) starts one
 // (OpenSong::startSeparation); disabled, the menu item says why. While it runs the Separation
@@ -151,7 +151,7 @@ public:
     std::function<void (juce::File current, std::function<void (std::optional<juce::File>)>)> chooseExportDestination;
     std::function<void (const juce::File&)> revealInFinder;
     juce::File exportFolder = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Overdub");
-    // The time a key press happens (the Mixer's arrow-key runs); tests set a fixed one.
+    // The time a key press happens (the Mixer's arrow-key bursts); tests set a fixed one.
     std::function<song::SongPackage::Clock::time_point()> clock = [] { return song::SongPackage::Clock::now(); };
     // The File menu's New Song and Open, offered on the no-Song page.
     std::function<void()> onNewSong;

@@ -72,11 +72,10 @@ TEST_CASE ("a fader drag that crosses 0 dB holds there for the detent's extra tr
     CHECK_THAT (faderDragDb (6.0, -34, 200), WithinAbs (-0.4, 1.0e-9));
     CHECK_THAT (faderDragDb (6.0, -1000, 200), WithinAbs (-60.0, 1.0e-9));
 
-    // A drag that starts at 0 dB holds there for the detent in either direction.
-    CHECK_THAT (faderDragDb (0.0, 8, 200), WithinAbs (0.0, 1.0e-9));
-    CHECK_THAT (faderDragDb (0.0, -8, 200), WithinAbs (0.0, 1.0e-9));
-    CHECK_THAT (faderDragDb (0.0, 9, 200), WithinAbs (0.2, 1.0e-9));
-    CHECK_THAT (faderDragDb (0.0, -9, 200), WithinAbs (-0.4, 1.0e-9));
+    // A drag that starts at 0 dB does not cross it: it moves at once. 1 px louder is position
+    // 0.755, +0.24 dB; 1 px quieter is 0.745, -0.4 dB.
+    CHECK_THAT (faderDragDb (0.0, 1, 200), WithinAbs (0.2, 1.0e-9));
+    CHECK_THAT (faderDragDb (0.0, -1, 200), WithinAbs (-0.4, 1.0e-9));
 }
 
 TEST_CASE ("dragging the pan control moves pan across its width, from hard left to hard right", "[ui][mixer]")
@@ -111,11 +110,9 @@ TEST_CASE ("a pan drag that crosses centre holds at C for the detent's extra tra
     CHECK_THAT (panDrag (0.5, -33, 100), WithinAbs (0.0, 1.0e-9));
     CHECK_THAT (panDrag (0.5, -40, 100), WithinAbs (-0.14, 1.0e-9));
 
-    // From C, either direction.
-    CHECK_THAT (panDrag (0.0, 8, 100), WithinAbs (0.0, 1.0e-9));
-    CHECK_THAT (panDrag (0.0, -8, 100), WithinAbs (0.0, 1.0e-9));
-    CHECK_THAT (panDrag (0.0, 10, 100), WithinAbs (0.04, 1.0e-9));
-    CHECK_THAT (panDrag (0.0, -10, 100), WithinAbs (-0.04, 1.0e-9));
+    // A drag that starts at C does not cross it: it moves at once.
+    CHECK_THAT (panDrag (0.0, 1, 100), WithinAbs (0.02, 1.0e-9));
+    CHECK_THAT (panDrag (0.0, -1, 100), WithinAbs (-0.02, 1.0e-9));
 }
 
 TEST_CASE ("an arrow key moves a fader by 1 dB (0.1 fine), stopping at 0 dB when it would cross it", "[ui][mixer]")

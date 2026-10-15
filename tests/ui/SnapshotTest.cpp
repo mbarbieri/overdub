@@ -216,7 +216,7 @@ TEST_CASE ("snapshots of the Mixer with four strips and the Master, and hidden",
     dragFader (mixer.strips[1]->fader, -12); // Guitar up
     dragPan (mixer.strips[1]->panControl, -25);
     dragPan (mixer.strips[3]->panControl, 30);
-    dragFader (mixer.masterStrip.fader, 14);
+    dragFader (mixer.masterStrip.fader, 8);
     click (mixer.strips[2]->muteButton); // Vocals muted
     click (window.editPage.timeline.headers[3]->soloButton); // Keys soloed from its header
     click (window.editPage.timeline.headers[3]->soloButton); // and unsoloed again
