@@ -233,6 +233,7 @@ MainComponent::MainComponent()
     addChildComponent (separationDialog); // last: on top of everything
 
     setWantsKeyboardFocus (true);
+    addMouseListener (this, true);
     setSize (1200, 800);
     refresh();
     startTimer (pollIntervalMs);
@@ -345,17 +346,20 @@ void MainComponent::perform (Command command)
     switch (command)
     {
         case Command::record:
+            editPage.mixer.commitKeyBurst();
             if (auto started = openSong->record(); ! started.has_value())
                 handleError (started.error());
             break;
         case Command::playOrStop: openSong->playOrStop(); break;
         case Command::rewind: openSong->rewind(); break;
         case Command::undo:
+            editPage.mixer.commitKeyBurst();
             if (openSong->package().canUndo())
                 if (auto undone = openSong->undo(); ! undone.has_value())
                     handleError (undone.error());
             break;
         case Command::redo:
+            editPage.mixer.commitKeyBurst();
             if (openSong->package().canRedo())
                 if (auto redone = openSong->redo(); ! redone.has_value())
                     handleError (redone.error());
@@ -423,6 +427,13 @@ void MainComponent::applyEdit (core::Expected<song::Song> changed, const std::st
         handleError (changed.error());
         return;
     }
+    if (editPage.mixer.hasKeyBurst())
+    {
+        // `changed` was made from the Song before the burst: commit the burst, then keep its value.
+        auto carried = editPage.mixer.withKeyBurstCarried (std::move (*changed));
+        editPage.mixer.commitKeyBurst();
+        changed = std::move (carried);
+    }
     if (auto edited = openSong->edit (std::move (*changed), label); ! edited.has_value())
         handleError (edited.error());
     refresh();
@@ -479,7 +490,10 @@ void MainComponent::jumpToPass (const song::Id& passId)
 void MainComponent::showMode (Mode mode)
 {
     if (mode != currentMode)
+    {
+        editPage.mixer.releaseFocus();
         core::logEvent (core::Level::debug, "ui.mode_changed", { { "mode", modeName (mode) } });
+    }
     currentMode = mode;
     refresh();
 }
@@ -500,6 +514,7 @@ void MainComponent::importFiles (const std::vector<juce::File>& files)
 {
     if (openSong == nullptr || files.empty())
         return;
+    editPage.mixer.commitKeyBurst();
     for (const auto& result : openSong->importFiles (files))
         if (! result.has_value())
             handleError (result.error());
@@ -557,6 +572,7 @@ void MainComponent::startSeparation (const song::Id& trackId)
 {
     if (openSong == nullptr)
         return;
+    editPage.mixer.commitKeyBurst();
     if (auto started = openSong->startSeparation (trackId); ! started.has_value())
         handleError (started.error());
     refresh();
@@ -697,6 +713,7 @@ void MainComponent::presentMessages()
 
 void MainComponent::tick (song::SongPackage::Clock::time_point now)
 {
+    editPage.mixer.commitKeyBurstIfDue (now);
     if (openSong != nullptr)
         handleErrors (openSong->poll (now));
     refresh();
@@ -784,10 +801,18 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     // The Separation dialog is modal: it swallows every key while it shows.
     if (separating())
         return true;
+    if (currentMode == Mode::edit && editPage.mixer.handleKey (key, clock()))
+        return true;
     if (! command.has_value())
         return false;
     perform (*command);
     return true;
+}
+
+void MainComponent::mouseDown (const juce::MouseEvent& event)
+{
+    if (! editPage.mixer.isFocusedControl (event.originalComponent))
+        editPage.mixer.releaseFocus();
 }
 
 void MainComponent::takeKeyboardFocus()

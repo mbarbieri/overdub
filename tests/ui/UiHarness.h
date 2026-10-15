@@ -76,6 +76,14 @@ inline void clickAt (juce::Component& target, juce::Point<int> position)
     drag (target, position, position);
 }
 
+// A double-click at a point, as JUCE delivers it: down, up, down, up, then mouseDoubleClick.
+inline void doubleClickAt (juce::Component& target, juce::Point<int> position)
+{
+    clickAt (target, position);
+    clickAt (target, position);
+    target.mouseDoubleClick (mouseEventAt (target, position.toFloat(), juce::ModifierKeys()));
+}
+
 // Delivers a key press; returns whether the Component used it.
 inline bool pressKey (juce::Component& target, const juce::KeyPress& key)
 {

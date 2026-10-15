@@ -205,8 +205,7 @@ TEST_CASE ("snapshots of the Mixer with four strips and the Master, and hidden",
     auto& mixer = window.editPage.mixer;
     REQUIRE (mixer.strips.size() == 4);
     const auto dragFader = [] (overdub::ui::MixerFader& fader, int deltaY) {
-        const auto y = overdub::ui::MixerFader::thumbHeight / 2 + (int) std::lround ((1.0 - overdub::ui::dbToFaderPosition (fader.db())) * fader.travel());
-        const juce::Point<int> grab { fader.getWidth() / 2, y };
+        const auto grab = fader.thumbCentre();
         drag (fader, grab, grab.translated (0, deltaY));
     };
     const auto dragPan = [] (overdub::ui::PanControl& pan, int deltaX) {
