@@ -1,6 +1,7 @@
 #include "ui/Timeline.h"
 
 #include "core/Error.h"
+#include "core/Log.h"
 #include "song/ClipEdits.h"
 #include "song/TakeEdits.h"
 #include "song/VideoTakeEdits.h"
@@ -116,6 +117,7 @@ TrackHeader::TrackHeader()
         if (onDelete)
             onDelete();
     };
+    addAndMakeVisible (grip);
     addAndMakeVisible (armButton);
     addAndMakeVisible (nameLabel);
     addChildComponent (takesButton);
@@ -136,6 +138,7 @@ void TrackHeader::show (const song::Track& track, bool enabled, bool deletable, 
     nameLabel.setText (juce::String::fromUTF8 (track.name.c_str()), juce::dontSendNotification);
     armButton.setToggleState (track.armed, juce::dontSendNotification);
     armButton.setEnabled (enabled);
+    grip.setEnabled (enabled);
     muted = track.mute;
     soloed = track.solo;
     muteButton.setToggleState (track.mute, juce::dontSendNotification);
@@ -151,6 +154,7 @@ void TrackHeader::show (const song::Track& track, bool enabled, bool deletable, 
 void TrackHeader::resized()
 {
     const auto headerLayout = trackHeaderLayout (getLocalBounds());
+    grip.setBounds (headerLayout.grip);
     armButton.setBounds (headerLayout.arm);
     nameLabel.setBounds (headerLayout.name);
     takesButton.setBounds (headerLayout.takesToggle);
@@ -206,6 +210,8 @@ void Timeline::show (const TimelineState& state)
         for (const auto& track : current.song.tracks)
             previousTrackIds.push_back (track.id);
     current = state;
+    if (! current.editable && cancelTrackDrag())
+        core::logEvent (core::Level::debug, "ui.track_drag_cancelled", { { "page", "edit" }, { "reason", "pass_running" } });
     if (! changed)
         return;
 
@@ -310,32 +316,98 @@ void Timeline::rebuildHeaders()
     if (sameTracks)
         return;
 
+    // Headers are kept by Track id, so a reorder moves them, and the grip whose drop reordered
+    // the Song survives its own gesture.
+    auto previous = std::move (headers);
     headers.clear();
     for (const auto& track : tracks)
     {
+        const auto kept = std::ranges::find_if (previous, [&track] (const auto& header) { return header != nullptr && header->trackId() == track.id; });
+        if (kept != previous.end())
+        {
+            headers.push_back (std::move (*kept));
+            continue;
+        }
         auto header = std::make_unique<TrackHeader>();
-        const auto trackId = track.id;
-        header->onArm = [this, trackId] (bool armed) {
-            if (onArm)
-                onArm (trackId, armed);
-        };
-        header->onToggleTakes = [this, trackId] { setTakeLanesUnfolded (trackId, ! areTakeLanesUnfolded (trackId)); };
-        header->onMute = [this, trackId] (bool mute) {
-            if (onMute)
-                onMute (trackId, mute);
-        };
-        header->onSolo = [this, trackId] (bool solo) {
-            if (onSolo)
-                onSolo (trackId, solo);
-        };
-        header->onDelete = [this, trackId] {
-            if (onDeleteTrack)
-                onDeleteTrack (trackId);
-        };
+        connectHeader (*header, track.id);
         trackHeaderColumn.addAndMakeVisible (*header);
         headers.push_back (std::move (header));
     }
     resized();
+}
+
+void Timeline::connectHeader (TrackHeader& header, const song::Id& trackId)
+{
+    header.grip.onPress = [this, &header] (juce::Point<int> inGrip) { beginTrackDrag (header, inGrip); };
+    header.grip.onDrag = [this, &header] (juce::Point<int> inGrip) { dragTrack (header, inGrip); };
+    header.grip.onRelease = [this, &header] (juce::Point<int> inGrip) { dropTrack (header, inGrip); };
+    header.onArm = [this, trackId] (bool armed) {
+        if (onArm)
+            onArm (trackId, armed);
+    };
+    header.onToggleTakes = [this, trackId] { setTakeLanesUnfolded (trackId, ! areTakeLanesUnfolded (trackId)); };
+    header.onMute = [this, trackId] (bool mute) {
+        if (onMute)
+            onMute (trackId, mute);
+    };
+    header.onSolo = [this, trackId] (bool solo) {
+        if (onSolo)
+            onSolo (trackId, solo);
+    };
+    header.onDelete = [this, trackId] {
+        if (onDeleteTrack)
+            onDeleteTrack (trackId);
+    };
+}
+
+std::vector<juce::Range<int>> Timeline::trackRowSpans() const
+{
+    std::vector<juce::Range<int>> spans;
+    const auto top = layout.tracksViewport.getY() - verticalScrollPixels;
+    for (const auto& row : layout.trackRows)
+        spans.push_back (row + top);
+    return spans;
+}
+
+void Timeline::beginTrackDrag (TrackHeader& header, juce::Point<int> inGrip)
+{
+    const auto& tracks = current.song.tracks;
+    const auto found = std::ranges::find (tracks, header.trackId(), &song::Track::id);
+    if (! current.editable || found == tracks.end())
+        return;
+    const auto from = (std::size_t) (found - tracks.begin());
+    const auto row = getLocalArea (&header, header.getLocalBounds());
+    const auto pointerY = getLocalPoint (&header.grip, inGrip).y;
+    activeTrackDrag.begin (header.trackId(), from, row, header.createComponentSnapshot (header.getLocalBounds()), pointerY, trackRowSpans());
+    core::logEvent (core::Level::debug, "ui.track_drag_started", { { "page", "edit" }, { "track_id", header.trackId() }, { "from", from } });
+    repaint();
+}
+
+void Timeline::dragTrack (TrackHeader& header, juce::Point<int> inGrip)
+{
+    if (! activeTrackDrag.isActive())
+        return;
+    activeTrackDrag.moveTo (getLocalPoint (&header.grip, inGrip).y, trackRowSpans());
+    repaint();
+}
+
+void Timeline::dropTrack (TrackHeader& header, juce::Point<int> inGrip)
+{
+    const auto drop = activeTrackDrag.end (getLocalPoint (&header.grip, inGrip).y, trackRowSpans());
+    repaint();
+    if (! drop.has_value())
+        return;
+    core::logEvent (core::Level::debug, "ui.track_dropped", { { "page", "edit" }, { "track_id", drop->trackId }, { "from", drop->from }, { "to", drop->to } });
+    if (drop->to != drop->from && onMoveTrack)
+        onMoveTrack (drop->trackId, drop->to);
+}
+
+bool Timeline::cancelTrackDrag()
+{
+    if (! activeTrackDrag.cancel())
+        return false;
+    repaint();
+    return true;
 }
 
 void Timeline::revealNewTracks (const std::vector<song::Id>& previousTrackIds)
@@ -702,6 +774,11 @@ void Timeline::paint (juce::Graphics& g)
 
 void Timeline::paintOverChildren (juce::Graphics& g)
 {
+    {
+        juce::Graphics::ScopedSaveState saved (g);
+        g.reduceClipRegion (layout.tracksViewport);
+        activeTrackDrag.paint (g, layout.tracksViewport.getX(), layout.tracksViewport.getRight());
+    }
     // Over the Track headers too, so the whole Timeline reads as the drop target.
     if (! dropHighlighted)
         return;

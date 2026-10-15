@@ -1,5 +1,6 @@
 #include "ui/RecordPage.h"
 
+#include "core/Log.h"
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 #include "ui/MixerGeometry.h"
@@ -168,6 +169,7 @@ TrackRow::TrackRow()
         button->setWantsKeyboardFocus (false);
     inputPicker.setWantsKeyboardFocus (false);
 
+    addAndMakeVisible (grip);
     addAndMakeVisible (armButton);
     nameLabel.setInterceptsMouseClicks (false, false); // a click on the name is the row's
     addAndMakeVisible (nameLabel);
@@ -206,7 +208,7 @@ void TrackRow::show (const TrackRowState& state)
     else
         inputPicker.setSelectedId (0, juce::dontSendNotification);
 
-    for (auto* control : std::initializer_list<juce::Component*> { &armButton, &muteButton, &soloButton, &inputPicker, &monitoringButton, &fader })
+    for (auto* control : std::initializer_list<juce::Component*> { &grip, &armButton, &muteButton, &soloButton, &inputPicker, &monitoringButton, &fader })
         control->setEnabled (state.enabled);
     showVolume (state.volumeDb);
     repaint();
@@ -231,6 +233,7 @@ void TrackRow::showMeters (const engine::MeterPeaks& peaks)
 void TrackRow::resized()
 {
     const auto layout = trackRowLayout (getLocalBounds());
+    grip.setBounds (layout.grip);
     armButton.setBounds (layout.arm);
     nameLabel.setBounds (layout.name);
     muteButton.setBounds (layout.mute);
@@ -353,9 +356,18 @@ void RecordPage::show (const RecordPageState& state, const song::Song& song)
                          && std::equal (rows.begin(), rows.end(), state.rows.begin(), [] (const auto& row, const auto& rowState) { return row->trackId() == rowState.trackId; });
     if (! sameTracks)
     {
+        // Rows are kept by Track id, so a reorder moves them (with their meters and clip
+        // indicators), and the grip whose drop reordered the Song survives its own gesture.
+        auto previous = std::move (rows);
         rows.clear();
         for (const auto& rowState : state.rows)
         {
+            const auto kept = std::ranges::find_if (previous, [&rowState] (const auto& row) { return row != nullptr && row->trackId() == rowState.trackId; });
+            if (kept != previous.end())
+            {
+                rows.push_back (std::move (*kept));
+                continue;
+            }
             auto row = std::make_unique<TrackRow>();
             connectRow (*row, rowState.trackId);
             row->insertChain.actions = &insertActions;
@@ -372,6 +384,9 @@ void RecordPage::show (const RecordPageState& state, const song::Song& song)
         rows[i]->show (rowState);
     }
     showFocus();
+    rowsEnabled = std::ranges::all_of (state.rows, &TrackRowState::enabled);
+    if (! rowsEnabled && cancelTrackDrag())
+        core::logEvent (core::Level::debug, "ui.track_drag_cancelled", { { "page", "record" }, { "reason", "pass_running" } });
     addTrackButton.setEnabled (state.canAddTracks);
     importButton.setEnabled (state.canAddTracks);
     emptyLabel.setVisible (rows.empty());
@@ -419,12 +434,62 @@ void RecordPage::connectRow (TrackRow& row, const song::Id& trackId)
         if (onTrackMenu)
             onTrackMenu (trackId);
     };
+    row.grip.onPress = [this, &row] (juce::Point<int> inGrip) { beginTrackDrag (row, inGrip); };
+    row.grip.onDrag = [this, &row] (juce::Point<int> inGrip) { dragTrack (row, inGrip); };
+    row.grip.onRelease = [this, &row] (juce::Point<int> inGrip) { dropTrack (row, inGrip); };
     const MixerControl volume { trackId, MixerControlKind::volume };
     row.onVolumeGrab = [this, volume] { mix.focus (volume); };
     row.onVolumeDrag = [this, volume] (double db) { mix.drag (volume, db); };
     row.onVolumeChanged = [this, volume] (double db) { mix.set (volume, db); };
     row.onVolumeAbandoned = [this] { mix.abandon(); };
     row.onVolumeReset = [this, volume] { mix.set (volume, 0.0); };
+}
+
+std::vector<juce::Range<int>> RecordPage::trackRowSpans() const
+{
+    std::vector<juce::Range<int>> spans;
+    for (const auto& row : rows)
+        spans.push_back (row->getBounds().getVerticalRange());
+    return spans;
+}
+
+void RecordPage::beginTrackDrag (TrackRow& row, juce::Point<int> inGrip)
+{
+    const auto found = std::ranges::find_if (rows, [&row] (const auto& candidate) { return candidate.get() == &row; });
+    if (! rowsEnabled || found == rows.end())
+        return;
+    const auto from = (std::size_t) (found - rows.begin());
+    const auto pointerY = getLocalPoint (&row.grip, inGrip).y;
+    activeTrackDrag.begin (row.trackId(), from, row.getBounds(), row.createComponentSnapshot (row.getLocalBounds()), pointerY, trackRowSpans());
+    core::logEvent (core::Level::debug, "ui.track_drag_started", { { "page", "record" }, { "track_id", row.trackId() }, { "from", from } });
+    repaint();
+}
+
+void RecordPage::dragTrack (TrackRow& row, juce::Point<int> inGrip)
+{
+    if (! activeTrackDrag.isActive())
+        return;
+    activeTrackDrag.moveTo (getLocalPoint (&row.grip, inGrip).y, trackRowSpans());
+    repaint();
+}
+
+void RecordPage::dropTrack (TrackRow& row, juce::Point<int> inGrip)
+{
+    const auto drop = activeTrackDrag.end (getLocalPoint (&row.grip, inGrip).y, trackRowSpans());
+    repaint();
+    if (! drop.has_value())
+        return;
+    core::logEvent (core::Level::debug, "ui.track_dropped", { { "page", "record" }, { "track_id", drop->trackId }, { "from", drop->from }, { "to", drop->to } });
+    if (drop->to != drop->from && onMoveTrack)
+        onMoveTrack (drop->trackId, drop->to);
+}
+
+bool RecordPage::cancelTrackDrag()
+{
+    if (! activeTrackDrag.cancel())
+        return false;
+    repaint();
+    return true;
 }
 
 TrackRow* RecordPage::rowFor (const song::Id& trackId)
@@ -525,5 +590,13 @@ void RecordPage::resized()
 void RecordPage::paint (juce::Graphics& g)
 {
     g.fillAll (colours::background);
+}
+
+void RecordPage::paintOverChildren (juce::Graphics& g)
+{
+    if (rows.empty())
+        return;
+    const auto column = rows.front()->getBounds();
+    activeTrackDrag.paint (g, column.getX(), column.getRight());
 }
 } // namespace overdub::ui

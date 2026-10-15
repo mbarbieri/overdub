@@ -170,6 +170,7 @@ MainComponent::MainComponent()
     };
     recordPage.onAddTrack = [this] { addTrack(); };
     recordPage.onTrackMenu = [this] (const song::Id& trackId) { showTrackMenu (trackId); };
+    recordPage.onMoveTrack = [this] (const song::Id& trackId, std::size_t toIndex) { moveTrack (trackId, toIndex); };
     recordPage.onImport = [this] {
         if (openSong == nullptr || ! openSong->canChangeTracks() || ! chooseFilesToImport)
             return;
@@ -205,6 +206,7 @@ MainComponent::MainComponent()
         return openSong != nullptr && openSong->canChangeTracks();
     };
     editPage.timeline.onFilesDropped = [this] (std::vector<juce::File> files) { importFiles (files); };
+    editPage.timeline.onMoveTrack = [this] (const song::Id& trackId, std::size_t toIndex) { moveTrack (trackId, toIndex); };
     editPage.timeline.peaksFor = [this] (const song::ClipSource& source) -> const song::Peaks& {
         static const song::Peaks none;
         return openSong != nullptr ? openSong->peaks (source) : none;
@@ -566,6 +568,25 @@ void MainComponent::deleteTrack (const song::Id& trackId)
     takeKeyboardFocus();
 }
 
+void MainComponent::moveTrack (const song::Id& trackId, std::size_t toIndex)
+{
+    if (openSong == nullptr || passRunning())
+        return;
+    auto moved = song::moveTrack (openSong->song(), trackId, toIndex);
+    if (! moved.has_value())
+    {
+        handleError (moved.error());
+        return;
+    }
+    if (! moved->has_value())
+        return; // dropped back in its own slot: no undo step, no save
+    applyEdit (std::move ((*moved)->song), (*moved)->label);
+    const auto& tracks = openSong->song().tracks;
+    if (toIndex >= tracks.size() || tracks[toIndex].id != trackId)
+        return; // the Song is locked (a Separation runs), or the edit failed and applyEdit reported it
+    core::logEvent (core::Level::info, "ui.track_moved", { { "track_id", trackId }, { "to", toIndex } });
+}
+
 void MainComponent::showTrackMenu (const song::Id& trackId)
 {
     if (openSong == nullptr || separating() || ! chooseTrackMenuItem)
@@ -820,6 +841,11 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     // The Separation dialog is modal: it swallows every key while it shows.
     if (separating())
         return true;
+    if (key.isKeyCode (juce::KeyPress::escapeKey) && (editPage.timeline.cancelTrackDrag() || recordPage.cancelTrackDrag()))
+    {
+        core::logEvent (core::Level::debug, "ui.track_drag_cancelled", { { "reason", "escape" } });
+        return true;
+    }
     if (currentMode == Mode::edit && editPage.mixer.mix.handleKey (key, clock()))
         return true;
     if (currentMode == Mode::record && recordPage.mix.handleKey (key, clock()))

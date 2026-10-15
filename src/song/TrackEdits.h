@@ -3,10 +3,13 @@
 #include "core/Error.h"
 #include "song/Song.h"
 
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
-// Adding an empty Track to record on (issue #109) and deleting one (issue #124) as pure
+// Adding an empty Track to record on (issue #109), deleting one (issue #124) and moving one
+// (issue #138) as pure
 // functions. The caller makes the returned Song one undo step with the returned label
 // (SongPackage::edit). Armed and the input channels stay outside history
 // (keepStateOutsideHistory), so undo removes an added Track and redo brings it back Armed as it
@@ -37,4 +40,18 @@ struct DeletedTrack
 // Backing Tracks stay (media is never deleted), so a deleted Track's Takes dangle (Take::trackId).
 // Errors: song.track_not_found (track_id).
 core::Expected<DeletedTrack> deleteTrack (Song song, const Id& trackId);
+
+inline constexpr auto moveTrackLabel = "Move Track";
+
+struct MovedTrack
+{
+    Song song;
+    std::string label; // moveTrackLabel
+};
+
+// The Song with the Track moved to `toIndex` of the Track order (clamped to the last place); the
+// other Tracks keep their order and nothing else changes. No MovedTrack (no undo step) when the
+// Track is already at that index.
+// Errors: song.track_not_found (track_id).
+core::Expected<std::optional<MovedTrack>> moveTrack (Song song, const Id& trackId, std::size_t toIndex);
 } // namespace overdub::song

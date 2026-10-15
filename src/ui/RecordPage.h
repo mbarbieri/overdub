@@ -11,6 +11,7 @@
 #include "ui/PassesPanel.h"
 #include "ui/RecordView.h"
 #include "ui/SongOverview.h"
+#include "ui/TrackDrag.h"
 #include "ui/TrackRowEdits.h"
 #include "ui/VideoScreen.h"
 
@@ -28,7 +29,7 @@
 // stage. The stage shows the camera's live feed (ui/CameraStage.h) while the camera is Armed and a
 // Pass runs or the transport is stopped (to frame the shot); otherwise it shows Video Take
 // playback (issue #36, ui/VideoScreen.h, stageShowsLiveFeed).
-// Right column: one row per Track (arm, name, M and S (issue #31), input picker, Monitoring), the
+// Right column: one row per Track (grip, name, A, M and S (issue #31), input picker, Monitoring), the
 // Import button, then the Passes list (heard status and ↺ Bring back; clicking a row jumps to the
 // Pass's start). Along the bottom: the Backing Track look-ahead strip and the whole-Song overview
 // (a click moves the playhead). Under each row's name: the Track's Insert Chain (issue #34,
@@ -37,7 +38,9 @@
 // (issue #114: Separate...). Along each row's bottom: the Track's horizontal volume fader and its dB
 // text (issue #130), the same volume as its Mixer fader and behaving exactly like it (MixFocus:
 // drags, detent, double-click, keyboard focus, arrow keys and their undo steps); dimmed and inert
-// while a Pass runs. Under the fader, a level meter on the fader's scale (issue #131): an Armed
+// while a Pass runs. Dragging a row's grip reorders the Tracks (issue #138, ui/TrackDrag.h); a drop
+// that changes the order is reported through onMoveTrack, and no grip drags while a Pass runs.
+// Under the fader, a level meter on the fader's scale (issue #131): an Armed
 // Track's raw input (MeterPeaks::inputs, before its Insert Chain and fader, so the fader does not
 // move it), any other Track's post-fader output (as its Mixer meter); arming or disarming switches
 // it. At the meter's right end the clip indicator (ClipIndicator).
@@ -157,6 +160,7 @@ public:
 
     void mouseDown (const juce::MouseEvent& event) override;
 
+    TrackGrip grip;
     juce::TextButton armButton { "A" };
     juce::Label nameLabel;
     juce::TextButton muteButton { "M" };
@@ -208,6 +212,16 @@ public:
     std::function<void (const song::Id&, bool)> onSolo;
     // A row's menu was asked for (issue #114).
     std::function<void (const song::Id&)> onTrackMenu;
+    // A grip drag dropped the Track at this index of the Track order (a different one).
+    std::function<void (const song::Id& trackId, std::size_t toIndex)> onMoveTrack;
+
+    // The grip drag in progress, if any; cancelTrackDrag ends it without a drop and returns whether
+    // there was one (Esc).
+    const TrackDrag& trackDrag() const { return activeTrackDrag; }
+    bool cancelTrackDrag();
+    // Each row as a vertical span in this Component's coordinates, in Song order.
+    std::vector<juce::Range<int>> trackRowSpans() const;
+    void paintOverChildren (juce::Graphics& g) override;
     // The Insert Chains' gestures (every row's).
     InsertChainActions insertActions;
     std::function<void()> onAddTrack;
@@ -243,10 +257,15 @@ public:
 private:
     void showLookAhead();
     void connectRow (TrackRow& row, const song::Id& trackId);
+    void beginTrackDrag (TrackRow& row, juce::Point<int> inGrip);
+    void dragTrack (TrackRow& row, juce::Point<int> inGrip);
+    void dropTrack (TrackRow& row, juce::Point<int> inGrip);
     TrackRow* rowFor (const song::Id& trackId);
     void showFocus();
 
     song::PreRoll shownPreRoll = song::PreRoll::off;
+    TrackDrag activeTrackDrag;
+    bool rowsEnabled = true;
     CameraControlsState shownCamera;
 
     // What showSong last showed, to recompute only on change.
