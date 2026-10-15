@@ -164,6 +164,32 @@ TEST_CASE ("Separate... on a Backing Track's row opens a modal dialog whose prog
     CHECK_FALSE (isShown (dialog));
 }
 
+TEST_CASE ("while a Separation runs, arm, input, pre-roll, Monitoring, the camera and Mixer previews are ignored", "[ui][separation]")
+{
+    SeparateFixture s;
+    const auto& guitarId = s.f.trackNamed ("Guitar").id;
+    s.rightClickRow ("Band Mix");
+    REQUIRE (s.f.openSong->isSeparating());
+    const auto before = s.f.song();
+
+    auto quieter = before;
+    quieter.master.volumeDb = -60.0;
+    s.f.openSong->setArmed (guitarId, false);
+    s.f.openSong->setInputChannels (guitarId, { 1 });
+    s.f.openSong->setPreRoll (before.preRoll == song::PreRoll::off ? song::PreRoll::oneSecond : song::PreRoll::off);
+    s.f.openSong->setMonitoring (guitarId, true);
+    s.f.openSong->previewMix (quieter);
+    CHECK (s.f.openSong->setCameraArmed (true).has_value());
+
+    CHECK (s.f.song() == before);
+    CHECK_FALSE (s.f.openSong->isMonitoring (guitarId));
+    CHECK (s.f.openSong->cameraPreviewLayer() == nullptr);
+
+    for (int poll = 0; poll < 20 && s.f.openSong->isSeparating(); ++poll)
+        s.f.window->tick();
+    REQUIRE_FALSE (s.f.openSong->isSeparating());
+}
+
 TEST_CASE ("a finished Separation adds six Backing Tracks on six Tracks below the source Track, which is muted", "[ui][separation]")
 {
     SeparateFixture s;
