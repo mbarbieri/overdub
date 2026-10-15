@@ -2,9 +2,11 @@
 
 #include "song/ClipEdits.h"
 #include "song/TakeEdits.h"
+#include "song/VideoTakeEdits.h"
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -15,6 +17,8 @@ namespace overdub::ui
 
 namespace
 {
+constexpr const char* noSelectionHint = "Select a Clip. Drag it to move, its edges to trim, its top corners to fade, its dB tag for gain. S splits at the playhead.";
+
 std::string trimmed (const std::string& text)
 {
     const auto first = text.find_first_not_of (" \t");
@@ -69,12 +73,12 @@ ClipToolbarState clipToolbarStateFor (const song::Song& song, const std::optiona
     const auto* clip = selectedClip.has_value() ? song::findClip (song, *selectedClip) : nullptr;
     if (clip == nullptr)
     {
-        state.details = "Select a Clip. Drag it to move, its edges to trim, its top corners to fade, its dB tag for gain. S splits at the playhead.";
+        state.details = noSelectionHint;
         return state;
     }
 
     const auto* track = song::trackOfClip (song, clip->id);
-    state.hasClip = true;
+    state.hasSelection = true;
     state.details = std::format ("{} on {} \xC2\xB7 start {} \xC2\xB7 length {}",
                                  clipName (song, *clip),
                                  track->name,
@@ -86,6 +90,23 @@ ClipToolbarState clipToolbarStateFor (const song::Song& song, const std::optiona
     state.fadeInText = secondsText (clip->fadeInLength, song.sampleRate);
     state.fadeOutText = secondsText (clip->fadeOutLength, song.sampleRate);
     state.gainText = decibelsText (clip->gainDb);
+    return state;
+}
+
+ClipToolbarState videoTakeToolbarStateFor (const song::Song& song, const std::vector<video::VideoTakeSpan>& videoTakes, const song::Id& videoTakeId, bool editable)
+{
+    ClipToolbarState state;
+    const auto span = std::ranges::find (videoTakes, videoTakeId, &video::VideoTakeSpan::videoTakeId);
+    if (span == videoTakes.end() || song::findVideoTake (song, videoTakeId) == nullptr)
+    {
+        state.details = noSelectionHint;
+        return state;
+    }
+
+    const auto length = span->readable ? "length " + secondsText (span->end - span->start, song.sampleRate) : std::string ("movie missing");
+    state.hasSelection = true;
+    state.details = std::format ("Video Take \xC2\xB7 {} \xC2\xB7 start {} \xC2\xB7 {}", span->title, secondsText (span->start, song.sampleRate), length);
+    state.canDelete = editable;
     return state;
 }
 
@@ -163,7 +184,7 @@ ClipToolbar::ClipToolbar()
 void ClipToolbar::show (const ClipToolbarState& state, bool mixerVisible, bool videoPreviewShown)
 {
     details.setText (juce::String::fromUTF8 (state.details.c_str()), juce::dontSendNotification);
-    details.setColour (juce::Label::textColourId, state.hasClip ? colours::text : colours::dimText);
+    details.setColour (juce::Label::textColourId, state.hasSelection ? colours::text : colours::dimText);
     splitButton.setEnabled (state.canSplit);
     deleteButton.setEnabled (state.canDelete);
     fadeInField.setText (juce::String::fromUTF8 (state.fadeInText.c_str()), juce::dontSendNotification);
@@ -370,7 +391,10 @@ void EditPage::bringBackPass (const song::Id& passId)
 
 void EditPage::showToolbar()
 {
-    toolbar.show (clipToolbarStateFor (current.song, timeline.selectedClip(), current.playhead, current.editable), mixerVisible, videoPreviewShown);
+    const auto& videoTake = timeline.selectedVideoTake();
+    const auto state = videoTake.has_value() ? videoTakeToolbarStateFor (current.song, current.videoTakes, *videoTake, current.editable)
+                                             : clipToolbarStateFor (current.song, timeline.selectedClip(), current.playhead, current.editable);
+    toolbar.show (state, mixerVisible, videoPreviewShown);
 }
 
 void EditPage::setVideoPreviewShown (bool shown)

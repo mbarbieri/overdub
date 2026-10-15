@@ -29,7 +29,8 @@
 // Gestures (thin over ui/TimelineGeometry.h): clicking a Clip selects it, dragging its body moves
 // it, dragging an edge trims it, dragging a fade handle sets that fade, dragging the dB tag up or
 // down sets the gain; the drag is previewed and reported once, on mouse up, as one Song and its
-// undo label. Clicking empty lane space clears the selection; clicking or dragging
+// undo label. Clicking a Video Take's block in the Camera lane selects it (issue #128; it cannot be
+// dragged). Clicking empty lane space clears the selection; clicking or dragging
 // in the ruler moves the playhead. The scroll bar and the mouse wheel scroll; zoomIn/zoomOut zoom.
 // Selection and the view are transient UI state, never in the Song.
 //
@@ -120,8 +121,12 @@ public:
     void zoomIn();
     void zoomOut();
 
+    // Selection is single: at most one Clip or one Video Take. Selecting either clears the other;
+    // selectClip (std::nullopt) clears both.
     const std::optional<song::Id>& selectedClip() const { return selected; }
     void selectClip (std::optional<song::Id> clipId);
+    const std::optional<song::Id>& selectedVideoTake() const { return selectedVideo; }
+    void selectVideoTake (std::optional<song::Id> videoTakeId);
 
     // Where a Clip of the shown Song is drawn, in this Component's coordinates (cut to its lane);
     // empty when it is not on screen.
@@ -193,6 +198,9 @@ private:
     };
 
     void scrollBarMoved (juce::ScrollBar* bar, double newRangeStart) override;
+    void setSelection (std::optional<song::Id> clipId, std::optional<song::Id> videoTakeId);
+    // The Video Take whose block is at this point, the one drawn on top where blocks overlap.
+    std::optional<song::Id> videoTakeAt (juce::Point<int> position) const;
     void rebuildHeaders();
     void showHeaders();
     void refreshTakeLanes();
@@ -223,7 +231,8 @@ private:
     int verticalScrollPixels = 0;
     TimelineLayout layout;
     juce::Component trackHeaderColumn; // the tracks viewport's header column: cuts off scrolled headers
-    std::optional<song::Id> selected;
+    std::optional<song::Id> selected;      // a Clip
+    std::optional<song::Id> selectedVideo; // a Video Take; never set together with `selected`
     std::set<song::Id> unfoldedTracks;
     std::vector<std::vector<TakeLaneRow>> takeLanes; // per Track of the shown Song; empty when folded
 
