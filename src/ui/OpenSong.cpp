@@ -201,7 +201,7 @@ std::optional<song::SampleCount> OpenSong::runningPassStart() const
 
 void OpenSong::setPreRoll (song::PreRoll preRoll)
 {
-    if (recorder != nullptr || preRoll == song().preRoll)
+    if (songLocked() || preRoll == song().preRoll)
         return;
     auto changed = song();
     changed.preRoll = preRoll;
@@ -290,7 +290,7 @@ void OpenSong::notePluginStateChanged()
 
 void OpenSong::previewMix (const song::Song& candidate)
 {
-    if (recorder != nullptr || binding.engine == nullptr || ! song::differsOnlyInMix (song(), candidate))
+    if (songLocked() || binding.engine == nullptr || ! song::differsOnlyInMix (song(), candidate))
         return;
     binding.engine->setMix (candidate);
 }
@@ -333,7 +333,7 @@ core::Expected<void> OpenSong::redo()
 
 void OpenSong::setArmed (const song::Id& trackId, bool armed)
 {
-    if (recorder != nullptr)
+    if (songLocked())
         return;
     package_->changeWithoutHistory (withArmed (song(), trackId, armed));
     reloadEngine();
@@ -341,7 +341,7 @@ void OpenSong::setArmed (const song::Id& trackId, bool armed)
 
 void OpenSong::setInputChannels (const song::Id& trackId, std::vector<int> inputChannels)
 {
-    if (recorder != nullptr)
+    if (songLocked())
         return;
     package_->changeWithoutHistory (withInputChannels (song(), trackId, std::move (inputChannels)));
     reloadEngine();
@@ -349,7 +349,7 @@ void OpenSong::setInputChannels (const song::Id& trackId, std::vector<int> input
 
 void OpenSong::setMonitoring (const song::Id& trackId, bool on)
 {
-    if (recorder != nullptr)
+    if (songLocked())
         return;
     if (on)
         monitored.insert (trackId);
@@ -552,7 +552,7 @@ void OpenSong::disarmLostCamera()
 
 core::Expected<void> OpenSong::setCameraArmed (bool armed)
 {
-    if (recorder != nullptr || camera == nullptr || armed == song().cameraArmed)
+    if (songLocked() || camera == nullptr || armed == song().cameraArmed)
         return {};
     auto changed = song();
     changed.cameraArmed = armed;
@@ -563,7 +563,7 @@ core::Expected<void> OpenSong::setCameraArmed (bool armed)
 
 core::Expected<void> OpenSong::setCameraDevice (const std::string& cameraId)
 {
-    if (recorder != nullptr || cameraId == song().cameraDeviceId)
+    if (songLocked() || cameraId == song().cameraDeviceId)
         return {};
     auto changed = song();
     changed.cameraDeviceId = cameraId;

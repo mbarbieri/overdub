@@ -1,4 +1,5 @@
 #include "song/SongPackage.h"
+#include "core/LogEvents.h"
 #include "song/PluginBlobStore.h"
 #include "song/SongJson.h"
 
@@ -17,6 +18,7 @@
 
 using namespace std::chrono_literals;
 using overdub::core::ScopedLogCapture;
+using overdub::core::testing::firstEvent;
 using overdub::song::PackageOptions;
 using overdub::song::Song;
 using overdub::song::SongPackage;
@@ -81,14 +83,6 @@ bool hasEvent (const ScopedLogCapture& capture, const std::string& name)
     return std::ranges::any_of (events, [&] (const nlohmann::json& event) { return event.at ("event") == name; });
 }
 
-nlohmann::json firstEvent (const ScopedLogCapture& capture, const std::string& name)
-{
-    for (const auto& event : capture.events())
-        if (event.at ("event") == name)
-            return event;
-    FAIL ("no event " << name);
-    return {};
-}
 } // namespace
 
 TEST_CASE ("a created Song opens again with the same content", "[song][package]")

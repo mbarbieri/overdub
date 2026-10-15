@@ -85,8 +85,9 @@
 // Separation (issue #114, ADR 0007): startSeparation stops the transport and starts a
 // song::SeparationRun on a Track's Backing Track with the tools set by setSeparationTools; poll()
 // advances it, and once it ends reloads the engine (the six new Tracks, the source Track muted) and
-// returns its Error. While it runs, record (ui.separation_running), play, edits, undo, redo and
-// import are refused: the Separation dialog is modal. It is refused while a Pass
+// returns its Error. While it runs, record (ui.separation_running), play, edits, undo, redo,
+// import, arm, input, pre-roll, Monitoring, the camera and Mixer previews are refused: the
+// Separation dialog is modal, and the Song stays as the Separation started. It is refused while a Pass
 // (ui.stop_recording_first) or an export (ui.export_running) runs. cancelSeparation() (the dialog's
 // Cancel) and closing the Song kill the helper; the Song is unchanged.
 //
@@ -186,7 +187,8 @@ public:
     core::Expected<void> edit (song::Song changed, std::string label);
 
     // The engine plays this Song's mix (a Mixer gesture in progress) without changing the Song or
-    // its history; ignored unless it differs from the Song only in its mix, and while a Pass runs.
+    // its history; ignored unless it differs from the Song only in its mix, and while a Pass or a
+    // Separation runs.
     // A finished gesture is an edit(); an abandoned one previews song() again.
     void previewMix (const song::Song& candidate);
     // Each Mixer strip's peak since the previous call (Engine::takeMeterPeaks); none without audio.
@@ -228,9 +230,10 @@ public:
     void setExportVideoTake (const song::Id& videoTakeId);
 
     // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
-    // Ignored while a Pass runs.
+    // Ignored while a Pass or a Separation runs.
     void setPreRoll (song::PreRoll preRoll);
 
+    // Ignored while a Pass or a Separation runs.
     void setArmed (const song::Id& trackId, bool armed);
     void setInputChannels (const song::Id& trackId, std::vector<int> inputChannels);
     // The camera Video Takes are recorded from (not owned; it must outlive this OpenSong, or be
@@ -238,10 +241,10 @@ public:
     // camera is Armed. Errors: the camera's open() Errors (the camera is then disarmed).
     core::Expected<void> attachCamera (capture::Camera* camera, juce::File calibrationFile);
     // Arms (opening the Song's chosen camera, or the default one, which then becomes the choice) or
-    // disarms (closing it) the camera. Ignored while a Pass runs. Without a camera, arming does
+    // disarms (closing it) the camera. Ignored while a Pass or a Separation runs. Without a camera, arming does
     // nothing. Errors: the camera's open() Errors (the camera stays disarmed).
     core::Expected<void> setCameraArmed (bool armed);
-    // Chooses the camera (reopened when Armed). Ignored while a Pass runs.
+    // Chooses the camera (reopened when Armed). Ignored while a Pass or a Separation runs.
     // Errors: the camera's open() Errors (the camera is then disarmed).
     core::Expected<void> setCameraDevice (const std::string& cameraId);
     // The cameras on offer, as listed when the camera was attached, armed or chosen.
@@ -249,7 +252,8 @@ public:
     // The live feed (a CALayer*) while the camera is Armed and open; null otherwise.
     void* cameraPreviewLayer() const;
 
-    // Monitoring is transient (not in the Song): hearing an Armed Track's live input.
+    // Monitoring is transient (not in the Song): hearing an Armed Track's live input. Ignored while
+    // a Pass or a Separation runs.
     void setMonitoring (const song::Id& trackId, bool on);
     bool isMonitoring (const song::Id& trackId) const { return monitored.contains (trackId); }
 

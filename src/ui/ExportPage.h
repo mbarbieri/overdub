@@ -3,6 +3,7 @@
 #include "export/ExportFormat.h"
 #include "export/MovieSpan.h"
 #include "song/Song.h"
+#include "ui/ThinProgressBar.h"
 #include "video/FrameSelection.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -65,19 +66,6 @@ std::optional<song::Id> defaultExportVideoTake (const std::vector<video::VideoTa
 // "Preparing…", "Exporting… 42%", "Exported to /path/Song.wav", or empty when idle.
 std::string exportStatusText (const ExportPageState& state);
 
-// A thin bar filled to the fraction done (drawn at once, unlike juce::ProgressBar, which follows
-// its value on a timer).
-class ExportProgressBar final : public juce::Component
-{
-public:
-    void setFraction (double fraction);
-    double fraction() const { return value; }
-    void paint (juce::Graphics& g) override;
-
-private:
-    double value = 0.0;
-};
-
 // The span bar: the exported range over the scale, the Video Take on top, black around it for a
 // full-song MP4.
 class ExportSpanBar final : public juce::Component
@@ -137,7 +125,7 @@ public:
     juce::Label destinationLabel;
     juce::TextButton chooseButton { juce::String::fromUTF8 ("Choose\xe2\x80\xa6") };
     juce::TextButton exportButton { "Export" };
-    ExportProgressBar progressBar;
+    ThinProgressBar progressBar;
     juce::Label statusLabel;
     juce::TextButton revealButton { "Reveal in Finder" };
 

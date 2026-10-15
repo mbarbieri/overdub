@@ -1,4 +1,5 @@
 #include "song/Separation.h"
+#include "core/LogEvents.h"
 #include "song/BackingTrackImport.h"
 #include "song/Peaks.h"
 #include "song/SeparationModel.h"
@@ -20,6 +21,7 @@
 // The Song change of a Separation (issue #114) as pure functions, its undo step and files through
 // SongPackage::addSeparation, and song::SeparationRun over a fake helper.
 using overdub::core::ScopedLogCapture;
+using overdub::core::testing::firstEvent;
 using namespace overdub::song;
 using namespace overdub::song::testing;
 
@@ -87,14 +89,6 @@ const Track& trackNamed (const Song& song, const std::string& name)
     return *found;
 }
 
-nlohmann::json firstEvent (const ScopedLogCapture& capture, const std::string& name)
-{
-    for (const auto& event : capture.events())
-        if (event.at ("event") == name)
-            return event;
-    FAIL ("no event " << name);
-    return {};
-}
 } // namespace
 
 TEST_CASE ("a Separation adds six Tracks named after the parts directly below the source Track, which is muted", "[song][separation]")

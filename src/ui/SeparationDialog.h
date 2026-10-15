@@ -1,7 +1,7 @@
 #pragma once
 
 #include "song/SeparationRun.h"
-#include "ui/ExportPage.h"
+#include "ui/ThinProgressBar.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -37,7 +37,7 @@ public:
     // Children are public so tests can check what shows.
     juce::Label title;
     juce::Label hint;
-    ExportProgressBar progressBar;
+    ThinProgressBar progressBar;
     juce::Label statusLabel;
     juce::TextButton cancelButton { "Cancel" };
 
