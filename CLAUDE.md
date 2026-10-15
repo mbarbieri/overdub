@@ -17,6 +17,7 @@ build/debug/tests/overdub_tests "[engine][pdc]"      # a subset by Catch2 tag
 - Always use the presets: they set `x86_64`, which `CMakeLists.txt` requires (v1 is Intel-only). Keep code arm64-clean anyway: no SSE/AVX intrinsics or `x86_64` assumptions.
 - Configure applies `patches/*.patch` to `external/JUCE`; the submodule shows dirty on purpose. Never edit JUCE sources without regenerating the patch (see "Re-applying the JUCE patch" in `docs/building.md`). Patches keep CRLF bytes. If configure fails with `patch failed` after switching branches, the old patch is still applied: run `git -C external/JUCE checkout -- .` and configure again.
 - Link JUCE only through `overdub_core`, never `juce::juce_*` modules directly (duplicate symbols, second JUCE compile).
+- ONNX Runtime and pocketfft link only into `overdub-separate` (`src/separation/`), never `overdub_core` or the app; only `make app`'s bundle check catches a violation.
 - New test files must be added to `target_sources` in `tests/CMakeLists.txt`, under `tests/<area>/` mirroring `src/`. Tag `TEST_CASE`s `[area][subarea]`.
 - The full suite is the gate for every change.
 
@@ -25,6 +26,7 @@ build/debug/tests/overdub_tests "[engine][pdc]"      # a subset by Catch2 tag
 - Assert computed expectations from synthetic stimuli (impulses, null tests, sines). Never add golden WAV/MP4/screenshot files.
 - Tolerances in ADR 0005 are spec: loosening one is a spec change, not a test fix.
 - Drive the engine through `Engine::process(...)` with fake buffers/host times; no test opens real audio hardware (`tests/engine/FakeAudioIODevice.h`).
+- No test runs the real Separation model: use `tests/song/FakeSeparationHelper.h` or the stand-in graph in `tests/separation/OnnxTestModel.h`.
 - Wrap audio-thread code in `REQUIRE_REALTIME_SAFE (...)` (`tests/support/RealtimeGuardCatch.h`).
 - Tests capture logs with `core::ScopedLogCapture` and assert `event` and fields, never `msg`.
 
