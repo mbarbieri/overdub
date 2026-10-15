@@ -1,5 +1,7 @@
 #pragma once
 
+#include "song/Song.h"
+
 #include <juce_graphics/juce_graphics.h>
 
 // The main window's few colours, after the prototype on prototype/main-window (issue #9).
@@ -19,4 +21,20 @@ inline const juce::Colour takeClip { 0xff3d5a80 };
 inline const juce::Colour backingClip { 0xff4a6b4a };
 inline const juce::Colour envelope { 0xffa9b0ff };
 inline const juce::Colour videoTake { 0xff8a5a8a };
+// Text and lines drawn over a Track's pastel colour (Clip names, waveforms, fade lines).
+inline const juce::Colour onTrackColour { 0xff1c1c1e };
 } // namespace overdub::ui::colours
+
+// A Track's own colour (issue #137, song/TrackColours.h), on its Edit header and Record row
+// stripes, its Clips, its Take Lanes and its Mixer strip.
+namespace overdub::ui
+{
+// The width of the colour stripe along the left edge of an Edit Track header and a Record row.
+inline constexpr int trackColourStripeWidth = 4;
+
+// The Track's "#rrggbb" as an opaque colour; colours::dimText when it is not in that form.
+juce::Colour trackColour (const song::Track& track);
+
+// The Take Lanes' dimmed colour: each channel of trackColour at 60 %, rounded.
+juce::Colour takeLaneColour (const song::Track& track);
+} // namespace overdub::ui

@@ -24,8 +24,8 @@ struct AddedTrack
 std::string nextTrackName (const Song& song);
 
 // The Song with one new empty Track appended (no Clips, default mix, empty Insert Chain), named
-// nextTrackName, Armed and recording `inputChannels` (empty = no input).
-AddedTrack addTrack (Song song, std::vector<int> inputChannels);
+// nextTrackName, coloured newTrackColour, Armed and recording `inputChannels` (empty = no input).
+AddedTrack addTrack (Song song, std::vector<int> inputChannels, const PickIndex& pickColour);
 
 struct DeletedTrack
 {

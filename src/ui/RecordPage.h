@@ -66,6 +66,7 @@ struct TrackRowState
 {
     song::Id trackId;
     std::string name;
+    juce::Colour colour; // the Track's (ui/Colours.h): a stripe along the row's left edge
     bool armed = false;
     bool mute = false;
     bool solo = false;
@@ -137,6 +138,7 @@ public:
     void paint (juce::Graphics& g) override;
 
     const song::Id& trackId() const { return current.trackId; }
+    juce::Colour colour() const { return current.colour; }
 
     std::function<void (bool armed)> onArm;
     std::function<void (std::vector<int> channels)> onInput;

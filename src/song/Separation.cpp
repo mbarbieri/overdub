@@ -32,7 +32,7 @@ core::Expected<Id> separableBackingTrack (const Song& song, const Id& trackId)
     return first.id;
 }
 
-core::Expected<Song> withSeparation (Song song, const Id& sourceTrackId, const std::vector<BackingTrack>& parts)
+core::Expected<Song> withSeparation (Song song, const Id& sourceTrackId, const std::vector<BackingTrack>& parts, const PickIndex& pickColour)
 {
     const auto source = separableBackingTrack (song, sourceTrackId);
     if (! source.has_value())
@@ -48,12 +48,15 @@ core::Expected<Song> withSeparation (Song song, const Id& sourceTrackId, const s
     sourceTrack->mute = true;
     const auto sourceClips = sourceTrack->clips;
 
+    auto takenColours = trackColours (song);
     std::vector<Track> newTracks;
     for (std::size_t i = 0; i < parts.size(); ++i)
     {
         Track track;
         track.id = makeId();
         track.name = std::string (separationParts[i].trackName);
+        track.colour = newTrackColour (takenColours, pickColour);
+        takenColours.push_back (track.colour);
         for (auto clip : sourceClips)
         {
             clip.id = makeId();

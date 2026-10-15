@@ -1,5 +1,7 @@
 #pragma once
 
+#include "song/TrackColours.h"
+
 #include <cstdint>
 #include <optional>
 #include <set>
@@ -23,7 +25,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 3;
+inline constexpr int songFormatVersion = 4;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -95,6 +97,7 @@ struct Track
 {
     Id id;
     std::string name;
+    std::string colour { trackColourPalette[0] }; // "#rrggbb" (song/TrackColours.h); format 4
     double volumeDb = 0.0;
     double pan = 0.0; // -1 (left) .. +1 (right), 0 = centre
     bool mute = false;
@@ -228,6 +231,9 @@ Song makeEmptySong (int sampleRate);
 // Insert Chain slot id (Master's included) the plugin state hash: plugin parameters are outside
 // history. A slot only the snapshot has keeps the snapshot's hash.
 Song keepStateOutsideHistory (Song snapshot, const Song& current);
+
+// The colour of every Track, in Song order: what a new Track's colour must not repeat.
+std::vector<std::string> trackColours (const Song& song);
 
 // Every non-empty plugin state hash used by the Song's Insert Chains.
 std::set<std::string> pluginStateHashes (const Song& song);

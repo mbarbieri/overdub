@@ -644,7 +644,7 @@ TEST_CASE ("a newer formatVersion is refused with an Error and the package is le
     CHECK (leftoverTemp.existsAsFile());
 }
 
-TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its Backing Tracks separated from nothing and song.json rewritten at the current version", "[song][package][migration]")
+TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its Backing Tracks separated from nothing, its Tracks coloured in palette order and song.json rewritten at the current version", "[song][package][migration]")
 {
     TempDirectory temp;
     createPackage (temp.package(), overdub::song::testing::fullyPopulatedSong());
@@ -655,6 +655,8 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
             videoTake.erase ("outputDevice");
         for (auto& backingTrack : document.at ("backingTracks"))
             backingTrack.erase ("separatedFrom");
+        for (auto& track : document.at ("tracks"))
+            track.erase ("colour");
         return document;
     };
     const auto songJson = temp.package().getChildFile ("song.json");
@@ -672,10 +674,50 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
         videoTake.outputDevice = "";
     for (auto& backingTrack : expected.backingTracks)
         backingTrack.separatedFrom = {};
+    expected.tracks.at (0).colour = "#a8d8b9";
+    expected.tracks.at (1).colour = "#f4a6a6";
     CHECK (opened.package->song() == expected);
     CHECK (firstEvent (capture, "song.migrated").at ("from_version") == 1);
     CHECK (noticesWithCode (opened, "song.history_dropped").empty()); // the v1 snapshot migrates too
     CHECK (*overdub::song::parseJsonText (songJson.loadFileAsString().toStdString()) == overdub::song::songToJson (expected));
+}
+
+TEST_CASE ("a v3 package opens with its Tracks coloured in palette order, and its undo snapshots migrate the same way", "[song][package][migration][colour]")
+{
+    TempDirectory temp;
+    const auto original = overdub::song::testing::fullyPopulatedSong();
+    {
+        auto package = createPackage (temp.package(), original);
+        auto withThird = original;
+        withThird.tracks.push_back (overdub::song::Track { .id = "track-third", .name = "Third" });
+        REQUIRE (package->edit (withThird, "Add Third").has_value());
+    }
+    // Turn song.json and both history snapshots back into what a v3 build wrote.
+    const auto toV3 = [] (nlohmann::json document) {
+        document["formatVersion"] = 3;
+        for (auto& track : document.at ("tracks"))
+            track.erase ("colour");
+        return document;
+    };
+    const auto songJson = temp.package().getChildFile ("song.json");
+    REQUIRE (songJson.replaceWithText (toV3 (*overdub::song::parseJsonText (songJson.loadFileAsString().toStdString())).dump()));
+    for (const auto* name : { "history/000000.json", "history/000001.json" })
+    {
+        const auto snapshot = temp.package().getChildFile (name);
+        auto snapshotDocument = *overdub::song::parseJsonText (snapshot.loadFileAsString().toStdString());
+        snapshotDocument["song"] = toV3 (snapshotDocument.at ("song"));
+        REQUIRE (snapshot.replaceWithText (snapshotDocument.dump()));
+    }
+
+    const auto opened = openPackage (temp.package());
+
+    const auto colours = [] (const Song& song) { return overdub::song::trackColours (song); };
+    CHECK (colours (opened.package->song()) == std::vector<std::string> { "#a8d8b9", "#f4a6a6", "#a6d4f2" });
+    CHECK (noticesWithCode (opened, "song.history_dropped").empty());
+    REQUIRE (opened.package->undo().has_value());
+    CHECK (colours (opened.package->song()) == std::vector<std::string> { "#a8d8b9", "#f4a6a6" });
+    REQUIRE (opened.package->redo().has_value());
+    CHECK (colours (opened.package->song()) == std::vector<std::string> { "#a8d8b9", "#f4a6a6", "#a6d4f2" });
 }
 
 TEST_CASE ("opening a current, consistent Song leaves song.json as it is", "[song][package]")

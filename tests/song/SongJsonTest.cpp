@@ -106,11 +106,13 @@ TEST_CASE ("the fully populated test Song sets every field away from its default
     checkListsHoldTwoOrMore (document, "$");
 }
 
-TEST_CASE ("song.json carries formatVersion 3 and the key names fixed by issues #8, #14, #68 and #114", "[song][json]")
+TEST_CASE ("song.json carries formatVersion 4 and the key names fixed by issues #8, #14, #68, #114 and #137", "[song][json]")
 {
     const auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
 
-    CHECK (document.at ("formatVersion") == 3);
+    CHECK (document.at ("formatVersion") == 4);
+    CHECK (document.at ("tracks").at (0).at ("colour") == "#c0ffee");
+    CHECK (document.at ("tracks").at (1).at ("colour") == "#f5e19c");
     CHECK (document.at ("backingTracks").at (0).at ("separatedFrom") == nlohmann::json { { "backingTrackId", "" }, { "model", "" } });
     CHECK (document.at ("backingTracks").at (1).at ("separatedFrom") == nlohmann::json { { "backingTrackId", "backing-1" }, { "model", "bs_roformer_sw.fp32" } });
     CHECK (document.at ("videoTakes").at (0).at ("outputDevice") == "MacBook Pro Speakers");
@@ -134,6 +136,31 @@ TEST_CASE ("a malformed song.json is an Error naming the JSON path", "[song][jso
     REQUIRE_FALSE (result.has_value());
     CHECK (result.error().code == "song.json_invalid");
     CHECK (result.error().fields.at ("json_path") == "$.tracks[1].clips[0].gainDb");
+}
+
+TEST_CASE ("a Track colour round-trips as the stored value, palette colour or not", "[song][json][colour]")
+{
+    auto song = overdub::song::testing::fullyPopulatedSong();
+    song.tracks.at (0).colour = "#C0FFEE";
+    song.tracks.at (1).colour = "#a8d8b9";
+
+    const auto read = songFromJson (songToJson (song));
+
+    REQUIRE (read.has_value());
+    CHECK (read->tracks.at (0).colour == "#C0FFEE");
+    CHECK (read->tracks.at (1).colour == "#a8d8b9");
+}
+
+TEST_CASE ("a Track colour that is not \"#\" and six hex digits is an Error naming the JSON path", "[song][json][colour]")
+{
+    auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
+    document["tracks"][1]["colour"] = "mint";
+
+    const auto result = songFromJson (document);
+
+    REQUIRE_FALSE (result.has_value());
+    CHECK (result.error().code == "song.json_invalid");
+    CHECK (result.error().fields.at ("json_path") == "$.tracks[1].colour");
 }
 
 TEST_CASE ("a missing field is an Error naming the JSON path", "[song][json]")

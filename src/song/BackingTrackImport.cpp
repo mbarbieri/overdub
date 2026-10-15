@@ -103,7 +103,7 @@ void deleteBackingTrackFiles (const juce::File& packageRoot, const BackingTrack&
     }
 }
 
-Song withImportedBackingTrack (Song song, const BackingTrack& backingTrack)
+Song withImportedBackingTrack (Song song, const BackingTrack& backingTrack, const PickIndex& pickColour)
 {
     Clip clip;
     clip.id = makeId();
@@ -115,6 +115,7 @@ Song withImportedBackingTrack (Song song, const BackingTrack& backingTrack)
     Track track;
     track.id = makeId();
     track.name = juce::String (backingTrack.originalFilename).upToLastOccurrenceOf (".", false, false).toStdString();
+    track.colour = newTrackColour (trackColours (song), pickColour);
     track.clips.push_back (std::move (clip));
 
     song.backingTracks.push_back (backingTrack);

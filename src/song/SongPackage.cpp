@@ -225,7 +225,7 @@ core::Expected<Id> SongPackage::importBackingTrack (const juce::File& source, Cl
     if (! backingTrack.has_value())
         return std::unexpected (backingTrack.error());
 
-    auto edited = commitEdit (withImportedBackingTrack (currentSong, *backingTrack), importStepLabel (*backingTrack), now);
+    auto edited = commitEdit (withImportedBackingTrack (currentSong, *backingTrack, options.pickTrackColour), importStepLabel (*backingTrack), now);
     if (! edited.committed)
     {
         deleteBackingTrackFiles (root, *backingTrack);
@@ -288,7 +288,7 @@ core::Expected<std::vector<Id>> SongPackage::addSeparation (const Id& sourceTrac
 
     const auto source = std::ranges::find (currentSong.backingTracks, *sourceId, &BackingTrack::id);
     const auto label = separationStepLabel (*source);
-    auto changed = withSeparation (currentSong, sourceTrackId, parts);
+    auto changed = withSeparation (currentSong, sourceTrackId, parts, options.pickTrackColour);
     if (! changed.has_value())
     {
         deleteWritten();

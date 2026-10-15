@@ -70,12 +70,24 @@ core::Expected<nlohmann::json> addBackingTrackSeparatedFrom (nlohmann::json docu
             backingTrack["separatedFrom"] = { { "backingTrackId", "" }, { "model", "" } };
     return document;
 }
+
+core::Expected<nlohmann::json> addTrackColours (nlohmann::json document)
+{
+    const auto tracks = document.find ("tracks");
+    if (tracks == document.end() || ! tracks->is_array())
+        return document; // reading the migrated document reports what is missing
+    std::size_t next = 0;
+    for (auto& track : *tracks)
+        if (track.is_object())
+            track["colour"] = std::string (trackColourPalette[next++ % trackColourPalette.size()]);
+    return document;
+}
 } // namespace
 
 std::span<const MigrationStep> songMigrationSteps()
 {
     // songFormatVersion must equal songMigrationSteps().size() + 1.
-    static const std::array<MigrationStep, 2> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom };
+    static const std::array<MigrationStep, 3> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours };
     static_assert (std::tuple_size_v<decltype (steps)> + 1 == songFormatVersion);
     return steps;
 }

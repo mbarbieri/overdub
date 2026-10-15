@@ -62,6 +62,7 @@ RecordPageState recordPageStateFor (const song::Song& song,
         state.rows.push_back (TrackRowState {
             .trackId = track.id,
             .name = track.name,
+            .colour = trackColour (track),
             .armed = track.armed,
             .mute = track.mute,
             .solo = track.solo,
@@ -254,6 +255,8 @@ void TrackRow::paint (juce::Graphics& g)
     const auto area = getLocalBounds().toFloat().reduced (0.5f);
     g.setColour (colours::panel);
     g.fillRoundedRectangle (area, 7.0f);
+    g.setColour (current.colour);
+    g.fillRoundedRectangle (area.withTrimmedLeft (1.0f).withWidth ((float) trackColourStripeWidth).reduced (0.0f, 6.0f), 2.0f);
     g.setColour (current.armed ? colours::rec : colours::line);
     g.drawRoundedRectangle (area, 7.0f, 1.0f);
 }

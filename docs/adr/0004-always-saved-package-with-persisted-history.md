@@ -105,3 +105,9 @@ The Song's rate stays fixed. Overdub never plays or records a Song through a dev
 ## Amendment: plugin state is still read on the message thread (issue #70)
 
 - Capturing every plugin's state on each history step and debounced write, and listing the installed effects, stay synchronous on the message thread; the reasons are recorded in ADR 0003's issue #70 amendment, which moved the movie's completion off it.
+
+## Amendment: Track colours (issue #137)
+
+- Song `formatVersion` 4 adds `colour` to each Track: `"#"` and six hex digits, the colour value itself, never a palette index, so a palette change never recolours a saved Song. Any other form is `song.json_invalid` at `$.tracks[i].colour`.
+- The 3 → 4 migration colours Tracks in Song order from `song::trackColourPalette` (palette[0], palette[1], … wrapping after the last), with no randomness, so `song.json` and every history snapshot migrate to the same colours.
+- A colour is part of the undoable content: undo restores it like a name.

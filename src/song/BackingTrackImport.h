@@ -37,8 +37,9 @@ core::Expected<BackingTrack> writeBackingTrackFiles (const juce::File& packageRo
 void deleteBackingTrackFiles (const juce::File& packageRoot, const BackingTrack& backingTrack);
 
 // The undoable content of an import: the Backing Track, a new Track named after the file (its name
-// without the extension) holding one Clip of the whole file at sample 0, added after every Track.
-Song withImportedBackingTrack (Song song, const BackingTrack& backingTrack);
+// without the extension) and coloured newTrackColour, holding one Clip of the whole file at
+// sample 0, added after every Track.
+Song withImportedBackingTrack (Song song, const BackingTrack& backingTrack, const PickIndex& pickColour);
 
 // The undo step label of an import: "Import <original filename>".
 std::string importStepLabel (const BackingTrack& backingTrack);

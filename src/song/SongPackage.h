@@ -55,6 +55,9 @@ struct PackageOptions
 
     // Test seam for every package write; see BeforeRenameHook in song/AtomicWrite.h.
     BeforeRenameHook beforeRename;
+
+    // Picks the colour of each Track an import or a Separation adds (newTrackColour).
+    PickIndex pickTrackColour = randomPick();
 };
 
 class SongPackage

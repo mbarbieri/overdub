@@ -379,6 +379,13 @@ void MixerStrip::paint (juce::Graphics& g)
     const auto area = getLocalBounds().toFloat().reduced (0.5f);
     g.setColour (master ? juce::Colour (0xff2b2a33) : colours::panel);
     g.fillRoundedRectangle (area, 6.0f);
+    if (current.colour.has_value())
+    {
+        juce::Graphics::ScopedSaveState saved (g);
+        g.reduceClipRegion (getLocalBounds().removeFromTop (trackColourStripeWidth));
+        g.setColour (*current.colour);
+        g.fillRoundedRectangle (area, 6.0f);
+    }
     g.setColour (colours::line);
     g.drawRoundedRectangle (area, 6.0f, 1.0f);
 }
@@ -419,6 +426,7 @@ void Mixer::show (const song::Song& song, bool isEditable)
         const auto& track = current.tracks[i];
         strips[i]->show ({ .trackId = track.id,
                            .name = track.name,
+                           .colour = trackColour (track),
                            .volumeDb = mix.shownValue ({ track.id, MixerControlKind::volume }, track.volumeDb),
                            .pan = mix.shownValue ({ track.id, MixerControlKind::pan }, track.pan),
                            .mute = track.mute,

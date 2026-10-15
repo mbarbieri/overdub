@@ -19,7 +19,8 @@
 // Edit mode's timeline (issue #28, issue #9 resolution, variant C): a ruler, the Camera lane
 // (issue #36: one block per Video Take, from its start to the end of its movie on the audio clock,
 // titled with its Pass; a Video Take whose movie cannot be read is a narrow block), and one lane
-// per Track with a compact header (arm, name). Clips are drawn in layer order with waveforms from
+// per Track with a compact header (its colour stripe, name, Take Lanes toggle, A M S, ×). Clips are
+// drawn in their Track's colour (issue #137), in layer order with waveforms from
 // the peaks cache, a hatched strip marks where a Clip covers an older one, and the playhead
 // crosses every lane.
 //
@@ -84,6 +85,8 @@ public:
     void paint (juce::Graphics& g) override;
 
     const song::Id& trackId() const { return id; }
+    // The Track's colour (ui/Colours.h), drawn as a stripe along the header's left edge.
+    juce::Colour colour() const { return stripeColour; }
 
     std::function<void (bool armed)> onArm;
     std::function<void()> onToggleTakes;
@@ -100,6 +103,7 @@ public:
 
 private:
     song::Id id;
+    juce::Colour stripeColour;
     bool armed = false;
     bool muted = false;
     bool soloed = false;
@@ -131,6 +135,9 @@ public:
     // Where a Clip of the shown Song is drawn, in this Component's coordinates (cut to its lane);
     // empty when it is not on screen.
     juce::Rectangle<int> clipBounds (const song::Id& clipId) const;
+    // The colour a Clip of the shown Song is drawn in: its Track's (ui/Colours.h); none when no
+    // Track holds it.
+    std::optional<juce::Colour> clipColour (const song::Id& clipId) const;
     // Where a Clip's fade handle or dB tag (a handle part) is drawn, cut to the lanes; empty when it
     // is not on screen, or for another part.
     juce::Rectangle<int> handleBounds (const song::Id& clipId, ClipPart part) const;
@@ -149,6 +156,8 @@ public:
     std::vector<TakeLaneRow> takeLanesShown (const song::Id& trackId) const;
     // Where the lane of this Take is drawn, cut to the lanes; empty when folded or off screen.
     juce::Rectangle<int> takeLaneBounds (const song::Id& takeId) const;
+    // The colour of the lane of this Take: its Track's, dimmed (takeLaneColour); none when folded.
+    std::optional<juce::Colour> takeLaneColourOf (const song::Id& takeId) const;
     juce::Rectangle<int> cameraLaneBounds() const { return layout.cameraLane; }
     // Where a Video Take's block is drawn in the Camera lane, cut to it; empty when off screen or
     // not shown.
@@ -215,11 +224,11 @@ private:
     void paintRuler (juce::Graphics& g) const;
     void paintCameraLane (juce::Graphics& g) const;
     void paintLane (juce::Graphics& g, const song::Track& track, juce::Rectangle<int> lane) const;
-    void paintClip (juce::Graphics& g, const song::Clip& clip, juce::Rectangle<int> clipArea) const;
+    void paintClip (juce::Graphics& g, const song::Clip& clip, juce::Colour body, juce::Rectangle<int> clipArea) const;
     void paintFadesAndGain (juce::Graphics& g, const song::Clip& clip, juce::Rectangle<int> clipArea) const;
     void paintCoveredSpans (juce::Graphics& g, const song::Track& track, juce::Rectangle<int> lane) const;
     void paintPlayhead (juce::Graphics& g) const;
-    void paintTakeLane (juce::Graphics& g, const TakeLaneRow& row, juce::Rectangle<int> lane) const;
+    void paintTakeLane (juce::Graphics& g, const TakeLaneRow& row, juce::Colour colour, juce::Rectangle<int> lane) const;
     void paintTakeLaneHeader (juce::Graphics& g, const TakeLaneRow& row, juce::Rectangle<int> header) const;
 
     TimelineState current;
