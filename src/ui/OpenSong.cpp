@@ -74,7 +74,7 @@ void OpenSong::attachAudio (AudioBinding audio)
     // Invariant (see attachAudio in OpenSong.h): no engine renders the plugins now.
     inserts.prepare (song().sampleRate, blockSizeOf (binding));
     binding.engine->stop();
-    binding.engine->setMonitoring (true); // which Tracks are heard is decided by songForEngine
+    binding.engine->setMonitoring (true); // which Tracks are heard is decided by `monitored`
     reloadEngine();
     binding.engine->seek (song().playhead);
 }
@@ -636,7 +636,7 @@ void OpenSong::reloadEngine()
     }
     inserts.sync (song());
     if (binding.engine != nullptr)
-        binding.engine->loadSong (songForEngine (song(), monitored), package_->location(), inserts.insertFactory());
+        binding.engine->loadSong (song(), package_->location(), inserts.insertFactory(), monitored);
 }
 
 core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, song::SongPackage::Clock::time_point now)

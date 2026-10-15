@@ -10,6 +10,8 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
+#include <set>
 #include <vector>
 
 // One Song snapshot made playable: its AudioProcessorGraph (Track nodes -> Insert Chain nodes ->
@@ -33,6 +35,10 @@ struct EngineConfig
 // plugin::InsertHost (issue #33). Returns none by default.
 using InsertFactory = std::function<std::vector<std::unique_ptr<juce::AudioProcessor>> (const song::Id& trackId, const std::vector<song::InsertSlot>& chain)>;
 
+// The Armed Tracks that hear their input while Monitoring is on (issue #26). Monitoring is per
+// Track and transient, not in the Song. nullopt: every Armed Track.
+using MonitoredTracks = std::optional<std::set<song::Id>>;
+
 // Tells every Track node where the render is: time in samples = render position of the block's
 // first sample, playing = transport running. Written and read on the audio thread only.
 class PlanPlayHead final : public juce::AudioPlayHead
@@ -44,10 +50,14 @@ public:
     bool playing = false;
 };
 
-// Each strip's peak since the previous takeMeterPeaks (linear, post-fader), by Track id.
+// The peaks since the previous takeMeterPeaks (linear), by Track id: each strip's post-fader peak,
+// and each Armed Track's input peak (issue #131): the raw device input on the channels it records,
+// before its Insert Chain and fader, whether or not it is monitored or a Pass runs. A Track that is
+// not Armed has no input peak.
 struct MeterPeaks
 {
     std::map<song::Id, float> tracks;
+    std::map<song::Id, float> inputs;
     float master = 0.0f;
 };
 
@@ -57,13 +67,14 @@ public:
     // Builds and prepares the graph; logs `engine.plan_built` and one warning per Clip source it
     // cannot play (`engine.clip_source_missing`, `engine.clip_source_unusable`). Never fails:
     // an unplayable source plays silence (ADR 0004).
-    RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& config, const InsertFactory& makeInserts);
+    RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& config, const InsertFactory& makeInserts, const MonitoredTracks& monitoredTracks = std::nullopt);
 
     RenderPlan (const RenderPlan&) = delete;
     RenderPlan& operator= (const RenderPlan&) = delete;
 
     // Audio thread. outputs has config.numOutputChannels channels of numSamples <= maxBlockSize.
-    // input is the device input of the block, which Armed Tracks hear while input.monitoring.
+    // input is the device input of the block, which the monitored Armed Tracks hear while
+    // input.monitoring, and whose peaks every Armed Track's input meter takes.
     // renderSample is the render position of the first sample (song position + latency).
     // Returns how many nodes rendered silence this block because another thread held their
     // callback lock (the patched graph never waits for it, ADR 0001 amendment).
@@ -92,6 +103,16 @@ public:
     MeterPeaks takeMeterPeaks();
 
 private:
+    // An Armed Track's input meter: the device input channels it records.
+    struct InputTap
+    {
+        song::Id trackId;
+        std::vector<int> channels;
+        PeakHold peak;
+    };
+
+    void tapInputs (const LiveInput& input, int numSamples) noexcept;
+
     EngineConfig config;
     int songSampleRate = 0;
     int graphLatency = 0;
@@ -101,6 +122,7 @@ private:
     // The strips' controls, read by the strip nodes: declared before the graph, so they outlive it.
     std::vector<std::unique_ptr<StripControl>> trackStrips;
     StripControl masterStrip;
+    std::vector<std::unique_ptr<InputTap>> inputTaps; // one per Armed Track, in Song order
     PlanPlayHead playHead;
     LiveInput liveInput; // read by every Track node during render()
     juce::MidiBuffer midi; // always empty: no node reads or writes MIDI

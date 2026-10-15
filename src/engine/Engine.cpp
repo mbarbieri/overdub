@@ -28,11 +28,11 @@ Engine::~Engine()
 //==============================================================================
 // Non-audio threads
 
-void Engine::loadSong (const song::Song& song, const juce::File& packageRoot, const InsertFactory& makeInserts)
+void Engine::loadSong (const song::Song& song, const juce::File& packageRoot, const InsertFactory& makeInserts, const MonitoredTracks& monitoredTracks)
 {
     const std::scoped_lock lock { nonRealtimeMutex };
 
-    auto* plan = new RenderPlan (song, packageRoot, config, makeInserts);
+    auto* plan = new RenderPlan (song, packageRoot, config, makeInserts, monitoredTracks);
     // Right before publishing, so the audio thread has a free slot for the plan it replaces
     // (see the progress invariant in Engine.h).
     freeRetiredPlans();

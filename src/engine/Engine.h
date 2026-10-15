@@ -40,7 +40,8 @@ public:
 
     // Non-audio thread. Builds a plan from this Song snapshot (media read from packageRoot) and
     // hands it to the audio thread, which plays it from the next callback at the current position.
-    void loadSong (const song::Song& song, const juce::File& packageRoot, const InsertFactory& makeInserts = {});
+    // monitoredTracks: the Armed Tracks that hear their input while Monitoring is on.
+    void loadSong (const song::Song& song, const juce::File& packageRoot, const InsertFactory& makeInserts = {}, const MonitoredTracks& monitoredTracks = std::nullopt);
 
     // The Mixer (issue #31), any non-audio thread. Applies the Song's Track volumes, pans, mutes and
     // solos and its Master volume (engine/MixLaw.h) to the most recently loaded plan without
@@ -49,8 +50,9 @@ public:
     // Song's: then call loadSong. Logs engine.mix_applied or engine.mix_refused (debug, `reason`
     // no_plan or tracks_differ).
     bool setMix (const song::Song& song);
-    // Any non-audio thread. Each strip's peak (post-fader, linear) since the previous call, from the
-    // most recently loaded plan; empty before the first loadSong.
+    // Any non-audio thread. Each strip's peak (post-fader, linear) and each Armed Track's input peak
+    // (MeterPeaks) since the previous call, from the most recently loaded plan; empty before the
+    // first loadSong.
     MeterPeaks takeMeterPeaks();
 
     // Transport commands, any non-audio thread. Each takes effect at the start of the next block;
@@ -95,9 +97,9 @@ public:
     void startRecording (RecordSession& session);
     void stopRecording (RecordSession& session);
 
-    // Plain Monitoring (issue #26): while on, every Armed Track with input channels hears its live
-    // input through its Insert Chain to Master, whether or not the transport plays. Takes effect at
-    // the next block. Which Tracks are Armed comes from the loaded Song.
+    // Plain Monitoring (issue #26): while on, every monitored Armed Track with input channels hears
+    // its live input through its Insert Chain to Master, whether or not the transport plays. Takes
+    // effect at the next block. Which Tracks are Armed and monitored comes from loadSong.
     void setMonitoring (bool on);
     bool isMonitoring() const;
 

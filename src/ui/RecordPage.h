@@ -37,11 +37,31 @@
 // (issue #114: Separate...). Along each row's bottom: the Track's horizontal volume fader and its dB
 // text (issue #130), the same volume as its Mixer fader and behaving exactly like it (MixFocus:
 // drags, detent, double-click, keyboard focus, arrow keys and their undo steps); dimmed and inert
-// while a Pass runs. Meters come later.
+// while a Pass runs. Under the fader, a level meter on the fader's scale (issue #131): an Armed
+// Track's raw input (MeterPeaks::inputs, before its Insert Chain and fader, so the fader does not
+// move it), any other Track's post-fader output (as its Mixer meter); arming or disarming switches
+// it. At the meter's right end the clip indicator (ClipIndicator).
 // Thin: it shows state and reports gestures by Track or Pass id; the strip, overview and Passes
 // rows are computed by ui/RecordView.h and ui/TakeLanes.h.
 namespace overdub::ui
 {
+// A Record row's clip indicator (issue #131): an Armed Track's input peak at or over clipPeak
+// (ui/MixerGeometry.h) lights it, and it stays lit until clicked or until the next Pass starts.
+// Transient UI state, never in the Song.
+class ClipIndicator final : public juce::Component
+{
+public:
+    void light();
+    void clear();
+    bool isLit() const { return lit; }
+
+    void mouseDown (const juce::MouseEvent& event) override;
+    void paint (juce::Graphics& g) override;
+
+private:
+    bool lit = false;
+};
+
 struct TrackRowState
 {
     song::Id trackId;
@@ -111,6 +131,8 @@ public:
     void show (const TrackRowState& state);
     // Shows a volume a drag or key press set, ahead of the Song.
     void showVolume (double db);
+    // One poll's peaks (Engine::takeMeterPeaks): the input peak while Armed, else the strip's.
+    void showMeters (const engine::MeterPeaks& peaks);
     void resized() override;
     void paint (juce::Graphics& g) override;
 
@@ -142,6 +164,8 @@ public:
     InsertChainView insertChain { false };
     MixerFader fader { MixerFader::Orientation::horizontal };
     juce::Label volumeLabel;
+    LevelMeter meter { MixerFader::Orientation::horizontal };
+    ClipIndicator clip;
 
 private:
     TrackRowState current;
@@ -165,6 +189,10 @@ public:
     // The stage shows the camera (cameraStage) or Video Take playback (stageVideo).
     void showStagePlayback (bool playback);
     bool showsStagePlayback() const { return stageVideo.isVisible(); }
+    // One poll's peaks for every row's meter and clip indicator.
+    void showMeters (const engine::MeterPeaks& peaks);
+    // A Pass started: every row's clip indicator goes out.
+    void clearClipIndicators();
     void resized() override;
     void paint (juce::Graphics& g) override;
 

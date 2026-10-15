@@ -74,13 +74,6 @@ song::Song withInputChannels (song::Song song, const song::Id& trackId, std::vec
     return song;
 }
 
-song::Song songForEngine (song::Song song, const std::set<song::Id>& monitoredTrackIds)
-{
-    for (auto& track : song.tracks)
-        track.armed = track.armed && monitoredTrackIds.contains (track.id);
-    return song;
-}
-
 int nextPassNumber (const song::Song& song)
 {
     return (int) song.passes.size() + 1;
