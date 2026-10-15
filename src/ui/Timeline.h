@@ -33,6 +33,13 @@
 // in the ruler moves the playhead. The scroll bar and the mouse wheel scroll; zoomIn/zoomOut zoom.
 // Selection and the view are transient UI state, never in the Song.
 //
+// Vertical scrolling (issue #127): when the Track rows are taller than the space under the Camera
+// lane, they scroll under the fixed ruler and Camera lane, with a vertical scroll bar at the right
+// (ui/Layout.h). A vertical wheel or swipe scrolls them, a horizontal one (or shift with the wheel)
+// scrolls time (wheelScroll). The view moves on its own only to reveal Tracks the Song did not
+// have before (an Import, a Drop, a Separation, an undone delete); the scroll is clamped whenever
+// the rows or the Timeline change size.
+//
 // Take Lanes (issue #30): a Track header with Takes shows a "▸ n Takes" toggle that unfolds one
 // thin lane per Take recorded on the Track, newest Pass first (ui/TakeLanes.h): the Take's
 // recorded span as a block, the spans where it is heard now filled in, and its heard status in
@@ -123,6 +130,12 @@ public:
     // is not on screen, or for another part.
     juce::Rectangle<int> handleBounds (const song::Id& clipId, ClipPart part) const;
     juce::Rectangle<int> rulerBounds() const { return layout.ruler; }
+    // Where Track rows show (header column and lanes), under the Camera lane.
+    juce::Rectangle<int> tracksViewportBounds() const { return layout.tracksViewport; }
+
+    // How far the Track rows are scrolled up, in pixels; set clamped to what the rows allow.
+    int verticalScroll() const { return verticalScrollPixels; }
+    void setVerticalScroll (int pixels);
 
     // Take Lanes: unfolding is per Track and transient.
     void setTakeLanesUnfolded (const song::Id& trackId, bool unfolded);
@@ -167,9 +180,10 @@ public:
     void paint (juce::Graphics& g) override;
     void paintOverChildren (juce::Graphics& g) override;
 
-    std::vector<std::unique_ptr<TrackHeader>> headers;
+    std::vector<std::unique_ptr<TrackHeader>> headers; // children of trackHeaderColumn
     juce::Label cameraHeader;
     juce::ScrollBar scrollBar { false };
+    juce::ScrollBar verticalScrollBar { true }; // shown only when the Track rows overflow
 
 private:
     struct ActiveDrag
@@ -184,6 +198,8 @@ private:
     void refreshTakeLanes();
     bool clickTakeLane (juce::Point<int> position);
     void updateScrollBar();
+    void layOutRows();
+    void revealNewTracks (const std::vector<song::Id>& previousTrackIds);
     const song::Song& shownSong() const { return preview.has_value() ? *preview : current.song; }
     std::optional<std::size_t> laneAt (juce::Point<int> position) const;
     juce::Rectangle<int> lanesArea() const;
@@ -204,7 +220,9 @@ private:
     bool seeking = false; // a ruler drag in progress
     bool dropHighlighted = false; // an accepted file drag hovers
     TimelineView timelineView;
+    int verticalScrollPixels = 0;
     TimelineLayout layout;
+    juce::Component trackHeaderColumn; // the tracks viewport's header column: cuts off scrolled headers
     std::optional<song::Id> selected;
     std::set<song::Id> unfoldedTracks;
     std::vector<std::vector<TakeLaneRow>> takeLanes; // per Track of the shown Song; empty when folded

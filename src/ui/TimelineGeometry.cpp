@@ -28,6 +28,15 @@ SampleCount sampleForX (const TimelineView& view, int x)
     return view.firstSample + (SampleCount) (x - view.laneX) * view.samplesPerPixel;
 }
 
+WheelScroll wheelScroll (float deltaX, float deltaY, bool shift)
+{
+    constexpr float pixelsPerUnit = 400.0f;
+    const auto pixels = [] (float delta) { return (int) std::lround (-delta * pixelsPerUnit); };
+    if (shift)
+        return { .timePixels = pixels (deltaX != 0.0f ? deltaX : deltaY), .verticalPixels = 0 };
+    return { .timePixels = pixels (deltaX), .verticalPixels = pixels (deltaY) };
+}
+
 TimelineView zoomedIn (TimelineView view)
 {
     view.samplesPerPixel = std::max (minSamplesPerPixel, view.samplesPerPixel / 2);

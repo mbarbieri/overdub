@@ -508,3 +508,22 @@ TEST_CASE ("the Separation dialog closes only on success, Cancel or failure: cli
     CHECK (s.f.openSong->isSeparating());
     CHECK (s.menusShown.size() == 1);
 }
+
+TEST_CASE ("the Edit Timeline scrolls to show the Tracks a Separation adds below the source Track", "[ui][separation][vertical_scroll]")
+{
+    SeparateFixture s;
+    auto& timeline = s.f.window->editPage.timeline;
+    // The Timeline gets the Song only in Edit mode: shown once, it knows the Tracks before the
+    // Separation, which runs from a Record row.
+    REQUIRE (pressKey (*s.f.window, '2'));
+    REQUIRE (pressKey (*s.f.window, '1'));
+
+    s.separate ("Band Mix");
+    REQUIRE (pressKey (*s.f.window, '2'));
+
+    // Six new Tracks are taller than the rows' viewport: the first of them is at its top.
+    REQUIRE (s.trackNames() == songTrackNamesAfter);
+    auto& bass = s.f.editHeaderNamed ("Bass");
+    CHECK (timeline.getLocalArea (&bass, bass.getLocalBounds()).getY() == timeline.tracksViewportBounds().getY());
+    CHECK (timeline.verticalScroll() == trackLaneHeight);
+}
