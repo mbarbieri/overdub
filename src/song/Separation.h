@@ -15,7 +15,9 @@
 namespace overdub::song
 {
 // One part the helper writes: its file stem in the helper's output folder ("bass" -> bass.wav)
-// and the name of the Track it lands on.
+// and the name of the Track it lands on: an instrument emoji, a space and the part's name
+// (issue #136), stored in the Song as UTF-8. The emoji are written as UTF-8 byte escapes so the
+// source file's encoding cannot change them.
 struct SeparationPart
 {
     std::string_view fileStem;
@@ -25,12 +27,12 @@ struct SeparationPart
 // The six parts in the helper's order (the model's `sources`), which is also the order of the new
 // Tracks below the source Track.
 inline constexpr std::array<SeparationPart, 6> separationParts { {
-    { "bass", "Bass" },
-    { "drums", "Drums" },
-    { "other", "Other" },
-    { "vocals", "Vocals" },
-    { "guitar", "Guitar" },
-    { "piano", "Piano" },
+    { "bass", "\xf0\x9f\x8e\xbb Bass" }, // U+1F3BB violin
+    { "drums", "\xf0\x9f\xa5\x81 Drums" }, // U+1F941 drum
+    { "other", "\xf0\x9f\x8e\xb6 Other" }, // U+1F3B6 multiple musical notes
+    { "vocals", "\xf0\x9f\x8e\xa4 Vocals" }, // U+1F3A4 microphone
+    { "guitar", "\xf0\x9f\x8e\xb8 Guitar" }, // U+1F3B8 guitar
+    { "piano", "\xf0\x9f\x8e\xb9 Piano" }, // U+1F3B9 musical keyboard
 } };
 
 // The Backing Track a Track can be separated from: the one every Clip of the Track plays.

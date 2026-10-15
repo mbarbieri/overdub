@@ -27,7 +27,40 @@ using namespace overdub::song::testing;
 
 namespace
 {
-const std::vector<std::string> partTrackNames { "Bass", "Drums", "Other", "Vocals", "Guitar", "Piano" };
+// The new Tracks' names as issue #136's table gives them: the emoji by code point (so this does
+// not share Separation.h's UTF-8 spelling), a space and the part's name, as UTF-8.
+std::vector<std::string> partTrackNames()
+{
+    const std::vector<std::pair<juce::juce_wchar, juce::String>> table {
+        { 0x1f3bb, "Bass" },
+        { 0x1f941, "Drums" },
+        { 0x1f3b6, "Other" },
+        { 0x1f3a4, "Vocals" },
+        { 0x1f3b8, "Guitar" },
+        { 0x1f3b9, "Piano" },
+    };
+    std::vector<std::string> names;
+    for (const auto& [emoji, name] : table)
+        names.push_back ((juce::String::charToString (emoji) + " " + name).toStdString());
+    return names;
+}
+
+// The names a Separation gave its Tracks before issue #136.
+const std::vector<std::string> plainPartTrackNames { "Bass", "Drums", "Other", "Vocals", "Guitar", "Piano" };
+
+std::vector<std::string> joined (std::vector<std::string> first, const std::vector<std::string>& second, const std::vector<std::string>& third = {})
+{
+    first.insert (first.end(), second.begin(), second.end());
+    first.insert (first.end(), third.begin(), third.end());
+    return first;
+}
+
+std::string fileBytes (const juce::File& file)
+{
+    juce::MemoryBlock block;
+    REQUIRE (file.loadFileAsData (block));
+    return { static_cast<const char*> (block.getData()), block.getSize() };
+}
 
 // A Song by hand: "Band Mix" holds two Clips of one Backing Track, with gain, fades and offsets
 // away from their defaults; "Vocals" records Takes; "Click" plays another Backing Track.
@@ -91,14 +124,14 @@ const Track& trackNamed (const Song& song, const std::string& name)
 
 } // namespace
 
-TEST_CASE ("a Separation adds six Tracks named after the parts directly below the source Track, which is muted", "[song][separation]")
+TEST_CASE ("a Separation adds six Tracks named with each part's emoji and name, in the helper's order, directly below the source Track, which is muted", "[song][separation]")
 {
     const auto before = handBuiltSong();
 
     const auto separated = withSeparation (before, "track-mix", sixParts());
 
     REQUIRE (separated.has_value());
-    CHECK (trackNames (*separated) == std::vector<std::string> { "Band Mix", "Bass", "Drums", "Other", "Vocals", "Guitar", "Piano", "Vocals", "Click" });
+    CHECK (trackNames (*separated) == joined ({ "Band Mix" }, partTrackNames(), { "Vocals", "Click" }));
     CHECK (separated->tracks.at (7).id == "track-vocals");
     CHECK (separated->tracks.at (8).id == "track-click");
 
@@ -127,7 +160,7 @@ TEST_CASE ("each new Track starts at clean mixer defaults with a copy of every s
     {
         const auto& track = separated->tracks.at (i + 1);
         INFO ("Track " << track.name);
-        CHECK (track.name == partTrackNames[i]);
+        CHECK (track.name == partTrackNames()[i]);
         CHECK_THAT (track.volumeDb, Catch::Matchers::WithinAbs (0.0, 0.0));
         CHECK_THAT (track.pan, Catch::Matchers::WithinAbs (0.0, 0.0));
         CHECK_FALSE (track.mute);
@@ -211,7 +244,7 @@ TEST_CASE ("SongPackage::addSeparation adds the parts as Backing Tracks with the
     REQUIRE (added->size() == 6);
     CHECK (f.package().undoLabel() == "Separate Band Mix.wav");
     const auto& song = f.package().song();
-    CHECK (trackNames (song) == std::vector<std::string> { "Band Mix", "Bass", "Drums", "Other", "Vocals", "Guitar", "Piano" });
+    CHECK (trackNames (song) == joined ({ "Band Mix" }, partTrackNames()));
     for (std::size_t i = 0; i < added->size(); ++i)
     {
         const auto backingTrack = std::ranges::find (song.backingTracks, (*added)[i], &BackingTrack::id);
@@ -223,7 +256,7 @@ TEST_CASE ("SongPackage::addSeparation adds the parts as Backing Tracks with the
         CHECK (originalFileFor (f.package().location(), *backingTrack).existsAsFile());
         CHECK (derivedFileFor (f.package().location(), *backingTrack).existsAsFile());
         CHECK (peaksFileFor (f.package().location(), backingTrack->id).existsAsFile());
-        CHECK (trackNamed (song, partTrackNames[i]).clips.front().source.id == backingTrack->id);
+        CHECK (trackNamed (song, partTrackNames()[i]).clips.front().source.id == backingTrack->id);
     }
 
     REQUIRE (f.package().undo().has_value());
@@ -248,6 +281,53 @@ TEST_CASE ("a Separation's origin survives saving, closing and reopening the Son
         return backingTrack.separatedFrom == SeparationOrigin { sourceTrack.clips.front().source.id, "bs_roformer_sw.fp32" };
     });
     CHECK (separatedFromSource == 6);
+    f.fixture->package = std::move (reopened->package);
+}
+
+TEST_CASE ("a Separation's emoji Track names are stored as UTF-8 in song.json and survive saving and reopening byte for byte", "[song][separation][package]")
+{
+    PartFilesFixture f;
+    REQUIRE (f.package().addSeparation (f.fixture->trackNamed ("Band Mix").id, f.partFiles, "bs_roformer_sw.fp32").has_value());
+    const auto location = f.package().location();
+    const auto songJson = location.getChildFile ("song.json");
+    const auto savedBytes = fileBytes (songJson);
+    for (const auto& name : partTrackNames())
+    {
+        INFO ("Track " << name);
+        CHECK (savedBytes.contains ("\"" + name + "\"")); // the UTF-8 bytes themselves, not \u escapes
+    }
+
+    f.fixture->package.reset();
+    auto reopened = SongPackage::open (location);
+
+    REQUIRE (reopened.has_value());
+    CHECK (trackNames (reopened->package->song()) == joined ({ "Band Mix" }, partTrackNames()));
+    CHECK (fileBytes (songJson) == savedBytes);
+
+    // Written again from the reopened Song.
+    REQUIRE (reopened->package->undo().has_value());
+    REQUIRE (reopened->package->redo().has_value());
+    CHECK (fileBytes (songJson) == savedBytes);
+    f.fixture->package = std::move (reopened->package);
+}
+
+TEST_CASE ("a Song separated before Track names had emoji opens with its Track names unchanged", "[song][separation][package]")
+{
+    PartFilesFixture f;
+    REQUIRE (f.package().addSeparation (f.fixture->trackNamed ("Band Mix").id, f.partFiles, "bs_roformer_sw.fp32").has_value());
+    auto separatedBefore = f.package().song();
+    for (std::size_t i = 0; i < plainPartTrackNames.size(); ++i)
+        separatedBefore.tracks.at (i + 1).name = plainPartTrackNames[i];
+    REQUIRE (f.package().edit (separatedBefore, "Separate Band Mix.wav").has_value());
+    const auto location = f.package().location();
+
+    f.fixture->package.reset();
+    auto reopened = SongPackage::open (location);
+
+    REQUIRE (reopened.has_value());
+    CHECK (reopened->notices.empty());
+    CHECK (trackNames (reopened->package->song()) == joined ({ "Band Mix" }, plainPartTrackNames));
+    CHECK (reopened->package->song() == separatedBefore);
     f.fixture->package = std::move (reopened->package);
 }
 
