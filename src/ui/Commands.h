@@ -4,9 +4,9 @@
 
 // The main window's keyboard commands (issue #9 resolution, issue #27): keys 1-3 pick a mode,
 // R records a Pass in any mode, Space plays or stops, command-Z / shift-command-Z undo and redo.
-// In Edit mode (issue #28) S splits the selected Clip at the playhead and backspace (or forward
-// delete) deletes it, and the left and right arrows move the playhead back and forward by
-// nudgeSeconds; the window ignores these in the other modes.
+// In Edit mode (issue #28) S splits the selected Clip at the playhead, backspace (or forward
+// delete) deletes the selected Clip or Video Take (issue #128), and the left and right arrows move
+// the playhead back and forward by nudgeSeconds; the window ignores these in the other modes.
 // Pure: no JUCE, so the mapping is unit-tested on its own.
 namespace overdub::ui
 {
@@ -28,7 +28,7 @@ enum class Command
     undo,
     redo,
     splitClip,
-    deleteClip,
+    deleteSelection,
     nudgeBack,
     nudgeForward
 };

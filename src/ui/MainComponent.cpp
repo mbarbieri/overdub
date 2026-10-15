@@ -9,6 +9,7 @@
 #include "song/MixEdits.h"
 #include "song/TakeEdits.h"
 #include "song/TrackEdits.h"
+#include "song/VideoTakeEdits.h"
 
 #include "ui/Colours.h"
 #include "ui/FileDrop.h"
@@ -194,7 +195,7 @@ MainComponent::MainComponent()
     editPage.onToggleVideo = [this] { setVideoPreviewWanted (! videoPreviewWanted); };
     editPage.onDeleteTrack = [this] (const song::Id& trackId) { askToDeleteTrack (trackId); };
     editPage.onSplit = [this] { perform (Command::splitClip); };
-    editPage.onDelete = [this] { perform (Command::deleteClip); };
+    editPage.onDelete = [this] { perform (Command::deleteSelection); };
     editPage.timeline.canImportFiles = [this] {
         return openSong != nullptr && openSong->canChangeTracks();
     };
@@ -363,9 +364,9 @@ void MainComponent::perform (Command command)
             if (currentMode == Mode::edit)
                 splitSelectedClip();
             break;
-        case Command::deleteClip:
+        case Command::deleteSelection:
             if (currentMode == Mode::edit)
-                deleteSelectedClip();
+                deleteSelection();
             break;
         case Command::nudgeBack:
             if (currentMode == Mode::edit)
@@ -396,12 +397,14 @@ void MainComponent::splitSelectedClip()
         editPage.timeline.selectClip (rightHalf);
 }
 
-void MainComponent::deleteSelectedClip()
+void MainComponent::deleteSelection()
 {
-    const auto selected = editPage.timeline.selectedClip();
-    if (! selected.has_value() || passRunning())
+    if (passRunning())
         return;
-    applyEdit (song::deleteClip (openSong->song(), *selected), song::deleteClipLabel);
+    if (const auto videoTake = editPage.timeline.selectedVideoTake())
+        applyEdit (song::deleteVideoTake (openSong->song(), *videoTake), song::deleteVideoTakeLabel);
+    else if (const auto clip = editPage.timeline.selectedClip())
+        applyEdit (song::deleteClip (openSong->song(), *clip), song::deleteClipLabel);
 }
 
 // OpenSong::seek clamps at the Song's start and ignores seeks while a Pass runs.

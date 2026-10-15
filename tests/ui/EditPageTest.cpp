@@ -370,15 +370,15 @@ TEST_CASE ("the Clip toolbar names the Clip, its Track, start and length", "[ui]
     song.tracks.push_back (track);
 
     const auto selected = clipToolbarStateFor (song, std::string ("c"), 100000, true);
-    CHECK (selected.hasClip);
+    CHECK (selected.hasSelection);
     CHECK (selected.details == "Pass 2 on Guitar \xC2\xB7 start 1.250 s \xC2\xB7 length 3.000 s");
     CHECK (selected.canSplit);
     CHECK (selected.canDelete);
 
     CHECK (! clipToolbarStateFor (song, std::string ("c"), 60000, true).canSplit); // on the edge
     CHECK (! clipToolbarStateFor (song, std::string ("c"), 100000, false).canDelete);
-    CHECK (! clipToolbarStateFor (song, std::nullopt, 100000, true).hasClip);
-    CHECK (! clipToolbarStateFor (song, std::string ("gone"), 100000, true).hasClip);
+    CHECK (! clipToolbarStateFor (song, std::nullopt, 100000, true).hasSelection);
+    CHECK (! clipToolbarStateFor (song, std::string ("gone"), 100000, true).hasSelection);
     CHECK (secondsText (-24, 48000) == "-0.000 s");
     CHECK (secondsText (48000 * 83 + 24, 48000) == "83.000 s");
 }

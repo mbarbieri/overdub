@@ -61,6 +61,7 @@ target_sources(overdub_tests PRIVATE
     song/SongPackageTest.cpp
     song/TakeEditsTest.cpp
     song/TrackEditsTest.cpp
+    song/VideoTakeEditsTest.cpp
     support/RealtimeGuardTest.cpp
     support/RealtimeGuardCatchTest.cpp
     ui/CalibrationPanelTest.cpp
@@ -68,6 +69,7 @@ target_sources(overdub_tests PRIVATE
     ui/CommandsTest.cpp
     ui/DeviceSettingsPanelTest.cpp
     ui/DeleteTrackTest.cpp
+    ui/DeleteVideoTakeTest.cpp
     ui/EditPageTest.cpp
     ui/ExportMp4PageTest.cpp
     ui/ExportPageTest.cpp
