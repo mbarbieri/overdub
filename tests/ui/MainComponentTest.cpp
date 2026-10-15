@@ -275,3 +275,33 @@ TEST_CASE ("R without an audio device shows a Notice", "[ui][main][messages]")
         window.setOpenSong (nullptr);
     }
 }
+
+TEST_CASE ("A on a Record row and on an Edit header arms the Track, follows Armed, and is disabled while a Pass runs", "[ui][main][arm]")
+{
+    MainWindowFixture f;
+    CHECK (text (f.rowNamed ("Guitar").armButton) == "A");
+    CHECK (f.rowNamed ("Guitar").armButton.getTooltip() == "Arm");
+    REQUIRE (f.trackNamed ("Guitar").armed);
+    CHECK (f.rowNamed ("Guitar").armButton.getToggleState());
+
+    click (f.rowNamed ("Guitar").armButton);
+    CHECK (! f.trackNamed ("Guitar").armed);
+    CHECK (! f.rowNamed ("Guitar").armButton.getToggleState());
+
+    REQUIRE (pressKey (*f.window, '2'));
+    CHECK (text (f.editHeaderNamed ("Guitar").armButton) == "A");
+    CHECK (f.editHeaderNamed ("Guitar").armButton.getTooltip() == "Arm");
+    CHECK (! f.editHeaderNamed ("Guitar").armButton.getToggleState());
+
+    click (f.editHeaderNamed ("Guitar").armButton);
+    CHECK (f.trackNamed ("Guitar").armed);
+    CHECK (f.rowNamed ("Guitar").armButton.getToggleState());
+    CHECK (f.editHeaderNamed ("Guitar").armButton.getToggleState());
+
+    CHECK (f.rowNamed ("Guitar").armButton.isEnabled());
+    CHECK (f.editHeaderNamed ("Guitar").armButton.isEnabled());
+    REQUIRE (pressKey (*f.window, 'r'));
+    REQUIRE (f.openSong->isRecording());
+    CHECK_FALSE (f.rowNamed ("Guitar").armButton.isEnabled());
+    CHECK_FALSE (f.editHeaderNamed ("Guitar").armButton.isEnabled());
+}
