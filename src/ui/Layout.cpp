@@ -224,23 +224,37 @@ ClipToolbarLayout clipToolbarLayout (juce::Rectangle<int> bar)
     return layout;
 }
 
-TimelineLayout timelineLayout (juce::Rectangle<int> area, const std::vector<int>& takeLanesPerTrack)
+TimelineLayout timelineLayout (juce::Rectangle<int> area, const std::vector<int>& takeLanesPerTrack, int verticalScroll)
 {
     TimelineLayout layout;
+    for (const auto takeLanes : takeLanesPerTrack)
+    {
+        const auto rowHeight = trackLaneHeight + takeLanes * takeLaneHeight;
+        layout.trackRows.push_back (juce::Range<int>::withStartAndLength (layout.tracksHeight, rowHeight));
+        layout.tracksHeight += rowHeight;
+    }
+
     auto rest = area;
     auto scrollRow = rest.removeFromBottom (timelineScrollBarHeight);
+    auto rulerRow = rest.removeFromTop (rulerHeight);
+    auto cameraRow = rest.removeFromTop (cameraLaneHeight);
+    if (layout.tracksHeight > rest.getHeight())
+    {
+        layout.verticalScrollBar = rest.removeFromRight (timelineScrollBarHeight);
+        rulerRow.removeFromRight (timelineScrollBarHeight);
+        cameraRow.removeFromRight (timelineScrollBarHeight);
+        scrollRow.removeFromRight (timelineScrollBarHeight);
+    }
+    layout.tracksViewport = rest;
+
     scrollRow.removeFromLeft (laneHeaderWidth);
     layout.scrollBar = scrollRow;
-
-    auto rulerRow = rest.removeFromTop (rulerHeight);
     layout.rulerCorner = rulerRow.removeFromLeft (laneHeaderWidth);
     layout.ruler = rulerRow;
-
-    auto cameraRow = rest.removeFromTop (cameraLaneHeight);
     layout.cameraHeader = cameraRow.removeFromLeft (laneHeaderWidth);
     layout.cameraLane = cameraRow;
 
-    auto y = rest.getY();
+    auto y = rest.getY() - verticalScroll;
     for (const auto takeLanes : takeLanesPerTrack)
     {
         auto row = juce::Rectangle<int> (rest.getX(), y, rest.getWidth(), trackLaneHeight);
@@ -261,6 +275,21 @@ TimelineLayout timelineLayout (juce::Rectangle<int> area, const std::vector<int>
         layout.takeLanes.push_back (std::move (lanes));
     }
     return layout;
+}
+
+int clampTimelineScroll (int verticalScroll, int tracksHeight, int viewportHeight)
+{
+    return std::clamp (verticalScroll, 0, std::max (0, tracksHeight - viewportHeight));
+}
+
+int revealTimelineScroll (int verticalScroll, int spanTop, int spanBottom, int viewportHeight)
+{
+    auto scroll = verticalScroll;
+    if (spanBottom - scroll > viewportHeight)
+        scroll = spanBottom - viewportHeight;
+    if (spanTop < scroll)
+        scroll = spanTop;
+    return scroll;
 }
 
 TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header)

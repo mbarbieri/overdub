@@ -263,3 +263,24 @@ TEST_CASE ("a waveform column is the min and max of the peaks it covers, over ev
     // 128 samples per column from 256: each block covers two columns.
     CHECK (waveformColumns (peaks, 256, 128, 2) == std::vector<PeakRange> { { -0.5f, 0.6f }, { -0.5f, 0.6f } });
 }
+
+TEST_CASE ("a vertical wheel or swipe scrolls Tracks, a horizontal one or shift with the wheel scrolls time", "[ui][timeline][vertical_scroll]")
+{
+    // JUCE's deltas: positive deltaY is a wheel turned away (content moves down: scroll up).
+    const auto vertical = wheelScroll (0.0f, -0.1f, false);
+    CHECK (vertical.timePixels == 0);
+    CHECK (vertical.verticalPixels == 40);
+
+    const auto horizontal = wheelScroll (-0.1f, 0.0f, false);
+    CHECK (horizontal.timePixels == 40);
+    CHECK (horizontal.verticalPixels == 0);
+
+    const auto shifted = wheelScroll (0.0f, -0.1f, true);
+    CHECK (shifted.timePixels == 40);
+    CHECK (shifted.verticalPixels == 0);
+
+    // A trackpad swipe with both: each axis scrolls its own way.
+    const auto diagonal = wheelScroll (0.05f, -0.1f, false);
+    CHECK (diagonal.timePixels == -20);
+    CHECK (diagonal.verticalPixels == 40);
+}

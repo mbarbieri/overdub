@@ -350,3 +350,85 @@ TEST_CASE ("the Clip toolbar puts the Clip's details, fade and gain fields, Spli
     CHECK (layout.zoomIn.getRight() <= layout.videoToggle.getX());
     CHECK (layout.videoToggle.getRight() <= layout.mixerToggle.getX());
 }
+
+TEST_CASE ("Tracks that fit show no vertical scroll bar and fill the timeline's width", "[ui][layout][edit][vertical_scroll]")
+{
+    const Rectangle<int> area { 0, 88, 1200, 500 };
+    const auto layout = timelineLayout (area, { 0, 0 }, 0);
+
+    CHECK (layout.verticalScrollBar.isEmpty());
+    CHECK (layout.tracksHeight == 2 * trackLaneHeight);
+    CHECK (layout.tracksViewport.getY() == layout.cameraLane.getBottom());
+    CHECK (layout.tracksViewport.getBottom() == layout.scrollBar.getY());
+    CHECK (layout.tracksViewport.getX() == area.getX());
+    CHECK (layout.tracksViewport.getRight() == area.getRight());
+    CHECK (layout.ruler.getRight() == area.getRight());
+}
+
+TEST_CASE ("Tracks that overflow get a vertical scroll bar beside them, and the ruler and lanes end left of it", "[ui][layout][edit][vertical_scroll]")
+{
+    const Rectangle<int> area { 0, 88, 1200, 300 };
+    const auto layout = timelineLayout (area, { 2, 0, 0, 0 }, 0);
+
+    REQUIRE (! layout.verticalScrollBar.isEmpty());
+    CHECK (layout.tracksHeight == 4 * trackLaneHeight + 2 * takeLaneHeight);
+    CHECK (layout.verticalScrollBar.getRight() == area.getRight());
+    CHECK (layout.verticalScrollBar.getWidth() == timelineScrollBarHeight);
+    CHECK (layout.verticalScrollBar.getY() == layout.cameraLane.getBottom());
+    CHECK (layout.verticalScrollBar.getBottom() == layout.scrollBar.getY());
+    for (const auto& part : { layout.ruler, layout.cameraLane, layout.trackLanes[0], layout.takeLanes[0][0], layout.scrollBar, layout.tracksViewport })
+        CHECK (part.getRight() == layout.verticalScrollBar.getX());
+}
+
+TEST_CASE ("a vertical scroll moves Track headers, lanes and Take Lanes up, and leaves the ruler, Camera lane and scroll bar in place", "[ui][layout][edit][vertical_scroll]")
+{
+    const Rectangle<int> area { 0, 88, 1200, 300 };
+    const auto still = timelineLayout (area, { 2, 0, 0, 0 }, 0);
+    const auto scrolled = timelineLayout (area, { 2, 0, 0, 0 }, 50);
+
+    CHECK (scrolled.ruler == still.ruler);
+    CHECK (scrolled.cameraLane == still.cameraLane);
+    CHECK (scrolled.scrollBar == still.scrollBar);
+    CHECK (scrolled.verticalScrollBar == still.verticalScrollBar);
+    CHECK (scrolled.tracksViewport == still.tracksViewport);
+    for (std::size_t i = 0; i < 4; ++i)
+    {
+        CHECK (scrolled.trackLanes[i] == still.trackLanes[i].translated (0, -50));
+        CHECK (scrolled.trackHeaders[i] == still.trackHeaders[i].translated (0, -50));
+    }
+    CHECK (scrolled.takeLanes[0][1] == still.takeLanes[0][1].translated (0, -50));
+    CHECK (scrolled.takeLaneHeaders[0][1] == still.takeLaneHeaders[0][1].translated (0, -50));
+}
+
+TEST_CASE ("each Track's row spans its lane and its Take Lanes, measured from the first Track's top whatever the scroll", "[ui][layout][edit][vertical_scroll]")
+{
+    const Rectangle<int> area { 0, 88, 1200, 300 };
+    const auto layout = timelineLayout (area, { 2, 0, 1 }, 70);
+
+    REQUIRE (layout.trackRows.size() == 3);
+    CHECK (layout.trackRows[0] == juce::Range<int> (0, trackLaneHeight + 2 * takeLaneHeight));
+    CHECK (layout.trackRows[1] == juce::Range<int>::withStartAndLength (layout.trackRows[0].getEnd(), trackLaneHeight));
+    CHECK (layout.trackRows[2] == juce::Range<int>::withStartAndLength (layout.trackRows[1].getEnd(), trackLaneHeight + takeLaneHeight));
+    CHECK (layout.trackRows[2].getEnd() == layout.tracksHeight);
+    CHECK (layout.trackLanes[1].getY() == layout.tracksViewport.getY() - 70 + layout.trackRows[1].getStart());
+}
+
+TEST_CASE ("the vertical scroll stays between the top and where the last Track's bottom meets the lanes' bottom", "[ui][layout][edit][vertical_scroll]")
+{
+    CHECK (clampTimelineScroll (-20, 500, 200) == 0);
+    CHECK (clampTimelineScroll (120, 500, 200) == 120);
+    CHECK (clampTimelineScroll (400, 500, 200) == 300);
+    CHECK (clampTimelineScroll (80, 150, 200) == 0); // everything fits
+}
+
+TEST_CASE ("revealing Tracks scrolls just enough to bring them into view, their top first when they are taller than it", "[ui][layout][edit][vertical_scroll]")
+{
+    // Viewport 200 high, scrolled to 0. Already visible: unchanged.
+    CHECK (revealTimelineScroll (0, 50, 150, 200) == 0);
+    // Below the bottom: scrolled so their bottom meets the viewport's bottom.
+    CHECK (revealTimelineScroll (0, 300, 400, 200) == 200);
+    // Above the top: scrolled so their top meets the viewport's top.
+    CHECK (revealTimelineScroll (250, 100, 180, 200) == 100);
+    // Taller than the viewport: their top.
+    CHECK (revealTimelineScroll (0, 300, 700, 200) == 300);
+}

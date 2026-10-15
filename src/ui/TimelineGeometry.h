@@ -48,6 +48,18 @@ int xForSample (const TimelineView& view, SampleCount sample);
 // The first sample of this pixel column.
 SampleCount sampleForX (const TimelineView& view, int x);
 
+// What a mouse wheel or trackpad movement scrolls (issue #127), in pixels: a vertical movement
+// scrolls the Track rows (positive: down the list), a horizontal one scrolls time (positive:
+// later); with shift a vertical wheel scrolls time instead. Each axis is independent, so a
+// diagonal swipe scrolls both. Deltas are JUCE's MouseWheelDetails (about 400 pixels per unit).
+struct WheelScroll
+{
+    int timePixels = 0;
+    int verticalPixels = 0;
+};
+
+WheelScroll wheelScroll (float deltaX, float deltaY, bool shift);
+
 // Half or twice the samples per pixel, kept within the limits; firstSample is kept.
 TimelineView zoomedIn (TimelineView view);
 TimelineView zoomedOut (TimelineView view);

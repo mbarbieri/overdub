@@ -171,13 +171,20 @@ Timeline::Timeline()
     scrollBar.setAutoHide (false);
     scrollBar.addListener (this);
     scrollBar.setWantsKeyboardFocus (false);
+    verticalScrollBar.setAutoHide (false);
+    verticalScrollBar.addListener (this);
+    verticalScrollBar.setWantsKeyboardFocus (false);
+    trackHeaderColumn.setInterceptsMouseClicks (false, true);
     addAndMakeVisible (cameraHeader);
+    addAndMakeVisible (trackHeaderColumn);
     addAndMakeVisible (scrollBar);
+    addChildComponent (verticalScrollBar);
 }
 
 Timeline::~Timeline()
 {
     scrollBar.removeListener (this);
+    verticalScrollBar.removeListener (this);
 }
 
 void Timeline::show (const TimelineState& state)
@@ -185,6 +192,10 @@ void Timeline::show (const TimelineState& state)
     const auto songChanged = state.song != current.song;
     const auto changed = songChanged || state.playhead != current.playhead || state.playing != current.playing || state.editable != current.editable
                       || state.tracksDeletable != current.tracksDeletable || state.videoTakes != current.videoTakes;
+    std::vector<song::Id> previousTrackIds;
+    if (songChanged)
+        for (const auto& track : current.song.tracks)
+            previousTrackIds.push_back (track.id);
     current = state;
     if (! changed)
         return;
@@ -195,6 +206,7 @@ void Timeline::show (const TimelineState& state)
             selectClip (std::nullopt);
         rebuildHeaders();
         refreshTakeLanes();
+        revealNewTracks (previousTrackIds);
     }
     showHeaders();
 
@@ -309,10 +321,40 @@ void Timeline::rebuildHeaders()
             if (onDeleteTrack)
                 onDeleteTrack (trackId);
         };
-        addAndMakeVisible (*header);
+        trackHeaderColumn.addAndMakeVisible (*header);
         headers.push_back (std::move (header));
     }
     resized();
+}
+
+void Timeline::revealNewTracks (const std::vector<song::Id>& previousTrackIds)
+{
+    const auto& tracks = current.song.tracks;
+    std::optional<std::size_t> first;
+    std::size_t last = 0;
+    for (std::size_t i = 0; i < tracks.size() && i < layout.trackRows.size(); ++i)
+    {
+        if (std::ranges::find (previousTrackIds, tracks[i].id) != previousTrackIds.end())
+            continue;
+        if (! first.has_value())
+            first = i;
+        last = i;
+    }
+    if (! first.has_value())
+        return;
+
+    const auto revealed = revealTimelineScroll (verticalScrollPixels, layout.trackRows[*first].getStart(), layout.trackRows[last].getEnd(), layout.tracksViewport.getHeight());
+    core::logEvent (core::Level::debug, "ui.timeline_tracks_revealed", { { "first_track_id", tracks[*first].id }, { "new_tracks", last - *first + 1 }, { "from", verticalScrollPixels }, { "to", revealed } });
+    setVerticalScroll (revealed);
+}
+
+void Timeline::setVerticalScroll (int pixels)
+{
+    if (pixels == verticalScrollPixels)
+        return;
+    verticalScrollPixels = pixels;
+    layOutRows();
+    repaint();
 }
 
 void Timeline::setView (song::SampleCount firstSample, song::SampleCount samplesPerPixel)
@@ -390,7 +432,7 @@ juce::Rectangle<int> Timeline::handleBounds (const song::Id& clipId, ClipPart pa
 
 juce::Rectangle<int> Timeline::lanesArea() const
 {
-    return getLocalBounds().withTop (layout.cameraLane.getBottom()).withBottom (layout.scrollBar.getY()).withLeft (layout.ruler.getX());
+    return layout.tracksViewport.withLeft (layout.ruler.getX());
 }
 
 bool Timeline::isInterestedInFileDrag (const juce::StringArray& files)
@@ -506,15 +548,22 @@ void Timeline::mouseUp (const juce::MouseEvent& event)
         onEdit (std::move (*dragged), labelForDrag (finished.drag.part));
 }
 
-void Timeline::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
+void Timeline::mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
 {
-    const auto delta = wheel.deltaX != 0.0f ? wheel.deltaX : wheel.deltaY;
-    const auto pixels = (song::SampleCount) std::lround (-delta * 400.0f);
-    setView (timelineView.firstSample + pixels * timelineView.samplesPerPixel, timelineView.samplesPerPixel);
+    const auto scroll = wheelScroll (wheel.deltaX, wheel.deltaY, event.mods.isShiftDown());
+    if (scroll.timePixels != 0)
+        setView (timelineView.firstSample + (song::SampleCount) scroll.timePixels * timelineView.samplesPerPixel, timelineView.samplesPerPixel);
+    if (scroll.verticalPixels != 0)
+        setVerticalScroll (verticalScrollPixels + scroll.verticalPixels);
 }
 
-void Timeline::scrollBarMoved (juce::ScrollBar*, double newRangeStart)
+void Timeline::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
 {
+    if (bar == &verticalScrollBar)
+    {
+        setVerticalScroll ((int) std::lround (newRangeStart));
+        return;
+    }
     timelineView.firstSample = std::max<song::SampleCount> (0, (song::SampleCount) newRangeStart);
     repaint();
 }
@@ -534,16 +583,34 @@ void Timeline::updateScrollBar()
 
 void Timeline::resized()
 {
+    layOutRows();
+}
+
+void Timeline::layOutRows()
+{
     std::vector<int> takeLanesPerTrack;
     for (std::size_t i = 0; i < headers.size(); ++i)
         takeLanesPerTrack.push_back (i < takeLanes.size() ? (int) takeLanes[i].size() : 0);
-    layout = timelineLayout (getLocalBounds(), takeLanesPerTrack);
+    layout = timelineLayout (getLocalBounds(), takeLanesPerTrack, verticalScrollPixels);
+    const auto clamped = clampTimelineScroll (verticalScrollPixels, layout.tracksHeight, layout.tracksViewport.getHeight());
+    if (clamped != verticalScrollPixels)
+    {
+        verticalScrollPixels = clamped;
+        layout = timelineLayout (getLocalBounds(), takeLanesPerTrack, verticalScrollPixels);
+    }
+
     timelineView.laneX = layout.ruler.getX();
     cameraHeader.setBounds (layout.cameraHeader.reduced (8, 0));
     scrollBar.setBounds (layout.scrollBar);
-    const auto lanesBottom = layout.scrollBar.getY();
+    const auto headerColumn = layout.tracksViewport.withWidth (laneHeaderWidth);
+    trackHeaderColumn.setBounds (headerColumn);
     for (std::size_t i = 0; i < headers.size(); ++i)
-        headers[i]->setBounds (layout.trackHeaders[i].withBottom (std::min (layout.trackHeaders[i].getBottom(), lanesBottom)));
+        headers[i]->setBounds (layout.trackHeaders[i] - headerColumn.getPosition());
+
+    verticalScrollBar.setVisible (! layout.verticalScrollBar.isEmpty());
+    verticalScrollBar.setBounds (layout.verticalScrollBar);
+    verticalScrollBar.setRangeLimits (0.0, (double) std::max (layout.tracksHeight, layout.tracksViewport.getHeight()), juce::dontSendNotification);
+    verticalScrollBar.setCurrentRange ((double) verticalScrollPixels, (double) layout.tracksViewport.getHeight(), juce::dontSendNotification);
     updateScrollBar();
 }
 
@@ -567,7 +634,7 @@ void Timeline::paint (juce::Graphics& g)
     }
     {
         juce::Graphics::ScopedSaveState saved (g);
-        g.reduceClipRegion (getLocalBounds().withTop (layout.cameraLane.getBottom()).withBottom (layout.scrollBar.getY()));
+        g.reduceClipRegion (layout.tracksViewport);
         for (std::size_t i = 0; i < takeLanes.size() && i < layout.takeLaneHeaders.size(); ++i)
             for (std::size_t j = 0; j < takeLanes[i].size() && j < layout.takeLaneHeaders[i].size(); ++j)
                 paintTakeLaneHeader (g, takeLanes[i][j], layout.takeLaneHeaders[i][j]);

@@ -129,8 +129,13 @@ ClipToolbarLayout clipToolbarLayout (juce::Rectangle<int> bar);
 
 // The timeline: a header column of laneHeaderWidth on the left; on the right the ruler, the
 // Camera lane, one lane per Track, each followed by its unfolded Take Lanes (issue #30), and the
-// horizontal scroll bar along the bottom. Lanes past the bottom are cut off (rows keep their
-// height).
+// horizontal scroll bar along the bottom. Rows keep their height.
+//
+// Vertical scrolling (issue #127): the Track rows (headers, lanes, Take Lanes) sit in the tracks
+// viewport between the Camera lane and the horizontal scroll bar, moved up by the vertical scroll;
+// rows outside it are cut off by the Timeline. When they are taller than the viewport, a vertical
+// scroll bar of timelineScrollBarHeight runs beside them at the right edge, and the ruler, Camera
+// lane, lanes and horizontal scroll bar end left of it.
 inline constexpr int laneHeaderWidth = 150;
 inline constexpr int rulerHeight = 24;
 inline constexpr int cameraLaneHeight = 36;
@@ -150,10 +155,25 @@ struct TimelineLayout
     std::vector<std::vector<juce::Rectangle<int>>> takeLaneHeaders;
     std::vector<std::vector<juce::Rectangle<int>>> takeLanes;
     juce::Rectangle<int> scrollBar;
+    juce::Rectangle<int> tracksViewport;    // header column and lanes, where Track rows show
+    juce::Rectangle<int> verticalScrollBar; // empty when the Track rows fit
+    int tracksHeight = 0;                   // every Track row's height, Take Lanes included
+    // Per Track, its row (its lane, then its Take Lanes) measured from the first Track's top, so
+    // unchanged by the vertical scroll.
+    std::vector<juce::Range<int>> trackRows;
 };
 
 // takeLanesPerTrack: one entry per Track, its number of unfolded Take Lanes (0 when folded).
-TimelineLayout timelineLayout (juce::Rectangle<int> area, const std::vector<int>& takeLanesPerTrack);
+// verticalScroll: how far the Track rows are moved up, used as given (see clampTimelineScroll).
+TimelineLayout timelineLayout (juce::Rectangle<int> area, const std::vector<int>& takeLanesPerTrack, int verticalScroll = 0);
+
+// The vertical scroll kept within [0, tracksHeight - viewportHeight] (0 when everything fits).
+int clampTimelineScroll (int verticalScroll, int tracksHeight, int viewportHeight);
+
+// The vertical scroll that brings the rows from spanTop to spanBottom (measured from the first
+// Track's top) into a viewport of viewportHeight, moving as little as possible; their top wins
+// when they are taller than the viewport.
+int revealTimelineScroll (int verticalScroll, int spanTop, int spanBottom, int viewportHeight);
 
 // Top row: arm, then the name. Under it, the Take Lanes toggle ("▸ 3 Takes"), then M and S.
 struct TrackHeaderLayout
