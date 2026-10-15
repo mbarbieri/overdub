@@ -30,7 +30,17 @@ namespace song = overdub::song;
 
 namespace
 {
-const std::vector<std::string> songTrackNamesAfter { "Band Mix", "Bass", "Drums", "Other", "Vocals", "Guitar", "Piano", "Guitar" };
+// The names themselves are specified in tests/song/SeparationTest.cpp.
+std::vector<std::string> songTrackNamesAfter()
+{
+    std::vector<std::string> names { "Band Mix" };
+    for (const auto& part : song::separationParts)
+        names.emplace_back (part.trackName);
+    names.emplace_back ("Guitar");
+    return names;
+}
+
+const std::string bassTrackName { song::separationParts.front().trackName };
 
 // Band Mix: 2 s at 44.1 kHz, the helper's rate, so each part's derived WAV is its sine unchanged.
 std::unique_ptr<FixtureSong> bandMixSong()
@@ -192,7 +202,7 @@ TEST_CASE ("a finished Separation adds six Backing Tracks on six Tracks below th
 
     s.separate ("Band Mix");
 
-    CHECK (s.trackNames() == songTrackNamesAfter);
+    CHECK (s.trackNames() == songTrackNamesAfter());
     CHECK (s.f.song().backingTracks.size() == 7);
     CHECK (s.f.openSong->package().undoLabel() == "Separate Band Mix.wav");
     CHECK (s.f.alertsShown.empty());
@@ -340,6 +350,25 @@ TEST_CASE ("a snapshot of the Separation dialog over the Record page", "[ui][sep
     s.f.window->tick();
     s.f.window->tick();
     CHECK (writeSnapshot (*s.f.window, "issue-114", "separation-dialog").existsAsFile());
+}
+
+// Issue #136: build/ui-snapshots/issue-136/*.png, for a session to see whether the emoji in the
+// Track names draws in colour (Apple Color Emoji fallback) on the Record rows, the Edit headers
+// and the Mixer strips.
+TEST_CASE ("snapshots of the Tracks a Separation adds, named with emoji, on the Record and Edit pages", "[ui][separation][snapshot]")
+{
+    SeparateFixture s;
+    s.separate ("Band Mix");
+    auto& window = *s.f.window;
+    window.tick();
+    CHECK (writeSnapshot (window, "issue-136", "record-rows").existsAsFile());
+    CHECK (writeSnapshot (s.f.rowNamed (bassTrackName), "issue-136", "record-row-bass").existsAsFile());
+
+    REQUIRE (pressKey (window, '2'));
+    window.tick();
+    CHECK (writeSnapshot (window, "issue-136", "edit-headers-mixer").existsAsFile());
+    CHECK (writeSnapshot (s.f.editHeaderNamed (bassTrackName), "issue-136", "edit-header-bass").existsAsFile());
+    CHECK (writeSnapshot (*window.editPage.mixer.strips.at (1), "issue-136", "mixer-strip-bass").existsAsFile());
 }
 
 TEST_CASE ("a helper that fails is an Alert, the dialog closes and the Song is unchanged", "[ui][separation]")
@@ -522,8 +551,8 @@ TEST_CASE ("the Edit Timeline scrolls to show the Tracks a Separation adds below
     REQUIRE (pressKey (*s.f.window, '2'));
 
     // Six new Tracks are taller than the rows' viewport: the first of them is at its top.
-    REQUIRE (s.trackNames() == songTrackNamesAfter);
-    auto& bass = s.f.editHeaderNamed ("Bass");
+    REQUIRE (s.trackNames() == songTrackNamesAfter());
+    auto& bass = s.f.editHeaderNamed (bassTrackName);
     CHECK (timeline.getLocalArea (&bass, bass.getLocalBounds()).getY() == timeline.tracksViewportBounds().getY());
     CHECK (timeline.verticalScroll() == trackLaneHeight);
 }
