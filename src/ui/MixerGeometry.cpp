@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <optional>
 
 namespace overdub::ui
 {
@@ -16,6 +17,35 @@ constexpr double upperRangeDb = song::maxVolumeDb;       // 12 dB over unity
 double roundTo (double value, double step)
 {
     return std::round (value / step) * step;
+}
+
+// The drag travel that counts once the detent is taken out: `moved` pixels along the drag, with
+// the neutral value `toNeutral` pixels from the start (same sign convention). nullopt: held at
+// neutral.
+std::optional<double> pastDetent (double moved, double toNeutral)
+{
+    if (toNeutral >= 0.0 && moved >= toNeutral)
+    {
+        if (moved <= toNeutral + detentPixels)
+            return std::nullopt;
+        return moved - detentPixels;
+    }
+    if (toNeutral <= 0.0 && moved <= toNeutral)
+    {
+        if (moved >= toNeutral - detentPixels)
+            return std::nullopt;
+        return moved + detentPixels;
+    }
+    return moved;
+}
+
+// One key step from `value`, stopping at 0 if it would cross it.
+double stepTowards (double value, double step)
+{
+    const auto next = value + step;
+    if ((value < 0.0 && next > 0.0) || (value > 0.0 && next < 0.0))
+        return 0.0;
+    return next;
 }
 } // namespace
 
@@ -35,11 +65,15 @@ double dbToFaderPosition (double db)
     return faderUnityPosition + (1.0 - faderUnityPosition) * clamped / upperRangeDb;
 }
 
-double faderDragDb (double startDb, int deltaY, int travelPixels)
+double faderDragDb (double startDb, int louderPixels, int travelPixels)
 {
     if (travelPixels <= 0)
         return startDb;
-    const auto position = dbToFaderPosition (startDb) - (double) deltaY / (double) travelPixels;
+    const auto startPosition = dbToFaderPosition (startDb);
+    const auto moved = pastDetent ((double) louderPixels, (faderUnityPosition - startPosition) * travelPixels);
+    if (! moved.has_value())
+        return 0.0;
+    const auto position = startPosition + *moved / (double) travelPixels;
     return std::clamp (roundTo (faderPositionToDb (position), 0.1), song::minVolumeDb, song::maxVolumeDb);
 }
 
@@ -47,7 +81,22 @@ double panDrag (double startPan, int deltaX, int widthPixels)
 {
     if (widthPixels <= 0)
         return startPan;
-    return std::clamp (roundTo (startPan + 2.0 * deltaX / widthPixels, 0.01), -1.0, 1.0);
+    const auto moved = pastDetent ((double) deltaX, -startPan * widthPixels / 2.0);
+    if (! moved.has_value())
+        return 0.0;
+    return std::clamp (roundTo (startPan + 2.0 * *moved / widthPixels, 0.01), -1.0, 1.0);
+}
+
+double faderKeyStepDb (double db, bool louder, bool fine)
+{
+    const auto step = (fine ? 0.1 : 1.0) * (louder ? 1.0 : -1.0);
+    return std::clamp (roundTo (stepTowards (db, step), 0.1), song::minVolumeDb, song::maxVolumeDb);
+}
+
+double panKeyStep (double pan, bool right, bool fine)
+{
+    const auto step = (fine ? 0.01 : 0.05) * (right ? 1.0 : -1.0);
+    return std::clamp (roundTo (stepTowards (pan, step), 0.01), -1.0, 1.0);
 }
 
 double panPosition (double pan)

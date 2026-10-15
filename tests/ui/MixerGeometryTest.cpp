@@ -36,37 +36,112 @@ TEST_CASE ("fader position maps to dB and back", "[ui][mixer]")
 
 TEST_CASE ("dragging the fader moves its position by the dragged share of its travel, in tenths of a dB", "[ui][mixer]")
 {
-    // Travel 200 px. From 0 dB (position 0.75): 25 px up is position 0.875, +6 dB.
-    CHECK_THAT (faderDragDb (0.0, -25, 200), WithinAbs (6.0, 1.0e-9));
-    // 50 px down is position 0.5, -20 dB.
-    CHECK_THAT (faderDragDb (0.0, 50, 200), WithinAbs (-20.0, 1.0e-9));
-    // From -20 dB, 7 px up: position 0.535, -17.2 dB.
-    CHECK_THAT (faderDragDb (-20.0, -7, 200), WithinAbs (-17.2, 1.0e-9));
-    // Rounded to a tenth: 1 px up from 0 dB is +0.24 dB, shown and stored as +0.2.
-    CHECK_THAT (faderDragDb (0.0, -1, 200), WithinAbs (0.2, 1.0e-9));
+    // Travel 200 px; positive pixels are towards louder. From -20 dB (position 0.5): 25 px louder
+    // is position 0.625, -10 dB.
+    CHECK_THAT (faderDragDb (-20.0, 25, 200), WithinAbs (-10.0, 1.0e-9));
+    // 50 px quieter from -20 dB is position 0.25, -40 dB.
+    CHECK_THAT (faderDragDb (-20.0, -50, 200), WithinAbs (-40.0, 1.0e-9));
+    // From -20 dB, 7 px louder: position 0.535, -17.2 dB.
+    CHECK_THAT (faderDragDb (-20.0, 7, 200), WithinAbs (-17.2, 1.0e-9));
+    // From +6 dB (position 0.875), 1 px louder: position 0.88, +6.24 dB, stored as +6.2.
+    CHECK_THAT (faderDragDb (6.0, 1, 200), WithinAbs (6.2, 1.0e-9));
     // Clamped at both ends.
-    CHECK_THAT (faderDragDb (0.0, -1000, 200), WithinAbs (12.0, 1.0e-9));
-    CHECK_THAT (faderDragDb (0.0, 1000, 200), WithinAbs (-60.0, 1.0e-9));
+    CHECK_THAT (faderDragDb (-20.0, 1000, 200), WithinAbs (12.0, 1.0e-9));
+    CHECK_THAT (faderDragDb (-20.0, -1000, 200), WithinAbs (-60.0, 1.0e-9));
     // No travel: no change.
     CHECK_THAT (faderDragDb (-3.0, 40, 0), WithinAbs (-3.0, 1.0e-9));
+}
+
+TEST_CASE ("a fader drag that crosses 0 dB holds there for the detent's extra travel, then continues", "[ui][mixer]")
+{
+    REQUIRE (detentPixels == 8);
+    // Travel 200 px. From -20 dB (position 0.5), 0 dB is 50 px louder.
+    CHECK_THAT (faderDragDb (-20.0, 49, 200), WithinAbs (-0.4, 1.0e-9)); // short of it: unchanged
+    CHECK_THAT (faderDragDb (-20.0, 50, 200), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (faderDragDb (-20.0, 54, 200), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (faderDragDb (-20.0, 58, 200), WithinAbs (0.0, 1.0e-9));
+    // 59 px is 1 px past the detent: position 0.755, +0.24 dB.
+    CHECK_THAT (faderDragDb (-20.0, 59, 200), WithinAbs (0.2, 1.0e-9));
+    CHECK_THAT (faderDragDb (-20.0, 1000, 200), WithinAbs (12.0, 1.0e-9)); // every value still reachable
+
+    // From +6 dB (position 0.875), 0 dB is 25 px quieter.
+    CHECK_THAT (faderDragDb (6.0, -24, 200), WithinAbs (0.2, 1.0e-9)); // short of it: unchanged
+    CHECK_THAT (faderDragDb (6.0, -25, 200), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (faderDragDb (6.0, -33, 200), WithinAbs (0.0, 1.0e-9));
+    // 34 px is 1 px past the detent: position 0.745, -0.4 dB.
+    CHECK_THAT (faderDragDb (6.0, -34, 200), WithinAbs (-0.4, 1.0e-9));
+    CHECK_THAT (faderDragDb (6.0, -1000, 200), WithinAbs (-60.0, 1.0e-9));
+
+    // A drag that starts at 0 dB holds there for the detent in either direction.
+    CHECK_THAT (faderDragDb (0.0, 8, 200), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (faderDragDb (0.0, -8, 200), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (faderDragDb (0.0, 9, 200), WithinAbs (0.2, 1.0e-9));
+    CHECK_THAT (faderDragDb (0.0, -9, 200), WithinAbs (-0.4, 1.0e-9));
 }
 
 TEST_CASE ("dragging the pan control moves pan across its width, from hard left to hard right", "[ui][mixer]")
 {
     // Width 100 px spans -1 .. +1: 2 per 100 px.
-    CHECK_THAT (panDrag (0.0, 25, 100), WithinAbs (0.5, 1.0e-9));
-    CHECK_THAT (panDrag (0.0, -50, 100), WithinAbs (-1.0, 1.0e-9));
+    CHECK_THAT (panDrag (0.5, 25, 100), WithinAbs (1.0, 1.0e-9));
+    CHECK_THAT (panDrag (-0.5, -25, 100), WithinAbs (-1.0, 1.0e-9));
     CHECK_THAT (panDrag (0.5, -10, 100), WithinAbs (0.3, 1.0e-9));
     CHECK_THAT (panDrag (0.9, 30, 100), WithinAbs (1.0, 1.0e-9));
     CHECK_THAT (panDrag (-0.9, -30, 100), WithinAbs (-1.0, 1.0e-9));
     // Rounded to hundredths.
-    CHECK_THAT (panDrag (0.0, 1, 300), WithinAbs (0.01, 1.0e-9));
+    CHECK_THAT (panDrag (0.2, 1, 300), WithinAbs (0.21, 1.0e-9));
     CHECK_THAT (panDrag (0.2, 10, 0), WithinAbs (0.2, 1.0e-9));
 
     CHECK_THAT (panPosition (-1.0), WithinAbs (0.0, 1.0e-9));
     CHECK_THAT (panPosition (0.0), WithinAbs (0.5, 1.0e-9));
     CHECK_THAT (panPosition (0.5), WithinAbs (0.75, 1.0e-9));
     CHECK_THAT (panPosition (1.0), WithinAbs (1.0, 1.0e-9));
+}
+
+TEST_CASE ("a pan drag that crosses centre holds at C for the detent's extra travel, then continues", "[ui][mixer]")
+{
+    // Width 100 px (0.02 per px). From -0.5, centre is 25 px right.
+    CHECK_THAT (panDrag (-0.5, 20, 100), WithinAbs (-0.1, 1.0e-9)); // short of it: unchanged
+    CHECK_THAT (panDrag (-0.5, 25, 100), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (panDrag (-0.5, 33, 100), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (panDrag (-0.5, 34, 100), WithinAbs (0.02, 1.0e-9));
+    CHECK_THAT (panDrag (-0.5, 100, 100), WithinAbs (1.0, 1.0e-9)); // hard right still reachable
+
+    // From 0.5, centre is 25 px left.
+    CHECK_THAT (panDrag (0.5, -25, 100), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (panDrag (0.5, -33, 100), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (panDrag (0.5, -40, 100), WithinAbs (-0.14, 1.0e-9));
+
+    // From C, either direction.
+    CHECK_THAT (panDrag (0.0, 8, 100), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (panDrag (0.0, -8, 100), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (panDrag (0.0, 10, 100), WithinAbs (0.04, 1.0e-9));
+    CHECK_THAT (panDrag (0.0, -10, 100), WithinAbs (-0.04, 1.0e-9));
+}
+
+TEST_CASE ("an arrow key moves a fader by 1 dB (0.1 fine), stopping at 0 dB when it would cross it", "[ui][mixer]")
+{
+    CHECK_THAT (faderKeyStepDb (-6.0, true, false), WithinAbs (-5.0, 1.0e-9));
+    CHECK_THAT (faderKeyStepDb (-6.0, false, false), WithinAbs (-7.0, 1.0e-9));
+    CHECK_THAT (faderKeyStepDb (-6.0, true, true), WithinAbs (-5.9, 1.0e-9));
+    CHECK_THAT (faderKeyStepDb (-0.3, true, false), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (faderKeyStepDb (0.5, false, false), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (faderKeyStepDb (0.05, false, true), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (faderKeyStepDb (0.0, true, false), WithinAbs (1.0, 1.0e-9));
+    CHECK_THAT (faderKeyStepDb (0.0, false, true), WithinAbs (-0.1, 1.0e-9));
+    CHECK_THAT (faderKeyStepDb (11.5, true, false), WithinAbs (12.0, 1.0e-9));
+    CHECK_THAT (faderKeyStepDb (-59.5, false, false), WithinAbs (-60.0, 1.0e-9));
+}
+
+TEST_CASE ("an arrow key moves pan by 5% (1% fine), stopping at C when it would cross it", "[ui][mixer]")
+{
+    CHECK_THAT (panKeyStep (-0.5, true, false), WithinAbs (-0.45, 1.0e-9));
+    CHECK_THAT (panKeyStep (-0.5, false, false), WithinAbs (-0.55, 1.0e-9));
+    CHECK_THAT (panKeyStep (0.5, true, true), WithinAbs (0.51, 1.0e-9));
+    CHECK_THAT (panKeyStep (0.03, false, false), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (panKeyStep (-0.02, true, false), WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (panKeyStep (0.0, false, false), WithinAbs (-0.05, 1.0e-9));
+    CHECK_THAT (panKeyStep (0.98, true, false), WithinAbs (1.0, 1.0e-9));
+    CHECK_THAT (panKeyStep (-1.0, false, true), WithinAbs (-1.0, 1.0e-9));
 }
 
 TEST_CASE ("pan and volume read as short texts", "[ui][mixer]")
