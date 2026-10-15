@@ -11,12 +11,21 @@
 using namespace overdub::song;
 using Catch::Matchers::WithinAbs;
 
+namespace
+{
+// A colour pick that always takes the first choice.
+std::size_t firstChoice (std::size_t)
+{
+    return 0;
+}
+} // namespace
+
 TEST_CASE ("an added Track is empty, Armed on the given input and appended last", "[song][tracks]")
 {
     auto song = makeEmptySong (48000);
     song.tracks.push_back (Track { .id = "b", .name = "Band Mix", .clips = { Clip { .id = "c" } } });
 
-    const auto added = addTrack (song, { 0 });
+    const auto added = addTrack (song, { 0 }, firstChoice);
     REQUIRE (added.song.tracks.size() == 2);
     CHECK (added.song.tracks[0] == song.tracks[0]);
 
@@ -37,7 +46,7 @@ TEST_CASE ("an added Track is empty, Armed on the given input and appended last"
 
 TEST_CASE ("an added Track without an input is still Armed", "[song][tracks]")
 {
-    const auto added = addTrack (makeEmptySong (48000), {});
+    const auto added = addTrack (makeEmptySong (48000), {}, firstChoice);
     CHECK (added.song.tracks[0].armed);
     CHECK (added.song.tracks[0].inputChannels.empty());
 }
@@ -52,7 +61,7 @@ TEST_CASE ("an added Track takes the lowest Track number no other Track is named
     song.tracks.push_back (Track { .id = "b", .name = "Band Mix" });
     CHECK (nextTrackName (song) == "Track 2");
 
-    const auto added = addTrack (song, {});
+    const auto added = addTrack (song, {}, firstChoice);
     CHECK (added.song.tracks.back().name == "Track 2");
     CHECK (added.label == "Add Track 2");
     CHECK (nextTrackName (added.song) == "Track 4");
@@ -60,8 +69,8 @@ TEST_CASE ("an added Track takes the lowest Track number no other Track is named
 
 TEST_CASE ("each added Track gets its own id", "[song][tracks]")
 {
-    const auto first = addTrack (makeEmptySong (48000), {});
-    const auto second = addTrack (first.song, {});
+    const auto first = addTrack (makeEmptySong (48000), {}, firstChoice);
+    const auto second = addTrack (first.song, {}, firstChoice);
     CHECK (second.song.tracks[0].id != second.song.tracks[1].id);
 }
 

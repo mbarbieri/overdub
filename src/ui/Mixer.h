@@ -126,6 +126,7 @@ struct MixerStripState
 {
     song::Id trackId; // empty for the Master
     std::string name;
+    std::optional<juce::Colour> colour; // the Track's (ui/Colours.h), a band along the strip's top; none for the Master
     double volumeDb = 0.0;
     double pan = 0.0;
     bool mute = false;
@@ -146,6 +147,7 @@ public:
     void paint (juce::Graphics& g) override;
 
     const song::Id& trackId() const { return current.trackId; }
+    const std::optional<juce::Colour>& colour() const { return current.colour; }
     juce::Component& control (MixerControlKind kind);
 
     std::function<void (MixerControlKind kind)> onGrab;

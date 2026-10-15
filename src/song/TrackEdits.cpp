@@ -14,11 +14,12 @@ std::string nextTrackName (const Song& song)
     }
 }
 
-AddedTrack addTrack (Song song, std::vector<int> inputChannels)
+AddedTrack addTrack (Song song, std::vector<int> inputChannels, const PickIndex& pickColour)
 {
     Track track;
     track.id = makeId();
     track.name = nextTrackName (song);
+    track.colour = newTrackColour (trackColours (song), pickColour);
     track.armed = true;
     track.inputChannels = std::move (inputChannels);
 

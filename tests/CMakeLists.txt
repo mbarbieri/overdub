@@ -61,6 +61,7 @@ target_sources(overdub_tests PRIVATE
     song/SeparationTest.cpp
     song/SongPackageTest.cpp
     song/TakeEditsTest.cpp
+    song/TrackColoursTest.cpp
     song/TrackEditsTest.cpp
     song/VideoTakeEditsTest.cpp
     support/RealtimeGuardTest.cpp
@@ -100,6 +101,7 @@ target_sources(overdub_tests PRIVATE
     ui/TakeLanesUiTest.cpp
     ui/TimelineScrollTest.cpp
     ui/TimelineGeometryTest.cpp
+    ui/TrackColoursUiTest.cpp
     ui/TrackRowEditsTest.cpp
     ui/TransportTextTest.cpp
     ui/UserMessagesTest.cpp

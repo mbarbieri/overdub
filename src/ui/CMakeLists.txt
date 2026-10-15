@@ -9,6 +9,7 @@ target_sources(overdub_ui PRIVATE
     CalibrationPanel.cpp
     CalibrationText.cpp
     CameraStage.mm
+    Colours.cpp
     Commands.cpp
     DeviceSettingsPanel.cpp
     EditPage.cpp

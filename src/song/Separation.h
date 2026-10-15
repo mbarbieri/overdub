@@ -43,13 +43,14 @@ core::Expected<Id> separableBackingTrack (const Song& song, const Id& trackId);
 
 // The Song with the Separation applied: `parts` (one Backing Track per separationParts entry, in
 // that order) added to the Song's Backing Tracks; one new Track per part inserted directly below
-// the source Track, named after the part, at clean mixer defaults (0 dB, centre pan, no Insert
+// the source Track, named after the part, coloured newTrackColour (each new Track's colour taken
+// for the next, so the six differ while the palette allows), at clean mixer defaults (0 dB, centre pan, no Insert
 // Chain, not muted, soloed or Armed), holding a copy of every source Track Clip (same timeline
 // start, source offset, length, gain and fades; a new id) that plays the part; the source Track
 // muted and otherwise unchanged.
 // Errors: separableBackingTrack's, song.separation_parts_invalid (expected, found: not one
 // Backing Track per part).
-core::Expected<Song> withSeparation (Song song, const Id& sourceTrackId, const std::vector<BackingTrack>& parts);
+core::Expected<Song> withSeparation (Song song, const Id& sourceTrackId, const std::vector<BackingTrack>& parts, const PickIndex& pickColour);
 
 // The undo step label of a Separation: "Separate <original filename>" of the source Backing Track.
 std::string separationStepLabel (const BackingTrack& source);

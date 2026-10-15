@@ -27,6 +27,12 @@ using namespace overdub::song::testing;
 
 namespace
 {
+// A colour pick that always takes the first choice.
+std::size_t firstChoice (std::size_t)
+{
+    return 0;
+}
+
 // The new Tracks' names as issue #136's table gives them: the emoji by code point (so this does
 // not share Separation.h's UTF-8 spelling), a space and the part's name, as UTF-8.
 std::vector<std::string> partTrackNames()
@@ -128,7 +134,7 @@ TEST_CASE ("a Separation adds six Tracks named with each part's emoji and name, 
 {
     const auto before = handBuiltSong();
 
-    const auto separated = withSeparation (before, "track-mix", sixParts());
+    const auto separated = withSeparation (before, "track-mix", sixParts(), firstChoice);
 
     REQUIRE (separated.has_value());
     CHECK (trackNames (*separated) == joined ({ "Band Mix" }, partTrackNames(), { "Vocals", "Click" }));
@@ -152,7 +158,7 @@ TEST_CASE ("each new Track starts at clean mixer defaults with a copy of every s
     const auto before = handBuiltSong();
     const auto parts = sixParts();
 
-    const auto separated = withSeparation (before, "track-mix", parts);
+    const auto separated = withSeparation (before, "track-mix", parts, firstChoice);
 
     REQUIRE (separated.has_value());
     std::vector<Id> clipIds;
@@ -203,14 +209,54 @@ TEST_CASE ("only a Track whose Clips all play one Backing Track can be separated
         REQUIRE_FALSE (refused.has_value());
         CHECK (refused.error().code == "song.track_not_separable");
         CHECK (refused.error().fields.at ("reason") == reason);
-        CHECK (withSeparation (song, trackId, sixParts()).error().code == "song.track_not_separable");
+        CHECK (withSeparation (song, trackId, sixParts(), firstChoice).error().code == "song.track_not_separable");
     }
-    CHECK (withSeparation (song, "track-mix", { sixParts().front() }).error().code == "song.separation_parts_invalid");
+    CHECK (withSeparation (song, "track-mix", { sixParts().front() }, firstChoice).error().code == "song.separation_parts_invalid");
 }
 
 TEST_CASE ("a Separation's undo step is labelled with the source Backing Track's original file name", "[song][separation]")
 {
     CHECK (separationStepLabel (handBuiltSong().backingTracks.front()) == "Separate Band Mix.mp3");
+}
+
+TEST_CASE ("the six Tracks of a Separation get six different colours that no other Track of the Song has", "[song][separation][colour]")
+{
+    auto before = handBuiltSong();
+    before.tracks.at (0).colour = "#a8d8b9"; // palette[0]
+    before.tracks.at (1).colour = "#a6d4f2"; // palette[2]
+    before.tracks.at (2).colour = "#d3b5e8"; // palette[4]
+
+    const auto separated = withSeparation (before, "track-mix", sixParts(), firstChoice);
+
+    REQUIRE (separated.has_value());
+    std::vector<std::string> newColours;
+    for (std::size_t i = 1; i <= separationParts.size(); ++i)
+        newColours.push_back (separated->tracks.at (i).colour);
+    // Each takes the first colour still free, the earlier new Tracks' colours included.
+    CHECK (newColours == std::vector<std::string> { "#f4a6a6", "#f5e19c", "#9fdcd4", "#f6c39a", "#a7b8e8", "#d4e8a0" }); // palette[1, 3, 5, 6, 7, 8]
+}
+
+TEST_CASE ("a Separation with fewer free palette colours than parts gives the free ones first, then any palette colour", "[song][separation][colour]")
+{
+    auto before = handBuiltSong();
+    while (before.tracks.size() < 10)
+        before.tracks.push_back (Track { .id = "track-extra-" + std::to_string (before.tracks.size()), .name = "Extra" });
+    for (std::size_t i = 0; i < before.tracks.size(); ++i)
+        before.tracks[i].colour = std::string (trackColourPalette[i]); // palette[10] and [11] stay free
+    std::vector<std::size_t> counts;
+    const PickIndex lastChoice = [&counts] (std::size_t count) {
+        counts.push_back (count);
+        return count - 1;
+    };
+
+    const auto separated = withSeparation (before, "track-mix", sixParts(), lastChoice);
+
+    REQUIRE (separated.has_value());
+    std::vector<std::string> newColours;
+    for (std::size_t i = 1; i <= separationParts.size(); ++i)
+        newColours.push_back (separated->tracks.at (i).colour);
+    CHECK (newColours == std::vector<std::string> { "#eeb1e0", "#bcb3ef", "#eeb1e0", "#eeb1e0", "#eeb1e0", "#eeb1e0" }); // palette[11], [10], then the whole palette's last
+    CHECK (counts == std::vector<std::size_t> { 2, 1, 12, 12, 12, 12 });
 }
 
 namespace

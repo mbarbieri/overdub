@@ -99,6 +99,7 @@ inline Song fullyPopulatedSong()
         Track {
             .id = "track-guitar",
             .name = "Guitar",
+            .colour = "#c0ffee", // not a palette colour: the Song keeps the value, not an index
             .volumeDb = -3.5,
             .pan = -0.25,
             .mute = true,
@@ -133,6 +134,7 @@ inline Song fullyPopulatedSong()
         Track {
             .id = "track-backing",
             .name = "Band Mix",
+            .colour = "#f5e19c",
             .volumeDb = -6.0,
             .pan = 0.5,
             .mute = false,

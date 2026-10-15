@@ -103,6 +103,14 @@ void addHashes (const std::vector<InsertSlot>& insertChain, std::set<std::string
 }
 } // namespace
 
+std::vector<std::string> trackColours (const Song& song)
+{
+    std::vector<std::string> colours;
+    for (const auto& track : song.tracks)
+        colours.push_back (track.colour);
+    return colours;
+}
+
 std::set<std::string> pluginStateHashes (const Song& song)
 {
     std::set<std::string> hashes;

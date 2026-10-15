@@ -93,6 +93,14 @@ public:
         return count;
     }
 
+    std::string trackColour (std::string_view key) const
+    {
+        auto colour = string (key);
+        if (! isTrackColour (colour))
+            report (childPath (key), "expected \"#\" and six hex digits");
+        return colour;
+    }
+
     Reader object (std::string_view key) const
     {
         const auto* found = value (key);
@@ -240,6 +248,7 @@ json trackToJson (const Track& track)
     return {
         { "id", track.id },
         { "name", track.name },
+        { "colour", track.colour },
         { "volumeDb", track.volumeDb },
         { "pan", track.pan },
         { "mute", track.mute },
@@ -335,6 +344,7 @@ Track readTrack (const Reader& reader)
     return Track {
         .id = reader.string ("id"),
         .name = reader.string ("name"),
+        .colour = reader.trackColour ("colour"),
         .volumeDb = reader.number ("volumeDb"),
         .pan = reader.number ("pan"),
         .mute = reader.boolean ("mute"),

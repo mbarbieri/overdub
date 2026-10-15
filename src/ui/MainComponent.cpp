@@ -517,7 +517,7 @@ void MainComponent::addTrack()
         return;
     // Ready to record: Armed on the device's first input, or on none when it has no inputs.
     auto inputChannels = openSong->audio().inputChannelNames.empty() ? std::vector<int> {} : std::vector<int> { 0 };
-    auto added = song::addTrack (openSong->song(), std::move (inputChannels));
+    auto added = song::addTrack (openSong->song(), std::move (inputChannels), song::randomPick());
     core::logEvent (core::Level::info, "ui.track_added", { { "track_id", added.trackId }, { "input_channels", added.song.tracks.back().inputChannels } });
     applyEdit (std::move (added.song), added.label);
     takeKeyboardFocus();

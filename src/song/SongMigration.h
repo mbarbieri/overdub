@@ -38,6 +38,8 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
 //   1 -> 2 (issue #68): every Video Take gains "outputDevice": "" (unknown).
 //   2 -> 3 (issue #114): every Backing Track gains "separatedFrom": { "backingTrackId": "",
 //           "model": "" } (imported, not separated).
+//   3 -> 4 (issue #137): every Track gains a "colour": trackColourPalette[0], [1], ... in Song
+//           order, wrapping after the last (deterministic, no randomness).
 std::span<const MigrationStep> songMigrationSteps();
 
 // migrateDocument with songMigrationSteps().

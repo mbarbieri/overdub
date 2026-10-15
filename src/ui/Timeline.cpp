@@ -19,7 +19,7 @@ namespace
 {
 const juce::Colour coveredColour { 0xffb8c4ff };
 const juce::Colour cameraLaneColour { 0xff1c171c };
-const juce::Colour takeLaneColour { 0xff18181a };
+const juce::Colour takeLaneBackground { 0xff18181a };
 
 // "▸ 3 Takes" folded, "▾ 3 Takes" unfolded.
 juce::String takesToggleText (int numTakes, bool unfolded)
@@ -127,6 +127,11 @@ TrackHeader::TrackHeader()
 void TrackHeader::show (const song::Track& track, bool enabled, bool deletable, int numTakes, bool unfolded)
 {
     id = track.id;
+    if (const auto colour = trackColour (track); colour != stripeColour)
+    {
+        stripeColour = colour;
+        repaint();
+    }
     armed = track.armed;
     nameLabel.setText (juce::String::fromUTF8 (track.name.c_str()), juce::dontSendNotification);
     armButton.setToggleState (track.armed, juce::dontSendNotification);
@@ -157,6 +162,8 @@ void TrackHeader::resized()
 void TrackHeader::paint (juce::Graphics& g)
 {
     g.fillAll (colours::panel);
+    g.setColour (stripeColour);
+    g.fillRect (getLocalBounds().removeFromLeft (trackColourStripeWidth));
     g.setColour (colours::line);
     g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
     g.drawVerticalLine (getWidth() - 1, 0.0f, (float) getHeight());
@@ -406,6 +413,22 @@ std::optional<song::Id> Timeline::videoTakeAt (juce::Point<int> position) const
     for (auto span = current.videoTakes.rbegin(); span != current.videoTakes.rend(); ++span)
         if (videoTakeBounds (span->videoTakeId).contains (position))
             return span->videoTakeId;
+    return std::nullopt;
+}
+
+std::optional<juce::Colour> Timeline::clipColour (const song::Id& clipId) const
+{
+    for (const auto& track : shownSong().tracks)
+        if (std::ranges::contains (track.clips, clipId, &song::Clip::id))
+            return trackColour (track);
+    return std::nullopt;
+}
+
+std::optional<juce::Colour> Timeline::takeLaneColourOf (const song::Id& takeId) const
+{
+    for (std::size_t i = 0; i < takeLanes.size(); ++i)
+        if (std::ranges::contains (takeLanes[i], takeId, &TakeLaneRow::takeId))
+            return takeLaneColour (current.song.tracks[i]);
     return std::nullopt;
 }
 
@@ -665,7 +688,7 @@ void Timeline::paint (juce::Graphics& g)
             paintLane (g, song.tracks[i], layout.trackLanes[i]);
         for (std::size_t i = 0; i < takeLanes.size() && i < layout.takeLanes.size(); ++i)
             for (std::size_t j = 0; j < takeLanes[i].size() && j < layout.takeLanes[i].size(); ++j)
-                paintTakeLane (g, takeLanes[i][j], layout.takeLanes[i][j]);
+                paintTakeLane (g, takeLanes[i][j], takeLaneColour (current.song.tracks[i]), layout.takeLanes[i][j]);
     }
     {
         juce::Graphics::ScopedSaveState saved (g);
@@ -759,17 +782,17 @@ void Timeline::paintLane (juce::Graphics& g, const song::Track& track, juce::Rec
         const auto columns = clipColumns (timelineView, clip);
         if (columns.right <= lane.getX() || columns.left >= lane.getRight())
             continue;
-        paintClip (g, clip, clipRectangle (lane, columns));
+        paintClip (g, clip, trackColour (track), clipRectangle (lane, columns));
     }
     paintCoveredSpans (g, track, lane);
 }
 
-void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Rectangle<int> clipArea) const
+void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Colour body, juce::Rectangle<int> clipArea) const
 {
     const auto& song = shownSong();
     const auto isSelected = selected == clip.id;
     const auto area = clipArea.toFloat();
-    g.setColour (clip.source.kind == song::ClipSourceKind::backing ? colours::backingClip : colours::takeClip);
+    g.setColour (body);
     g.fillRoundedRectangle (area, 4.0f);
 
     // Waveform: one column per visible pixel, under the name strip.
@@ -786,7 +809,7 @@ void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Recta
             const auto centre = (float) waveArea.getCentreY();
             const auto halfHeight = (float) waveArea.getHeight() * 0.5f;
             const auto gain = (float) song::linearGain (clip.gainDb);
-            g.setColour (juce::Colours::white.withAlpha (0.6f));
+            g.setColour (colours::onTrackColour.withAlpha (0.55f));
             for (std::size_t i = 0; i < columns.size(); ++i)
             {
                 const auto top = centre - std::clamp (columns[i].maximum * gain, -1.0f, 1.0f) * halfHeight;
@@ -796,7 +819,7 @@ void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Recta
         }
     }
 
-    g.setColour (juce::Colours::white.withAlpha (0.85f));
+    g.setColour (colours::onTrackColour.withAlpha (0.9f));
     g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
     const auto nameRight = clipArea.getRight() - clipEdgeGrabWidth - gainTagWidth - 4;
     g.drawText (juce::String::fromUTF8 (clipName (song, clip).c_str()), clipArea.withHeight (14).withRight (std::max (clipArea.getX(), nameRight)).reduced (4, 0), juce::Justification::centredLeft, true);
@@ -806,6 +829,11 @@ void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Recta
 
     g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.4f));
     g.drawRoundedRectangle (area.reduced (isSelected ? 1.0f : 0.5f), 4.0f, isSelected ? 2.0f : 1.0f);
+    if (isSelected)
+    {
+        g.setColour (colours::onTrackColour);
+        g.drawRoundedRectangle (area.reduced (2.5f), 3.0f, 1.0f);
+    }
 }
 
 void Timeline::paintFadesAndGain (juce::Graphics& g, const song::Clip& clip, juce::Rectangle<int> clipArea) const
@@ -822,7 +850,7 @@ void Timeline::paintFadesAndGain (juce::Graphics& g, const song::Clip& clip, juc
         shade.addTriangle (fadeOutStart, area.getY(), area.getRight(), area.getY(), area.getRight(), area.getBottom());
     g.setColour (juce::Colours::black.withAlpha (0.45f));
     g.fillPath (shade);
-    g.setColour (juce::Colours::white.withAlpha (0.9f));
+    g.setColour (colours::onTrackColour.withAlpha (0.9f));
     if (clip.fadeInLength > 0)
         g.drawLine (area.getX(), area.getBottom(), fadeInEnd, area.getY(), 1.0f);
     if (clip.fadeOutLength > 0)
@@ -869,9 +897,9 @@ void Timeline::paintPlayhead (juce::Graphics& g) const
     g.drawVerticalLine (x, (float) layout.ruler.getY(), (float) layout.scrollBar.getY());
 }
 
-void Timeline::paintTakeLane (juce::Graphics& g, const TakeLaneRow& row, juce::Rectangle<int> lane) const
+void Timeline::paintTakeLane (juce::Graphics& g, const TakeLaneRow& row, juce::Colour colour, juce::Rectangle<int> lane) const
 {
-    g.setColour (takeLaneColour);
+    g.setColour (takeLaneBackground);
     g.fillRect (lane);
     g.setColour (colours::line);
     g.drawHorizontalLine (lane.getBottom() - 1, (float) lane.getX(), (float) lane.getRight());
@@ -886,12 +914,12 @@ void Timeline::paintTakeLane (juce::Graphics& g, const TakeLaneRow& row, juce::R
         return juce::Rectangle<int> (left, strip.getY(), right - left, strip.getHeight());
     };
     const auto block = spanRect (*row.recorded);
-    g.setColour (colours::takeClip.withAlpha (0.35f));
+    g.setColour (colour.withAlpha (0.4f));
     g.fillRoundedRectangle (block.toFloat(), 3.0f);
-    g.setColour (colours::takeClip.brighter (0.4f));
+    g.setColour (colour);
     for (const auto& heard : row.heard)
         g.fillRect (spanRect (heard));
-    g.setColour (colours::takeClip.brighter (0.2f));
+    g.setColour (colour.brighter (0.3f));
     g.drawRoundedRectangle (block.toFloat().reduced (0.5f), 3.0f, 1.0f);
     g.setColour (juce::Colours::white.withAlpha (0.85f));
     g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
