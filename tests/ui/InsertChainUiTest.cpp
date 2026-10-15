@@ -531,3 +531,18 @@ TEST_CASE ("a plugin crashed for good reads (crashed), and clicking it shows a N
     REQUIRE (shown.size() == 1);
     CHECK (shown[0].at ("code") == "ui.plugin_crashed_repeatedly");
 }
+
+TEST_CASE ("deleting a Track closes the editor windows of its Inserts", "[ui][inserts][plugin_window][delete_track]")
+{
+    PendingPlugins plugins;
+    InsertUiFixture f { plugins };
+    f.addThrough (f.rowNamed ("Guitar").insertChain, 0);
+    REQUIRE (f.window->pluginWindows.size() == 1);
+    REQUIRE (pressKey (*f.window, '2'));
+
+    click (f.editHeaderNamed ("Guitar").deleteButton);
+    f.answerDeleteQuestion (true);
+
+    CHECK (f.song().tracks.size() == 2);
+    CHECK (f.window->pluginWindows.size() == 0);
+}

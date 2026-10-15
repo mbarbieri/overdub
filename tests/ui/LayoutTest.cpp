@@ -232,16 +232,18 @@ TEST_CASE ("the timeline has a ruler, the Camera lane, then one lane per Track, 
     CHECK (layout.scrollBar.getX() == layout.ruler.getX());
 }
 
-TEST_CASE ("a Track header puts the arm button left of the name, and M and S right of the Takes toggle", "[ui][layout][edit]")
+TEST_CASE ("a Track header puts the arm button left of the name, and M, S and × right of the Takes toggle", "[ui][layout][edit]")
 {
     const Rectangle<int> header { 0, 100, laneHeaderWidth, trackLaneHeight };
     const auto layout = trackHeaderLayout (header);
-    checkInsideAndApart (header, { layout.arm, layout.name, layout.takesToggle, layout.mute, layout.solo });
+    checkInsideAndApart (header, { layout.arm, layout.name, layout.takesToggle, layout.mute, layout.solo, layout.deleteButton });
     CHECK (layout.arm.getX() < layout.name.getX());
     CHECK (layout.takesToggle.getY() >= layout.arm.getBottom());
     CHECK (layout.mute.getY() == layout.takesToggle.getY());
     CHECK (layout.takesToggle.getRight() < layout.mute.getX());
     CHECK (layout.mute.getRight() < layout.solo.getX());
+    CHECK (layout.deleteButton.getY() == layout.solo.getY());
+    CHECK (layout.solo.getRight() < layout.deleteButton.getX());
 }
 
 TEST_CASE ("the Mixer puts one strip per Track from the left and the Master strip at the right edge", "[ui][layout][mixer]")

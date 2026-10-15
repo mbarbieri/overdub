@@ -87,6 +87,12 @@ void showAlertWithNativeDialog (const juce::String& sentence)
 {
     juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOk (juce::MessageBoxIconType::WarningIcon, "Overdub", sentence), nullptr);
 }
+
+void confirmDeleteWithNativeDialog (const juce::String& question, std::function<void (bool)> whenAnswered)
+{
+    const auto options = juce::MessageBoxOptions::makeOptionsOkCancel (juce::MessageBoxIconType::QuestionIcon, "Overdub", question, "Delete", "Cancel");
+    juce::AlertWindow::showAsync (options, [done = std::move (whenAnswered)] (int result) { done (result == 1); });
+}
 } // namespace
 
 MainComponent::MainComponent()
@@ -95,6 +101,7 @@ MainComponent::MainComponent()
     chooseInsertPlugin = choosePluginFromMenu;
     chooseTrackMenuItem = chooseTrackMenuItemFromMenu;
     showAlert = showAlertWithNativeDialog;
+    confirmTrackDelete = confirmDeleteWithNativeDialog;
     askCameraAccess = capture::requestCameraAccess;
     chooseExportDestination = chooseExportFileWithNativeDialog;
     revealInFinder = [] (const juce::File& file) { file.revealToUser(); };
@@ -158,7 +165,7 @@ MainComponent::MainComponent()
     recordPage.onAddTrack = [this] { addTrack(); };
     recordPage.onTrackMenu = [this] (const song::Id& trackId) { showTrackMenu (trackId); };
     recordPage.onImport = [this] {
-        if (openSong == nullptr || ! openSong->canImport() || ! chooseFilesToImport)
+        if (openSong == nullptr || ! openSong->canChangeTracks() || ! chooseFilesToImport)
             return;
         chooseFilesToImport ([safeThis = juce::Component::SafePointer<MainComponent> (this)] (std::vector<juce::File> files) {
             if (safeThis != nullptr)
@@ -185,10 +192,11 @@ MainComponent::MainComponent()
             openSong->previewMix (preview);
     };
     editPage.onToggleVideo = [this] { setVideoPreviewWanted (! videoPreviewWanted); };
+    editPage.onDeleteTrack = [this] (const song::Id& trackId) { askToDeleteTrack (trackId); };
     editPage.onSplit = [this] { perform (Command::splitClip); };
     editPage.onDelete = [this] { perform (Command::deleteClip); };
     editPage.timeline.canImportFiles = [this] {
-        return openSong != nullptr && openSong->canImport();
+        return openSong != nullptr && openSong->canChangeTracks();
     };
     editPage.timeline.onFilesDropped = [this] (std::vector<juce::File> files) { importFiles (files); };
     editPage.timeline.peaksFor = [this] (const song::ClipSource& source) -> const song::Peaks& {
@@ -496,6 +504,37 @@ void MainComponent::importFiles (const std::vector<juce::File>& files)
     takeKeyboardFocus();
 }
 
+void MainComponent::askToDeleteTrack (const song::Id& trackId)
+{
+    if (openSong == nullptr || ! openSong->canChangeTracks() || ! confirmTrackDelete)
+        return;
+    const auto* track = song::findTrack (openSong->song(), trackId);
+    if (track == nullptr)
+        return;
+    const auto question = juce::String::fromUTF8 (("Delete Track \"" + track->name + "\"? Its Clips and effects will be removed. You can undo this.").c_str());
+    confirmTrackDelete (question, [safeThis = juce::Component::SafePointer<MainComponent> (this), trackId] (bool confirmed) {
+        if (safeThis != nullptr && confirmed)
+            safeThis->deleteTrack (trackId);
+    });
+}
+
+void MainComponent::deleteTrack (const song::Id& trackId)
+{
+    // The answer comes later: by then the Song may be locked or the Track gone (undo).
+    if (openSong == nullptr || ! openSong->canChangeTracks())
+        return;
+    auto deleted = song::deleteTrack (openSong->song(), trackId);
+    if (! deleted.has_value())
+        return;
+    applyEdit (std::move (deleted->song), deleted->label);
+    if (song::findTrack (openSong->song(), trackId) != nullptr)
+        return; // the edit failed, and applyEdit reported it
+    // Monitoring is transient: a deleted Track stops, and undo brings it back not Monitoring.
+    openSong->setMonitoring (trackId, false);
+    core::logEvent (core::Level::info, "ui.track_deleted", { { "track_id", trackId }, { "label", deleted->label } });
+    takeKeyboardFocus();
+}
+
 void MainComponent::showTrackMenu (const song::Id& trackId)
 {
     if (openSong == nullptr || separating() || ! chooseTrackMenuItem)
@@ -704,7 +743,7 @@ void MainComponent::refresh()
         if (currentMode == Mode::record)
             recordPage.showSong (song, RecordTransport { position, openSong->runningPassStart(), recordPoint }, ! recording);
         if (currentMode == Mode::edit)
-            editPage.show (TimelineState { song, openSong->position(), state.playing, ! recording, openSong->videoPlayback().spans (song) });
+            editPage.show (TimelineState { song, openSong->position(), state.playing, ! recording, openSong->canChangeTracks(), openSong->videoPlayback().spans (song) });
         const auto exportPhase = openSong->exportPhase();
         exportPage.show (ExportPageState {
             .clipsEnd = exporting::lastClipEnd (song),

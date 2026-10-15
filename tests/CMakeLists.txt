@@ -67,6 +67,7 @@ target_sources(overdub_tests PRIVATE
     ui/CalibrationTextTest.cpp
     ui/CommandsTest.cpp
     ui/DeviceSettingsPanelTest.cpp
+    ui/DeleteTrackTest.cpp
     ui/EditPageTest.cpp
     ui/ExportMp4PageTest.cpp
     ui/ExportPageTest.cpp

@@ -55,6 +55,7 @@ struct TimelineState
     song::SampleCount playhead = 0;
     bool playing = false;
     bool editable = true; // false while a Pass runs: no gestures
+    bool tracksDeletable = true; // false while a Pass, a Separation or an Export runs
     std::vector<video::VideoTakeSpan> videoTakes; // the Camera lane's blocks (video::videoTakeSpans)
 };
 
@@ -62,15 +63,15 @@ struct TimelineState
 // Track, "Missing" when the Song lacks its source.
 std::string clipName (const song::Song& song, const song::Clip& clip);
 
-// A Track lane's compact header: arm and name, the Take Lanes toggle when it has Takes, and M and S
-// (issue #31).
+// A Track lane's compact header: arm and name, the Take Lanes toggle when it has Takes, M and S
+// (issue #31), and × to delete the Track (issue #124).
 class TrackHeader final : public juce::Component
 {
 public:
     TrackHeader();
 
     // numTakes: the Takes recorded on the Track (no toggle when 0); unfolded: its lanes are shown.
-    void show (const song::Track& track, bool enabled, int numTakes, bool unfolded);
+    void show (const song::Track& track, bool enabled, bool deletable, int numTakes, bool unfolded);
     void resized() override;
     void paint (juce::Graphics& g) override;
 
@@ -80,12 +81,14 @@ public:
     std::function<void()> onToggleTakes;
     std::function<void (bool mute)> onMute;
     std::function<void (bool solo)> onSolo;
+    std::function<void()> onDelete;
 
     juce::TextButton armButton { "Arm" };
     juce::Label nameLabel;
     juce::TextButton takesButton;
     juce::TextButton muteButton { "M" };
     juce::TextButton soloButton { "S" };
+    juce::TextButton deleteButton { juce::String::fromUTF8 ("\u00d7") };
 
 private:
     song::Id id;
@@ -141,6 +144,8 @@ public:
     std::function<void (const song::Id& trackId, bool armed)> onArm;
     std::function<void (const song::Id& trackId, bool mute)> onMute;
     std::function<void (const song::Id& trackId, bool solo)> onSolo;
+    // The × in a Track's header was clicked (the window asks before deleting).
+    std::function<void (const song::Id& trackId)> onDeleteTrack;
     std::function<void()> onSelectionChanged;
     PeaksLookup peaksFor;
     // Whether a drop would be imported now (false while the Song is locked); no callback = never.
