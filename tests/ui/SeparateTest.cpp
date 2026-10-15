@@ -1,5 +1,6 @@
 #include "ui/MainComponent.h"
 
+#include "core/LogEvents.h"
 #include "export/MixRender.h"
 #include "separation/OnnxTestModel.h"
 #include "song/BackingTrackImport.h"
@@ -21,6 +22,7 @@
 // change, the undo step, the persisted origin, the logs, and each new Backing Track playing its
 // sine (a null test, ADR 0005).
 using overdub::core::ScopedLogCapture;
+using overdub::core::testing::firstEvent;
 using namespace overdub::ui;
 using namespace overdub::ui::testing;
 using namespace overdub::song::testing;
@@ -107,14 +109,6 @@ std::vector<std::vector<float>> renderSoloed (const song::Song& songToRender, co
     return out;
 }
 
-nlohmann::json firstEvent (const ScopedLogCapture& capture, const std::string& name)
-{
-    for (const auto& event : capture.events())
-        if (event.at ("event") == name)
-            return event;
-    FAIL ("no event " << name);
-    return {};
-}
 } // namespace
 
 TEST_CASE ("Separate... on a Backing Track's row opens a modal dialog whose progress bar follows the helper", "[ui][separation]")

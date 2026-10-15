@@ -98,27 +98,6 @@ std::string exportStatusText (const ExportPageState& state)
     return {};
 }
 
-void ExportProgressBar::setFraction (double fraction)
-{
-    const auto clamped = std::clamp (fraction, 0.0, 1.0);
-    if (std::abs (clamped - value) < 1.0e-12)
-        return;
-    value = clamped;
-    repaint();
-}
-
-void ExportProgressBar::paint (juce::Graphics& g)
-{
-    const auto area = getLocalBounds().toFloat();
-    const auto radius = area.getHeight() / 2.0f;
-    g.setColour (juce::Colours::black);
-    g.fillRoundedRectangle (area, radius);
-    if (value <= 0.0)
-        return;
-    g.setColour (colours::accent);
-    g.fillRoundedRectangle (area.withWidth (std::max (area.getHeight(), (float) (area.getWidth() * value))), radius);
-}
-
 void ExportSpanBar::setState (const ExportSpanBarState& state)
 {
     if (state == shown)

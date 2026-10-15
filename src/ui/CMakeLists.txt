@@ -30,6 +30,7 @@ target_sources(overdub_ui PRIVATE
     SongFiles.cpp
     SongOverview.cpp
     TakeLanes.cpp
+    ThinProgressBar.cpp
     Timeline.cpp
     TimelineGeometry.cpp
     TopBar.cpp
