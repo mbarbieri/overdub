@@ -1,5 +1,7 @@
 #include "ui/Layout.h"
 
+#include "ui/Colours.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <vector>
@@ -203,6 +205,65 @@ TEST_CASE ("a dragged Insert chip lands before the first other chip whose centre
     const auto horizontal = insertChainLayout ({ 0, 0, 600, insertChipHeight }, 3, false).chips;
     CHECK (insertDropIndex (horizontal, 0, horizontal[2].getCentre().translated (1, 0), false) == 2);
     CHECK (insertDropIndex (horizontal, 2, horizontal[0].getTopLeft(), false) == 0);
+}
+
+TEST_CASE ("a Track row and an Edit Track header put the grip left of the name, right of the colour stripe", "[ui][layout][track_reorder]")
+{
+    const Rectangle<int> row { 800, 100, trackColumnWidth, trackRowHeight };
+    const auto rowLayout = trackRowLayout (row);
+    checkInsideAndApart (row, { rowLayout.grip, rowLayout.name, rowLayout.arm, rowLayout.mute, rowLayout.solo, rowLayout.input, rowLayout.monitoring, rowLayout.insertChain });
+    CHECK (rowLayout.grip.getX() >= row.getX() + trackColourStripeWidth + 1);
+    CHECK (rowLayout.grip.getWidth() == trackGripWidth);
+    CHECK (rowLayout.grip.getY() == rowLayout.name.getY());
+    CHECK (rowLayout.grip.getHeight() == rowLayout.name.getHeight());
+    CHECK (rowLayout.grip.getRight() < rowLayout.name.getX());
+
+    const Rectangle<int> header { 0, 100, laneHeaderWidth, trackLaneHeight };
+    const auto headerLayout = trackHeaderLayout (header);
+    checkInsideAndApart (header, { headerLayout.grip, headerLayout.name, headerLayout.arm, headerLayout.takesToggle, headerLayout.mute, headerLayout.solo, headerLayout.deleteButton });
+    CHECK (headerLayout.grip.getX() >= header.getX() + trackColourStripeWidth + 1);
+    CHECK (headerLayout.grip.getWidth() == trackGripWidth);
+    CHECK (headerLayout.grip.getY() == headerLayout.name.getY());
+    CHECK (headerLayout.grip.getRight() < headerLayout.name.getX());
+}
+
+TEST_CASE ("a dragged Track lands after every other row whose centre is above the pointer", "[ui][layout][track_reorder]")
+{
+    // Edit rows from y 100, the middle one with its Take Lanes unfolded: centres 138, 236, 334.
+    const std::vector<juce::Range<int>> rows { { 100, 176 }, { 176, 296 }, { 296, 372 } };
+
+    // The first row dragged: past the second's centre it goes second, past the third's last.
+    CHECK (trackDropIndex (rows, 0, 236) == 0);
+    CHECK (trackDropIndex (rows, 0, 237) == 1);
+    CHECK (trackDropIndex (rows, 0, 334) == 1);
+    CHECK (trackDropIndex (rows, 0, 335) == 2);
+    CHECK (trackDropIndex (rows, 0, 5000) == 2);
+    // The last row dragged above the first's centre goes first.
+    CHECK (trackDropIndex (rows, 2, 138) == 0);
+    CHECK (trackDropIndex (rows, 2, 139) == 1);
+    CHECK (trackDropIndex (rows, 2, -40) == 0);
+    // Anywhere within its own row, between its neighbours' centres, it stays.
+    CHECK (trackDropIndex (rows, 1, 139) == 1);
+    CHECK (trackDropIndex (rows, 1, 334) == 1);
+    // The dragged row's own centre does not count.
+    CHECK (trackDropIndex (rows, 1, 300) == 1);
+}
+
+TEST_CASE ("the insertion line sits between the other rows the drop falls between", "[ui][layout][track_reorder]")
+{
+    // Record rows: 98 tall with a 4 point gap.
+    const std::vector<juce::Range<int>> rows { { 10, 108 }, { 112, 210 }, { 214, 312 } };
+
+    // Dragging the first: before row 2, between rows 2 and 3, after row 3.
+    CHECK (trackDropLineY (rows, 0, 0) == 112);
+    CHECK (trackDropLineY (rows, 0, 1) == (210 + 214) / 2);
+    CHECK (trackDropLineY (rows, 0, 2) == 312);
+    // Dragging the middle one: before row 1, between rows 1 and 3, after row 3.
+    CHECK (trackDropLineY (rows, 1, 0) == 10);
+    CHECK (trackDropLineY (rows, 1, 1) == (108 + 214) / 2);
+    CHECK (trackDropLineY (rows, 1, 2) == 312);
+    // The only Track: its own top.
+    CHECK (trackDropLineY ({ { 10, 108 } }, 0, 0) == 10);
 }
 
 TEST_CASE ("Edit mode stacks the Clip toolbar, the timeline, the divider and the Mixer region", "[ui][layout][edit]")

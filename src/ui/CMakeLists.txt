@@ -37,6 +37,7 @@ target_sources(overdub_ui PRIVATE
     Timeline.cpp
     TimelineGeometry.cpp
     TopBar.cpp
+    TrackDrag.cpp
     TrackRowEdits.cpp
     TransportText.cpp
     UserMessages.cpp

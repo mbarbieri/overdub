@@ -67,6 +67,7 @@ struct RecordPageLayout
 
 RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks);
 
+// The grip (issue #138) on the left, level with the name; everything else lines up with the name.
 // Top line, left to right: name, A (arm), M, S, input picker, Monitoring (with its count of
 // active Inserts). Middle line, under the name: the Track's Insert Chain (issue #34), laid out by
 // insertChainLayout (horizontal). Next line, from the name's left edge: the horizontal volume
@@ -80,6 +81,9 @@ inline constexpr int trackRowClipSize = 8;
 // A fader's thumb length along its travel (ui/Mixer.h MixerFader): the travel is the fader's length
 // less one thumb, so its ends sit half a thumb in from the fader's.
 inline constexpr int faderThumbSize = 10;
+// The grip (⋮⋮) that drags a Track to reorder it (issue #138), at the left of an Edit Track
+// header's and a Record row's name.
+inline constexpr int trackGripWidth = 14;
 
 struct TrackRowLayout
 {
@@ -88,6 +92,7 @@ struct TrackRowLayout
     juce::Rectangle<int> volumeText;
     juce::Rectangle<int> volumeMeter;
     juce::Rectangle<int> clipIndicator;
+    juce::Rectangle<int> grip;
     juce::Rectangle<int> arm;
     juce::Rectangle<int> name;
     juce::Rectangle<int> mute;
@@ -190,9 +195,11 @@ int clampTimelineScroll (int verticalScroll, int tracksHeight, int viewportHeigh
 // when they are taller than the viewport.
 int revealTimelineScroll (int verticalScroll, int spanTop, int spanBottom, int viewportHeight);
 
-// Top row: the name. Under it, the Take Lanes toggle ("▸ 3 Takes"), then A, M and S, then ×.
+// Top row: the grip (issue #138), then the name. Under it, the Take Lanes toggle ("▸ 3 Takes"),
+// then A, M and S, then ×.
 struct TrackHeaderLayout
 {
+    juce::Rectangle<int> grip;
     juce::Rectangle<int> arm;
     juce::Rectangle<int> name;
     juce::Rectangle<int> takesToggle;
@@ -234,6 +241,15 @@ InsertChipLayout insertChipLayout (juce::Rectangle<int> chip);
 // Where a dragged chip lands, as an index for song::moveInsert: the number of other shown chips
 // whose centre is before `point` (above it when vertical, left of it when horizontal).
 std::size_t insertDropIndex (const std::vector<juce::Rectangle<int>>& chips, std::size_t dragged, juce::Point<int> point, bool vertical);
+
+// Where a dragged Track lands (issue #138), as an index for song::moveTrack. `rows` are the
+// Tracks' rows top to bottom in Song order (an Edit Track's lane with its unfolded Take Lanes, or a
+// Record row), as vertical spans: the index is the number of other rows whose centre is above `y`.
+std::size_t trackDropIndex (const std::vector<juce::Range<int>>& rows, std::size_t dragged, int y);
+
+// The y of the insertion line for a drop index: midway between the other rows it falls between,
+// the first one's top before them all, the last one's bottom after them all.
+int trackDropLineY (const std::vector<juce::Range<int>>& rows, std::size_t dragged, std::size_t dropIndex);
 
 // The Mixer (issue #31): one strip of mixerStripWidth per Track from the left, and the Master
 // strip at the right edge. Strips that do not fit before the Master are empty (cut off).

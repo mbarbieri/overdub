@@ -93,6 +93,9 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row)
 {
     TrackRowLayout layout;
     auto area = row.reduced (6, 6);
+    // The grip's column on the left; everything else lines up with the name.
+    const auto gripColumn = area.removeFromLeft (trackGripWidth);
+    area.removeFromLeft (2);
     const auto meterLine = area.removeFromBottom (trackRowClipSize);
     area.removeFromBottom (2);
     auto volumeLine = area.removeFromBottom (trackRowFaderHeight);
@@ -116,6 +119,7 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row)
     layout.arm = area.removeFromRight (26);
     area.removeFromRight (gap);
     layout.name = area;
+    layout.grip = gripColumn.withY (area.getY()).withHeight (area.getHeight());
     return layout;
 }
 
@@ -174,6 +178,30 @@ std::size_t insertDropIndex (const std::vector<juce::Rectangle<int>>& chips, std
             ++index;
     }
     return index;
+}
+
+std::size_t trackDropIndex (const std::vector<juce::Range<int>>& rows, std::size_t dragged, int y)
+{
+    std::size_t index = 0;
+    for (std::size_t i = 0; i < rows.size(); ++i)
+        if (i != dragged && (rows[i].getStart() + rows[i].getEnd()) / 2 < y)
+            ++index;
+    return index;
+}
+
+int trackDropLineY (const std::vector<juce::Range<int>>& rows, std::size_t dragged, std::size_t dropIndex)
+{
+    std::vector<juce::Range<int>> others;
+    for (std::size_t i = 0; i < rows.size(); ++i)
+        if (i != dragged)
+            others.push_back (rows[i]);
+    if (others.empty())
+        return dragged < rows.size() ? rows[dragged].getStart() : 0;
+    if (dropIndex == 0)
+        return others.front().getStart();
+    if (dropIndex >= others.size())
+        return others.back().getEnd();
+    return (others[dropIndex - 1].getEnd() + others[dropIndex].getStart()) / 2;
 }
 
 int clampMixerHeight (int requested, int pageHeight)
@@ -306,6 +334,8 @@ TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header)
     TrackHeaderLayout layout;
     auto area = header.reduced (6, 6);
     layout.name = area.removeFromTop (28);
+    layout.grip = layout.name.removeFromLeft (trackGripWidth);
+    layout.name.removeFromLeft (2);
     area.removeFromTop (rowGap);
     auto bottom = area.removeFromTop (22);
     layout.deleteButton = bottom.removeFromRight (22);

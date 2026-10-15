@@ -39,4 +39,19 @@ core::Expected<DeletedTrack> deleteTrack (Song song, const Id& trackId)
     song.tracks.erase (found);
     return DeletedTrack { std::move (song), std::move (label) };
 }
+
+core::Expected<std::optional<MovedTrack>> moveTrack (Song song, const Id& trackId, std::size_t toIndex)
+{
+    const auto found = std::ranges::find (song.tracks, trackId, &Track::id);
+    if (found == song.tracks.end())
+        return std::unexpected (core::Error { "song.track_not_found", "no Track with this id in the Song", { { "track_id", trackId } } });
+    const auto from = (std::size_t) (found - song.tracks.begin());
+    const auto to = std::min (toIndex, song.tracks.size() - 1);
+    if (to == from)
+        return std::optional<MovedTrack> {};
+    auto track = std::move (*found);
+    song.tracks.erase (found);
+    song.tracks.insert (song.tracks.begin() + (std::ptrdiff_t) to, std::move (track));
+    return std::optional<MovedTrack> { MovedTrack { std::move (song), moveTrackLabel } };
+}
 } // namespace overdub::song

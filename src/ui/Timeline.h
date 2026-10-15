@@ -5,6 +5,7 @@
 #include "ui/Layout.h"
 #include "ui/TakeLanes.h"
 #include "ui/TimelineGeometry.h"
+#include "ui/TrackDrag.h"
 #include "video/FrameSelection.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -19,7 +20,7 @@
 // Edit mode's timeline (issue #28, issue #9 resolution, variant C): a ruler, the Camera lane
 // (issue #36: one block per Video Take, from its start to the end of its movie on the audio clock,
 // titled with its Pass; a Video Take whose movie cannot be read is a narrow block), and one lane
-// per Track with a compact header (its colour stripe, name, Take Lanes toggle, A M S, ×). Clips are
+// per Track with a compact header (its colour stripe, grip, name, Take Lanes toggle, A M S, ×). Clips are
 // drawn in their Track's colour (issue #137), in layer order with waveforms from
 // the peaks cache, a hatched strip marks where a Clip covers an older one, and the playhead
 // crosses every lane.
@@ -52,6 +53,10 @@
 // Dropping files (issue #123): a drag holding at least one importable audio file (ui/FileDrop.h)
 // is accepted while canImportFiles says so, highlights the Timeline while it hovers, and on drop
 // reports the importable files through onFilesDropped. Where they are dropped does not matter.
+//
+// Reordering Tracks (issue #138, ui/TrackDrag.h): dragging a header's grip drags its Track, with
+// its unfolded Take Lanes, between the other Tracks (never above the Camera lane); a drop that
+// changes the order is reported through onMoveTrack. No grip drags while a Pass runs.
 namespace overdub::ui
 {
 // The peaks of a Clip's source (no channels: draw no waveform). The reference must stay valid
@@ -72,8 +77,8 @@ struct TimelineState
 // Track, "Missing" when the Song lacks its source.
 std::string clipName (const song::Song& song, const song::Clip& clip);
 
-// A Track lane's compact header: arm and name, the Take Lanes toggle when it has Takes, M and S
-// (issue #31), and × to delete the Track (issue #124).
+// A Track lane's compact header: the grip (issue #138) and name, the Take Lanes toggle when it has
+// Takes, A, M and S (issue #31), and × to delete the Track (issue #124).
 class TrackHeader final : public juce::Component
 {
 public:
@@ -94,6 +99,7 @@ public:
     std::function<void (bool solo)> onSolo;
     std::function<void()> onDelete;
 
+    TrackGrip grip;
     juce::TextButton armButton { "A" };
     juce::Label nameLabel;
     juce::TextButton takesButton;
@@ -173,12 +179,22 @@ public:
     std::function<void (const song::Id& trackId, bool solo)> onSolo;
     // The × in a Track's header was clicked (the window asks before deleting).
     std::function<void (const song::Id& trackId)> onDeleteTrack;
+    // A grip drag dropped the Track at this index of the Track order (a different one).
+    std::function<void (const song::Id& trackId, std::size_t toIndex)> onMoveTrack;
     std::function<void()> onSelectionChanged;
     PeaksLookup peaksFor;
     // Whether a drop would be imported now (false while the Song is locked); no callback = never.
     std::function<bool()> canImportFiles;
     // The importable files of a drop, in drop order.
     std::function<void (std::vector<juce::File> files)> onFilesDropped;
+
+    // The grip drag in progress, if any; cancelTrackDrag ends it without a drop and returns whether
+    // there was one (Esc).
+    const TrackDrag& trackDrag() const { return activeTrackDrag; }
+    bool cancelTrackDrag();
+    // Each Track's row (its lane and unfolded Take Lanes) as a vertical span in this Component's
+    // coordinates, in Song order.
+    std::vector<juce::Range<int>> trackRowSpans() const;
 
     bool isDropHighlighted() const { return dropHighlighted; }
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
@@ -211,6 +227,10 @@ private:
     // The Video Take whose block is at this point, the one drawn on top where blocks overlap.
     std::optional<song::Id> videoTakeAt (juce::Point<int> position) const;
     void rebuildHeaders();
+    void connectHeader (TrackHeader& header, const song::Id& trackId);
+    void beginTrackDrag (TrackHeader& header, juce::Point<int> inGrip);
+    void dragTrack (TrackHeader& header, juce::Point<int> inGrip);
+    void dropTrack (TrackHeader& header, juce::Point<int> inGrip);
     void showHeaders();
     void refreshTakeLanes();
     bool clickTakeLane (juce::Point<int> position);
@@ -236,6 +256,7 @@ private:
     std::optional<ActiveDrag> activeDrag;
     bool seeking = false; // a ruler drag in progress
     bool dropHighlighted = false; // an accepted file drag hovers
+    TrackDrag activeTrackDrag;
     TimelineView timelineView;
     int verticalScrollPixels = 0;
     TimelineLayout layout;

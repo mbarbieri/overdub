@@ -7,7 +7,8 @@
 
 // Adding an empty Track to record on (issue #109): named "Track N" with the lowest free N, Armed
 // with the given input, and labelled for its undo step. Deleting a Track (issue #124): its Clips,
-// mix and Insert Chain go; its Takes and Backing Tracks stay in the Song.
+// mix and Insert Chain go; its Takes and Backing Tracks stay in the Song. Moving a Track (issue
+// #138) changes only the Track order.
 using namespace overdub::song;
 using Catch::Matchers::WithinAbs;
 
@@ -139,4 +140,103 @@ TEST_CASE ("after a Track is deleted, bringing back its Pass brings back only th
     REQUIRE (broughtBack->tracks.size() == 1);
     REQUIRE (broughtBack->tracks[0].clips.size() == 1);
     CHECK (broughtBack->tracks[0].clips[0].source == ClipSource { ClipSourceKind::take, "tg" });
+}
+
+namespace
+{
+// Four Tracks a, b, c, d with their own Armed, mute, solo, inputs and Clips, and one Pass.
+Song fourTrackSong()
+{
+    auto song = twoTrackSongWithOnePass();
+    song.tracks[0].id = "a";
+    song.tracks[0].armed = true;
+    song.tracks[0].inputChannels = { 0 };
+    song.tracks[1].id = "b";
+    song.tracks[1].mute = true;
+    song.tracks.push_back (Track { .id = "c", .name = "Keys", .solo = true, .inputChannels = { 1, 2 } });
+    song.tracks.push_back (Track { .id = "d", .name = "Drums", .colour = "#aabbcc", .armed = true });
+    song.preRoll = PreRoll::twoSeconds;
+    song.playhead = 4800;
+    return song;
+}
+
+std::vector<Id> trackOrder (const Song& song)
+{
+    std::vector<Id> ids;
+    for (const auto& track : song.tracks)
+        ids.push_back (track.id);
+    return ids;
+}
+} // namespace
+
+TEST_CASE ("moving a Track puts it at the target index and keeps the others in order", "[song][tracks][move_track]")
+{
+    const auto song = fourTrackSong();
+    const auto order = [&song] (const Id& trackId, std::size_t toIndex) {
+        auto moved = moveTrack (song, trackId, toIndex);
+        REQUIRE (moved.has_value());
+        REQUIRE (moved->has_value());
+        CHECK ((*moved)->label == "Move Track");
+        return trackOrder ((*moved)->song);
+    };
+
+    CHECK (order ("b", 0) == std::vector<Id> { "b", "a", "c", "d" });
+    CHECK (order ("b", 2) == std::vector<Id> { "a", "c", "b", "d" });
+    CHECK (order ("b", 3) == std::vector<Id> { "a", "c", "d", "b" });
+    CHECK (order ("a", 3) == std::vector<Id> { "b", "c", "d", "a" });
+    CHECK (order ("d", 0) == std::vector<Id> { "d", "a", "b", "c" });
+    CHECK (order ("c", 1) == std::vector<Id> { "a", "c", "b", "d" });
+    CHECK (order ("a", 99) == std::vector<Id> { "b", "c", "d", "a" }); // clamped to the last place
+}
+
+TEST_CASE ("moving a Track to any other index changes nothing but the Track order", "[song][tracks][move_track]")
+{
+    const auto song = fourTrackSong();
+    for (std::size_t from = 0; from < song.tracks.size(); ++from)
+    {
+        for (std::size_t to = 0; to < song.tracks.size(); ++to)
+        {
+            if (to == from)
+                continue;
+            const auto moved = moveTrack (song, song.tracks[from].id, to);
+            REQUIRE (moved.has_value());
+            REQUIRE (moved->has_value());
+            const auto& result = (*moved)->song;
+
+            REQUIRE (result.tracks.size() == song.tracks.size());
+            CHECK (result.tracks[to] == song.tracks[from]);
+            auto others = song.tracks;
+            others.erase (others.begin() + (std::ptrdiff_t) from);
+            auto resultOthers = result.tracks;
+            resultOthers.erase (resultOthers.begin() + (std::ptrdiff_t) to);
+            CHECK (resultOthers == others);
+
+            auto restored = result;
+            restored.tracks = song.tracks;
+            CHECK (restored == song);
+        }
+    }
+}
+
+TEST_CASE ("moving a Track to its own index is a no-op with no undo step", "[song][tracks][move_track]")
+{
+    const auto song = fourTrackSong();
+    for (std::size_t index = 0; index < song.tracks.size(); ++index)
+    {
+        const auto moved = moveTrack (song, song.tracks[index].id, index);
+        REQUIRE (moved.has_value());
+        CHECK_FALSE (moved->has_value());
+    }
+    const auto lastPastTheEnd = moveTrack (song, "d", 7);
+    REQUIRE (lastPastTheEnd.has_value());
+    CHECK_FALSE (lastPastTheEnd->has_value());
+}
+
+TEST_CASE ("moving a Track the Song does not have is song.track_not_found", "[song][tracks][move_track]")
+{
+    const auto moved = moveTrack (fourTrackSong(), "nope", 0);
+
+    REQUIRE_FALSE (moved.has_value());
+    CHECK (moved.error().code == "song.track_not_found");
+    CHECK (moved.error().fields.at ("track_id") == "nope");
 }

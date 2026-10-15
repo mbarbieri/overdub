@@ -72,6 +72,10 @@
 //
 // Record starting a Pass puts out every Record row's clip indicator (issue #131).
 //
+// Reordering Tracks (issue #138): a grip drop on the Edit page or the Record page that changes the
+// Track order is one "Move Track" undo step (song::moveTrack); Esc during a grip drag cancels it.
+// Logs ui.track_moved (info).
+//
 // Separation (issues #114, #115): Separate... in a Record row's menu (right-click) starts one
 // (OpenSong::startSeparation); disabled, the menu item says why. While it runs the Separation
 // dialog covers the window (modal: it takes every click, and keys and commands do nothing), showing
@@ -192,6 +196,7 @@ private:
     // The × in an Edit Track header: asks, then deletes the Track as one undo step (issue #124).
     void askToDeleteTrack (const song::Id& trackId);
     void deleteTrack (const song::Id& trackId);
+    void moveTrack (const song::Id& trackId, std::size_t toIndex);
     void showTrackMenu (const song::Id& trackId);
     void startSeparation (const song::Id& trackId);
     void cancelSeparation();
