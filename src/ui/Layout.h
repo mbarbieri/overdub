@@ -67,7 +67,7 @@ struct RecordPageLayout
 
 RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks);
 
-// Top line, left to right: arm, name, mute, solo, input picker, Monitoring (with its count of
+// Top line, left to right: name, A (arm), M, S, input picker, Monitoring (with its count of
 // active Inserts). Middle line, under the name: the Track's Insert Chain (issue #34), laid out by
 // insertChainLayout (horizontal). Next line, from the name's left edge: the horizontal volume
 // fader (issue #130), then its dB text at the right. Bottom line: the fader's level meter (issue
@@ -151,7 +151,7 @@ ClipToolbarLayout clipToolbarLayout (juce::Rectangle<int> bar);
 // rows outside it are cut off by the Timeline. When they are taller than the viewport, a vertical
 // scroll bar of timelineScrollBarHeight runs beside them at the right edge, and the ruler, Camera
 // lane, lanes and horizontal scroll bar end left of it.
-inline constexpr int laneHeaderWidth = 150;
+inline constexpr int laneHeaderWidth = 174;
 inline constexpr int rulerHeight = 24;
 inline constexpr int cameraLaneHeight = 36;
 inline constexpr int trackLaneHeight = 76;
@@ -190,7 +190,7 @@ int clampTimelineScroll (int verticalScroll, int tracksHeight, int viewportHeigh
 // when they are taller than the viewport.
 int revealTimelineScroll (int verticalScroll, int spanTop, int spanBottom, int viewportHeight);
 
-// Top row: arm, then the name. Under it, the Take Lanes toggle ("▸ 3 Takes"), then M and S.
+// Top row: the name. Under it, the Take Lanes toggle ("▸ 3 Takes"), then A, M and S, then ×.
 struct TrackHeaderLayout
 {
     juce::Rectangle<int> arm;

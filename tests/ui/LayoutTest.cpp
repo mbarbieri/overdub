@@ -86,14 +86,15 @@ TEST_CASE ("Record mode stacks one row per Track, the Import button and the Pass
     CHECK (page.contains (empty.importButton));
 }
 
-TEST_CASE ("a Track row puts arm, name, M, S, input picker and Monitoring left to right", "[ui][layout]")
+TEST_CASE ("a Track row puts name, A, M, S, input picker and Monitoring left to right", "[ui][layout][arm]")
 {
     const Rectangle<int> row { 800, 100, trackColumnWidth, trackRowHeight };
     const auto layout = trackRowLayout (row);
 
     checkInsideAndApart (row, { layout.arm, layout.name, layout.mute, layout.solo, layout.input, layout.monitoring });
-    CHECK (layout.arm.getX() < layout.name.getX());
-    CHECK (layout.name.getX() < layout.mute.getX());
+    CHECK (layout.name.getRight() < layout.arm.getX());
+    CHECK (layout.arm.getY() == layout.mute.getY());
+    CHECK (layout.arm.getRight() < layout.mute.getX());
     CHECK (layout.mute.getX() < layout.solo.getX());
     CHECK (layout.solo.getX() < layout.input.getX());
     CHECK (layout.name.getWidth() >= 80);
@@ -263,16 +264,19 @@ TEST_CASE ("the timeline has a ruler, the Camera lane, then one lane per Track, 
     CHECK (layout.scrollBar.getX() == layout.ruler.getX());
 }
 
-TEST_CASE ("a Track header puts the arm button left of the name, and M, S and × right of the Takes toggle", "[ui][layout][edit]")
+TEST_CASE ("a Track header puts the name on top, and A, M, S and × right of the Takes toggle under it", "[ui][layout][edit][arm]")
 {
     const Rectangle<int> header { 0, 100, laneHeaderWidth, trackLaneHeight };
     const auto layout = trackHeaderLayout (header);
     checkInsideAndApart (header, { layout.arm, layout.name, layout.takesToggle, layout.mute, layout.solo, layout.deleteButton });
-    CHECK (layout.arm.getX() < layout.name.getX());
-    CHECK (layout.takesToggle.getY() >= layout.arm.getBottom());
+    CHECK (layout.takesToggle.getY() >= layout.name.getBottom());
+    CHECK (layout.arm.getY() == layout.takesToggle.getY());
     CHECK (layout.mute.getY() == layout.takesToggle.getY());
-    CHECK (layout.takesToggle.getRight() < layout.mute.getX());
+    CHECK (layout.takesToggle.getRight() < layout.arm.getX());
+    CHECK (layout.arm.getRight() < layout.mute.getX());
     CHECK (layout.mute.getRight() < layout.solo.getX());
+    // "▸ 3 Takes" keeps the width it had before A joined the row.
+    CHECK (layout.takesToggle.getWidth() >= 58);
     CHECK (layout.deleteButton.getY() == layout.solo.getY());
     CHECK (layout.solo.getRight() < layout.deleteButton.getX());
 }

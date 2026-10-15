@@ -111,6 +111,7 @@ void ClipIndicator::paint (juce::Graphics& g)
 TrackRow::TrackRow()
 {
     armButton.setColour (juce::TextButton::buttonOnColourId, colours::rec);
+    armButton.setTooltip ("Arm");
     monitoringButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
     setUpMuteSoloButtons (muteButton, soloButton, [this] { return current.mute; }, [this] { return current.solo; }, onMute, onSolo);
     nameLabel.setColour (juce::Label::textColourId, colours::text);

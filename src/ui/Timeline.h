@@ -91,7 +91,7 @@ public:
     std::function<void (bool solo)> onSolo;
     std::function<void()> onDelete;
 
-    juce::TextButton armButton { "Arm" };
+    juce::TextButton armButton { "A" };
     juce::Label nameLabel;
     juce::TextButton takesButton;
     juce::TextButton muteButton { "M" };

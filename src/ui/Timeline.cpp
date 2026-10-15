@@ -95,6 +95,7 @@ TrackHeader::TrackHeader()
 {
     armButton.setColour (juce::TextButton::buttonOnColourId, colours::rec);
     armButton.setWantsKeyboardFocus (false);
+    armButton.setTooltip ("Arm");
     armButton.onClick = [this] {
         if (onArm)
             onArm (! armed);

@@ -155,7 +155,7 @@ public:
 
     void mouseDown (const juce::MouseEvent& event) override;
 
-    juce::TextButton armButton { "Arm" };
+    juce::TextButton armButton { "A" };
     juce::Label nameLabel;
     juce::TextButton muteButton { "M" };
     juce::TextButton soloButton { "S" };

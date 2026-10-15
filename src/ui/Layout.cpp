@@ -93,9 +93,6 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row)
 {
     TrackRowLayout layout;
     auto area = row.reduced (6, 6);
-    const auto armColumn = area.removeFromLeft (44);
-    layout.arm = armColumn.withHeight (28);
-    area.removeFromLeft (gap);
     const auto meterLine = area.removeFromBottom (trackRowClipSize);
     area.removeFromBottom (2);
     auto volumeLine = area.removeFromBottom (trackRowFaderHeight);
@@ -115,6 +112,8 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row)
     layout.solo = area.removeFromRight (26);
     area.removeFromRight (2);
     layout.mute = area.removeFromRight (26);
+    area.removeFromRight (2);
+    layout.arm = area.removeFromRight (26);
     area.removeFromRight (gap);
     layout.name = area;
     return layout;
@@ -306,10 +305,7 @@ TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header)
 {
     TrackHeaderLayout layout;
     auto area = header.reduced (6, 6);
-    auto top = area.removeFromTop (28);
-    layout.arm = top.removeFromLeft (40).withSizeKeepingCentre (40, 24);
-    top.removeFromLeft (gap);
-    layout.name = top;
+    layout.name = area.removeFromTop (28);
     area.removeFromTop (rowGap);
     auto bottom = area.removeFromTop (22);
     layout.deleteButton = bottom.removeFromRight (22);
@@ -317,6 +313,8 @@ TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header)
     layout.solo = bottom.removeFromRight (22);
     bottom.removeFromRight (2);
     layout.mute = bottom.removeFromRight (22);
+    bottom.removeFromRight (2);
+    layout.arm = bottom.removeFromRight (22);
     bottom.removeFromRight (gap);
     layout.takesToggle = bottom.removeFromLeft (std::min (96, bottom.getWidth()));
     return layout;
