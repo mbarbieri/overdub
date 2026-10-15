@@ -257,7 +257,9 @@ public:
     void setMonitoring (const song::Id& trackId, bool on);
     bool isMonitoring (const song::Id& trackId) const { return monitored.contains (trackId); }
 
-    // One Backing Track import per file (SongPackage::importBackingTracks); empty during a Pass.
+    // Whether importFiles would import now: not while a Pass, a Separation or an Export runs.
+    bool canImport() const { return ! songLocked() && ! isExporting(); }
+    // One Backing Track import per file (SongPackage::importBackingTracks); empty when ! canImport().
     std::vector<core::Expected<song::Id>> importFiles (const std::vector<juce::File>& files);
 
     // The model and helper a Separation uses (none by default: Separation is unavailable).

@@ -4,6 +4,7 @@
 #include "song/ClipEdits.h"
 #include "song/TakeEdits.h"
 #include "ui/Colours.h"
+#include "ui/FileDrop.h"
 #include "ui/MuteSoloButtons.h"
 
 #include <algorithm>
@@ -379,6 +380,34 @@ juce::Rectangle<int> Timeline::lanesArea() const
     return getLocalBounds().withTop (layout.cameraLane.getBottom()).withBottom (layout.scrollBar.getY()).withLeft (layout.ruler.getX());
 }
 
+bool Timeline::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    return canImportFiles && canImportFiles() && ! importableAudioFiles (files).empty();
+}
+
+void Timeline::fileDragEnter (const juce::StringArray& files, int, int)
+{
+    dropHighlighted = isInterestedInFileDrag (files);
+    repaint();
+}
+
+void Timeline::fileDragExit (const juce::StringArray&)
+{
+    dropHighlighted = false;
+    repaint();
+}
+
+void Timeline::filesDropped (const juce::StringArray& files, int, int)
+{
+    dropHighlighted = false;
+    repaint();
+    auto importable = importableAudioFiles (files);
+    const auto accepted = isInterestedInFileDrag (files) && onFilesDropped != nullptr;
+    core::logEvent (core::Level::debug, "ui.files_dropped", { { "dropped", files.size() }, { "importable", importable.size() }, { "accepted", accepted } });
+    if (accepted)
+        onFilesDropped (std::move (importable));
+}
+
 std::optional<std::size_t> Timeline::laneAt (juce::Point<int> position) const
 {
     if (! lanesArea().contains (position))
@@ -531,6 +560,15 @@ void Timeline::paint (juce::Graphics& g)
                 paintTakeLaneHeader (g, takeLanes[i][j], layout.takeLaneHeaders[i][j]);
     }
     paintPlayhead (g);
+}
+
+void Timeline::paintOverChildren (juce::Graphics& g)
+{
+    // Over the Track headers too, so the whole Timeline reads as the drop target.
+    if (! dropHighlighted)
+        return;
+    g.setColour (colours::accent);
+    g.drawRect (getLocalBounds(), 3);
 }
 
 void Timeline::paintRuler (juce::Graphics& g) const

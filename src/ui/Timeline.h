@@ -39,6 +39,10 @@
 // the lane's header. Clicking a lane at a point swaps the top Clip there to that Take, or brings
 // the whole Take back on top (laneEditAt), reported through onEdit with its label; the swapped or
 // added Clip is selected. Which Tracks are unfolded is transient UI state, like selection.
+//
+// Dropping files (issue #123): a drag holding at least one importable audio file (ui/FileDrop.h)
+// is accepted while canImportFiles says so, highlights the Timeline while it hovers, and on drop
+// reports the importable files through onFilesDropped. Where they are dropped does not matter.
 namespace overdub::ui
 {
 // The peaks of a Clip's source (no channels: draw no waveform). The reference must stay valid
@@ -92,7 +96,7 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TrackHeader)
 };
 
-class Timeline final : public juce::Component, private juce::ScrollBar::Listener
+class Timeline final : public juce::Component, public juce::FileDragAndDropTarget, private juce::ScrollBar::Listener
 {
 public:
     Timeline();
@@ -139,6 +143,16 @@ public:
     std::function<void (const song::Id& trackId, bool solo)> onSolo;
     std::function<void()> onSelectionChanged;
     PeaksLookup peaksFor;
+    // Whether a drop would be imported now (false while the Song is locked); no callback = never.
+    std::function<bool()> canImportFiles;
+    // The importable files of a drop, in drop order.
+    std::function<void (std::vector<juce::File> files)> onFilesDropped;
+
+    bool isDropHighlighted() const { return dropHighlighted; }
+    bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void fileDragEnter (const juce::StringArray& files, int x, int y) override;
+    void fileDragExit (const juce::StringArray& files) override;
+    void filesDropped (const juce::StringArray& files, int x, int y) override;
 
     void mouseDown (const juce::MouseEvent& event) override;
     void mouseDrag (const juce::MouseEvent& event) override;
@@ -146,6 +160,7 @@ public:
     void mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) override;
     void resized() override;
     void paint (juce::Graphics& g) override;
+    void paintOverChildren (juce::Graphics& g) override;
 
     std::vector<std::unique_ptr<TrackHeader>> headers;
     juce::Label cameraHeader;
@@ -182,6 +197,7 @@ private:
     std::optional<song::Song> preview; // the Song a drag in progress would make
     std::optional<ActiveDrag> activeDrag;
     bool seeking = false; // a ruler drag in progress
+    bool dropHighlighted = false; // an accepted file drag hovers
     TimelineView timelineView;
     TimelineLayout layout;
     std::optional<song::Id> selected;
