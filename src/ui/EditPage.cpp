@@ -289,6 +289,10 @@ EditPage::EditPage()
         if (onSolo)
             onSolo (trackId, solo);
     };
+    timeline.onDeleteTrack = [this] (const song::Id& trackId) {
+        if (onDeleteTrack)
+            onDeleteTrack (trackId);
+    };
     timeline.onSelectionChanged = [this] { showToolbar(); };
     mixer.onEdit = [this] (song::Song changed, std::string label) {
         if (onEdit)

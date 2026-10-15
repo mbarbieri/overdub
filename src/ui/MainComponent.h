@@ -121,6 +121,8 @@ public:
     // Injection points (ADR 0005 UI amendment); defaults use native dialogs.
     // Asks for audio files to import and calls back with them (none when cancelled).
     std::function<void (std::function<void (std::vector<juce::File>)>)> chooseFilesToImport;
+    // Asks the question with Delete and Cancel and calls back with whether Delete was chosen.
+    std::function<void (const juce::String& question, std::function<void (bool confirmed)>)> confirmTrackDelete;
     // Shows an Alert: a modal dialog with this sentence.
     std::function<void (const juce::String& sentence)> showAlert;
     // "+ Insert" (issue #33): the AU effects to offer (AudioUnitLoader::findEffects
@@ -172,6 +174,9 @@ private:
     // Adds an empty Track, Armed on the first input, as one undo step (issue #109).
     void addTrack();
     void importFiles (const std::vector<juce::File>& files);
+    // The × in an Edit Track header: asks, then deletes the Track as one undo step (issue #124).
+    void askToDeleteTrack (const song::Id& trackId);
+    void deleteTrack (const song::Id& trackId);
     void showTrackMenu (const song::Id& trackId);
     void startSeparation (const song::Id& trackId);
     void cancelSeparation();

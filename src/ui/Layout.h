@@ -163,6 +163,7 @@ struct TrackHeaderLayout
     juce::Rectangle<int> takesToggle;
     juce::Rectangle<int> mute;
     juce::Rectangle<int> solo;
+    juce::Rectangle<int> deleteButton;
 };
 
 TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header);

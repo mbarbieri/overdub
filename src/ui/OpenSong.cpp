@@ -360,7 +360,7 @@ void OpenSong::setMonitoring (const song::Id& trackId, bool on)
 
 std::vector<core::Expected<song::Id>> OpenSong::importFiles (const std::vector<juce::File>& files)
 {
-    if (! canImport())
+    if (! canChangeTracks())
         return {};
     auto results = package_->importBackingTracks (files);
     reloadEngine();

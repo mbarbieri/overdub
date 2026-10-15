@@ -8,14 +8,17 @@
 #include "song/FixtureSongBuilder.h"
 #include "ui/UiHarness.h"
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 // The main window's content over a fixture Song (ADR 0005 UI amendment): a real MainComponent at
 // a fixed size, bound through a real OpenSong to an Engine that a loopback fake device drives.
-// Alerts, file choosers and camera access are injected; nothing opens a window, a dialog, a camera
-// or audio hardware (plugin editor windows are built off the desktop; the camera is a fake).
+// Alerts, confirmations, file choosers and camera access are injected; nothing opens a window, a
+// dialog, a camera or audio hardware (plugin editor windows are built off the desktop; the camera
+// is a fake).
 namespace overdub::ui::testing
 {
 inline constexpr int windowWidth = 1200;
@@ -33,6 +36,10 @@ struct MainWindowFixture
     std::unique_ptr<OpenSong> openSong;
     std::unique_ptr<MainComponent> window;
     std::vector<juce::String> alertsShown;
+    std::vector<juce::String> deleteQuestionsAsked;
+    // The open delete confirmation. Like the native dialog it is answered later, never inside the
+    // click that asked (which would delete the clicked header under its own button).
+    std::function<void (bool)> pendingDeleteAnswer;
 
     explicit MainWindowFixture (std::unique_ptr<song::testing::FixtureSong> songFixture = song::testing::threeTrackFixture(),
                                 plugin::Instantiator instantiate = {},
@@ -43,6 +50,10 @@ struct MainWindowFixture
         window = std::make_unique<MainComponent>();
         REQUIRE (openSong->attachCamera (&camera, juce::File {}).has_value()); // no calibration file: 0 ms
         window->showAlert = [this] (const juce::String& sentence) { alertsShown.push_back (sentence); };
+        window->confirmTrackDelete = [this] (const juce::String& question, std::function<void (bool)> done) {
+            deleteQuestionsAsked.push_back (question);
+            pendingDeleteAnswer = std::move (done);
+        };
         window->askCameraAccess = [this] (std::function<void (bool)> done) { done (cameraAccessGranted); };
         window->pluginWindows.showOnDesktop = false; // editor windows are built, never shown
         window->showVideoPreviewOnDesktop = false;    // so is the Video Preview
@@ -73,6 +84,25 @@ struct MainWindowFixture
                 return *row;
         FAIL ("no row for Track " << name);
         return *window->recordPage.rows.front();
+    }
+
+    // The Track's header on the Edit page's Timeline (shown in Edit mode).
+    TrackHeader& editHeaderNamed (const std::string& name)
+    {
+        const auto& trackId = trackNamed (name).id;
+        for (auto& header : window->editPage.timeline.headers)
+            if (header->trackId() == trackId)
+                return *header;
+        FAIL ("no Edit header for Track " << name);
+        return *window->editPage.timeline.headers.front();
+    }
+
+    // Delete or Cancel in the open delete confirmation.
+    void answerDeleteQuestion (bool confirmed)
+    {
+        REQUIRE (pendingDeleteAnswer != nullptr);
+        auto answer = std::exchange (pendingDeleteAnswer, nullptr);
+        answer (confirmed);
     }
 
     // Runs device callbacks, then one window poll, as the timer would.

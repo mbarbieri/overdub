@@ -108,14 +108,21 @@ TrackHeader::TrackHeader()
             onToggleTakes();
     };
     setUpMuteSoloButtons (muteButton, soloButton, [this] { return muted; }, [this] { return soloed; }, onMute, onSolo);
+    deleteButton.setWantsKeyboardFocus (false);
+    deleteButton.setTooltip ("Delete Track");
+    deleteButton.onClick = [this] {
+        if (onDelete)
+            onDelete();
+    };
     addAndMakeVisible (armButton);
     addAndMakeVisible (nameLabel);
     addChildComponent (takesButton);
     addAndMakeVisible (muteButton);
     addAndMakeVisible (soloButton);
+    addAndMakeVisible (deleteButton);
 }
 
-void TrackHeader::show (const song::Track& track, bool enabled, int numTakes, bool unfolded)
+void TrackHeader::show (const song::Track& track, bool enabled, bool deletable, int numTakes, bool unfolded)
 {
     id = track.id;
     armed = track.armed;
@@ -128,6 +135,7 @@ void TrackHeader::show (const song::Track& track, bool enabled, int numTakes, bo
     soloButton.setToggleState (track.solo, juce::dontSendNotification);
     muteButton.setEnabled (enabled);
     soloButton.setEnabled (enabled);
+    deleteButton.setEnabled (deletable);
     takesButton.setVisible (numTakes > 0);
     takesButton.setButtonText (takesToggleText (numTakes, unfolded));
     takesButton.setToggleState (unfolded, juce::dontSendNotification);
@@ -141,6 +149,7 @@ void TrackHeader::resized()
     takesButton.setBounds (headerLayout.takesToggle);
     muteButton.setBounds (headerLayout.mute);
     soloButton.setBounds (headerLayout.solo);
+    deleteButton.setBounds (headerLayout.deleteButton);
 }
 
 void TrackHeader::paint (juce::Graphics& g)
@@ -175,7 +184,7 @@ void Timeline::show (const TimelineState& state)
 {
     const auto songChanged = state.song != current.song;
     const auto changed = songChanged || state.playhead != current.playhead || state.playing != current.playing || state.editable != current.editable
-                      || state.videoTakes != current.videoTakes;
+                      || state.tracksDeletable != current.tracksDeletable || state.videoTakes != current.videoTakes;
     current = state;
     if (! changed)
         return;
@@ -204,7 +213,7 @@ void Timeline::showHeaders()
     {
         const auto& track = current.song.tracks[i];
         const auto numTakes = (int) song::laneTakes (current.song, track.id).size();
-        headers[i]->show (track, current.editable, numTakes, areTakeLanesUnfolded (track.id));
+        headers[i]->show (track, current.editable, current.tracksDeletable, numTakes, areTakeLanesUnfolded (track.id));
     }
 }
 
@@ -295,6 +304,10 @@ void Timeline::rebuildHeaders()
         header->onSolo = [this, trackId] (bool solo) {
             if (onSolo)
                 onSolo (trackId, solo);
+        };
+        header->onDelete = [this, trackId] {
+            if (onDeleteTrack)
+                onDeleteTrack (trackId);
         };
         addAndMakeVisible (*header);
         headers.push_back (std::move (header));

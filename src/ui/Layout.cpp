@@ -273,6 +273,8 @@ TrackHeaderLayout trackHeaderLayout (juce::Rectangle<int> header)
     layout.name = top;
     area.removeFromTop (rowGap);
     auto bottom = area.removeFromTop (22);
+    layout.deleteButton = bottom.removeFromRight (22);
+    bottom.removeFromRight (gap);
     layout.solo = bottom.removeFromRight (22);
     bottom.removeFromRight (2);
     layout.mute = bottom.removeFromRight (22);

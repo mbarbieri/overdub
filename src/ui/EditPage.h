@@ -132,6 +132,8 @@ public:
     // M and S in the Track headers.
     std::function<void (const song::Id& trackId, bool mute)> onMute;
     std::function<void (const song::Id& trackId, bool solo)> onSolo;
+    // The × in a Track's header (Timeline::onDeleteTrack).
+    std::function<void (const song::Id& trackId)> onDeleteTrack;
     std::function<void()> onSplit;
     std::function<void()> onDelete;
     // The Video toggle was clicked.
