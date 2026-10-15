@@ -14,6 +14,7 @@ target_sources(overdub_ui PRIVATE
     EditPage.cpp
     ExportPage.cpp
     ExportRun.cpp
+    FileDrop.cpp
     InsertChain.cpp
     Layout.cpp
     LookAheadStrip.cpp

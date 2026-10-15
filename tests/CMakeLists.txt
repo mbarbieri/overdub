@@ -71,6 +71,7 @@ target_sources(overdub_tests PRIVATE
     ui/ExportMp4PageTest.cpp
     ui/ExportPageTest.cpp
     ui/ExportRunTest.cpp
+    ui/FileDropTest.cpp
     ui/InsertChainUiTest.cpp
     ui/LayoutTest.cpp
     ui/MainComponentTest.cpp

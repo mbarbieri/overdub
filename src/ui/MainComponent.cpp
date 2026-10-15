@@ -11,6 +11,7 @@
 #include "song/TrackEdits.h"
 
 #include "ui/Colours.h"
+#include "ui/FileDrop.h"
 #include "ui/Layout.h"
 #include "ui/TransportText.h"
 
@@ -26,7 +27,7 @@ void chooseFilesWithNativeDialog (std::function<void (std::vector<juce::File>)> 
 {
     auto chooser = std::make_shared<juce::FileChooser> ("Import audio files",
                                                         juce::File::getSpecialLocation (juce::File::userMusicDirectory),
-                                                        "*.wav;*.aif;*.aiff;*.aifc;*.caf;*.m4a;*.mp3;*.flac");
+                                                        importableAudioPattern());
     const auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectMultipleItems;
     chooser->launchAsync (flags, [chooser, done = std::move (whenChosen)] (const juce::FileChooser& finished) {
         std::vector<juce::File> files;
@@ -157,7 +158,7 @@ MainComponent::MainComponent()
     recordPage.onAddTrack = [this] { addTrack(); };
     recordPage.onTrackMenu = [this] (const song::Id& trackId) { showTrackMenu (trackId); };
     recordPage.onImport = [this] {
-        if (openSong == nullptr || openSong->isRecording() || ! chooseFilesToImport)
+        if (openSong == nullptr || ! openSong->canImport() || ! chooseFilesToImport)
             return;
         chooseFilesToImport ([safeThis = juce::Component::SafePointer<MainComponent> (this)] (std::vector<juce::File> files) {
             if (safeThis != nullptr)
@@ -186,6 +187,10 @@ MainComponent::MainComponent()
     editPage.onToggleVideo = [this] { setVideoPreviewWanted (! videoPreviewWanted); };
     editPage.onSplit = [this] { perform (Command::splitClip); };
     editPage.onDelete = [this] { perform (Command::deleteClip); };
+    editPage.timeline.canImportFiles = [this] {
+        return openSong != nullptr && openSong->canImport();
+    };
+    editPage.timeline.onFilesDropped = [this] (std::vector<juce::File> files) { importFiles (files); };
     editPage.timeline.peaksFor = [this] (const song::ClipSource& source) -> const song::Peaks& {
         static const song::Peaks none;
         return openSong != nullptr ? openSong->peaks (source) : none;
