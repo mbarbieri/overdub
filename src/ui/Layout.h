@@ -15,7 +15,7 @@ inline constexpr int minimumWindowHeight = 600;
 inline constexpr int topBarHeight = 52;
 inline constexpr int noticeLineHeight = 28;
 inline constexpr int trackColumnWidth = 460;
-inline constexpr int trackRowHeight = 64;
+inline constexpr int trackRowHeight = 88;
 
 struct MainLayout
 {
@@ -68,11 +68,17 @@ struct RecordPageLayout
 RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks);
 
 // Top line, left to right: arm, name, mute, solo, input picker, Monitoring (with its count of
-// active Inserts). Bottom line, under the name: the Track's Insert Chain (issue #34), laid out by
-// insertChainLayout (horizontal).
+// active Inserts). Middle line, under the name: the Track's Insert Chain (issue #34), laid out by
+// insertChainLayout (horizontal). Bottom line, from the name's left edge: the horizontal volume
+// fader (issue #130), then its dB text at the right.
+inline constexpr int trackRowFaderHeight = 18;
+inline constexpr int trackRowVolumeTextWidth = 56;
+
 struct TrackRowLayout
 {
     juce::Rectangle<int> insertChain;
+    juce::Rectangle<int> volumeFader;
+    juce::Rectangle<int> volumeText;
     juce::Rectangle<int> arm;
     juce::Rectangle<int> name;
     juce::Rectangle<int> mute;

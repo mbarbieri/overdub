@@ -316,7 +316,7 @@ TEST_CASE ("after clicking a fader the arrow keys move it by 1 dB, 0.1 with shif
     CHECK (! f.press (juce::KeyPress::upKey)); // nothing has focus: the window does nothing with it
 
     clickAt (strip.fader, strip.fader.thumbCentre());
-    REQUIRE (f.mixer().focusedControl() == MixerControl { f.trackNamed ("Guitar").id, MixerControlKind::volume });
+    REQUIRE (f.mixer().mix.focusedControl() == MixerControl { f.trackNamed ("Guitar").id, MixerControlKind::volume });
     CHECK (strip.fader.isFocusShown());
 
     const auto expectDb = [&] (double db) {
@@ -348,7 +348,7 @@ TEST_CASE ("after clicking a pan the left and right arrows move it by 5%, 1% wit
     f.useFixedClock();
     auto& pan = f.stripNamed ("Vocals").panControl;
     clickAt (pan, pan.getLocalBounds().getCentre());
-    REQUIRE (f.mixer().focusedControl() == MixerControl { f.trackNamed ("Vocals").id, MixerControlKind::pan });
+    REQUIRE (f.mixer().mix.focusedControl() == MixerControl { f.trackNamed ("Vocals").id, MixerControlKind::pan });
     CHECK (pan.isFocusShown());
 
     CHECK (f.press (juce::KeyPress::rightKey));
@@ -374,12 +374,12 @@ TEST_CASE ("while a fader or pan has focus the arrows do not move the playhead; 
 
     clickAt (fader, fader.thumbCentre());
     f.mouseDownOn (fader); // the window's listener sees the click on the focused fader: it keeps focus
-    REQUIRE (f.mixer().focusedControl().has_value());
+    REQUIRE (f.mixer().mix.focusedControl().has_value());
     CHECK (f.press (juce::KeyPress::rightKey));
     CHECK (f.openSong->position() == 0);
 
     CHECK (f.press (juce::KeyPress::escapeKey));
-    CHECK (! f.mixer().focusedControl().has_value());
+    CHECK (! f.mixer().mix.focusedControl().has_value());
     CHECK (! fader.isFocusShown());
     CHECK (f.press (juce::KeyPress::rightKey));
     CHECK (f.openSong->position() == nudge);
@@ -391,7 +391,7 @@ TEST_CASE ("while a fader or pan has focus the arrows do not move the playhead; 
     CHECK (f.openSong->position() == nudge);
 
     f.mouseDownOn (f.window->editPage.timeline);
-    CHECK (! f.mixer().focusedControl().has_value());
+    CHECK (! f.mixer().mix.focusedControl().has_value());
     CHECK (f.press (juce::KeyPress::rightKey));
     CHECK (f.openSong->position() == 2 * nudge);
 }
@@ -401,7 +401,7 @@ TEST_CASE ("other keys still reach the window while a fader has focus", "[ui][mi
     MixerFixture f;
     auto& fader = f.stripNamed ("Guitar").fader;
     clickAt (fader, fader.thumbCentre());
-    REQUIRE (f.mixer().focusedControl().has_value());
+    REQUIRE (f.mixer().mix.focusedControl().has_value());
     CHECK (pressKey (*f.window, juce::KeyPress::spaceKey));
     f.runBlocks (1);
     CHECK (f.openSong->isPlaying());
@@ -479,7 +479,7 @@ TEST_CASE ("a burst of arrow presses is committed at once by focus loss, a mode 
         REQUIRE (pressKey (*f.window, '1'));
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
         CHECK (f.undoLabel() == "Guitar Volume");
-        CHECK (! f.mixer().focusedControl().has_value());
+        CHECK (! f.mixer().mix.focusedControl().has_value());
     }
     SECTION ("another edit keeps the burst as its own step before it")
     {
@@ -528,7 +528,7 @@ TEST_CASE ("a burst of arrow presses is committed at once by focus loss, a mode 
         REQUIRE (pressKey (*f.window, 'r'));
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
         CHECK (f.undoLabel() == "Guitar Volume");
-        CHECK (! f.mixer().focusedControl().has_value());
+        CHECK (! f.mixer().mix.focusedControl().has_value());
         REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey)); // a Pass ends before the window closes
         f.runBlocks (1);
     }
@@ -541,7 +541,7 @@ TEST_CASE ("while a Pass runs, double-click and the arrow keys change nothing in
     auto& strip = f.stripNamed ("Guitar");
     const auto grab = strip.fader.thumbCentre();
     drag (strip.fader, grab, grab.translated (0, 40));
-    REQUIRE (f.mixer().focusedControl().has_value());
+    REQUIRE (f.mixer().mix.focusedControl().has_value());
 
     REQUIRE (pressKey (*f.window, 'r'));
     f.runBlocks (20);
@@ -556,7 +556,7 @@ TEST_CASE ("while a Pass runs, double-click and the arrow keys change nothing in
     f.window->tick (f.now);
     CHECK (f.song().tracks == before.tracks);
     CHECK (f.song().master == before.master);
-    CHECK (! f.mixer().focusedControl().has_value());
+    CHECK (! f.mixer().mix.focusedControl().has_value());
 
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
     f.runBlocks (1);

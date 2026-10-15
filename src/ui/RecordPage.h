@@ -6,6 +6,8 @@
 #include "ui/CameraStage.h"
 #include "ui/InsertChain.h"
 #include "ui/LookAheadStrip.h"
+#include "ui/MixFocus.h"
+#include "ui/Mixer.h"
 #include "ui/PassesPanel.h"
 #include "ui/RecordView.h"
 #include "ui/SongOverview.h"
@@ -32,7 +34,10 @@
 // (a click moves the playhead). Under each row's name: the Track's Insert Chain (issue #34,
 // ui/InsertChain.h: add, open, bypass, remove, drag to reorder); the Monitoring button counts
 // the chain's active Inserts. A right-click (or control-click) on a row asks for its Track's menu
-// (issue #114: Separate...). Meters come later.
+// (issue #114: Separate...). Along each row's bottom: the Track's horizontal volume fader and its dB
+// text (issue #130), the same volume as its Mixer fader and behaving exactly like it (MixFocus:
+// drags, detent, double-click, keyboard focus, arrow keys and their undo steps); dimmed and inert
+// while a Pass runs. Meters come later.
 // Thin: it shows state and reports gestures by Track or Pass id; the strip, overview and Passes
 // rows are computed by ui/RecordView.h and ui/TakeLanes.h.
 namespace overdub::ui
@@ -47,6 +52,7 @@ struct TrackRowState
     std::vector<InputChoice> choices;
     std::optional<std::size_t> selectedChoice; // nullopt: the Track's channels are not offered
     bool monitoring = false;
+    double volumeDb = 0.0;
     std::vector<InsertChipState> inserts;
     int activeInserts = 0; // activeInsertCount of the Track's chain
     bool enabled = true; // false while a Pass runs
@@ -58,6 +64,7 @@ struct RecordPageState
     bool canAddTracks = true; // Add Track and Import; false while a Pass runs
     song::PreRoll preRoll = song::PreRoll::off;
     bool canChangePreRoll = true; // false while a Pass runs
+    bool canChangeMix = true;     // the volume faders; false while a Pass runs
 };
 
 // The camera arm and picker over the stage (issue #35).
@@ -102,6 +109,8 @@ public:
     TrackRow();
 
     void show (const TrackRowState& state);
+    // Shows a volume a drag or key press set, ahead of the Song.
+    void showVolume (double db);
     void resized() override;
     void paint (juce::Graphics& g) override;
 
@@ -114,6 +123,13 @@ public:
     std::function<void (bool solo)> onSolo;
     // A right-click (or control-click) on the row, outside its controls.
     std::function<void()> onMenu;
+    // The volume fader: grabbed, dragged to a dB, released (a release where it started is
+    // abandoned), double-clicked.
+    std::function<void()> onVolumeGrab;
+    std::function<void (double db)> onVolumeDrag;
+    std::function<void (double db)> onVolumeChanged;
+    std::function<void()> onVolumeAbandoned;
+    std::function<void()> onVolumeReset;
 
     void mouseDown (const juce::MouseEvent& event) override;
 
@@ -124,6 +140,8 @@ public:
     juce::ComboBox inputPicker;
     juce::TextButton monitoringButton { "Monitoring" };
     InsertChainView insertChain { false };
+    MixerFader fader { MixerFader::Orientation::horizontal };
+    juce::Label volumeLabel;
 
 private:
     TrackRowState current;
@@ -136,7 +154,8 @@ class RecordPage final : public juce::Component
 public:
     RecordPage();
 
-    void show (const RecordPageState& state);
+    // The rows and pickers; `song` is the Song they were made from, whose volumes the faders change.
+    void show (const RecordPageState& state, const song::Song& song);
     // The Passes list, the look-ahead strip and the overview for this Song and transport. The
     // Passes rows and the strip's envelope are recomputed only when the Song's Tracks, Passes,
     // Takes or `editable` changed.
@@ -148,6 +167,9 @@ public:
     bool showsStagePlayback() const { return stageVideo.isVisible(); }
     void resized() override;
     void paint (juce::Graphics& g) override;
+
+    // True when `component` is the focused fader or inside it.
+    bool isFocusedControl (const juce::Component* component);
 
     std::function<void (const song::Id&, bool)> onArm;
     std::function<void (const song::Id&, std::vector<int>)> onInput;
@@ -171,6 +193,9 @@ public:
     // The Backing Tracks' peaks, for the strip's envelope (OpenSong::peaks).
     PeaksLookup peaksFor;
 
+    // The faders' focus, arrow keys and undo steps (its onPreview and onEdit are the window's); the
+    // window sends it keys and commit triggers.
+    MixFocus mix;
     std::vector<std::unique_ptr<TrackRow>> rows;
     juce::TextButton addTrackButton { "Add Track" };
     juce::TextButton importButton { "Import..." };
@@ -187,6 +212,9 @@ public:
 
 private:
     void showLookAhead();
+    void connectRow (TrackRow& row, const song::Id& trackId);
+    TrackRow* rowFor (const song::Id& trackId);
+    void showFocus();
 
     song::PreRoll shownPreRoll = song::PreRoll::off;
     CameraControlsState shownCamera;

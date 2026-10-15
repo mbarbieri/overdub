@@ -156,6 +156,11 @@ MainComponent::MainComponent()
     };
     const auto chainActions = insertChainActions();
     recordPage.insertActions = chainActions;
+    recordPage.mix.onPreview = [this] (const song::Song& preview) {
+        if (openSong != nullptr)
+            openSong->previewMix (preview);
+    };
+    recordPage.mix.onEdit = [this] (song::Song changed, std::string label) { applyEdit (std::move (changed), label); };
     editPage.mixer.insertActions = chainActions;
     editPage.mixer.insertStatusOf = [this] (const song::Id& slotId) { return openSong != nullptr ? openSong->insertStatus (slotId) : std::nullopt; };
     pluginWindows.onBypass = chainActions.bypass;
@@ -346,20 +351,20 @@ void MainComponent::perform (Command command)
     switch (command)
     {
         case Command::record:
-            editPage.mixer.commitKeyBurst();
+            commitKeyBursts();
             if (auto started = openSong->record(); ! started.has_value())
                 handleError (started.error());
             break;
         case Command::playOrStop: openSong->playOrStop(); break;
         case Command::rewind: openSong->rewind(); break;
         case Command::undo:
-            editPage.mixer.commitKeyBurst();
+            commitKeyBursts();
             if (openSong->package().canUndo())
                 if (auto undone = openSong->undo(); ! undone.has_value())
                     handleError (undone.error());
             break;
         case Command::redo:
-            editPage.mixer.commitKeyBurst();
+            commitKeyBursts();
             if (openSong->package().canRedo())
                 if (auto redone = openSong->redo(); ! redone.has_value())
                     handleError (redone.error());
@@ -427,11 +432,13 @@ void MainComponent::applyEdit (core::Expected<song::Song> changed, const std::st
         handleError (changed.error());
         return;
     }
-    if (editPage.mixer.hasKeyBurst())
+    for (auto* mix : { &editPage.mixer.mix, &recordPage.mix })
     {
+        if (! mix->hasKeyBurst())
+            continue;
         // `changed` was made from the Song before the burst: commit the burst, then keep its value.
-        auto carried = editPage.mixer.withKeyBurstCarried (std::move (*changed));
-        editPage.mixer.commitKeyBurst();
+        auto carried = mix->withKeyBurstCarried (std::move (*changed));
+        mix->commitKeyBurst();
         changed = std::move (carried);
     }
     if (auto edited = openSong->edit (std::move (*changed), label); ! edited.has_value())
@@ -491,7 +498,8 @@ void MainComponent::showMode (Mode mode)
 {
     if (mode != currentMode)
     {
-        editPage.mixer.releaseFocus();
+        editPage.mixer.mix.releaseFocus();
+        recordPage.mix.releaseFocus();
         core::logEvent (core::Level::debug, "ui.mode_changed", { { "mode", modeName (mode) } });
     }
     currentMode = mode;
@@ -514,7 +522,7 @@ void MainComponent::importFiles (const std::vector<juce::File>& files)
 {
     if (openSong == nullptr || files.empty())
         return;
-    editPage.mixer.commitKeyBurst();
+    commitKeyBursts();
     for (const auto& result : openSong->importFiles (files))
         if (! result.has_value())
             handleError (result.error());
@@ -572,7 +580,7 @@ void MainComponent::startSeparation (const song::Id& trackId)
 {
     if (openSong == nullptr)
         return;
-    editPage.mixer.commitKeyBurst();
+    commitKeyBursts();
     if (auto started = openSong->startSeparation (trackId); ! started.has_value())
         handleError (started.error());
     refresh();
@@ -713,7 +721,8 @@ void MainComponent::presentMessages()
 
 void MainComponent::tick (song::SongPackage::Clock::time_point now)
 {
-    editPage.mixer.commitKeyBurstIfDue (now);
+    editPage.mixer.mix.commitKeyBurstIfDue (now);
+    recordPage.mix.commitKeyBurstIfDue (now);
     if (openSong != nullptr)
         handleErrors (openSong->poll (now));
     refresh();
@@ -753,11 +762,12 @@ void MainComponent::refresh()
         state.canRedo = package.canRedo() && ! recording;
 
         recordPage.show (recordPageStateFor (
-            song,
-            openSong->audio().inputChannelNames,
-            [this] (const song::Id& trackId) { return openSong->isMonitoring (trackId); },
-            recording,
-            [this] (const song::Id& slotId) { return openSong->insertStatus (slotId); }));
+                             song,
+                             openSong->audio().inputChannelNames,
+                             [this] (const song::Id& trackId) { return openSong->isMonitoring (trackId); },
+                             recording,
+                             [this] (const song::Id& slotId) { return openSong->insertStatus (slotId); }),
+                         song);
         recordPage.showCamera (cameraControlsStateFor (song, openSong->cameraDevices(), recording), openSong->cameraPreviewLayer());
         recordPage.showStagePlayback (! stageShowsLiveFeed (song.cameraArmed, recording, state.playing));
         if (currentMode == Mode::record)
@@ -801,7 +811,9 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     // The Separation dialog is modal: it swallows every key while it shows.
     if (separating())
         return true;
-    if (currentMode == Mode::edit && editPage.mixer.handleKey (key, clock()))
+    if (currentMode == Mode::edit && editPage.mixer.mix.handleKey (key, clock()))
+        return true;
+    if (currentMode == Mode::record && recordPage.mix.handleKey (key, clock()))
         return true;
     if (! command.has_value())
         return false;
@@ -812,7 +824,15 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
 void MainComponent::mouseDown (const juce::MouseEvent& event)
 {
     if (! editPage.mixer.isFocusedControl (event.originalComponent))
-        editPage.mixer.releaseFocus();
+        editPage.mixer.mix.releaseFocus();
+    if (! recordPage.isFocusedControl (event.originalComponent))
+        recordPage.mix.releaseFocus();
+}
+
+void MainComponent::commitKeyBursts()
+{
+    editPage.mixer.mix.commitKeyBurst();
+    recordPage.mix.commitKeyBurst();
 }
 
 void MainComponent::takeKeyboardFocus()

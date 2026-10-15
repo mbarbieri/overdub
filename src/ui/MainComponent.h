@@ -63,7 +63,8 @@
 //
 // M and S (Record rows, Edit headers, Mixer strips) and the Mixer's faders and pan are undo steps
 // through OpenSong::edit; a Mixer drag in progress is heard through OpenSong::previewMix (issue #31).
-// In Edit mode the Mixer's focused fader or pan takes keys first (issue #129, Mixer::handleKey):
+// In Edit mode the Mixer's focused fader or pan takes keys first (issue #129, MixFocus::handleKey),
+// and in Record mode a Record row's focused fader (issue #130, the same volume as its Mixer fader):
 // its arrows do not move the playhead. Its focus is released by a mouse down anywhere outside it
 // (the window listens to every child's mouse), Esc or a mode change. Its burst of arrow presses is
 // committed by the poll once due, and at once before undo, redo, record, an import, a Separation
@@ -121,8 +122,8 @@ public:
     void refresh();
 
     bool keyPressed (const juce::KeyPress& key) override;
-    // Every mouse down in the window, children's included: one outside the Mixer's focused control
-    // releases its focus.
+    // Every mouse down in the window, children's included: one outside the Mixer's (or the Record
+    // page's) focused control releases its focus.
     void mouseDown (const juce::MouseEvent& event) override;
     void resized() override;
     void paint (juce::Graphics& g) override;
@@ -202,6 +203,8 @@ private:
     void presentMessages();
     void handleErrors (const std::vector<core::Error>& errors);
     void takeKeyboardFocus();
+    // Commits the Mixer's and the Record page's pending arrow-key bursts.
+    void commitKeyBursts();
     void syncVideoPreview();
     void onVBlank (double timestampSeconds);
     bool passRunning() const { return openSong != nullptr && openSong->isRecording(); }
