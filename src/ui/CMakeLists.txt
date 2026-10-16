@@ -33,6 +33,7 @@ target_sources(overdub_ui PRIVATE
     RunDialog.cpp
     SongFiles.cpp
     SongOverview.cpp
+    SongView.cpp
     TakeLanes.cpp
     ThinProgressBar.cpp
     Timeline.cpp

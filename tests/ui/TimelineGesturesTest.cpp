@@ -27,7 +27,7 @@ struct GestureFixture : MainWindowFixture
         REQUIRE (isShown (timeline()));
     }
 
-    Timeline& timeline() { return window->editPage.timeline; }
+    Timeline& timeline() { return window->songView()->editPage.timeline; }
 
     const song::Id& bandMixClipId() { return trackNamed ("Band Mix").clips.front().id; }
 
@@ -195,7 +195,7 @@ TEST_CASE ("a grip drag whose Track is deleted ends, and a mouse down on a Clip 
     REQUIRE (f.timeline().trackDrag().isActive());
 
     core::ScopedLogCapture capture;
-    f.window->editPage.onDeleteTrack (f.trackNamed ("Vocals").id);
+    f.window->songView()->editPage.onDeleteTrack (f.trackNamed ("Vocals").id);
     f.answerDeleteQuestion (true);
     REQUIRE (trackNames (f.song()) == std::vector<std::string> { "Band Mix", "Guitar" });
     CHECK_FALSE (f.timeline().trackDrag().isActive());

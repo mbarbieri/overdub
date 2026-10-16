@@ -27,7 +27,7 @@ struct ScrollFixture : MainWindowFixture
         REQUIRE (isShown (timeline()));
     }
 
-    Timeline& timeline() { return window->editPage.timeline; }
+    Timeline& timeline() { return window->songView()->editPage.timeline; }
 
     // Drops these new audio files on the Timeline: one new Track each, at the end.
     void dropFiles (const std::vector<std::string>& names)
@@ -259,7 +259,7 @@ TEST_CASE ("when the Timeline grows, the vertical scroll is clamped to what the 
     f.timeline().setVerticalScroll (10000);
     REQUIRE (f.timeline().verticalScroll() > 0);
 
-    click (f.window->editPage.toolbar.mixerButton); // hides the Mixer: the Timeline gets its room
+    click (f.window->songView()->editPage.toolbar.mixerButton); // hides the Mixer: the Timeline gets its room
     CHECK (f.timeline().verticalScroll() == 0);
     CHECK_FALSE (isShown (f.timeline().verticalScrollBar));
 }

@@ -84,7 +84,7 @@ struct WorkspaceFixture
         machine.latencyCalibrationFile = files.latencyCalibration;
         content.showAlert = [] (const juce::String&) {};
         content.askCameraAccess = [] (std::function<void (bool)> done) { done (true); };
-        content.pluginWindows.showOnDesktop = false;
+        content.showPluginWindowsOnDesktop = false;
         content.showVideoPreviewOnDesktop = false;
         overdub::ui::testing::layOut (content, 1200, 760);
         overdub::ui::testing::layOut (calibrationPanel, 460, 520);

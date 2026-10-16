@@ -101,7 +101,7 @@ struct InsertUiFixture : MainWindowFixture
         runBlocks (1);
     }
 
-    Mixer& mixer() { return window->editPage.mixer; }
+    Mixer& mixer() { return window->songView()->editPage.mixer; }
 
     MixerStrip& stripNamed (const std::string& name)
     {
@@ -261,7 +261,7 @@ TEST_CASE ("while a Pass runs the chain's edits are disabled, but an editor stil
     InsertUiFixture f { plugins };
     auto& chain = f.rowNamed ("Guitar").insertChain;
     f.addThrough (chain, 0);
-    f.window->pluginWindows.closeAll();
+    f.window->songView()->pluginWindows.closeAll();
 
     REQUIRE (f.openSong->record().has_value());
     f.runBlocks (2);
@@ -272,7 +272,7 @@ TEST_CASE ("while a Pass runs the chain's edits are disabled, but an editor stil
     CHECK (f.trackNamed ("Guitar").insertChain.size() == 1);
 
     click (*chain.chips[0]);
-    CHECK (f.window->pluginWindows.size() == 1);
+    CHECK (f.window->songView()->pluginWindows.size() == 1);
     f.openSong->stop();
     f.runBlocks (1);
 }
@@ -283,16 +283,16 @@ TEST_CASE ("clicking an Insert opens one editor window with the plugin's generic
     InsertUiFixture f { plugins };
     auto& chain = f.rowNamed ("Guitar").insertChain;
     f.addThrough (chain, 0);
-    f.window->pluginWindows.closeAll();
-    REQUIRE (f.window->pluginWindows.size() == 0);
+    f.window->songView()->pluginWindows.closeAll();
+    REQUIRE (f.window->songView()->pluginWindows.size() == 0);
     ScopedLogCapture capture;
 
     click (*chain.chips[0]);
     click (*chain.chips[0]); // again: the same window comes forward
 
-    REQUIRE (f.window->pluginWindows.size() == 1);
+    REQUIRE (f.window->songView()->pluginWindows.size() == 1);
     const auto& slot = f.trackNamed ("Guitar").insertChain[0];
-    auto* window = f.window->pluginWindows.find (slot.id);
+    auto* window = f.window->songView()->pluginWindows.find (slot.id);
     REQUIRE (window != nullptr);
     CHECK (window->getName() == juce::String::fromUTF8 ("Guitar \xE2\x80\x94 AUDelay"));
     CHECK (window->isUsingNativeTitleBar());
@@ -326,7 +326,7 @@ TEST_CASE ("an editor window follows its editor's size and logs it", "[ui][inser
     InsertUiFixture f { plugins };
     f.addThrough (f.rowNamed ("Guitar").insertChain, 0);
     const auto slotId = f.trackNamed ("Guitar").insertChain[0].id;
-    auto* window = f.window->pluginWindows.find (slotId);
+    auto* window = f.window->songView()->pluginWindows.find (slotId);
     REQUIRE (window != nullptr);
     ScopedLogCapture capture;
 
@@ -350,14 +350,14 @@ TEST_CASE ("adding an Insert opens its editor window once the plugin has loaded"
     f.pick = 2;
 
     click (f.rowNamed ("Guitar").insertChain.addButton);
-    CHECK (f.window->pluginWindows.size() == 0); // still loading
+    CHECK (f.window->songView()->pluginWindows.size() == 0); // still loading
     f.runBlocks (1);
-    CHECK (f.window->pluginWindows.size() == 0);
+    CHECK (f.window->songView()->pluginWindows.size() == 0);
 
     plugins.completeAll();
     f.runBlocks (1);
-    REQUIRE (f.window->pluginWindows.size() == 1);
-    CHECK (f.window->pluginWindows.find (f.trackNamed ("Guitar").insertChain[0].id) != nullptr);
+    REQUIRE (f.window->songView()->pluginWindows.size() == 1);
+    CHECK (f.window->songView()->pluginWindows.find (f.trackNamed ("Guitar").insertChain[0].id) != nullptr);
 }
 
 TEST_CASE ("a missing plugin's Insert opens no window and says so in a Notice", "[ui][inserts][plugin_window]")
@@ -371,7 +371,7 @@ TEST_CASE ("a missing plugin's Insert opens no window and says so in a Notice", 
     CHECK (chip.text() == "AUDelay (missing)");
 
     click (chip);
-    CHECK (f.window->pluginWindows.size() == 0);
+    CHECK (f.window->songView()->pluginWindows.size() == 0);
     CHECK (isShown (f.window->noticeLine));
 }
 
@@ -382,14 +382,14 @@ TEST_CASE ("removing an Insert, or undoing its addition, closes its editor windo
     auto& chain = f.rowNamed ("Guitar").insertChain;
     f.addThrough (chain, 0);
     f.addThrough (chain, 1);
-    REQUIRE (f.window->pluginWindows.size() == 2);
+    REQUIRE (f.window->songView()->pluginWindows.size() == 2);
 
     click (chain.chips[0]->removeButton);
-    CHECK (f.window->pluginWindows.size() == 1);
+    CHECK (f.window->songView()->pluginWindows.size() == 1);
 
     f.undo(); // the removal: the slot is back in a new plugin, with no window
     f.undo(); // the second addition
-    CHECK (f.window->pluginWindows.size() == 0);
+    CHECK (f.window->songView()->pluginWindows.size() == 0);
 }
 
 TEST_CASE ("a parameter moved in an editor is saved to song.json without an undo step", "[ui][inserts][plugin_window][state]")
@@ -398,7 +398,7 @@ TEST_CASE ("a parameter moved in an editor is saved to song.json without an undo
     InsertUiFixture f { plugins };
     f.addThrough (f.rowNamed ("Guitar").insertChain, 0);
     const auto slotId = f.trackNamed ("Guitar").insertChain[0].id;
-    auto* window = f.window->pluginWindows.find (slotId);
+    auto* window = f.window->songView()->pluginWindows.find (slotId);
     REQUIRE (window != nullptr);
     const auto labelBefore = f.undoLabel();
 
@@ -434,8 +434,8 @@ TEST_CASE ("closing an editor window schedules a song.json write without an undo
     REQUIRE_FALSE (f.openSong->package().hasPendingWrite());
     const auto labelBefore = f.undoLabel();
 
-    f.window->pluginWindows.find (slotId)->closeButtonPressed();
-    REQUIRE (overdub::plugin::testing::runMessagesUntil ([&] { return f.window->pluginWindows.size() == 0; }, 5s));
+    f.window->songView()->pluginWindows.find (slotId)->closeButtonPressed();
+    REQUIRE (overdub::plugin::testing::runMessagesUntil ([&] { return f.window->songView()->pluginWindows.size() == 0; }, 5s));
 
     CHECK (f.openSong->package().hasPendingWrite());
     CHECK (f.undoLabel() == labelBefore);
@@ -452,7 +452,7 @@ TEST_CASE ("a Mixer strip with three Inserts, one bypassed, renders to a snapsho
     f.addThrough (chain, 2);
     f.addThrough (f.mixer().masterStrip.insertChain, 1);
     click (chain.chips[1]->bypassButton);
-    f.window->pluginWindows.closeAll();
+    f.window->songView()->pluginWindows.closeAll();
     f.runBlocks (1);
 
     CHECK (writeSnapshot (f.stripNamed ("Guitar"), "slice-13", "mixer-strip-three-inserts-one-bypassed").existsAsFile());
@@ -469,7 +469,7 @@ TEST_CASE ("a plugin editor window renders to a snapshot", "[ui][inserts][plugin
     PendingPlugins plugins;
     InsertUiFixture f { plugins };
     f.addThrough (f.rowNamed ("Guitar").insertChain, 0);
-    auto* window = f.window->pluginWindows.find (f.trackNamed ("Guitar").insertChain[0].id);
+    auto* window = f.window->songView()->pluginWindows.find (f.trackNamed ("Guitar").insertChain[0].id);
     REQUIRE (window != nullptr);
 
     CHECK (writeSnapshot (window->panel(), "slice-13", "plugin-window").existsAsFile());
@@ -482,13 +482,13 @@ TEST_CASE ("a crashed plugin closes its editor window, reads (crashed), shows a 
     auto& chain = f.rowNamed ("Guitar").insertChain;
     f.addThrough (chain, 0);
     const auto slotId = f.trackNamed ("Guitar").insertChain[0].id;
-    REQUIRE (f.window->pluginWindows.size() == 1);
+    REQUIRE (f.window->songView()->pluginWindows.size() == 1);
     ScopedLogCapture capture;
 
     f.openSong->insertHost().pluginCrashed (*f.openSong->insertHost().processor (slotId));
     f.runBlocks (1);
 
-    CHECK (f.window->pluginWindows.size() == 0);
+    CHECK (f.window->songView()->pluginWindows.size() == 0);
     CHECK (chain.chips[0]->text() == "AUDelay (loading)"); // already reloading: nothing is recording
     CHECK (isShown (f.window->noticeLine));
     CHECK (f.window->noticeLine.text() == juce::String (sentenceFor ("ui.plugin_crashed")));
@@ -513,7 +513,7 @@ TEST_CASE ("a plugin crashed for good reads (crashed), and clicking it shows a N
     auto& chain = f.rowNamed ("Guitar").insertChain;
     f.addThrough (chain, 0);
     const auto slotId = f.trackNamed ("Guitar").insertChain[0].id;
-    f.window->pluginWindows.closeAll();
+    f.window->songView()->pluginWindows.closeAll();
     for (int crash = 0; crash <= overdub::plugin::maxCrashReloads; ++crash)
     {
         f.openSong->insertHost().pluginCrashed (*f.openSong->insertHost().processor (slotId));
@@ -526,7 +526,7 @@ TEST_CASE ("a plugin crashed for good reads (crashed), and clicking it shows a N
 
     click (*chain.chips[0]);
 
-    CHECK (f.window->pluginWindows.size() == 0);
+    CHECK (f.window->songView()->pluginWindows.size() == 0);
     const auto shown = eventsNamed (capture, "ui.notice_shown");
     REQUIRE (shown.size() == 1);
     CHECK (shown[0].at ("code") == "ui.plugin_crashed_repeatedly");
@@ -537,12 +537,12 @@ TEST_CASE ("deleting a Track closes the editor windows of its Inserts", "[ui][in
     PendingPlugins plugins;
     InsertUiFixture f { plugins };
     f.addThrough (f.rowNamed ("Guitar").insertChain, 0);
-    REQUIRE (f.window->pluginWindows.size() == 1);
+    REQUIRE (f.window->songView()->pluginWindows.size() == 1);
     REQUIRE (pressKey (*f.window, '2'));
 
     click (f.editHeaderNamed ("Guitar").deleteButton);
     f.answerDeleteQuestion (true);
 
     CHECK (f.song().tracks.size() == 2);
-    CHECK (f.window->pluginWindows.size() == 0);
+    CHECK (f.window->songView()->pluginWindows.size() == 0);
 }

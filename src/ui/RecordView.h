@@ -2,6 +2,7 @@
 
 #include "song/Peaks.h"
 #include "song/Song.h"
+#include "ui/TrackActions.h"
 
 #include <functional>
 #include <optional>
@@ -49,8 +50,6 @@ struct BackingEnvelope
 
     bool operator== (const BackingEnvelope&) const = default;
 };
-
-using PeaksLookup = std::function<const song::Peaks&(const song::ClipSource&)>;
 
 BackingEnvelope backingEnvelope (const song::Song& song, const PeaksLookup& peaksFor);
 

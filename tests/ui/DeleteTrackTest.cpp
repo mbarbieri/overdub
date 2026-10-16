@@ -38,7 +38,7 @@ std::vector<std::string> trackNames (const song::Song& song)
 std::vector<song::Id> headerTrackIds (MainWindowFixture& f)
 {
     std::vector<song::Id> ids;
-    for (const auto& header : f.window->editPage.timeline.headers)
+    for (const auto& header : f.window->songView()->editPage.timeline.headers)
         ids.push_back (header->trackId());
     return ids;
 }
@@ -46,7 +46,7 @@ std::vector<song::Id> headerTrackIds (MainWindowFixture& f)
 std::vector<song::Id> stripTrackIds (MainWindowFixture& f)
 {
     std::vector<song::Id> ids;
-    for (const auto& strip : f.window->editPage.mixer.strips)
+    for (const auto& strip : f.window->songView()->editPage.mixer.strips)
         ids.push_back (strip->trackId());
     return ids;
 }
@@ -132,7 +132,7 @@ TEST_CASE ("an Armed Track and the last Track can be deleted, leaving a Song wit
     deleteTrackNamed (f, "Guitar");
 
     CHECK (f.song().tracks.empty());
-    CHECK (f.window->editPage.timeline.headers.empty());
+    CHECK (f.window->songView()->editPage.timeline.headers.empty());
 }
 
 TEST_CASE ("deleting a Track clears a selection on it and stops its Monitoring", "[ui][delete_track]")
@@ -140,7 +140,7 @@ TEST_CASE ("deleting a Track clears a selection on it and stops its Monitoring",
     MainWindowFixture f;
     REQUIRE (pressKey (*f.window, '2'));
     const auto bandMixClip = f.trackNamed ("Band Mix").clips.at (0).id;
-    f.window->editPage.timeline.selectClip (bandMixClip);
+    f.window->songView()->editPage.timeline.selectClip (bandMixClip);
     const auto guitarId = f.trackNamed ("Guitar").id;
     f.openSong->setMonitoring (guitarId, true);
     REQUIRE (f.openSong->isMonitoring (guitarId));
@@ -148,7 +148,7 @@ TEST_CASE ("deleting a Track clears a selection on it and stops its Monitoring",
     deleteTrackNamed (f, "Band Mix");
     deleteTrackNamed (f, "Guitar");
 
-    CHECK_FALSE (f.window->editPage.timeline.selectedClip().has_value());
+    CHECK_FALSE (f.window->songView()->editPage.timeline.selectedClip().has_value());
     CHECK_FALSE (f.openSong->isMonitoring (guitarId));
     REQUIRE (pressKey (*f.window, 'z', juce::ModifierKeys::commandModifier));
     CHECK_FALSE (f.openSong->isMonitoring (guitarId));

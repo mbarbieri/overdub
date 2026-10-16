@@ -27,7 +27,7 @@ struct MixerFixture : MainWindowFixture
         REQUIRE (isShown (mixer()));
     }
 
-    Mixer& mixer() { return window->editPage.mixer; }
+    Mixer& mixer() { return window->songView()->editPage.mixer; }
 
     MixerStrip& stripNamed (const std::string& name)
     {
@@ -42,11 +42,11 @@ struct MixerFixture : MainWindowFixture
     TrackHeader& headerNamed (const std::string& name)
     {
         const auto& trackId = trackNamed (name).id;
-        for (auto& header : window->editPage.timeline.headers)
+        for (auto& header : window->songView()->editPage.timeline.headers)
             if (header->trackId() == trackId)
                 return *header;
         FAIL ("no header for Track " << name);
-        return *window->editPage.timeline.headers.front();
+        return *window->songView()->editPage.timeline.headers.front();
     }
 
     std::string undoLabel() const { return openSong->package().undoLabel(); }
@@ -390,7 +390,7 @@ TEST_CASE ("while a fader or pan has focus the arrows do not move the playhead; 
     CHECK (f.press (juce::KeyPress::leftKey));
     CHECK (f.openSong->position() == nudge);
 
-    f.mouseDownOn (f.window->editPage.timeline);
+    f.mouseDownOn (f.window->songView()->editPage.timeline);
     CHECK (! f.mixer().mix.focusedControl().has_value());
     CHECK (f.press (juce::KeyPress::rightKey));
     CHECK (f.openSong->position() == 2 * nudge);
@@ -461,7 +461,7 @@ TEST_CASE ("a burst of arrow presses is committed at once by focus loss, a mode 
     SECTION ("a click elsewhere")
     {
         startBurst();
-        f.mouseDownOn (f.window->editPage.timeline);
+        f.mouseDownOn (f.window->songView()->editPage.timeline);
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
         CHECK (f.undoLabel() == "Guitar Volume");
     }

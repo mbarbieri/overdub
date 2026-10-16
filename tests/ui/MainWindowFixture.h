@@ -55,7 +55,7 @@ struct MainWindowFixture
             pendingDeleteAnswer = std::move (done);
         };
         window->askCameraAccess = [this] (std::function<void (bool)> done) { done (cameraAccessGranted); };
-        window->pluginWindows.showOnDesktop = false; // editor windows are built, never shown
+        window->showPluginWindowsOnDesktop = false; // editor windows are built, never shown
         window->showVideoPreviewOnDesktop = false;    // so is the Video Preview
         layOut (*window, windowWidth, windowHeight);
         window->setOpenSong (openSong.get());
@@ -79,22 +79,22 @@ struct MainWindowFixture
     TrackRow& rowNamed (const std::string& name)
     {
         const auto& trackId = trackNamed (name).id;
-        for (auto& row : window->recordPage.rows)
+        for (auto& row : window->songView()->recordPage.rows)
             if (row->trackId() == trackId)
                 return *row;
         FAIL ("no row for Track " << name);
-        return *window->recordPage.rows.front();
+        return *window->songView()->recordPage.rows.front();
     }
 
     // The Track's header on the Edit page's Timeline (shown in Edit mode).
     TrackHeader& editHeaderNamed (const std::string& name)
     {
         const auto& trackId = trackNamed (name).id;
-        for (auto& header : window->editPage.timeline.headers)
+        for (auto& header : window->songView()->editPage.timeline.headers)
             if (header->trackId() == trackId)
                 return *header;
         FAIL ("no Edit header for Track " << name);
-        return *window->editPage.timeline.headers.front();
+        return *window->songView()->editPage.timeline.headers.front();
     }
 
     // Delete or Cancel in the open delete confirmation.

@@ -73,9 +73,9 @@ struct Mp4WindowFixture : MainWindowFixture
     ExportPage& toMp4()
     {
         REQUIRE (pressKey (*window, '3'));
-        click (window->exportPage.mp4Button);
-        REQUIRE (window->exportPage.format() == ExportFormat::mp4);
-        return window->exportPage;
+        click (window->songView()->exportPage.mp4Button);
+        REQUIRE (window->songView()->exportPage.format() == ExportFormat::mp4);
+        return window->songView()->exportPage;
     }
 };
 
@@ -269,7 +269,7 @@ TEST_CASE ("a Song with a Video Take but no Clips exports an MP4 over silence, a
     REQUIRE (f.openSong->edit (changed, "Add Video Take").has_value());
     window.tick();
     REQUIRE (pressKey (window, '3'));
-    auto& page = window.exportPage;
+    auto& page = window.songView()->exportPage;
 
     SECTION ("MP4: the Video Take over a silent mix")
     {
@@ -331,7 +331,7 @@ TEST_CASE ("on a Song with no Clips, the WAV and M4A span text says there is not
     REQUIRE (f.openSong->edit (changed, "Add Video Take").has_value());
     window.tick();
     REQUIRE (pressKey (window, '3'));
-    auto& page = window.exportPage;
+    auto& page = window.songView()->exportPage;
 
     for (auto* button : { &page.wavButton, &page.m4aButton })
     {
@@ -361,7 +361,7 @@ TEST_CASE ("an MP4 of a Video Take that ends before the Song starts is a Notice 
     REQUIRE (f.openSong->edit (changed, "Add Video Take").has_value());
     window.tick();
     REQUIRE (pressKey (window, '3'));
-    auto& page = window.exportPage;
+    auto& page = window.songView()->exportPage;
     click (page.mp4Button);
     REQUIRE (page.trimButton.getToggleState());
     const auto file = folder.root.getChildFile ("Before.mp4");

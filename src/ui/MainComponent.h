@@ -2,13 +2,10 @@
 
 #include "core/Error.h"
 #include "ui/Commands.h"
-#include "ui/EditPage.h"
-#include "ui/ExportPage.h"
 #include "ui/OpenSong.h"
 #include "ui/Pages.h"
-#include "ui/PluginWindows.h"
-#include "ui/RecordPage.h"
 #include "ui/RunDialog.h"
+#include "ui/SongView.h"
 #include "ui/TopBar.h"
 #include "ui/UserMessages.h"
 #include "ui/VideoPreviewWindow.h"
@@ -87,6 +84,9 @@
 // (OpenSong::startSampleRateConversion). While it runs the same modal dialog shows its progress;
 // Cancel stops it (OpenSong::cancelSampleRateConversion), and its Error is presented by its tier.
 //
+// The Song-bound part (ui/SongView.h: the pages and plugin editor windows) exists only while a
+// Song is open; setOpenSong builds it and destroys it.
+//
 // Every 30 ms (and from tick() in tests) it polls the open Song, which finishes a stopped Pass,
 // refreshes the top bar and the page, feeds the Mixer's and the Record rows' meters from one
 // poll of the engine's peaks, and presents queued messages: Notices at once, Alerts only
@@ -102,9 +102,12 @@ public:
     MainComponent();
     ~MainComponent() override;
 
-    // The open Song, or null for none. Not owned; it must outlive its use here.
+    // The open Song, or null for none. Not owned; it must outlive its use here, until
+    // setOpenSong is called again.
     void setOpenSong (OpenSong* song);
-    OpenSong* currentSong() const { return openSong; }
+    OpenSong* currentSong() const { return songContent != nullptr ? &songContent->currentSong() : nullptr; }
+    // The Song-bound content; null while no Song is open.
+    SongView* songView() const { return songContent.get(); }
 
     Mode mode() const { return currentMode; }
 
@@ -115,6 +118,11 @@ public:
     void handleError (const core::Error& error);
     // Presents a Notice-tier code that was already logged where it arose (e.g. song.history_dropped).
     void showNotice (const std::string& code);
+    // handleError, except that an OpenSong refusal (ui/Activity.h) is logged at debug only: a gesture
+    // the running activity refuses is not presented. record, startExport, startSeparation and
+    // convertSampleRate present their refusals with handleError.
+    void handleUnlessRefused (const core::Error& error);
+    void handleUnlessRefused (const core::Expected<void>& result);
 
     // Converts the open Song to `toRate` (see the header comment).
     void convertSampleRate (int toRate);
@@ -175,74 +183,32 @@ public:
 
     // Children are public so tests can click them and check what shows.
     TopBar topBar;
-    RecordPage recordPage;
-    EditPage editPage;
-    ExportPage exportPage;
     NoSongPage noSongPage;
     NoticeLine noticeLine;
     RunDialog runDialog;
-    // The plugin editor windows; tests set showOnDesktop false before opening any.
-    PluginWindows pluginWindows;
-    // False in tests: the Video Preview is built, never put on the desktop.
+    // False in tests: plugin editor windows (of Songs opened after it is set) and the Video
+    // Preview are built, never put on the desktop.
+    bool showPluginWindowsOnDesktop = true;
     bool showVideoPreviewOnDesktop = true;
 
 private:
     void timerCallback() override { tick(); }
 
     void showMode (Mode mode);
-    void jumpToPass (const song::Id& passId);
-    void splitSelectedClip();
-    void deleteSelection();
-    void nudgePlayhead (int seconds);
-    // Whether the edit was applied; an Error is handled (a refusal is not presented).
-    bool applyEdit (core::Expected<song::Song> changed, const std::string& label);
-    void armCamera (bool armed);
-    void setMute (const song::Id& trackId, bool mute);
-    void setSolo (const song::Id& trackId, bool solo);
-    // Adds an empty Track, Armed on the first input, as one undo step (issue #109).
-    void addTrack();
-    void importFiles (const std::vector<juce::File>& files);
-    // The × in an Edit Track header: asks, then deletes the Track as one undo step (issue #124).
-    void askToDeleteTrack (const song::Id& trackId);
-    void deleteTrack (const song::Id& trackId);
-    void moveTrack (const song::Id& trackId, std::size_t toIndex);
-    void showTrackMenu (const song::Id& trackId);
-    void startSeparation (const song::Id& trackId);
-    // Cancels the Separation or the conversion the dialog shows.
-    void cancelRun();
-    // True while the modal run dialog shows: a Separation or a conversion runs.
-    bool runShowing() const { return openSong != nullptr && (openSong->isSeparating() || openSong->isConverting()); }
-    void startExport (const exporting::ExportRequest& request);
-    void chooseExportFile (const juce::File& current);
-    void chooseInsert (const song::Id& trackId);
-    void openInsertEditor (const song::Id& slotId);
-    void syncPluginWindows();
-    InsertChainActions insertChainActions();
     void post (UserMessage message);
     void presentMessages();
-    void handleErrors (const std::vector<core::Error>& errors);
-    // handleError, except that an OpenSong refusal (ui/Activity.h) is logged at debug only: a gesture
-    // the running activity refuses is not presented. record, startExport, startSeparation and
-    // convertSampleRate present their refusals with handleError.
-    void handleUnlessRefused (const core::Error& error);
-    void handleUnlessRefused (const core::Expected<void>& result);
-    // A Song operation's Error (the Song as it is cannot take it), unless the edit it was for is
-    // refused anyway: then the refusal, not presented.
-    void handleOperationError (const core::Error& error);
-    void takeKeyboardFocus();
-    // Commits the Mixer's and the Record page's pending arrow-key bursts.
-    void commitKeyBursts();
     void syncVideoPreview();
     void onVBlank (double timestampSeconds);
-    bool passRunning() const { return openSong != nullptr && openSong->isRecording(); }
+    bool passRunning() const { return songContent != nullptr && songContent->currentSong().isRecording(); }
+    // True while the modal run dialog shows: a Separation or a conversion runs.
+    bool runShowing() const { return songContent != nullptr && songContent->runShowing(); }
 
-    OpenSong* openSong = nullptr;
     Mode currentMode = Mode::record;
     UserMessageQueue messages;
-    // A slot whose editor opens once its plugin is ready (just added, or clicked while loading).
-    std::optional<song::Id> pendingEditorSlot;
     bool videoPreviewWanted = false;
     std::unique_ptr<VideoPreviewWindow> videoPreview;
+    // Null while no Song is open.
+    std::unique_ptr<SongView> songContent;
     std::optional<double> lastVBlankSeconds;
     // Last: it calls back into this object until it is destroyed.
     juce::VBlankAttachment vblank;

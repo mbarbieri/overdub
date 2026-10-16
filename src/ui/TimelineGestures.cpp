@@ -65,8 +65,8 @@ void Timeline::dropTrack (TrackHeader& header, juce::Point<int> inGrip)
     if (! drop.has_value())
         return;
     core::logEvent (core::Level::debug, "ui.track_dropped", { { "page", "edit" }, { "track_id", drop->trackId }, { "from", drop->from }, { "to", drop->to } });
-    if (drop->to != drop->from && onMoveTrack)
-        onMoveTrack (drop->trackId, drop->to);
+    if (drop->to != drop->from)
+        trackActions.moveTrack (drop->trackId, drop->to);
 }
 
 bool Timeline::isInterestedInFileDrag (const juce::StringArray& files)
@@ -153,8 +153,7 @@ void Timeline::mouseDown (const juce::MouseEvent& event)
     if (layout.ruler.contains (position))
     {
         gesture = SeekGesture {};
-        if (onSeek)
-            onSeek (std::max<song::SampleCount> (0, sampleForX (timelineView, position.x)));
+        trackActions.seek (std::max<song::SampleCount> (0, sampleForX (timelineView, position.x)));
         return;
     }
 
@@ -199,8 +198,7 @@ void Timeline::mouseDrag (const juce::MouseEvent& event)
     const auto position = event.getPosition();
     if (std::holds_alternative<SeekGesture> (gesture))
     {
-        if (onSeek)
-            onSeek (std::max<song::SampleCount> (0, sampleForX (timelineView, position.x)));
+        trackActions.seek (std::max<song::SampleCount> (0, sampleForX (timelineView, position.x)));
         return;
     }
     auto* clipDrag = std::get_if<ClipDragGesture> (&gesture);

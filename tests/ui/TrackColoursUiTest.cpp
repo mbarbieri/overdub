@@ -45,11 +45,11 @@ struct TrackColourFixture : MainWindowFixture
     MixerStrip& stripNamed (const std::string& trackName)
     {
         const auto& trackId = trackNamed (trackName).id;
-        for (auto& strip : window->editPage.mixer.strips)
+        for (auto& strip : window->songView()->editPage.mixer.strips)
             if (strip->trackId() == trackId)
                 return *strip;
         FAIL ("no Mixer strip for Track " << trackName);
-        return *window->editPage.mixer.strips.front();
+        return *window->songView()->editPage.mixer.strips.front();
     }
 };
 } // namespace
@@ -81,7 +81,7 @@ TEST_CASE ("the Edit headers, Clips, Take Lanes and Mixer strips compute each Tr
 {
     TrackColourFixture f;
     REQUIRE (pressKey (*f.window, '2'));
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     timeline.setTakeLanesUnfolded (f.trackNamed ("Guitar").id, true);
     timeline.setTakeLanesUnfolded (f.trackNamed ("Vocals").id, true);
 
@@ -99,7 +99,7 @@ TEST_CASE ("the Edit headers, Clips, Take Lanes and Mixer strips compute each Tr
 
     CHECK (f.stripNamed ("Guitar").colour() == juce::Colour (0xffc0ffee));
     CHECK (f.stripNamed ("Band Mix").colour() == juce::Colour (0xff123456));
-    CHECK (f.window->editPage.mixer.masterStrip.colour() == std::nullopt);
+    CHECK (f.window->songView()->editPage.mixer.masterStrip.colour() == std::nullopt);
 }
 
 TEST_CASE ("undoing a colour change shows the earlier colour everywhere", "[ui][colour]")
@@ -128,7 +128,7 @@ TEST_CASE ("snapshots of Track colours on the Record and Edit pages", "[ui][colo
     CHECK (writeSnapshot (window, "issue-137", "record-rows").existsAsFile());
 
     REQUIRE (pressKey (window, '2'));
-    auto& timeline = window.editPage.timeline;
+    auto& timeline = window.songView()->editPage.timeline;
     timeline.setTakeLanesUnfolded (f.trackNamed ("Guitar").id, true);
     timeline.selectClip (f.trackNamed ("Vocals").clips.at (0).id);
     window.tick();
@@ -138,7 +138,7 @@ TEST_CASE ("snapshots of Track colours on the Record and Edit pages", "[ui][colo
 TEST_CASE ("Add Track gives the new Track a palette colour no other Track has", "[ui][record_page][add_track][colour]")
 {
     MainWindowFixture f;
-    click (f.window->recordPage.addTrackButton);
+    click (f.window->songView()->recordPage.addTrackButton);
 
     const auto& added = f.song().tracks.back();
     CHECK (std::ranges::contains (song::trackColourPalette, std::string_view (added.colour)));

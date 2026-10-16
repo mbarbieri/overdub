@@ -24,10 +24,10 @@ struct EditFixture : MainWindowFixture
     EditFixture()
     {
         REQUIRE (pressKey (*window, '2'));
-        REQUIRE (isShown (window->editPage.timeline));
+        REQUIRE (isShown (window->songView()->editPage.timeline));
     }
 
-    Timeline& timeline() { return window->editPage.timeline; }
+    Timeline& timeline() { return window->songView()->editPage.timeline; }
 
     const overdub::song::Clip& bandMixClip (std::size_t index = 0)
     {
@@ -122,13 +122,13 @@ TEST_CASE ("a click on a Clip selects it without changing the Song", "[ui][edit]
     CHECK (f.timeline().selectedClip() == f.bandMixClip().id);
     CHECK (f.song() == before);
     CHECK (f.openSong->package().undoLabel() == "Add Tracks");
-    CHECK (f.window->editPage.toolbar.deleteButton.isEnabled());
-    CHECK (f.window->editPage.toolbar.details.getText().startsWith ("Band Mix.wav on Band Mix"));
+    CHECK (f.window->songView()->editPage.toolbar.deleteButton.isEnabled());
+    CHECK (f.window->songView()->editPage.toolbar.details.getText().startsWith ("Band Mix.wav on Band Mix"));
 
     // Empty lane space clears the selection.
     clickAt (f.timeline(), { f.bandMixBounds().getRight() + 100, f.bandMixBounds().getCentreY() });
     CHECK (! f.timeline().selectedClip().has_value());
-    CHECK (! f.window->editPage.toolbar.deleteButton.isEnabled());
+    CHECK (! f.window->songView()->editPage.toolbar.deleteButton.isEnabled());
 }
 
 TEST_CASE ("S splits the selected Clip at the playhead, as one Split Clip step", "[ui][edit]")
@@ -138,7 +138,7 @@ TEST_CASE ("S splits the selected Clip at the playhead, as one Split Clip step",
     f.openSong->seek (30000);
     f.runBlocks (0);
     const auto before = f.song();
-    CHECK (f.window->editPage.toolbar.splitButton.isEnabled());
+    CHECK (f.window->songView()->editPage.toolbar.splitButton.isEnabled());
 
     REQUIRE (pressKey (*f.window, 's'));
 
@@ -176,11 +176,11 @@ TEST_CASE ("the Split and Delete buttons act like S and backspace", "[ui][edit]"
     f.openSong->seek (40000);
     f.runBlocks (0);
 
-    click (f.window->editPage.toolbar.splitButton);
+    click (f.window->songView()->editPage.toolbar.splitButton);
     CHECK (f.trackNamed ("Band Mix").clips.size() == 2);
     CHECK (f.openSong->package().undoLabel() == "Split Clip");
 
-    click (f.window->editPage.toolbar.deleteButton);
+    click (f.window->songView()->editPage.toolbar.deleteButton);
     CHECK (f.trackNamed ("Band Mix").clips.size() == 1);
     CHECK (f.bandMixClip().length == 40000);
     CHECK (f.openSong->package().undoLabel() == "Delete Clip");
@@ -193,7 +193,7 @@ TEST_CASE ("S with the playhead outside the selected Clip shows a Notice and cha
     f.openSong->seek (bandMixLength + 1000);
     f.runBlocks (0);
     const auto before = f.song();
-    CHECK (! f.window->editPage.toolbar.splitButton.isEnabled());
+    CHECK (! f.window->songView()->editPage.toolbar.splitButton.isEnabled());
 
     ScopedLogCapture capture;
     REQUIRE (pressKey (*f.window, 's'));
@@ -237,7 +237,7 @@ TEST_CASE ("Clips cannot be edited while a Pass records", "[ui][edit][record]")
     drag (f.timeline(), bounds.getCentre(), bounds.getCentre().translated (50, 0));
     REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::backspaceKey)));
     CHECK (f.song() == before);
-    CHECK (! f.window->editPage.toolbar.deleteButton.isEnabled());
+    CHECK (! f.window->songView()->editPage.toolbar.deleteButton.isEnabled());
 
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
     f.runBlocks (1);
@@ -287,12 +287,12 @@ TEST_CASE ("the zoom buttons halve and double the samples per pixel, and Clips r
     const auto start = f.samplesPerPixel();
     const auto width = f.bandMixBounds().getWidth();
 
-    click (f.window->editPage.toolbar.zoomInButton);
+    click (f.window->songView()->editPage.toolbar.zoomInButton);
     CHECK (f.samplesPerPixel() == start / 2);
     CHECK (f.bandMixBounds().getWidth() == (int) (bandMixLength / f.samplesPerPixel()));
 
-    click (f.window->editPage.toolbar.zoomOutButton);
-    click (f.window->editPage.toolbar.zoomOutButton);
+    click (f.window->songView()->editPage.toolbar.zoomOutButton);
+    click (f.window->songView()->editPage.toolbar.zoomOutButton);
     CHECK (f.samplesPerPixel() == start * 2);
     CHECK (f.bandMixBounds().getWidth() < width);
 
@@ -331,7 +331,7 @@ TEST_CASE ("the timeline shows the Camera lane and one header per Track whose ar
 TEST_CASE ("the Mixer region hides and shows with its button and resizes with its divider", "[ui][edit][mixer]")
 {
     EditFixture f;
-    auto& page = f.window->editPage;
+    auto& page = f.window->songView()->editPage;
     REQUIRE (isShown (page.mixer));
     CHECK (page.mixer.getHeight() == defaultMixerHeight);
     const auto timelineHeight = page.timeline.getHeight();
@@ -440,7 +440,7 @@ TEST_CASE ("dragging a Clip's dB tag up raises its gain, as one Clip Gain step",
 TEST_CASE ("the Clip toolbar's fade and gain fields edit the selected Clip, one labelled step each", "[ui][edit][clip_gain]")
 {
     EditFixture f;
-    auto& toolbar = f.window->editPage.toolbar;
+    auto& toolbar = f.window->songView()->editPage.toolbar;
     CHECK (! toolbar.fadeInField.isEnabled());
     CHECK (! toolbar.gainField.isEnabled());
 
@@ -492,7 +492,7 @@ TEST_CASE ("Clip gain and fades cannot be edited while a Pass records", "[ui][ed
 
     const auto tag = f.timeline().handleBounds (f.bandMixClip().id, ClipPart::gainTag);
     drag (f.timeline(), tag.getCentre(), tag.getCentre().translated (0, -25));
-    CHECK (! f.window->editPage.toolbar.gainField.isEnabled());
+    CHECK (! f.window->songView()->editPage.toolbar.gainField.isEnabled());
     CHECK (f.song() == before);
 
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));

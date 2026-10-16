@@ -5,6 +5,7 @@
 #include "ui/Layout.h"
 #include "ui/TakeLanes.h"
 #include "ui/TimelineGeometry.h"
+#include "ui/TrackActions.h"
 #include "ui/TrackDrag.h"
 #include "video/FrameSelection.h"
 
@@ -58,7 +59,7 @@
 //
 // Reordering Tracks (issue #138, ui/TrackDrag.h): dragging a header's grip drags its Track, with
 // its unfolded Take Lanes, between the other Tracks (never above the Camera lane); a drop that
-// changes the order is reported through onMoveTrack. No grip drags while a Pass runs.
+// changes the order is reported through TrackActions::moveTrack. No grip drags while a Pass runs.
 //
 // One gesture at a time (issue #148): a Clip drag, a ruler drag (seek), a grip drag, or a file drag
 // hovering. While one is in progress the others do not start. Esc (cancelGesture) ends a Clip drag
@@ -67,10 +68,6 @@
 // drag, and so does its Track leaving the Song. The gesture handling is in ui/TimelineGestures.cpp.
 namespace overdub::ui
 {
-// The peaks of a Clip's source (no channels: draw no waveform). The reference must stay valid
-// while the Timeline paints.
-using PeaksLookup = std::function<const song::Peaks&(const song::ClipSource&)>;
-
 struct TimelineState
 {
     song::Song song;
@@ -128,7 +125,8 @@ private:
 class Timeline final : public juce::Component, public juce::FileDragAndDropTarget, private juce::ScrollBar::Listener
 {
 public:
-    Timeline();
+    // `actions` must outlive the Timeline.
+    explicit Timeline (const TrackActions& actions);
     ~Timeline() override;
 
     void show (const TimelineState& state);
@@ -181,16 +179,9 @@ public:
     // A finished drag or lane click: the changed Song and its undo label ("Move Clip", "Trim Clip",
     // "Fade In", "Fade Out", "Clip Gain", "Use Pass 2 on Guitar", "Bring back Pass 2 on Guitar").
     std::function<void (song::Song changed, std::string label)> onEdit;
-    std::function<void (song::SampleCount sample)> onSeek;
-    std::function<void (const song::Id& trackId, bool armed)> onArm;
-    std::function<void (const song::Id& trackId, bool mute)> onMute;
-    std::function<void (const song::Id& trackId, bool solo)> onSolo;
     // The × in a Track's header was clicked (the window asks before deleting).
     std::function<void (const song::Id& trackId)> onDeleteTrack;
-    // A grip drag dropped the Track at this index of the Track order (a different one).
-    std::function<void (const song::Id& trackId, std::size_t toIndex)> onMoveTrack;
     std::function<void()> onSelectionChanged;
-    PeaksLookup peaksFor;
     // Whether a drop would be imported now (false while the Song is locked); no callback = never.
     std::function<bool()> canImportFiles;
     // The importable files of a drop, in drop order.
@@ -285,6 +276,7 @@ private:
     void paintTakeLane (juce::Graphics& g, const TakeLaneRow& row, juce::Colour colour, juce::Rectangle<int> lane) const;
     void paintTakeLaneHeader (juce::Graphics& g, const TakeLaneRow& row, juce::Rectangle<int> header) const;
 
+    const TrackActions& trackActions;
     TimelineState current;
     Gesture gesture;
     TimelineView timelineView;
