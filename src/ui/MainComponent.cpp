@@ -841,9 +841,11 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     // The Separation dialog is modal: it swallows every key while it shows.
     if (separating())
         return true;
-    if (key.isKeyCode (juce::KeyPress::escapeKey) && (editPage.timeline.cancelTrackDrag() || recordPage.cancelTrackDrag()))
+    if (key.isKeyCode (juce::KeyPress::escapeKey) && editPage.timeline.cancelGesture ("escape"))
+        return true;
+    if (key.isKeyCode (juce::KeyPress::escapeKey) && recordPage.cancelTrackDrag())
     {
-        core::logEvent (core::Level::debug, "ui.track_drag_cancelled", { { "reason", "escape" } });
+        core::logEvent (core::Level::debug, "ui.track_drag_cancelled", { { "page", "record" }, { "reason", "escape" } });
         return true;
     }
     if (currentMode == Mode::edit && editPage.mixer.mix.handleKey (key, clock()))

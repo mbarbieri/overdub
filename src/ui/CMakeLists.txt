@@ -35,6 +35,7 @@ target_sources(overdub_ui PRIVATE
     TakeLanes.cpp
     ThinProgressBar.cpp
     Timeline.cpp
+    TimelineGestures.cpp
     TimelineGeometry.cpp
     TopBar.cpp
     TrackDrag.cpp

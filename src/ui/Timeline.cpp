@@ -7,7 +7,6 @@
 #include "song/TakeEdits.h"
 #include "song/VideoTakeEdits.h"
 #include "ui/Colours.h"
-#include "ui/FileDrop.h"
 #include "ui/MuteSoloButtons.h"
 
 #include <algorithm>
@@ -38,12 +37,6 @@ double rulerStepSeconds (song::SampleCount samplesPerPixel, int sampleRate)
         if (step * sampleRate / (double) samplesPerPixel >= 70.0)
             return step;
     return steps.back();
-}
-
-// A Clip's rectangle in its lane: its columns, inset 3 pixels from the lane's top and bottom.
-juce::Rectangle<int> clipRectangle (juce::Rectangle<int> lane, ClipColumns columns)
-{
-    return { columns.left, lane.getY() + 3, columns.right - columns.left, lane.getHeight() - 6 };
 }
 
 PixelRect handleRect (const ClipHandleBounds& handles, ClipPart part)
@@ -211,17 +204,17 @@ void Timeline::show (const TimelineState& state)
         for (const auto& track : current.song.tracks)
             previousTrackIds.push_back (track.id);
     current = state;
-    if (! current.editable && cancelTrackDrag())
-        core::logEvent (core::Level::debug, "ui.track_drag_cancelled", { { "page", "edit" }, { "reason", "pass_running" } });
+    if (! current.editable)
+        cancelGesture ("pass_running");
     if (! changed)
         return;
 
     if (songChanged)
     {
-        if (selected.has_value() && song::findClip (current.song, *selected) == nullptr)
-            selectClip (std::nullopt);
-        if (selectedVideo.has_value() && song::findVideoTake (current.song, *selectedVideo) == nullptr)
-            selectVideoTake (std::nullopt);
+        const auto clipId = selectedClip();
+        const auto videoTakeId = selectedVideoTake();
+        if ((clipId.has_value() && song::findClip (current.song, *clipId) == nullptr) || (videoTakeId.has_value() && song::findVideoTake (current.song, *videoTakeId) == nullptr))
+            setSelection (std::monostate {});
         rebuildHeaders();
         refreshTakeLanes();
         revealNewTracks (previousTrackIds);
@@ -285,30 +278,6 @@ juce::Rectangle<int> Timeline::takeLaneBounds (const song::Id& takeId) const
     return {};
 }
 
-bool Timeline::clickTakeLane (juce::Point<int> position)
-{
-    for (std::size_t i = 0; i < takeLanes.size() && i < layout.takeLanes.size(); ++i)
-    {
-        for (std::size_t j = 0; j < takeLanes[i].size() && j < layout.takeLanes[i].size(); ++j)
-        {
-            if (! layout.takeLanes[i][j].contains (position))
-                continue;
-            const auto at = sampleForX (timelineView, position.x);
-            auto edit = laneEditAt (current.song, takeLanes[i][j].takeId, at, song::makeId());
-            core::logEvent (core::Level::debug, "ui.take_lane_clicked", { { "take_id", takeLanes[i][j].takeId }, { "at", at }, { "changes_song", edit.has_value() } });
-            if (! edit.has_value())
-                return true;
-            const auto clipId = edit->clipId;
-            if (onEdit)
-                onEdit (std::move (edit->song), std::move (edit->label));
-            if (song::findClip (current.song, clipId) != nullptr)
-                selectClip (clipId);
-            return true;
-        }
-    }
-    return false;
-}
-
 void Timeline::rebuildHeaders()
 {
     const auto& tracks = current.song.tracks;
@@ -370,47 +339,6 @@ std::vector<juce::Range<int>> Timeline::trackRowSpans() const
     return spans;
 }
 
-void Timeline::beginTrackDrag (TrackHeader& header, juce::Point<int> inGrip)
-{
-    const auto& tracks = current.song.tracks;
-    const auto found = std::ranges::find (tracks, header.trackId(), &song::Track::id);
-    if (! current.editable || found == tracks.end())
-        return;
-    const auto from = (std::size_t) (found - tracks.begin());
-    const auto row = getLocalArea (&header, header.getLocalBounds());
-    const auto pointerY = getLocalPoint (&header.grip, inGrip).y;
-    activeTrackDrag.begin (header.trackId(), from, row, header.createComponentSnapshot (header.getLocalBounds()), pointerY, trackRowSpans());
-    core::logEvent (core::Level::debug, "ui.track_drag_started", { { "page", "edit" }, { "track_id", header.trackId() }, { "from", from } });
-    repaint();
-}
-
-void Timeline::dragTrack (TrackHeader& header, juce::Point<int> inGrip)
-{
-    if (! activeTrackDrag.isActive())
-        return;
-    activeTrackDrag.moveTo (getLocalPoint (&header.grip, inGrip).y, trackRowSpans());
-    repaint();
-}
-
-void Timeline::dropTrack (TrackHeader& header, juce::Point<int> inGrip)
-{
-    const auto drop = activeTrackDrag.end (getLocalPoint (&header.grip, inGrip).y, trackRowSpans());
-    repaint();
-    if (! drop.has_value())
-        return;
-    core::logEvent (core::Level::debug, "ui.track_dropped", { { "page", "edit" }, { "track_id", drop->trackId }, { "from", drop->from }, { "to", drop->to } });
-    if (drop->to != drop->from && onMoveTrack)
-        onMoveTrack (drop->trackId, drop->to);
-}
-
-bool Timeline::cancelTrackDrag()
-{
-    if (! activeTrackDrag.cancel())
-        return false;
-    repaint();
-    return true;
-}
-
 void Timeline::revealNewTracks (const std::vector<song::Id>& previousTrackIds)
 {
     const auto& tracks = current.song.tracks;
@@ -459,34 +387,38 @@ void Timeline::zoomOut()
     setView (timelineView.firstSample, zoomedOut (timelineView).samplesPerPixel);
 }
 
+std::optional<song::Id> Timeline::selectedClip() const
+{
+    if (const auto* clip = std::get_if<ClipSelection> (&selection))
+        return clip->clipId;
+    return std::nullopt;
+}
+
+std::optional<song::Id> Timeline::selectedVideoTake() const
+{
+    if (const auto* videoTake = std::get_if<VideoTakeSelection> (&selection))
+        return videoTake->videoTakeId;
+    return std::nullopt;
+}
+
 void Timeline::selectClip (std::optional<song::Id> clipId)
 {
-    setSelection (std::move (clipId), std::nullopt);
+    setSelection (clipId.has_value() ? Selection { ClipSelection { std::move (*clipId) } } : Selection {});
 }
 
 void Timeline::selectVideoTake (std::optional<song::Id> videoTakeId)
 {
-    setSelection (std::nullopt, std::move (videoTakeId));
+    setSelection (videoTakeId.has_value() ? Selection { VideoTakeSelection { std::move (*videoTakeId) } } : Selection {});
 }
 
-void Timeline::setSelection (std::optional<song::Id> clipId, std::optional<song::Id> videoTakeId)
+void Timeline::setSelection (Selection next)
 {
-    if (clipId == selected && videoTakeId == selectedVideo)
+    if (next == selection)
         return;
-    selected = std::move (clipId);
-    selectedVideo = std::move (videoTakeId);
+    selection = std::move (next);
     repaint();
     if (onSelectionChanged)
         onSelectionChanged();
-}
-
-std::optional<song::Id> Timeline::videoTakeAt (juce::Point<int> position) const
-{
-    // Later blocks are drawn on top: search from the last.
-    for (auto span = current.videoTakes.rbegin(); span != current.videoTakes.rend(); ++span)
-        if (videoTakeBounds (span->videoTakeId).contains (position))
-            return span->videoTakeId;
-    return std::nullopt;
 }
 
 std::optional<juce::Colour> Timeline::clipColour (const song::Id& clipId) const
@@ -550,133 +482,21 @@ juce::Rectangle<int> Timeline::handleBounds (const song::Id& clipId, ClipPart pa
     return {};
 }
 
+juce::Rectangle<int> Timeline::clipRectangle (juce::Rectangle<int> lane, ClipColumns columns)
+{
+    return { columns.left, lane.getY() + 3, columns.right - columns.left, lane.getHeight() - 6 };
+}
+
+const song::Song& Timeline::shownSong() const
+{
+    if (const auto* clipDrag = std::get_if<ClipDragGesture> (&gesture); clipDrag != nullptr && clipDrag->preview.has_value())
+        return *clipDrag->preview;
+    return current.song;
+}
+
 juce::Rectangle<int> Timeline::lanesArea() const
 {
     return layout.tracksViewport.withLeft (layout.ruler.getX());
-}
-
-bool Timeline::isInterestedInFileDrag (const juce::StringArray& files)
-{
-    return canImportFiles && canImportFiles() && ! importableAudioFiles (files).empty();
-}
-
-void Timeline::fileDragEnter (const juce::StringArray& files, int, int)
-{
-    dropHighlighted = isInterestedInFileDrag (files);
-    repaint();
-}
-
-void Timeline::fileDragExit (const juce::StringArray&)
-{
-    dropHighlighted = false;
-    repaint();
-}
-
-void Timeline::filesDropped (const juce::StringArray& files, int, int)
-{
-    dropHighlighted = false;
-    repaint();
-    auto importable = importableAudioFiles (files);
-    const auto accepted = isInterestedInFileDrag (files) && onFilesDropped != nullptr;
-    core::logEvent (core::Level::debug, "ui.files_dropped", { { "dropped", files.size() }, { "importable", importable.size() }, { "accepted", accepted } });
-    if (accepted)
-        onFilesDropped (std::move (importable));
-}
-
-std::optional<std::size_t> Timeline::laneAt (juce::Point<int> position) const
-{
-    if (! lanesArea().contains (position))
-        return std::nullopt;
-    for (std::size_t i = 0; i < layout.trackLanes.size(); ++i)
-        if (layout.trackLanes[i].contains (position))
-            return i;
-    return std::nullopt;
-}
-
-void Timeline::mouseDown (const juce::MouseEvent& event)
-{
-    const auto position = event.getPosition();
-    if (! current.editable)
-        return;
-
-    if (layout.ruler.contains (position))
-    {
-        seeking = true;
-        if (onSeek)
-            onSeek (std::max<song::SampleCount> (0, sampleForX (timelineView, position.x)));
-        return;
-    }
-
-    if (layout.cameraLane.contains (position))
-    {
-        const auto videoTakeId = videoTakeAt (position);
-        auto fields = core::Fields { { "hit", videoTakeId.has_value() } };
-        if (videoTakeId.has_value())
-            fields["video_take_id"] = *videoTakeId;
-        core::logEvent (core::Level::debug, "ui.camera_lane_clicked", fields);
-        selectVideoTake (videoTakeId);
-        return;
-    }
-
-    if (lanesArea().contains (position) && clickTakeLane (position))
-        return;
-
-    const auto lane = laneAt (position);
-    if (! lane.has_value() || *lane >= current.song.tracks.size())
-        return;
-
-    auto hit = hitTestClips (current.song.tracks[*lane].clips, timelineView, position.x);
-    if (! hit.has_value())
-    {
-        selectClip (std::nullopt);
-        return;
-    }
-    // The Clip's fade handles and dB tag win over its body and edges.
-    const auto* clip = song::findClip (current.song, hit->clipId);
-    if (! OVERDUB_CHECK (clip != nullptr, "ui.hit_clip_missing", { "clip_id", hit->clipId }))
-        return;
-    const auto clipTop = clipRectangle (layout.trackLanes[*lane], clipColumns (timelineView, *clip)).getY();
-    if (const auto handle = hitTestClipHandles (timelineView, *clip, clipTop, position.x, position.y))
-        hit->part = *handle;
-
-    selectClip (hit->clipId);
-    activeDrag = ActiveDrag { ClipDrag { hit->clipId, hit->part, position.x, position.y }, current.song };
-}
-
-void Timeline::mouseDrag (const juce::MouseEvent& event)
-{
-    const auto position = event.getPosition();
-    if (seeking)
-    {
-        if (onSeek)
-            onSeek (std::max<song::SampleCount> (0, sampleForX (timelineView, position.x)));
-        return;
-    }
-    if (! activeDrag.has_value())
-        return;
-
-    auto dragged = songForDrag (activeDrag->songAtDown, activeDrag->drag, timelineView, position.x, position.y);
-    if (dragged.has_value())
-        preview = std::move (*dragged);
-    repaint();
-}
-
-void Timeline::mouseUp (const juce::MouseEvent& event)
-{
-    seeking = false;
-    if (! activeDrag.has_value())
-        return;
-
-    const auto finished = std::move (*activeDrag);
-    activeDrag.reset();
-    preview.reset();
-    repaint();
-
-    auto dragged = songForDrag (finished.songAtDown, finished.drag, timelineView, event.getPosition().x, event.getPosition().y);
-    if (! dragged.has_value() || *dragged == finished.songAtDown)
-        return;
-    if (onEdit)
-        onEdit (std::move (*dragged), labelForDrag (finished.drag.part));
 }
 
 void Timeline::mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
@@ -778,10 +598,10 @@ void Timeline::paintOverChildren (juce::Graphics& g)
     {
         juce::Graphics::ScopedSaveState saved (g);
         g.reduceClipRegion (layout.tracksViewport);
-        activeTrackDrag.paint (g, layout.tracksViewport.getX(), layout.tracksViewport.getRight());
+        trackDrag().paint (g, layout.tracksViewport.getX(), layout.tracksViewport.getRight());
     }
     // Over the Track headers too, so the whole Timeline reads as the drop target.
-    if (! dropHighlighted)
+    if (! isDropHighlighted())
         return;
     g.setColour (colours::accent);
     g.drawRect (getLocalBounds(), 3);
@@ -830,7 +650,7 @@ void Timeline::paintCameraLane (juce::Graphics& g) const
         const auto block = videoTakeBounds (span.videoTakeId);
         if (block.isEmpty())
             continue;
-        const auto isSelected = selectedVideo == span.videoTakeId;
+        const auto isSelected = selectedVideoTake() == span.videoTakeId;
         g.setColour (span.readable ? colours::videoTake : colours::videoTake.withAlpha (0.4f));
         g.fillRoundedRectangle (block.toFloat(), 4.0f);
         g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.4f));
@@ -868,7 +688,7 @@ void Timeline::paintLane (juce::Graphics& g, const song::Track& track, juce::Rec
 void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Colour body, juce::Rectangle<int> clipArea) const
 {
     const auto& song = shownSong();
-    const auto isSelected = selected == clip.id;
+    const auto isSelected = selectedClip() == clip.id;
     const auto area = clipArea.toFloat();
     g.setColour (body);
     g.fillRoundedRectangle (area, 4.0f);
@@ -935,7 +755,7 @@ void Timeline::paintFadesAndGain (juce::Graphics& g, const song::Clip& clip, juc
         g.drawLine (fadeOutStart, area.getY(), area.getRight(), area.getBottom(), 1.0f);
 
     const auto handles = clipHandleBounds (timelineView, clip, clipArea.getY());
-    const auto isSelected = selected == clip.id;
+    const auto isSelected = selectedClip() == clip.id;
     g.setColour (juce::Colours::white.withAlpha (isSelected ? 0.95f : 0.55f));
     for (const auto& handle : { handles.fadeIn, handles.fadeOut })
         g.fillRoundedRectangle (toRectangle (handle).toFloat(), 2.0f);

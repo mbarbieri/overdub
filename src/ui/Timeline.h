@@ -15,6 +15,8 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
+#include <variant>
 #include <vector>
 
 // Edit mode's timeline (issue #28, issue #9 resolution, variant C): a ruler, the Camera lane
@@ -57,6 +59,11 @@
 // Reordering Tracks (issue #138, ui/TrackDrag.h): dragging a header's grip drags its Track, with
 // its unfolded Take Lanes, between the other Tracks (never above the Camera lane); a drop that
 // changes the order is reported through onMoveTrack. No grip drags while a Pass runs.
+//
+// One gesture at a time (issue #148): a Clip drag, a ruler drag (seek), a grip drag, or a file drag
+// hovering. While one is in progress the others do not start; Esc (cancelGesture) ends it with
+// nothing reported, and a Pass starting ends it too. The gesture handling is in
+// ui/TimelineGestures.cpp.
 namespace overdub::ui
 {
 // The peaks of a Clip's source (no channels: draw no waveform). The reference must stay valid
@@ -133,9 +140,9 @@ public:
 
     // Selection is single: at most one Clip or one Video Take. Selecting either clears the other;
     // selectClip (std::nullopt) clears both.
-    const std::optional<song::Id>& selectedClip() const { return selected; }
+    std::optional<song::Id> selectedClip() const;
     void selectClip (std::optional<song::Id> clipId);
-    const std::optional<song::Id>& selectedVideoTake() const { return selectedVideo; }
+    std::optional<song::Id> selectedVideoTake() const;
     void selectVideoTake (std::optional<song::Id> videoTakeId);
 
     // Where a Clip of the shown Song is drawn, in this Component's coordinates (cut to its lane);
@@ -188,15 +195,16 @@ public:
     // The importable files of a drop, in drop order.
     std::function<void (std::vector<juce::File> files)> onFilesDropped;
 
-    // The grip drag in progress, if any; cancelTrackDrag ends it without a drop and returns whether
-    // there was one (Esc).
-    const TrackDrag& trackDrag() const { return activeTrackDrag; }
-    bool cancelTrackDrag();
+    // The grip drag in progress, if any (inactive otherwise).
+    const TrackDrag& trackDrag() const;
+    // Ends the gesture in progress with nothing reported (a Clip drag's preview is dropped) and
+    // returns whether there was one. reason is logged ("escape", "pass_running").
+    bool cancelGesture (std::string_view reason);
     // Each Track's row (its lane and unfolded Take Lanes) as a vertical span in this Component's
     // coordinates, in Song order.
     std::vector<juce::Range<int>> trackRowSpans() const;
 
-    bool isDropHighlighted() const { return dropHighlighted; }
+    bool isDropHighlighted() const { return std::holds_alternative<FileDragHover> (gesture); }
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
     void fileDragEnter (const juce::StringArray& files, int x, int y) override;
     void fileDragExit (const juce::StringArray& files) override;
@@ -216,14 +224,37 @@ public:
     juce::ScrollBar verticalScrollBar { true }; // shown only when the Track rows overflow
 
 private:
-    struct ActiveDrag
+    struct ClipSelection
+    {
+        song::Id clipId;
+        bool operator== (const ClipSelection&) const = default;
+    };
+    struct VideoTakeSelection
+    {
+        song::Id videoTakeId;
+        bool operator== (const VideoTakeSelection&) const = default;
+    };
+    using Selection = std::variant<std::monostate, ClipSelection, VideoTakeSelection>;
+
+    struct ClipDragGesture
     {
         ClipDrag drag;
         song::Song songAtDown;
+        std::optional<song::Song> preview; // the Song the drag would make, once it has moved
     };
+    struct SeekGesture
+    {
+    };
+    struct FileDragHover
+    {
+    };
+    // TrackDrag is the grip drag, always active while it is the gesture.
+    using Gesture = std::variant<std::monostate, ClipDragGesture, SeekGesture, TrackDrag, FileDragHover>;
 
     void scrollBarMoved (juce::ScrollBar* bar, double newRangeStart) override;
-    void setSelection (std::optional<song::Id> clipId, std::optional<song::Id> videoTakeId);
+    void setSelection (Selection next);
+    // A Clip's rectangle in its lane: its columns, inset 3 pixels from the lane's top and bottom.
+    static juce::Rectangle<int> clipRectangle (juce::Rectangle<int> lane, ClipColumns columns);
     // The Video Take whose block is at this point, the one drawn on top where blocks overlap.
     std::optional<song::Id> videoTakeAt (juce::Point<int> position) const;
     void rebuildHeaders();
@@ -237,7 +268,7 @@ private:
     void updateScrollBar();
     void layOutRows();
     void revealNewTracks (const std::vector<song::Id>& previousTrackIds);
-    const song::Song& shownSong() const { return preview.has_value() ? *preview : current.song; }
+    const song::Song& shownSong() const;
     std::optional<std::size_t> laneAt (juce::Point<int> position) const;
     juce::Rectangle<int> lanesArea() const;
 
@@ -252,17 +283,12 @@ private:
     void paintTakeLaneHeader (juce::Graphics& g, const TakeLaneRow& row, juce::Rectangle<int> header) const;
 
     TimelineState current;
-    std::optional<song::Song> preview; // the Song a drag in progress would make
-    std::optional<ActiveDrag> activeDrag;
-    bool seeking = false; // a ruler drag in progress
-    bool dropHighlighted = false; // an accepted file drag hovers
-    TrackDrag activeTrackDrag;
+    Gesture gesture;
     TimelineView timelineView;
     int verticalScrollPixels = 0;
     TimelineLayout layout;
     juce::Component trackHeaderColumn; // the tracks viewport's header column: cuts off scrolled headers
-    std::optional<song::Id> selected;      // a Clip
-    std::optional<song::Id> selectedVideo; // a Video Take; never set together with `selected`
+    Selection selection;
     std::set<song::Id> unfoldedTracks;
     std::vector<std::vector<TakeLaneRow>> takeLanes; // per Track of the shown Song; empty when folded
 
