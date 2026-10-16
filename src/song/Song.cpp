@@ -21,8 +21,7 @@ const Track* findTrack (const Song& song, const Id& trackId)
 
 Track* findTrack (Song& song, const Id& trackId)
 {
-    const auto track = std::ranges::find (song.tracks, trackId, &Track::id);
-    return track != song.tracks.end() ? &*track : nullptr;
+    return const_cast<Track*> (findTrack (std::as_const (song), trackId));
 }
 
 core::Expected<const Track*> lookupTrack (const Song& song, const Id& trackId)

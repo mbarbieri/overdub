@@ -21,7 +21,7 @@ TEST_CASE ("decibels become their linear gain", "[core][decibels]")
 TEST_CASE ("a linear gain becomes its decibels", "[core][decibels]")
 {
     CHECK_THAT (gainToDecibels (1.0), WithinAbs (0.0, 1.0e-9));
-    CHECK_THAT (gainToDecibels (0.5), WithinAbs (-6.0206, 1.0e-4));
+    CHECK_THAT (gainToDecibels (0.5), WithinAbs (-6.0206, 1.0e-6));
     CHECK_THAT (gainToDecibels (0.001), WithinAbs (-60.0, 1.0e-9));
     CHECK (std::isinf (gainToDecibels (0.0)));
     CHECK (gainToDecibels (0.0) < 0.0);
