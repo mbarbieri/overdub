@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Error.h"
 #include "song/TrackColours.h"
 
 #include <cstdint>
@@ -224,6 +225,15 @@ Id makeId();
 
 // An empty Song at the given rate.
 Song makeEmptySong (int sampleRate);
+
+// The Track with this id, or null: for callers where a missing Track is not an error.
+const Track* findTrack (const Song& song, const Id& trackId);
+Track* findTrack (Song& song, const Id& trackId);
+
+// The Track with this id, or the song.track_not_found Error (track_id): for edits where a missing
+// Track is an error. The only place that Error is built.
+core::Expected<const Track*> lookupTrack (const Song& song, const Id& trackId);
+core::Expected<Track*> lookupTrack (Song& song, const Id& trackId);
 
 // Undo and redo restore a snapshot's undoable content but keep the current state that lives
 // outside history: pre-roll, camera arm and device, playhead, the export choice (unless it would

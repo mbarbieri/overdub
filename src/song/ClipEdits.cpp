@@ -128,11 +128,6 @@ core::Expected<Song> splitClip (Song song, const Id& clipId, SampleCount at, con
     return song;
 }
 
-double linearGain (double gainDb)
-{
-    return std::pow (10.0, gainDb / 20.0);
-}
-
 core::Expected<Song> setClipFadeIn (Song song, const Id& clipId, SampleCount length)
 {
     const auto position = locateClip (song, clipId);

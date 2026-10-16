@@ -14,9 +14,10 @@ core::Error notSeparable (const Id& trackId, const char* reason)
 
 core::Expected<Id> separableBackingTrack (const Song& song, const Id& trackId)
 {
-    const auto track = std::ranges::find (song.tracks, trackId, &Track::id);
-    if (track == song.tracks.end())
-        return std::unexpected (core::Error { "song.track_not_found", "the Song has no such Track", { { "track_id", trackId } } });
+    const auto found = lookupTrack (song, trackId);
+    if (! found.has_value())
+        return std::unexpected (found.error());
+    const auto* track = *found;
     if (track->clips.empty())
         return std::unexpected (notSeparable (trackId, "no_clips"));
 
@@ -44,7 +45,7 @@ core::Expected<Song> withSeparation (Song song, const Id& sourceTrackId, const s
             { { "expected", separationParts.size() }, { "found", parts.size() } },
         });
 
-    const auto sourceTrack = std::ranges::find (song.tracks, sourceTrackId, &Track::id);
+    auto* sourceTrack = findTrack (song, sourceTrackId);
     sourceTrack->mute = true;
     const auto sourceClips = sourceTrack->clips;
 
@@ -66,8 +67,7 @@ core::Expected<Song> withSeparation (Song song, const Id& sourceTrackId, const s
         newTracks.push_back (std::move (track));
     }
 
-    // Recomputed: muting did not move it, but the iterator is not kept across the insert.
-    const auto below = std::ranges::find (song.tracks, sourceTrackId, &Track::id) + 1;
+    const auto below = song.tracks.begin() + (sourceTrack - song.tracks.data()) + 1;
     song.tracks.insert (below, newTracks.begin(), newTracks.end());
     song.backingTracks.insert (song.backingTracks.end(), parts.begin(), parts.end());
     return song;

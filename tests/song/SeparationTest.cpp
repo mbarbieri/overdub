@@ -202,6 +202,7 @@ TEST_CASE ("only a Track whose Clips all play one Backing Track can be separated
     CHECK (separableBackingTrack (song, "track-mix") == Id ("backing-mix"));
     CHECK (separableBackingTrack (song, "track-click") == Id ("backing-click"));
     CHECK (separableBackingTrack (song, "track-gone").error().code == "song.track_not_found");
+    CHECK (separableBackingTrack (song, "track-gone").error().fields.at ("track_id") == "track-gone");
     for (const auto& [trackId, reason] : std::vector<std::pair<Id, std::string>> { { "track-empty", "no_clips" }, { "track-vocals", "take_clips" }, { "track-mixed", "several_backing_tracks" }, { "track-lost", "backing_track_missing" } })
     {
         INFO ("Track " << trackId);
@@ -384,6 +385,7 @@ TEST_CASE ("a Separation of a Track that is not separable writes no files and le
 
     const auto refused = f.package().addSeparation ("track-gone", f.partFiles, "bs_roformer_sw.fp32");
     CHECK (refused.error().code == "song.track_not_found");
+    CHECK (refused.error().fields.at ("track_id") == "track-gone");
     const auto tooFew = f.package().addSeparation (f.fixture->trackNamed ("Band Mix").id, { f.partFiles.front() }, "bs_roformer_sw.fp32");
     CHECK (tooFew.error().code == "song.separation_parts_invalid");
 
@@ -489,7 +491,9 @@ TEST_CASE ("a SeparationRun refuses a missing model and a Track it cannot separa
     auto noHelper = f.tools;
     noHelper.startHelper = {};
     CHECK (SeparationRun::start (f.package(), f.sourceTrackId(), noHelper, now).error().code == "song.separation_unavailable");
-    CHECK (SeparationRun::start (f.package(), "track-gone", f.tools, now).error().code == "song.track_not_found");
+    const auto unstarted = SeparationRun::start (f.package(), "track-gone", f.tools, now);
+    CHECK (unstarted.error().code == "song.track_not_found");
+    CHECK (unstarted.error().fields.at ("track_id") == "track-gone");
     CHECK (f.log->starts.empty());
 }
 

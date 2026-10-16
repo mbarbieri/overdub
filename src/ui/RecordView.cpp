@@ -1,5 +1,6 @@
 #include "ui/RecordView.h"
 
+#include "core/Decibels.h"
 #include "engine/ClipSchedule.h"
 #include "engine/MixLaw.h"
 #include "ui/TransportText.h"
@@ -83,7 +84,7 @@ BackingEnvelope backingEnvelope (const song::Song& song, const PeaksLookup& peak
     {
         if (! engine::isAudible (track, anySoloed))
             continue;
-        const auto volume = engine::volumeGain (track.volumeDb);
+        const auto volume = (float) core::decibelsToGain (track.volumeDb);
         const auto top = topClipPerPoint (track, points);
         for (SampleCount point = 0; point < points; ++point)
         {
@@ -96,7 +97,7 @@ BackingEnvelope backingEnvelope (const song::Song& song, const PeaksLookup& peak
 
             const auto sample = point * song::samplesPerPeak;
             const auto sourceSample = sample - clip.timelineStart + clip.sourceOffset;
-            const auto clipEnvelope = engine::ClipEnvelope { clip.timelineStart, clip.length, (double) engine::volumeGain (clip.gainDb), clip.fadeInLength, clip.fadeOutLength };
+            const auto clipEnvelope = engine::ClipEnvelope { clip.timelineStart, clip.length, core::decibelsToGain (clip.gainDb), clip.fadeInLength, clip.fadeOutLength };
             const auto level = peakLevelAt (peaksFor (clip.source), sourceSample / song::samplesPerPeak)
                              * (float) engine::envelopeAt (clipEnvelope, sample) * volume;
             auto& combined = envelope.levels[(std::size_t) point];

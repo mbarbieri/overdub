@@ -17,6 +17,7 @@ target_sources(overdub_tests PRIVATE
     capture/PassRecorderVideoTest.cpp
     capture/VideoPlacementTest.cpp
     core/BuildInfoTest.cpp
+    core/DecibelsTest.cpp
     core/ErrorTest.cpp
     core/LogFilesTest.cpp
     core/LogTest.cpp
@@ -60,6 +61,7 @@ target_sources(overdub_tests PRIVATE
     song/SeparationHelperProcessTest.cpp
     song/SeparationTest.cpp
     song/SongPackageTest.cpp
+    song/SongTest.cpp
     song/TakeEditsTest.cpp
     song/TrackColoursTest.cpp
     song/TrackEditsTest.cpp

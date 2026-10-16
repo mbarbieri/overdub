@@ -18,9 +18,6 @@ inline constexpr double maxVolumeDb = 12.0;
 
 inline constexpr const char* masterVolumeLabel = "Master Volume";
 
-// The song.track_not_found Error (track_id) for an unknown Track id.
-core::Error trackNotFound (const Id& trackId);
-
 // Volume clamped to [minVolumeDb, maxVolumeDb].
 core::Expected<Song> setTrackVolume (Song song, const Id& trackId, double volumeDb);
 // Pan clamped to [-1, 1] (hard left .. hard right).
