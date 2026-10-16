@@ -139,14 +139,21 @@ TEST_CASE ("Esc during a ruler drag stops moving the playhead", "[ui][timeline][
     CHECK_FALSE (pressEscape (f));
 }
 
-TEST_CASE ("Esc during a file drag ends its highlight", "[ui][timeline][gesture]")
+TEST_CASE ("Esc during a file drag leaves it hovering, and its drop is still accepted", "[ui][timeline][gesture][drop]")
 {
     GestureFixture f;
     const auto paths = f.audioFilePaths();
+    std::vector<juce::File> dropped;
+    f.timeline().onFilesDropped = [&dropped] (std::vector<juce::File> files) { dropped = std::move (files); };
     f.timeline().fileDragEnter (paths, 10, 10);
     REQUIRE (f.timeline().isDropHighlighted());
-    CHECK (pressEscape (f));
+    CHECK_FALSE (f.timeline().cancelGesture ("escape"));
+    pressEscape (f);
+    CHECK (f.timeline().isDropHighlighted());
+
+    f.timeline().filesDropped (paths, 10, 10);
     CHECK_FALSE (f.timeline().isDropHighlighted());
+    CHECK (dropped == std::vector<juce::File> { juce::File (paths[0]) });
 }
 
 TEST_CASE ("a mouse down on the Timeline during a grip drag starts nothing, and the grip drag carries on", "[ui][timeline][gesture][track_reorder]")
@@ -161,12 +168,14 @@ TEST_CASE ("a mouse down on the Timeline during a grip drag starts nothing, and 
     pressAndDragGrip (grip, dropAt);
     REQUIRE (f.timeline().trackDrag().isActive());
 
-    const auto clip = f.bandMixBounds().getCentre();
+    const auto bandMixStart = f.trackNamed ("Band Mix").clips.front().timelineStart;
+    const auto before = f.bandMixBounds();
+    const auto clip = before.getCentre();
     f.mouseDown (clip);
     f.mouseDrag (clip, clip.translated (50, 0));
+    CHECK (f.timeline().clipBounds (f.bandMixClipId()) == before);
     f.mouseUp (clip, clip.translated (50, 0));
     CHECK_FALSE (f.timeline().selectedClip().has_value());
-    CHECK (f.timeline().clipBounds (f.bandMixClipId()) == f.bandMixBounds());
     const auto ruler = f.timeline().rulerBounds();
     f.mouseDown ({ ruler.getX() + 100, ruler.getCentreY() });
     CHECK (f.openSong->position() == position);
@@ -175,6 +184,27 @@ TEST_CASE ("a mouse down on the Timeline during a grip drag starts nothing, and 
     releaseGrip (grip, dropAt);
     CHECK (trackNames (f.song()) == std::vector<std::string> { "Vocals", "Band Mix", "Guitar" });
     CHECK (f.openSong->package().undoLabel() == "Move Track");
+    CHECK (f.trackNamed ("Band Mix").clips.front().timelineStart == bandMixStart);
+}
+
+TEST_CASE ("a grip drag whose Track is deleted ends, and a mouse down on a Clip selects it again", "[ui][timeline][gesture][track_reorder]")
+{
+    GestureFixture f;
+    auto& grip = f.editHeaderNamed ("Vocals").grip;
+    pressAndDragGrip (grip, { 0, 0 });
+    REQUIRE (f.timeline().trackDrag().isActive());
+
+    core::ScopedLogCapture capture;
+    f.window->editPage.onDeleteTrack (f.trackNamed ("Vocals").id);
+    f.answerDeleteQuestion (true);
+    REQUIRE (trackNames (f.song()) == std::vector<std::string> { "Band Mix", "Guitar" });
+    CHECK_FALSE (f.timeline().trackDrag().isActive());
+    const auto cancelled = core::testing::firstEvent (capture, "ui.track_drag_cancelled");
+    CHECK (cancelled.at ("page") == "edit");
+    CHECK (cancelled.at ("reason") == "track_removed");
+
+    f.mouseDown (f.bandMixBounds().getCentre());
+    CHECK (f.timeline().selectedClip() == f.bandMixClipId());
 }
 
 TEST_CASE ("a grip press during a Clip drag starts no grip drag, and the Clip drag carries on", "[ui][timeline][gesture][track_reorder]")
@@ -221,7 +251,7 @@ TEST_CASE ("a file drag during a Clip drag is refused, and the Clip drag carries
     CHECK (f.timeline().isInterestedInFileDrag (paths));
 }
 
-TEST_CASE ("a Pass starting during a Clip drag ends it with nothing reported", "[ui][timeline][gesture][record]")
+TEST_CASE ("a Pass starting during a Clip drag leaves the drag running, and its edit is not applied while the Pass runs", "[ui][timeline][gesture][record]")
 {
     GestureFixture f;
     const auto labelBefore = f.openSong->package().undoLabel();
@@ -234,7 +264,8 @@ TEST_CASE ("a Pass starting during a Clip drag ends it with nothing reported", "
 
     REQUIRE (pressKey (*f.window, 'r'));
     REQUIRE (f.openSong->isRecording());
-    CHECK (f.timeline().clipBounds (f.bandMixClipId()) == before);
+    CHECK (f.timeline().clipBounds (f.bandMixClipId()) == before.translated (50, 0));
     f.mouseUp (from, to);
+    CHECK (f.timeline().clipBounds (f.bandMixClipId()) == before);
     CHECK (f.openSong->package().undoLabel() == labelBefore);
 }

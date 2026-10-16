@@ -59,6 +59,8 @@ public:
     bool cancel();
 
     bool isActive() const { return active.has_value(); }
+    // The dragged Track; none when no drag is in progress.
+    std::optional<song::Id> trackId() const { return active.has_value() ? std::optional { active->trackId } : std::nullopt; }
     std::optional<std::size_t> dropIndex() const;
     // Where the dragged header or row is drawn; empty when no drag is in progress.
     juce::Rectangle<int> ghostBounds() const;

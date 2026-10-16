@@ -204,7 +204,7 @@ void Timeline::show (const TimelineState& state)
         for (const auto& track : current.song.tracks)
             previousTrackIds.push_back (track.id);
     current = state;
-    if (! current.editable)
+    if (! current.editable && std::holds_alternative<TrackDrag> (gesture))
         cancelGesture ("pass_running");
     if (! changed)
         return;
@@ -215,6 +215,9 @@ void Timeline::show (const TimelineState& state)
         const auto videoTakeId = selectedVideoTake();
         if ((clipId.has_value() && song::findClip (current.song, *clipId) == nullptr) || (videoTakeId.has_value() && song::findVideoTake (current.song, *videoTakeId) == nullptr))
             setSelection (std::monostate {});
+        // The dragged Track's header, whose grip would end the drag, is about to go.
+        if (const auto* drag = std::get_if<TrackDrag> (&gesture); drag != nullptr && song::findTrack (current.song, drag->trackId().value_or ("")) == nullptr)
+            cancelGesture ("track_removed");
         rebuildHeaders();
         refreshTakeLanes();
         revealNewTracks (previousTrackIds);
@@ -409,6 +412,12 @@ void Timeline::selectClip (std::optional<song::Id> clipId)
 void Timeline::selectVideoTake (std::optional<song::Id> videoTakeId)
 {
     setSelection (videoTakeId.has_value() ? Selection { VideoTakeSelection { std::move (*videoTakeId) } } : Selection {});
+}
+
+bool Timeline::isSelectedClip (const song::Id& clipId) const
+{
+    const auto* clip = std::get_if<ClipSelection> (&selection);
+    return clip != nullptr && clip->clipId == clipId;
 }
 
 void Timeline::setSelection (Selection next)
@@ -688,7 +697,7 @@ void Timeline::paintLane (juce::Graphics& g, const song::Track& track, juce::Rec
 void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Colour body, juce::Rectangle<int> clipArea) const
 {
     const auto& song = shownSong();
-    const auto isSelected = selectedClip() == clip.id;
+    const auto isSelected = isSelectedClip (clip.id);
     const auto area = clipArea.toFloat();
     g.setColour (body);
     g.fillRoundedRectangle (area, 4.0f);
@@ -755,7 +764,7 @@ void Timeline::paintFadesAndGain (juce::Graphics& g, const song::Clip& clip, juc
         g.drawLine (fadeOutStart, area.getY(), area.getRight(), area.getBottom(), 1.0f);
 
     const auto handles = clipHandleBounds (timelineView, clip, clipArea.getY());
-    const auto isSelected = selectedClip() == clip.id;
+    const auto isSelected = isSelectedClip (clip.id);
     g.setColour (juce::Colours::white.withAlpha (isSelected ? 0.95f : 0.55f));
     for (const auto& handle : { handles.fadeIn, handles.fadeOut })
         g.fillRoundedRectangle (toRectangle (handle).toFloat(), 2.0f);

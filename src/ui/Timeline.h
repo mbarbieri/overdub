@@ -61,9 +61,10 @@
 // changes the order is reported through onMoveTrack. No grip drags while a Pass runs.
 //
 // One gesture at a time (issue #148): a Clip drag, a ruler drag (seek), a grip drag, or a file drag
-// hovering. While one is in progress the others do not start; Esc (cancelGesture) ends it with
-// nothing reported, and a Pass starting ends it too. The gesture handling is in
-// ui/TimelineGestures.cpp.
+// hovering. While one is in progress the others do not start. Esc (cancelGesture) ends a Clip drag
+// (its preview dropped, no edit reported), a ruler drag (the playhead stays where it was sought)
+// or a grip drag (no drop); a file drag is the system's and carries on. A Pass starting ends a grip
+// drag, and so does its Track leaving the Song. The gesture handling is in ui/TimelineGestures.cpp.
 namespace overdub::ui
 {
 // The peaks of a Clip's source (no channels: draw no waveform). The reference must stay valid
@@ -195,10 +196,11 @@ public:
     // The importable files of a drop, in drop order.
     std::function<void (std::vector<juce::File> files)> onFilesDropped;
 
-    // The grip drag in progress, if any (inactive otherwise).
+    // The grip drag in progress, if any (inactive otherwise); valid until the gesture changes.
     const TrackDrag& trackDrag() const;
-    // Ends the gesture in progress with nothing reported (a Clip drag's preview is dropped) and
-    // returns whether there was one. reason is logged ("escape", "pass_running").
+    // Ends the Clip drag, ruler drag or grip drag in progress, reporting nothing more, and returns
+    // whether there was one. A file drag hovering is left alone. reason is logged ("escape",
+    // "pass_running", "track_removed").
     bool cancelGesture (std::string_view reason);
     // Each Track's row (its lane and unfolded Take Lanes) as a vertical span in this Component's
     // coordinates, in Song order.
@@ -253,6 +255,7 @@ private:
 
     void scrollBarMoved (juce::ScrollBar* bar, double newRangeStart) override;
     void setSelection (Selection next);
+    bool isSelectedClip (const song::Id& clipId) const;
     // A Clip's rectangle in its lane: its columns, inset 3 pixels from the lane's top and bottom.
     static juce::Rectangle<int> clipRectangle (juce::Rectangle<int> lane, ClipColumns columns);
     // The Video Take whose block is at this point, the one drawn on top where blocks overlap.

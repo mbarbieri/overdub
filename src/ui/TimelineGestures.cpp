@@ -5,19 +5,12 @@
 #include "ui/FileDrop.h"
 
 #include <algorithm>
-#include <array>
 #include <string>
 
 // The Timeline's gestures (ui/Timeline.h): mouse clicks and drags on the lanes, the ruler and the
 // Camera lane, Take Lane clicks, grip drags, file drags, and cancelling the one in progress.
 namespace overdub::ui
 {
-namespace
-{
-// Indexed by Timeline::Gesture's alternatives, in order.
-constexpr std::array gestureNames { "idle", "clip_drag", "seek", "track_drag", "file_drag" };
-} // namespace
-
 const TrackDrag& Timeline::trackDrag() const
 {
     static const TrackDrag none;
@@ -27,10 +20,12 @@ const TrackDrag& Timeline::trackDrag() const
 
 bool Timeline::cancelGesture (std::string_view reason)
 {
-    static_assert (std::variant_size_v<Gesture> == gestureNames.size());
-    if (std::holds_alternative<std::monostate> (gesture))
+    if (std::holds_alternative<std::monostate> (gesture) || std::holds_alternative<FileDragHover> (gesture))
         return false;
-    core::logEvent (core::Level::debug, "ui.timeline_gesture_cancelled", { { "gesture", gestureNames[gesture.index()] }, { "reason", std::string (reason) } });
+    if (std::holds_alternative<TrackDrag> (gesture))
+        core::logEvent (core::Level::debug, "ui.track_drag_cancelled", { { "page", "edit" }, { "reason", std::string (reason) } });
+    else
+        core::logEvent (core::Level::debug, "ui.timeline_gesture_cancelled", { { "gesture", std::holds_alternative<SeekGesture> (gesture) ? "seek" : "clip_drag" }, { "reason", std::string (reason) } });
     gesture = std::monostate {};
     repaint();
     return true;
