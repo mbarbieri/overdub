@@ -131,12 +131,12 @@ TEST_CASE ("arm and the input picker change the Song without a history step", "[
     CHECK (guitar.inputPicker.getText() == "In 1");
 
     click (guitar.armButton);
-    CHECK (! f.trackNamed ("Guitar").armed);
+    CHECK (! f.inputOf ("Guitar").armed);
     CHECK (! f.rowNamed ("Guitar").armButton.getToggleState());
 
     // No input, In 1..In 4, then the pairs: index 6 is "In 3 + In 4".
     choose (f.rowNamed ("Guitar").inputPicker, 6);
-    CHECK (f.trackNamed ("Guitar").inputChannels == std::vector<int> { 2, 3 });
+    CHECK (f.inputOf ("Guitar").inputChannels == std::vector<int> { 2, 3 });
     CHECK (f.rowNamed ("Guitar").inputPicker.getText() == "In 3 + In 4");
 
     click (f.rowNamed ("Guitar").monitoringButton);
@@ -281,11 +281,11 @@ TEST_CASE ("A on a Record row and on an Edit header arms the Track, follows Arme
     MainWindowFixture f;
     CHECK (text (f.rowNamed ("Guitar").armButton) == "A");
     CHECK (f.rowNamed ("Guitar").armButton.getTooltip() == "Arm");
-    REQUIRE (f.trackNamed ("Guitar").armed);
+    REQUIRE (f.inputOf ("Guitar").armed);
     CHECK (f.rowNamed ("Guitar").armButton.getToggleState());
 
     click (f.rowNamed ("Guitar").armButton);
-    CHECK (! f.trackNamed ("Guitar").armed);
+    CHECK (! f.inputOf ("Guitar").armed);
     CHECK (! f.rowNamed ("Guitar").armButton.getToggleState());
 
     REQUIRE (pressKey (*f.window, '2'));
@@ -294,7 +294,7 @@ TEST_CASE ("A on a Record row and on an Edit header arms the Track, follows Arme
     CHECK (! f.editHeaderNamed ("Guitar").armButton.getToggleState());
 
     click (f.editHeaderNamed ("Guitar").armButton);
-    CHECK (f.trackNamed ("Guitar").armed);
+    CHECK (f.inputOf ("Guitar").armed);
     CHECK (f.rowNamed ("Guitar").armButton.getToggleState());
     CHECK (f.editHeaderNamed ("Guitar").armButton.getToggleState());
 

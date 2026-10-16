@@ -110,7 +110,7 @@ core::Expected<SongPackage::Opened> SongPackage::open (const juce::File& locatio
 
     // Write order (edit, undo, redo): index.json commits the step, then song.json follows. After
     // a crash between the two, history holds the undoable content and song.json the rest.
-    auto song = keepStateOutsideHistory (history->currentSong(), songJson->song);
+    auto song = withContentOf (history->currentSong(), songJson->song);
     const bool restoredFromHistory = song != songJson->song;
     if (restoredFromHistory)
         core::logEvent (core::Level::warn, "song.restored_from_history", { { "path", pathOf (location) } });
@@ -156,9 +156,9 @@ SongPackage::EditOutcome SongPackage::commitEdit (Song changed, std::string labe
     return EditOutcome { true, writeCommittedStep (now) };
 }
 
-void SongPackage::changeWithoutHistory (Song changed, Clock::time_point now)
+void SongPackage::changeWithoutHistory (SongSettings changed, Clock::time_point now)
 {
-    currentSong = std::move (changed);
+    currentSong.settings = std::move (changed);
     scheduleWrite (now);
 }
 
@@ -176,9 +176,9 @@ core::Expected<void> SongPackage::restoreSnapshot (core::Expected<Song> snapshot
 {
     if (! snapshot.has_value())
         return std::unexpected (snapshot.error());
-    // The surviving slots keep their current state (keepStateOutsideHistory): make it current.
+    // The surviving slots keep their current state (withContentOf): make it current.
     capturePluginState (currentSong);
-    currentSong = keepStateOutsideHistory (std::move (*snapshot), currentSong);
+    currentSong = withContentOf (std::move (*snapshot), currentSong);
     return writeCommittedStep (now);
 }
 

@@ -297,7 +297,7 @@ TEST_CASE ("snapshots of Record mode's camera arm, picker and stage", "[ui][snap
     CHECK (writeSnapshot (window, slice, "record-camera-disarmed").existsAsFile());
 
     click (window.recordPage.cameraArmButton);
-    REQUIRE (f.song().cameraArmed);
+    REQUIRE (f.song().settings.cameraArmed);
     CHECK (writeSnapshot (window, slice, "record-camera-armed").existsAsFile());
 
     f.camera.movie.frames = 10;

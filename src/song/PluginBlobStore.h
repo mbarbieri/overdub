@@ -9,8 +9,9 @@
 #include <string>
 
 // Content-addressed plugin state (ADR 0004): plugins/<sha256>.state, written once, never modified.
-// An InsertSlot stores the hash, so history snapshots share blobs. Parameters are outside history:
-// undo keeps a surviving slot's current hash (keepStateOutsideHistory in song/Song.h). The hash is the lowercase hex SHA-256 (CommonCrypto) of the state bytes.
+// SongSettings stores the hash per Insert Chain slot, so history snapshots share blobs. Parameters
+// are outside history: undo keeps a surviving slot's current hash (withContentOf in song/Song.h).
+// The hash is the lowercase hex SHA-256 (CommonCrypto) of the state bytes.
 namespace overdub::song
 {
 std::string sha256Hex (const juce::MemoryBlock& bytes);

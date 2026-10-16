@@ -34,12 +34,11 @@ EngineConfig stereoConfig()
     return EngineConfig { .numOutputChannels = 2, .maxBlockSize = blockSize };
 }
 
-overdub::song::Track armedTrack (const std::string& id, std::vector<int> inputChannels)
+// Appends an empty Track, Armed on these input channels.
+overdub::song::Track& addArmedTrack (overdub::song::Song& song, const std::string& id, std::vector<int> inputChannels)
 {
-    auto track = trackWith (id, {});
-    track.armed = true;
-    track.inputChannels = std::move (inputChannels);
-    return track;
+    song.settings.trackInputs[id] = overdub::song::TrackInput { .armed = true, .inputChannels = std::move (inputChannels) };
+    return song.tracks.emplace_back (trackWith (id, {}));
 }
 
 float peakOf (const std::vector<float>& samples, std::size_t from, std::size_t to)
@@ -55,13 +54,10 @@ float peakOf (const std::vector<float>& samples, std::size_t from, std::size_t t
 overdub::song::Song meteredSong()
 {
     auto song = overdub::song::makeEmptySong (testSampleRate);
-    auto guitar = armedTrack ("guitar", { 1 });
-    guitar.volumeDb = -20.0;
-    song.tracks.push_back (guitar);
-    song.tracks.push_back (armedTrack ("stereo", { 0, 1 }));
-    auto bass = trackWith ("bass", {});
-    bass.inputChannels = { 0 };
-    song.tracks.push_back (bass);
+    addArmedTrack (song, "guitar", { 1 }).volumeDb = -20.0;
+    addArmedTrack (song, "stereo", { 0, 1 });
+    song.tracks.push_back (trackWith ("bass", {}));
+    song.settings.trackInputs["bass"] = overdub::song::TrackInput { .inputChannels = { 0 } };
     return song;
 }
 } // namespace
@@ -107,7 +103,7 @@ TEST_CASE ("an Armed Track's input meter reads its input while a Pass records it
 {
     TempPackage package;
     auto song = overdub::song::makeEmptySong (testSampleRate);
-    song.tracks.push_back (armedTrack ("guitar", { 1 }));
+    addArmedTrack (song, "guitar", { 1 });
     const auto onInput1 = sine (4 * blockSize, 1000.0, 0.45f);
 
     Engine engine { stereoConfig() };
@@ -169,8 +165,8 @@ TEST_CASE ("only the monitored Armed Tracks hear their input", "[engine][monitor
 {
     TempPackage package;
     auto song = overdub::song::makeEmptySong (testSampleRate);
-    song.tracks.push_back (armedTrack ("guitar", { 0 }));
-    song.tracks.push_back (armedTrack ("vocals", { 1 }));
+    addArmedTrack (song, "guitar", { 0 });
+    addArmedTrack (song, "vocals", { 1 });
 
     Engine engine { stereoConfig() };
     engine.loadSong (song, package.root, {}, std::set<overdub::song::Id> { "vocals" });

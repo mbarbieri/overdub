@@ -23,8 +23,8 @@
 // each plan runs it through an engine::SharedInsertNode, so editing the Song never re-creates a
 // plugin or loses its state.
 //
-// - sync() follows the Song: a slot with no processor starts loading (its saved state, stateHash,
-//   is restored when it arrives), a slot the Song lost is released (plans that still run it keep
+// - sync() follows the Song: a slot with no processor starts loading (its saved state, the Song's
+//   plugin state hash for it, is restored when it arrives), a slot the Song lost is released (plans that still run it keep
 //   it alive until the engine frees them, off the audio thread), unless the caller keeps it hosted
 //   (RemovedSlots::keep: an export may still render it, and only a hosted plugin's crash is heard). A slot that failed stays failed:
 //   an inert placeholder, its Song entry and state kept.
@@ -118,7 +118,7 @@ public:
     // True once since any ready plugin reported a parameter change.
     bool takeStateChanged();
 
-    // Stores the state of every ready slot of the Song and sets its stateHash. A slot whose state
+    // Stores the state of every ready slot of the Song and sets its plugin state hash. A slot whose state
     // cannot be captured or stored keeps its hash; each such failure is logged (warn, with
     // slot_id and name: plugin.state_capture_failed or the store's code) and counted. Returns the
     // number of failures.
@@ -142,7 +142,7 @@ public:
     // Every crash since the last call, in the order they happened.
     std::vector<InsertCrash> takeCrashes();
     // Starts loading every crashed slot of the Song that may still reload, with the Song's slot
-    // as it is now (its stateHash restored on arrival). Returns how many it started. Logs
+    // as it is now (its plugin state hash restored on arrival). Returns how many it started. Logs
     // plugin.insert_reloading (info: slot_id, crashes).
     int reloadCrashed (const song::Song& song);
 
@@ -154,6 +154,7 @@ private:
     struct Entry
     {
         song::InsertSlot slot; // as requested
+        std::string stateHash; // the saved state to restore on arrival, as requested; empty = none
         InsertStatus status = InsertStatus::loading;
         std::uint64_t request = 0; // which request may fill it
         std::shared_ptr<juce::AudioProcessor> processor;
@@ -167,7 +168,7 @@ private:
         InvalidationWatch::Receipt lastReceiptAtRequest = 0;
     };
 
-    void request (const song::InsertSlot& slot);
+    void request (const song::InsertSlot& slot, const std::string& stateHash);
     void arrived (const song::Id& slotId, std::uint64_t request, core::Expected<std::unique_ptr<juce::AudioProcessor>> created);
     void release (Entry& entry);
     void markCrashed (const song::Id& slotId, Entry& entry);

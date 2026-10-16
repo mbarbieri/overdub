@@ -84,8 +84,9 @@ class TrackHeader final : public juce::Component
 public:
     TrackHeader();
 
-    // numTakes: the Takes recorded on the Track (no toggle when 0); unfolded: its lanes are shown.
-    void show (const song::Track& track, bool enabled, bool deletable, int numTakes, bool unfolded);
+    // trackArmed: the Track's Armed setting; numTakes: the Takes recorded on the Track (no toggle
+    // when 0); unfolded: its lanes are shown.
+    void show (const song::Track& track, bool trackArmed, bool enabled, bool deletable, int numTakes, bool unfolded);
     void resized() override;
     void paint (juce::Graphics& g) override;
 

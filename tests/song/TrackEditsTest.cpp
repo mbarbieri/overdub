@@ -34,8 +34,7 @@ TEST_CASE ("an added Track is empty, Armed on the given input and appended last"
     CHECK (track.id == added.trackId);
     CHECK (! track.id.empty());
     CHECK (track.name == "Track 1");
-    CHECK (track.armed);
-    CHECK (track.inputChannels == std::vector<int> { 0 });
+    CHECK (trackInput (added.song, track.id) == TrackInput { .armed = true, .inputChannels = { 0 } });
     CHECK (track.clips.empty());
     CHECK (track.insertChain.empty());
     CHECK_THAT (track.volumeDb, WithinAbs (0.0, 0.0));
@@ -48,8 +47,7 @@ TEST_CASE ("an added Track is empty, Armed on the given input and appended last"
 TEST_CASE ("an added Track without an input is still Armed", "[song][tracks]")
 {
     const auto added = addTrack (makeEmptySong (48000), {}, firstChoice);
-    CHECK (added.song.tracks[0].armed);
-    CHECK (added.song.tracks[0].inputChannels.empty());
+    CHECK (trackInput (added.song, added.trackId) == TrackInput { .armed = true, .inputChannels = {} });
 }
 
 TEST_CASE ("an added Track takes the lowest Track number no other Track is named", "[song][tracks]")
@@ -109,7 +107,8 @@ TEST_CASE ("deleting a Track removes it with its Clips and keeps the Song's Take
 TEST_CASE ("deleting the only Track leaves a Song with no Tracks", "[song][tracks]")
 {
     auto song = makeEmptySong (48000);
-    song.tracks.push_back (Track { .id = "g", .name = "Guitar", .armed = true });
+    song.tracks.push_back (Track { .id = "g", .name = "Guitar" });
+    song.settings.trackInputs["g"] = TrackInput { .armed = true };
 
     const auto deleted = deleteTrack (song, "g");
 
@@ -149,14 +148,15 @@ Song fourTrackSong()
 {
     auto song = twoTrackSongWithOnePass();
     song.tracks[0].id = "a";
-    song.tracks[0].armed = true;
-    song.tracks[0].inputChannels = { 0 };
+    song.settings.trackInputs["a"] = TrackInput { .armed = true, .inputChannels = { 0 } };
     song.tracks[1].id = "b";
     song.tracks[1].mute = true;
-    song.tracks.push_back (Track { .id = "c", .name = "Keys", .solo = true, .inputChannels = { 1, 2 } });
-    song.tracks.push_back (Track { .id = "d", .name = "Drums", .colour = "#aabbcc", .armed = true });
-    song.preRoll = PreRoll::twoSeconds;
-    song.playhead = 4800;
+    song.tracks.push_back (Track { .id = "c", .name = "Keys", .solo = true });
+    song.settings.trackInputs["c"] = TrackInput { .inputChannels = { 1, 2 } };
+    song.tracks.push_back (Track { .id = "d", .name = "Drums", .colour = "#aabbcc" });
+    song.settings.trackInputs["d"] = TrackInput { .armed = true };
+    song.settings.preRoll = PreRoll::twoSeconds;
+    song.settings.playhead = 4800;
     return song;
 }
 

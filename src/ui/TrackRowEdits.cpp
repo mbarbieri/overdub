@@ -60,18 +60,20 @@ std::optional<std::size_t> choiceIndexFor (const std::vector<InputChoice>& choic
     return (std::size_t) std::distance (choices.begin(), found);
 }
 
-song::Song withArmed (song::Song song, const song::Id& trackId, bool armed)
+song::SongSettings withArmed (const song::Song& song, const song::Id& trackId, bool armed)
 {
-    if (auto track = std::ranges::find (song.tracks, trackId, &song::Track::id); track != song.tracks.end())
-        track->armed = armed;
-    return song;
+    auto settings = song.settings;
+    if (std::ranges::contains (song.tracks, trackId, &song::Track::id))
+        settings.trackInputs[trackId].armed = armed;
+    return settings;
 }
 
-song::Song withInputChannels (song::Song song, const song::Id& trackId, std::vector<int> inputChannels)
+song::SongSettings withInputChannels (const song::Song& song, const song::Id& trackId, std::vector<int> inputChannels)
 {
-    if (auto track = std::ranges::find (song.tracks, trackId, &song::Track::id); track != song.tracks.end())
-        track->inputChannels = std::move (inputChannels);
-    return song;
+    auto settings = song.settings;
+    if (std::ranges::contains (song.tracks, trackId, &song::Track::id))
+        settings.trackInputs[trackId].inputChannels = std::move (inputChannels);
+    return settings;
 }
 
 int nextPassNumber (const song::Song& song)

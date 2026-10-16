@@ -126,6 +126,34 @@ TEST_CASE ("song.json carries formatVersion 4 and the key names fixed by issues 
         CHECK (backing.contains (key));
 }
 
+TEST_CASE ("song.json stores each setting outside history inside the Track or slot it belongs to, as format 4 does", "[song][json][settings]")
+{
+    const auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
+
+    const auto& guitar = document.at ("tracks").at (0);
+    CHECK (guitar.size() == 11);
+    CHECK (guitar.at ("armed") == true);
+    CHECK (guitar.at ("inputChannels") == nlohmann::json { 2, 3 });
+    CHECK (document.at ("tracks").at (1).at ("armed") == false);
+    CHECK (document.at ("tracks").at (1).at ("inputChannels") == nlohmann::json { 0 });
+    CHECK (guitar.at ("insertChain").at (1).size() == 6);
+    CHECK (guitar.at ("insertChain").at (1).at ("stateHash") == "abab");
+    CHECK (document.at ("master").at ("insertChain").at (0).at ("stateHash") == "bbbb");
+
+    CHECK (document.size() == 13);
+    CHECK (document.at ("preRollSeconds") == 2);
+    CHECK (document.at ("cameraArmed") == true);
+    CHECK (document.at ("cameraDeviceId") == "camera-facetime");
+    CHECK (document.at ("playhead") == 132300);
+    CHECK (document.at ("exportVideoTakeId") == "video-1");
+
+    // A Track or slot the settings have nothing for is written with the defaults.
+    const auto defaults = songToJson (songOfDefaults());
+    CHECK (defaults.at ("tracks").at (0).at ("armed") == false);
+    CHECK (defaults.at ("tracks").at (0).at ("inputChannels") == nlohmann::json::array());
+    CHECK (defaults.at ("tracks").at (0).at ("insertChain").at (0).at ("stateHash") == "");
+}
+
 TEST_CASE ("a malformed song.json is an Error naming the JSON path", "[song][json]")
 {
     auto document = songToJson (overdub::song::testing::fullyPopulatedSong());

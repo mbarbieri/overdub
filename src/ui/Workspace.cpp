@@ -252,7 +252,7 @@ CalibrationStatus Workspace::calibrationStatus() const
     if (song == nullptr)
         return status;
 
-    status.cameraId = song->song().cameraDeviceId;
+    status.cameraId = song->song().settings.cameraDeviceId;
     for (const auto& device : song->cameraDevices())
         if (device.id == status.cameraId)
             status.cameraName = device.name;

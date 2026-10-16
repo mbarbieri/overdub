@@ -150,12 +150,12 @@ TEST_CASE ("an Insert moves to a new place in its own chain", "[song][inserts]")
 TEST_CASE ("an Insert is bypassed and back on, keeping its place and state", "[song][inserts]")
 {
     auto song = guitarWithThreeInserts();
-    song.tracks[0].insertChain[1].stateHash = "abc";
+    song.settings.pluginStateHashBySlot["slot-2"] = "abc";
 
     const auto bypassed = setInsertBypassed (song, "slot-2", true);
     REQUIRE (bypassed.has_value());
     CHECK (bypassed->tracks[0].insertChain[1].bypassed);
-    CHECK (bypassed->tracks[0].insertChain[1].stateHash == "abc");
+    CHECK (pluginStateHash (*bypassed, "slot-2") == "abc");
     CHECK (chainIds (bypassed->tracks[0].insertChain) == chainIds (song.tracks[0].insertChain));
     CHECK_FALSE (bypassed->tracks[0].insertChain[0].bypassed);
     CHECK (setInsertBypassed (song, "slot-m", true)->master.insertChain[0].bypassed);

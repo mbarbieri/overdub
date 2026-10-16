@@ -126,7 +126,7 @@ TrackHeader::TrackHeader()
     addAndMakeVisible (deleteButton);
 }
 
-void TrackHeader::show (const song::Track& track, bool enabled, bool deletable, int numTakes, bool unfolded)
+void TrackHeader::show (const song::Track& track, bool trackArmed, bool enabled, bool deletable, int numTakes, bool unfolded)
 {
     id = track.id;
     if (const auto colour = trackColour (track); colour != stripeColour)
@@ -134,9 +134,9 @@ void TrackHeader::show (const song::Track& track, bool enabled, bool deletable, 
         stripeColour = colour;
         repaint();
     }
-    armed = track.armed;
+    armed = trackArmed;
     nameLabel.setText (juce::String::fromUTF8 (track.name.c_str()), juce::dontSendNotification);
-    armButton.setToggleState (track.armed, juce::dontSendNotification);
+    armButton.setToggleState (trackArmed, juce::dontSendNotification);
     armButton.setEnabled (enabled);
     grip.setEnabled (enabled);
     muted = track.mute;
@@ -242,7 +242,7 @@ void Timeline::showHeaders()
     {
         const auto& track = current.song.tracks[i];
         const auto numTakes = (int) song::laneTakes (current.song, track.id).size();
-        headers[i]->show (track, current.editable, current.tracksDeletable, numTakes, areTakeLanesUnfolded (track.id));
+        headers[i]->show (track, song::trackInput (current.song, track.id).armed, current.editable, current.tracksDeletable, numTakes, areTakeLanesUnfolded (track.id));
     }
 }
 

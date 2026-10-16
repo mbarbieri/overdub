@@ -127,7 +127,7 @@ TEST_CASE ("an Armed Track and the last Track can be deleted, leaving a Song wit
 {
     MainWindowFixture f { song::testing::FixtureSongBuilder {}.track ("Guitar", true, { 0 }).build() };
     REQUIRE (pressKey (*f.window, '2'));
-    REQUIRE (f.trackNamed ("Guitar").armed);
+    REQUIRE (f.inputOf ("Guitar").armed);
 
     deleteTrackNamed (f, "Guitar");
 

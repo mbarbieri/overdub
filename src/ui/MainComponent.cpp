@@ -520,7 +520,7 @@ void MainComponent::addTrack()
     // Ready to record: Armed on the device's first input, or on none when it has no inputs.
     auto inputChannels = openSong->audio().inputChannelNames.empty() ? std::vector<int> {} : std::vector<int> { 0 };
     auto added = song::addTrack (openSong->song(), std::move (inputChannels), song::randomPick());
-    core::logEvent (core::Level::info, "ui.track_added", { { "track_id", added.trackId }, { "input_channels", added.song.tracks.back().inputChannels } });
+    core::logEvent (core::Level::info, "ui.track_added", { { "track_id", added.trackId }, { "input_channels", song::trackInput (added.song, added.trackId).inputChannels } });
     applyEdit (std::move (added.song), added.label);
     takeKeyboardFocus();
 }
@@ -799,7 +799,7 @@ void MainComponent::refresh()
                              [this] (const song::Id& slotId) { return openSong->insertStatus (slotId); }),
                          song);
         recordPage.showCamera (cameraControlsStateFor (song, openSong->cameraDevices(), recording), openSong->cameraPreviewLayer());
-        recordPage.showStagePlayback (! stageShowsLiveFeed (song.cameraArmed, recording, state.playing));
+        recordPage.showStagePlayback (! stageShowsLiveFeed (song.settings.cameraArmed, recording, state.playing));
         if (currentMode == Mode::record)
             recordPage.showSong (song, RecordTransport { position, openSong->runningPassStart(), recordPoint }, ! recording);
         if (currentMode == Mode::edit)
@@ -813,7 +813,7 @@ void MainComponent::refresh()
             .progress = openSong->exportProgress(),
             .finishedFile = openSong->lastExportedFile(),
             .videoTakes = openSong->videoPlayback().spans (song),
-            .storedVideoTakeId = song.exportVideoTakeId,
+            .storedVideoTakeId = song.settings.exportVideoTakeId,
         });
     }
     topBar.show (state);

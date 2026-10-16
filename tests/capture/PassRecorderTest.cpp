@@ -61,10 +61,8 @@ struct RecordingFixture
 
     void addArmedTrack (const std::string& id, std::vector<int> inputChannels)
     {
-        auto track = trackWith (id, {});
-        track.armed = true;
-        track.inputChannels = std::move (inputChannels);
-        song.tracks.push_back (track);
+        song.tracks.push_back (trackWith (id, {}));
+        song.settings.trackInputs[id] = overdub::song::TrackInput { .armed = true, .inputChannels = std::move (inputChannels) };
     }
 
     void commitSetup()
@@ -138,8 +136,8 @@ SampleCount heardPositionOfPeak (const RecordingFixture& fixture, const Song& so
 Song onlyTrack (Song song, const std::string& trackId)
 {
     std::erase_if (song.tracks, [&] (const auto& track) { return track.id != trackId; });
-    for (auto& track : song.tracks)
-        track.armed = false;
+    for (auto& [id, input] : song.settings.trackInputs)
+        input.armed = false;
     return song;
 }
 

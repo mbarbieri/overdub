@@ -231,7 +231,7 @@ TEST_CASE ("Export mode exports an MP4 of the chosen Video Take and stores the c
     // The first Video Take is shown by default; choosing the second stores it, with no undo step.
     CHECK (page.videoTakePicker.getSelectedItemIndex() == 0);
     choose (page.videoTakePicker, 1);
-    CHECK (f.song().exportVideoTakeId == f.secondTake);
+    CHECK (f.song().settings.exportVideoTakeId == f.secondTake);
     CHECK (f.openSong->package().canUndo() == canUndo);
     CHECK (f.openSong->package().undoLabel() == "Add Video Takes");
     window.tick();

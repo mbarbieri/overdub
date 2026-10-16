@@ -8,7 +8,7 @@
 // reordering of layers shows up.
 namespace overdub::song::testing
 {
-inline InsertSlot insertSlot (const char* id, const char* hash)
+inline InsertSlot insertSlot (const char* id)
 {
     return InsertSlot {
         .id = id,
@@ -16,7 +16,6 @@ inline InsertSlot insertSlot (const char* id, const char* hash)
         .name = "AUDelay",
         .version = "1.7.0",
         .bypassed = true,
-        .stateHash = hash,
     };
 }
 
@@ -104,9 +103,7 @@ inline Song fullyPopulatedSong()
             .pan = -0.25,
             .mute = true,
             .solo = true,
-            .armed = true,
-            .inputChannels = { 2, 3 },
-            .insertChain = { insertSlot ("slot-1", "aaaa"), insertSlot ("slot-2", "abab") },
+            .insertChain = { insertSlot ("slot-1"), insertSlot ("slot-2") },
             .clips = {
                 // Layer order: clip-b is below clip-a.
                 Clip {
@@ -139,9 +136,7 @@ inline Song fullyPopulatedSong()
             .pan = 0.5,
             .mute = false,
             .solo = false,
-            .armed = false,
-            .inputChannels = { 0 },
-            .insertChain = { insertSlot ("slot-3", "acac"), insertSlot ("slot-4", "adad") },
+            .insertChain = { insertSlot ("slot-3"), insertSlot ("slot-4") },
             .clips = {
                 Clip {
                     .id = "clip-d",
@@ -157,13 +152,27 @@ inline Song fullyPopulatedSong()
             },
         },
     };
-    song.master = Master { .volumeDb = -1.0, .insertChain = { insertSlot ("slot-master", "bbbb"), insertSlot ("slot-master-2", "bcbc") } };
+    song.master = Master { .volumeDb = -1.0, .insertChain = { insertSlot ("slot-master"), insertSlot ("slot-master-2") } };
 
-    song.preRoll = PreRoll::twoSeconds;
-    song.cameraArmed = true;
-    song.cameraDeviceId = "camera-facetime";
-    song.playhead = 132300;
-    song.exportVideoTakeId = "video-1";
+    song.settings = SongSettings {
+        .preRoll = PreRoll::twoSeconds,
+        .cameraArmed = true,
+        .cameraDeviceId = "camera-facetime",
+        .playhead = 132300,
+        .exportVideoTakeId = "video-1",
+        .trackInputs = {
+            { "track-guitar", TrackInput { .armed = true, .inputChannels = { 2, 3 } } },
+            { "track-backing", TrackInput { .armed = false, .inputChannels = { 0 } } },
+        },
+        .pluginStateHashBySlot = {
+            { "slot-1", "aaaa" },
+            { "slot-2", "abab" },
+            { "slot-3", "acac" },
+            { "slot-4", "adad" },
+            { "slot-master", "bbbb" },
+            { "slot-master-2", "bcbc" },
+        },
+    };
     return song;
 }
 } // namespace overdub::song::testing

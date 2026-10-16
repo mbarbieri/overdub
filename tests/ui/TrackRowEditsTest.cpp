@@ -7,24 +7,17 @@
 
 using overdub::song::Song;
 using overdub::song::Track;
+using overdub::song::TrackInput;
 using namespace overdub::ui;
 
 namespace
 {
-Track track (const std::string& id, bool armed, std::vector<int> inputs)
-{
-    Track t;
-    t.id = id;
-    t.name = id;
-    t.armed = armed;
-    t.inputChannels = std::move (inputs);
-    return t;
-}
 
 Song twoTrackSong()
 {
     auto song = overdub::song::makeEmptySong (48000);
-    song.tracks = { track ("guitar", false, { 0 }), track ("vocals", true, { 1 }) };
+    song.tracks = { Track { .id = "guitar", .name = "guitar" }, Track { .id = "vocals", .name = "vocals" } };
+    song.settings.trackInputs = { { "guitar", TrackInput { .armed = false, .inputChannels = { 0 } } }, { "vocals", TrackInput { .armed = true, .inputChannels = { 1 } } } };
     return song;
 }
 } // namespace
@@ -52,15 +45,15 @@ TEST_CASE ("arming and picking an input change only that Track", "[ui][inputs]")
 {
     const auto song = twoTrackSong();
 
-    const auto armed = withArmed (song, "guitar", true);
-    CHECK (armed.tracks[0].armed);
-    CHECK (armed.tracks[1] == song.tracks[1]);
+    auto armed = song.settings;
+    armed.trackInputs.at ("guitar").armed = true;
+    CHECK (withArmed (song, "guitar", true) == armed);
 
-    const auto stereo = withInputChannels (song, "vocals", { 2, 3 });
-    CHECK (stereo.tracks[1].inputChannels == std::vector<int> { 2, 3 });
-    CHECK (stereo.tracks[0] == song.tracks[0]);
+    auto stereo = song.settings;
+    stereo.trackInputs.at ("vocals").inputChannels = { 2, 3 };
+    CHECK (withInputChannels (song, "vocals", { 2, 3 }) == stereo);
 
-    CHECK (withArmed (song, "missing", true) == song);
+    CHECK (withArmed (song, "missing", true) == song.settings);
 }
 
 TEST_CASE ("the Pass being recorded is numbered after the Song's Passes", "[ui][inputs]")

@@ -9,6 +9,8 @@
 // `formatVersion`. All conversion is explicit (no NLOHMANN_DEFINE_* macros) and lives in
 // SongJson.cpp. Reading never throws: a malformed document becomes an Error `song.json_invalid`
 // whose `json_path` field names the offending JSON path (e.g. "$.tracks[0].clips[2].gainDb").
+// A Track's TrackInput and a slot's plugin state hash (SongSettings) are written inside that
+// Track or slot. Reading adds an entry to SongSettings only when it differs from the default.
 namespace overdub::song
 {
 nlohmann::json songToJson (const Song& song);

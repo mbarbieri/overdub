@@ -5,7 +5,7 @@
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 
 // The state an Insert's plugin is saved with (issue #33, ADR 0004): the bytes behind an Insert
-// Chain slot's stateHash (plugins/<sha256>.state).
+// Chain slot's plugin state hash (SongSettings, plugins/<sha256>.state).
 //
 // - An AU: its fullStateForDocument (kAudioUnitProperty_ClassInfoFromDocument, which AUv3 maps to
 //   fullStateForDocument), or its ClassInfo (fullState) when the AU has no document state, as a

@@ -208,7 +208,7 @@ ClipSourceKind readClipSourceKind (const Reader& reader, std::string_view key)
 
 // ---- Writing ----
 
-json insertSlotToJson (const InsertSlot& slot)
+json insertSlotToJson (const InsertSlot& slot, const Song& song)
 {
     return {
         { "id", slot.id },
@@ -216,7 +216,7 @@ json insertSlotToJson (const InsertSlot& slot)
         { "name", slot.name },
         { "version", slot.version },
         { "bypassed", slot.bypassed },
-        { "stateHash", slot.stateHash },
+        { "stateHash", pluginStateHash (song, slot.id) },
     };
 }
 
@@ -227,6 +227,11 @@ json arrayToJson (const std::vector<Element>& elements, ToJson toJson)
     for (const auto& element : elements)
         array.push_back (toJson (element));
     return array;
+}
+
+json insertChainToJson (const std::vector<InsertSlot>& insertChain, const Song& song)
+{
+    return arrayToJson (insertChain, [&song] (const InsertSlot& slot) { return insertSlotToJson (slot, song); });
 }
 
 json clipToJson (const Clip& clip)
@@ -243,8 +248,9 @@ json clipToJson (const Clip& clip)
     };
 }
 
-json trackToJson (const Track& track)
+json trackToJson (const Track& track, const Song& song)
 {
+    const auto& input = trackInput (song, track.id);
     return {
         { "id", track.id },
         { "name", track.name },
@@ -253,9 +259,9 @@ json trackToJson (const Track& track)
         { "pan", track.pan },
         { "mute", track.mute },
         { "solo", track.solo },
-        { "armed", track.armed },
-        { "inputChannels", track.inputChannels },
-        { "insertChain", arrayToJson (track.insertChain, insertSlotToJson) },
+        { "armed", input.armed },
+        { "inputChannels", input.inputChannels },
+        { "insertChain", insertChainToJson (track.insertChain, song) },
         { "clips", arrayToJson (track.clips, clipToJson) },
     };
 }
@@ -311,17 +317,25 @@ json videoTakeToJson (const VideoTake& videoTake)
 
 // ---- Reading ----
 
-InsertSlot readInsertSlot (const Reader& reader)
+// Settings stored inside a Track or slot go into `settings`, only when away from their default.
+InsertSlot readInsertSlot (const Reader& reader, SongSettings& settings)
 {
     const auto component = reader.object ("component");
-    return InsertSlot {
+    auto slot = InsertSlot {
         .id = reader.string ("id"),
         .component = { .type = component.string ("type"), .subtype = component.string ("subtype"), .manufacturer = component.string ("manufacturer") },
         .name = reader.string ("name"),
         .version = reader.string ("version"),
         .bypassed = reader.boolean ("bypassed"),
-        .stateHash = reader.string ("stateHash"),
     };
+    if (auto hash = reader.string ("stateHash"); ! hash.empty())
+        settings.pluginStateHashBySlot[slot.id] = std::move (hash);
+    return slot;
+}
+
+std::vector<InsertSlot> readInsertChain (const Reader& reader, SongSettings& settings)
+{
+    return reader.objects<InsertSlot> ("insertChain", [&settings] (const Reader& slot) { return readInsertSlot (slot, settings); });
 }
 
 Clip readClip (const Reader& reader)
@@ -339,9 +353,9 @@ Clip readClip (const Reader& reader)
     };
 }
 
-Track readTrack (const Reader& reader)
+Track readTrack (const Reader& reader, SongSettings& settings)
 {
-    return Track {
+    auto track = Track {
         .id = reader.string ("id"),
         .name = reader.string ("name"),
         .colour = reader.trackColour ("colour"),
@@ -349,11 +363,12 @@ Track readTrack (const Reader& reader)
         .pan = reader.number ("pan"),
         .mute = reader.boolean ("mute"),
         .solo = reader.boolean ("solo"),
-        .armed = reader.boolean ("armed"),
-        .inputChannels = reader.integers ("inputChannels"),
-        .insertChain = reader.objects<InsertSlot> ("insertChain", readInsertSlot),
-        .clips = reader.objects<Clip> ("clips", readClip),
     };
+    if (auto input = TrackInput { .armed = reader.boolean ("armed"), .inputChannels = reader.integers ("inputChannels") }; input != TrackInput {})
+        settings.trackInputs[track.id] = std::move (input);
+    track.insertChain = readInsertChain (reader, settings);
+    track.clips = reader.objects<Clip> ("clips", readClip);
+    return track;
 }
 
 Pass readPass (const Reader& reader)
@@ -429,39 +444,41 @@ Song readSong (const Reader& reader)
     if (song.sampleRate <= 0)
         reader.report (reader.childPath ("sampleRate"), "expected a positive rate");
 
-    song.tracks = reader.objects<Track> ("tracks", readTrack);
+    auto& settings = song.settings;
+    song.tracks = reader.objects<Track> ("tracks", [&settings] (const Reader& track) { return readTrack (track, settings); });
     const auto master = reader.object ("master");
-    song.master = Master { .volumeDb = master.number ("volumeDb"), .insertChain = master.objects<InsertSlot> ("insertChain", readInsertSlot) };
+    song.master = Master { .volumeDb = master.number ("volumeDb"), .insertChain = readInsertChain (master, settings) };
     song.passes = reader.objects<Pass> ("passes", readPass);
     song.takes = reader.objects<Take> ("takes", readTake);
     song.backingTracks = reader.objects<BackingTrack> ("backingTracks", readBackingTrack);
     song.videoTakes = reader.objects<VideoTake> ("videoTakes", readVideoTake);
 
-    song.preRoll = readPreRoll (reader, "preRollSeconds");
-    song.cameraArmed = reader.boolean ("cameraArmed");
-    song.cameraDeviceId = reader.string ("cameraDeviceId");
-    song.playhead = reader.integer ("playhead");
-    song.exportVideoTakeId = readOptionalId (reader, "exportVideoTakeId");
+    settings.preRoll = readPreRoll (reader, "preRollSeconds");
+    settings.cameraArmed = reader.boolean ("cameraArmed");
+    settings.cameraDeviceId = reader.string ("cameraDeviceId");
+    settings.playhead = reader.integer ("playhead");
+    settings.exportVideoTakeId = readOptionalId (reader, "exportVideoTakeId");
     return song;
 }
 } // namespace
 
 nlohmann::json songToJson (const Song& song)
 {
+    const auto& settings = song.settings;
     return {
         { "formatVersion", songFormatVersion },
         { "sampleRate", song.sampleRate },
-        { "tracks", arrayToJson (song.tracks, trackToJson) },
-        { "master", { { "volumeDb", song.master.volumeDb }, { "insertChain", arrayToJson (song.master.insertChain, insertSlotToJson) } } },
+        { "tracks", arrayToJson (song.tracks, [&song] (const Track& track) { return trackToJson (track, song); }) },
+        { "master", { { "volumeDb", song.master.volumeDb }, { "insertChain", insertChainToJson (song.master.insertChain, song) } } },
         { "passes", arrayToJson (song.passes, passToJson) },
         { "takes", arrayToJson (song.takes, takeToJson) },
         { "backingTracks", arrayToJson (song.backingTracks, backingTrackToJson) },
         { "videoTakes", arrayToJson (song.videoTakes, videoTakeToJson) },
-        { "preRollSeconds", preRollToSeconds (song.preRoll) },
-        { "cameraArmed", song.cameraArmed },
-        { "cameraDeviceId", song.cameraDeviceId },
-        { "playhead", song.playhead },
-        { "exportVideoTakeId", song.exportVideoTakeId.has_value() ? json (*song.exportVideoTakeId) : json (nullptr) },
+        { "preRollSeconds", preRollToSeconds (settings.preRoll) },
+        { "cameraArmed", settings.cameraArmed },
+        { "cameraDeviceId", settings.cameraDeviceId },
+        { "playhead", settings.playhead },
+        { "exportVideoTakeId", settings.exportVideoTakeId.has_value() ? json (*settings.exportVideoTakeId) : json (nullptr) },
     };
 }
 

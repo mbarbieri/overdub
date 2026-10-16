@@ -72,12 +72,11 @@ std::vector<nlohmann::json> eventsNamed (const ScopedLogCapture& capture, const 
     return found;
 }
 
-overdub::song::Track armedTrack (const std::string& id, std::vector<int> inputChannels)
+// Appends an empty Track, Armed on these input channels.
+overdub::song::Track& addArmedTrack (overdub::song::Song& song, const std::string& id, std::vector<int> inputChannels)
 {
-    auto track = trackWith (id, {});
-    track.armed = true;
-    track.inputChannels = std::move (inputChannels);
-    return track;
+    song.settings.trackInputs[id] = overdub::song::TrackInput { .armed = true, .inputChannels = std::move (inputChannels) };
+    return song.tracks.emplace_back (trackWith (id, {}));
 }
 } // namespace
 
@@ -368,7 +367,7 @@ TEST_CASE ("process() neither allocates nor locks while recording and Monitoring
     auto song = emptySong();
     const auto take = addTake (song, package, "take-a", sine (8000, 220.0));
     song.tracks.push_back (trackWith ("track-backing", { clipOf ("clip-a", take, 0, 0, 8000) }));
-    song.tracks.push_back (armedTrack ("track-armed", { 0, 1 }));
+    addArmedTrack (song, "track-armed", { 0, 1 });
 
     Engine engine { stereoConfig() };
     engine.loadSong (song, package.root, insertOnTrack ("track-backing", [] { return std::make_unique<DelayProcessor> (64); }));
@@ -398,10 +397,9 @@ TEST_CASE ("with Monitoring on, an Armed Track hears its live input; otherwise i
 {
     TempPackage package;
     auto song = emptySong();
-    song.tracks.push_back (armedTrack ("track-mono", { 1 }));
-    auto unarmed = trackWith ("track-unarmed", {});
-    unarmed.inputChannels = { 0 };
-    song.tracks.push_back (unarmed);
+    addArmedTrack (song, "track-mono", { 1 });
+    song.tracks.push_back (trackWith ("track-unarmed", {}));
+    song.settings.trackInputs["track-unarmed"] = overdub::song::TrackInput { .inputChannels = { 0 } };
 
     Engine engine { stereoConfig() };
     engine.loadSong (song, package.root);
@@ -428,7 +426,7 @@ TEST_CASE ("a stereo Armed Track monitors its first input on the left and its se
 {
     TempPackage package;
     auto song = emptySong();
-    song.tracks.push_back (armedTrack ("track-stereo", { 1, 0 }));
+    addArmedTrack (song, "track-stereo", { 1, 0 });
 
     Engine engine { stereoConfig() };
     engine.loadSong (song, package.root);
@@ -447,7 +445,7 @@ TEST_CASE ("process() neither allocates nor locks while a Pass waits for its rec
 {
     TempPackage package;
     auto song = emptySong();
-    song.tracks.push_back (armedTrack ("track-armed", { 0 }));
+    addArmedTrack (song, "track-armed", { 0 });
     Engine engine { stereoConfig() };
     engine.loadSong (song, package.root);
     LoopbackDevice device { 2, blockSize, blockSize };
@@ -471,7 +469,7 @@ TEST_CASE ("Monitoring goes through the Armed Track's Insert Chain while its Tak
 {
     TempPackage package;
     auto song = emptySong();
-    song.tracks.push_back (armedTrack ("track-guitar", { 1 }));
+    addArmedTrack (song, "track-guitar", { 1 });
     static constexpr int pdc = 64;
 
     Engine engine { stereoConfig() };

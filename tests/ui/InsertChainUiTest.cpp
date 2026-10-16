@@ -419,7 +419,7 @@ TEST_CASE ("a parameter moved in an editor is saved to song.json without an undo
     REQUIRE (json.has_value());
     const auto onDisk = overdub::song::songFromJson (*json);
     REQUIRE (onDisk.has_value());
-    const auto& hash = onDisk->tracks.at (1).insertChain.at (0).stateHash;
+    const auto& hash = overdub::song::pluginStateHash (*onDisk, onDisk->tracks.at (1).insertChain.at (0).id);
     REQUIRE_FALSE (hash.empty());
     CHECK (f.openSong->package().loadPluginState (hash)->toString() == "0.25");
 }

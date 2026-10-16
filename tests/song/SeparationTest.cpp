@@ -90,9 +90,10 @@ Song handBuiltSong()
                 Clip { .id = "clip-2", .source = { ClipSourceKind::backing, "backing-mix" }, .timelineStart = 30000, .sourceOffset = 22050, .length = 10000, .gainDb = 2.0, .fadeInLength = 50, .fadeOutLength = 0 },
             },
         },
-        Track { .id = "track-vocals", .name = "Vocals", .armed = true, .inputChannels = { 0 }, .clips = { Clip { .id = "clip-3", .source = { ClipSourceKind::take, "take-1" }, .length = 1000 } } },
+        Track { .id = "track-vocals", .name = "Vocals", .clips = { Clip { .id = "clip-3", .source = { ClipSourceKind::take, "take-1" }, .length = 1000 } } },
         Track { .id = "track-click", .name = "Click", .clips = { Clip { .id = "clip-4", .source = { ClipSourceKind::backing, "backing-click" }, .length = 44100 } } },
     };
+    song.settings.trackInputs["track-vocals"] = TrackInput { .armed = true, .inputChannels = { 0 } };
     return song;
 }
 
@@ -171,8 +172,7 @@ TEST_CASE ("each new Track starts at clean mixer defaults with a copy of every s
         CHECK_THAT (track.pan, Catch::Matchers::WithinAbs (0.0, 0.0));
         CHECK_FALSE (track.mute);
         CHECK_FALSE (track.solo);
-        CHECK_FALSE (track.armed);
-        CHECK (track.inputChannels.empty());
+        CHECK (trackInput (*separated, track.id) == TrackInput {});
         CHECK (track.insertChain.empty());
         REQUIRE (track.clips.size() == before.tracks.at (0).clips.size());
         for (std::size_t c = 0; c < track.clips.size(); ++c)

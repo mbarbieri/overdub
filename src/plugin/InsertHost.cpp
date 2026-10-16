@@ -50,7 +50,7 @@ void InsertHost::sync (const song::Song& song, RemovedSlots removed)
     {
         wanted.insert (slot->id);
         if (! entries.contains (slot->id))
-            request (*slot);
+            request (*slot, song::pluginStateHash (song, slot->id));
     }
 
     if (removed == RemovedSlots::keep)
@@ -68,10 +68,11 @@ void InsertHost::sync (const song::Song& song, RemovedSlots removed)
     }
 }
 
-void InsertHost::request (const song::InsertSlot& slot)
+void InsertHost::request (const song::InsertSlot& slot, const std::string& stateHash)
 {
     auto& entry = entries[slot.id];
     entry.slot = slot;
+    entry.stateHash = stateHash;
     entry.status = InsertStatus::loading;
     entry.request = nextRequest++;
     entry.lastReceiptAtRequest = InvalidationWatch::lastReceipt();
@@ -110,9 +111,9 @@ void InsertHost::arrived (const song::Id& slotId, std::uint64_t requestId, core:
     auto& processor = **created;
     processor.prepareToPlay (sampleRate, blockSize);
     bool stateRestored = false;
-    if (! entry.slot.stateHash.empty())
+    if (! entry.stateHash.empty())
     {
-        auto restored = loadState ? loadState (entry.slot.stateHash) : core::Expected<juce::MemoryBlock> { std::unexpected (core::Error { "plugin.state_unavailable", "no plugin state store", {} }) };
+        auto restored = loadState ? loadState (entry.stateHash) : core::Expected<juce::MemoryBlock> { std::unexpected (core::Error { "plugin.state_unavailable", "no plugin state store", {} }) };
         if (restored.has_value())
         {
             auto applied = restoreState (processor, *restored);
@@ -240,7 +241,7 @@ int InsertHost::captureStates (song::Song& song, const StateStore& store)
         error.fields["name"] = slot.name;
         core::logError (error, core::Level::warn);
     };
-    const auto captureInto = [&] (song::InsertSlot& slot) {
+    const auto captureInto = [&] (const song::InsertSlot& slot) {
         const auto found = entries.find (slot.id);
         if (found == entries.end() || found->second.status != InsertStatus::ready)
             return;
@@ -252,14 +253,11 @@ int InsertHost::captureStates (song::Song& song, const StateStore& store)
         auto hash = store (*state);
         if (! hash.has_value())
             return logFailed (hash.error(), slot);
-        slot.stateHash = *hash;
+        song.settings.pluginStateHashBySlot[slot.id] = *hash;
     };
 
-    for (auto& track : song.tracks)
-        for (auto& slot : track.insertChain)
-            captureInto (slot);
-    for (auto& slot : song.master.insertChain)
-        captureInto (slot);
+    for (const auto* slot : slotsOf (song))
+        captureInto (*slot);
     return failures;
 }
 
@@ -336,7 +334,7 @@ int InsertHost::reloadCrashed (const song::Song& song)
         if (found == entries.end() || found->second.status != InsertStatus::crashed || ! reloadsAfter (found->second.crashes))
             continue;
         core::logEvent (core::Level::info, "plugin.insert_reloading", { { "slot_id", slot->id }, { "crashes", found->second.crashes } });
-        request (*slot);
+        request (*slot, song::pluginStateHash (song, slot->id));
         ++started;
     }
     return started;

@@ -3,6 +3,7 @@
 #include "song/TrackColours.h"
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -55,7 +56,6 @@ struct InsertSlot
     std::string name;
     std::string version; // as the plugin reports it (JUCE PluginDescription::version)
     bool bypassed = false;
-    std::string stateHash; // lowercase hex SHA-256 of plugins/<stateHash>.state; empty = no state
 
     bool operator== (const InsertSlot&) const = default;
 };
@@ -102,8 +102,6 @@ struct Track
     double pan = 0.0; // -1 (left) .. +1 (right), 0 = centre
     bool mute = false;
     bool solo = false;
-    bool armed = false;              // persisted, not undoable
-    std::vector<int> inputChannels;  // 0-based device input channel indices, 1 (mono) or 2 (stereo); empty = none. Not undoable.
     std::vector<InsertSlot> insertChain;
     std::vector<Clip> clips; // layer order: the last Clip is on top
 
@@ -196,6 +194,34 @@ struct VideoTake
     bool operator== (const VideoTake&) const = default;
 };
 
+// What a Track records from. Outside undo history, so it lives in SongSettings by Track id.
+struct TrackInput
+{
+    bool armed = false;
+    std::vector<int> inputChannels; // 0-based device input channel indices, 1 (mono) or 2 (stereo); empty = none
+
+    bool operator== (const TrackInput&) const = default;
+};
+
+// The Song's persisted state outside undo history (ADR 0004). Undo and redo replace the rest of the
+// Song and keep this (withContentOf), so a field added here needs no change to undo or redo.
+// song.json keeps each per-id entry inside the Track or Insert Chain slot it belongs to.
+struct SongSettings
+{
+    PreRoll preRoll = PreRoll::off;
+    bool cameraArmed = false;
+    std::string cameraDeviceId; // empty = no camera chosen
+    SampleCount playhead = 0;
+    std::optional<Id> exportVideoTakeId;
+    std::map<Id, TrackInput> trackInputs; // by Track id; none = not Armed, no input
+    // By Insert Chain slot id, Master's included: lowercase hex SHA-256 of plugins/<hash>.state.
+    // None or empty = no state.
+    std::map<Id, std::string> pluginStateHashBySlot;
+
+    bool operator== (const SongSettings&) const = default;
+};
+
+// Everything but `settings` is undoable content: a history step snapshots it and undo restores it.
 struct Song
 {
     int sampleRate = 48000; // fixed from the device at creation
@@ -206,12 +232,7 @@ struct Song
     std::vector<BackingTrack> backingTracks;
     std::vector<VideoTake> videoTakes;
 
-    // Persisted settings outside undo history.
-    PreRoll preRoll = PreRoll::off;
-    bool cameraArmed = false;
-    std::string cameraDeviceId; // empty = no camera chosen
-    SampleCount playhead = 0;
-    std::optional<Id> exportVideoTakeId;
+    SongSettings settings;
 
     bool operator== (const Song&) const = default;
 };
@@ -225,12 +246,19 @@ Id makeId();
 // An empty Song at the given rate.
 Song makeEmptySong (int sampleRate);
 
-// Undo and redo restore a snapshot's undoable content but keep the current state that lives
-// outside history: pre-roll, camera arm and device, playhead, the export choice (unless it would
-// name a Video Take the snapshot does not have), per Track id Armed and input channels, and per
-// Insert Chain slot id (Master's included) the plugin state hash: plugin parameters are outside
-// history. A slot only the snapshot has keeps the snapshot's hash.
-Song keepStateOutsideHistory (Song snapshot, const Song& current);
+// The Track's input; not Armed and no input channels when the Song has none for it.
+const TrackInput& trackInput (const Song& song, const Id& trackId);
+
+// The slot's plugin state hash; empty when it has none.
+const std::string& pluginStateHash (const Song& song, const Id& slotId);
+
+// What undo and redo make current: the snapshot's undoable content with the current settings.
+// Two kinds of setting depend on the content they come back to:
+// - A per-id entry (TrackInput, plugin state hash): a Track or slot the current Song has keeps its
+//   current entry; one only the snapshot has (deleted since, now brought back) gets the snapshot's.
+// - The export choice stays unless it names a Video Take the snapshot does not have; then the
+//   snapshot's choice applies.
+Song withContentOf (Song snapshot, const Song& current);
 
 // The colour of every Track, in Song order: what a new Track's colour must not repeat.
 std::vector<std::string> trackColours (const Song& song);
