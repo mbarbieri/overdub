@@ -324,7 +324,7 @@ TEST_CASE ("the timeline shows the Camera lane and one header per Track whose ar
     CHECK (timeline.headers[1]->armButton.getToggleState());
 
     click (timeline.headers[1]->armButton);
-    CHECK (! f.trackNamed ("Guitar").armed);
+    CHECK (! f.inputOf ("Guitar").armed);
     CHECK (! timeline.headers[1]->armButton.getToggleState());
 }
 

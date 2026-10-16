@@ -180,7 +180,7 @@ TEST_CASE ("while a Separation runs, arm, input, pre-roll, Monitoring, the camer
     quieter.master.volumeDb = -60.0;
     s.f.openSong->setArmed (guitarId, false);
     s.f.openSong->setInputChannels (guitarId, { 1 });
-    s.f.openSong->setPreRoll (before.preRoll == song::PreRoll::off ? song::PreRoll::oneSecond : song::PreRoll::off);
+    s.f.openSong->setPreRoll (before.settings.preRoll == song::PreRoll::off ? song::PreRoll::oneSecond : song::PreRoll::off);
     s.f.openSong->setMonitoring (guitarId, true);
     s.f.openSong->previewMix (quieter);
     CHECK (s.f.openSong->setCameraArmed (true).has_value());
@@ -220,7 +220,7 @@ TEST_CASE ("a finished Separation adds six Backing Tracks on six Tracks below th
         CHECK_THAT (track.pan, Catch::Matchers::WithinAbs (0.0, 0.0));
         CHECK_FALSE (track.mute);
         CHECK_FALSE (track.solo);
-        CHECK_FALSE (track.armed);
+        CHECK_FALSE (song::trackInput (s.f.song(), track.id).armed);
         CHECK (track.insertChain.empty());
         REQUIRE (track.clips.size() == source.clips.size());
         auto copy = track.clips.front();

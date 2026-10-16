@@ -31,10 +31,11 @@
 // - edit(), undo() and redo() write a history step and song.json at once, in this order:
 //   snapshot file (edit only), index.json, song.json. index.json commits the step. A crash
 //   before it reopens the previous step; a crash after it reopens the new step, because open()
-//   takes the undoable content from history's current snapshot and only the state outside
-//   history from song.json (keepStateOutsideHistory), then repairs song.json.
-// - changeWithoutHistory() (Armed, input channels, plugin parameters, pre-roll, camera, playhead,
-//   export choice) writes no history; its song.json write is debounced by saveDelay.
+//   takes the undoable content from history's current snapshot and only the settings from
+//   song.json (withContentOf), then repairs song.json.
+// - changeWithoutHistory() changes only the SongSettings (Armed, input channels, plugin
+//   parameters, pre-roll, camera, playhead, export choice) and writes no history; its song.json
+//   write is debounced by saveDelay.
 // Both capture the live plugin state first (setPluginStateCapture, issue #33).
 //
 // Single-threaded: every call comes from one thread (the message thread in the app).
@@ -97,15 +98,15 @@ public:
     // Errors: song.write_failed, song.json_unserializable, or the beforeRename hook's.
     core::Expected<void> edit (Song changed, std::string label, Clock::time_point now = Clock::now());
 
-    // A change that is saved (debounced) but not undoable.
-    void changeWithoutHistory (Song changed, Clock::time_point now = Clock::now());
+    // A change to the settings that is saved (debounced) but not undoable.
+    void changeWithoutHistory (SongSettings changed, Clock::time_point now = Clock::now());
 
     bool canUndo() const { return history.canUndo(); }
     bool canRedo() const { return history.canRedo(); }
     std::string undoLabel() const { return history.undoLabel(); }
     std::string redoLabel() const { return history.redoLabel(); }
 
-    // Restore the neighbouring snapshot, keeping state outside history (keepStateOutsideHistory),
+    // Restore the neighbouring snapshot's content, keeping the current settings (withContentOf),
     // then write song.json. Errors: song.history_empty (nothing to undo/redo), otherwise as edit().
     core::Expected<void> undo (Clock::time_point now = Clock::now());
     core::Expected<void> redo (Clock::time_point now = Clock::now());
@@ -119,7 +120,7 @@ public:
     // Writes song.json now if a change is pending. Errors: as writeIfDue.
     core::Expected<void> flush();
 
-    // Captures the live plugins' state into a Song's Insert Chain slots (stateHash), storing the
+    // Captures the live plugins' state into a Song's plugin state hashes (SongSettings), storing the
     // blobs through storePluginState (plugin::InsertHost::captureStates, issue #33). The package
     // calls it on the Song of every history step (edit, and the current Song before an undo or
     // redo) and on the current Song before each debounced or flushed song.json write, so the

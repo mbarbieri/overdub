@@ -31,9 +31,10 @@ std::vector<InputChoice> inputChoices (const std::vector<std::string>& inputChan
 // this device does not have, or a pair that is not offered).
 std::optional<std::size_t> choiceIndexFor (const std::vector<InputChoice>& choices, const std::vector<int>& channels);
 
-// The Song with that Track's Armed flag / input channels set. An unknown Track id changes nothing.
-song::Song withArmed (song::Song song, const song::Id& trackId, bool armed);
-song::Song withInputChannels (song::Song song, const song::Id& trackId, std::vector<int> inputChannels);
+// The Song's settings with that Track's Armed flag / input channels set. An unknown Track id
+// changes nothing.
+song::SongSettings withArmed (const song::Song& song, const song::Id& trackId, bool armed);
+song::SongSettings withInputChannels (const song::Song& song, const song::Id& trackId, std::vector<int> inputChannels);
 
 // One item of a Track row's menu (right-click, issue #114).
 enum class TrackMenuAction

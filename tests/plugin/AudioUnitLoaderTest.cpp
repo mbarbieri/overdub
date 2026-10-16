@@ -190,10 +190,8 @@ TEST_CASE ("AUPeakLimiter's latency is compensated sample-exact in Take placemen
     writeFloatWav (package.location().getChildFile (backing.file), { impulse (16000, played, 0.1f) });
     song.takes.push_back (backing);
     song.tracks.push_back (trackWith ("track-backing", { clipOf ("clip-backing", backing, 0, 0, 16000) }));
-    auto armed = trackWith ("track-guitar", {});
-    armed.armed = true;
-    armed.inputChannels = { 0 };
-    song.tracks.push_back (armed);
+    song.tracks.push_back (trackWith ("track-guitar", {}));
+    song.settings.trackInputs["track-guitar"] = overdub::song::TrackInput { .armed = true, .inputChannels = { 0 } };
     REQUIRE (package.edit (song, "Set up").has_value());
 
     Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = blockSize } };

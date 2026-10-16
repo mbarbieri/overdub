@@ -20,8 +20,7 @@ AddedTrack addTrack (Song song, std::vector<int> inputChannels, const PickIndex&
     track.id = makeId();
     track.name = nextTrackName (song);
     track.colour = newTrackColour (trackColours (song), pickColour);
-    track.armed = true;
-    track.inputChannels = std::move (inputChannels);
+    song.settings.trackInputs[track.id] = TrackInput { .armed = true, .inputChannels = std::move (inputChannels) };
 
     AddedTrack added;
     added.trackId = track.id;

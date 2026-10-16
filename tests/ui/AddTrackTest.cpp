@@ -27,8 +27,8 @@ TEST_CASE ("Add Track on a new Song shows one Armed row on the first input", "[u
 
     click (page.addTrackButton);
     REQUIRE (f.song().tracks.size() == 1);
-    CHECK (f.song().tracks[0].armed);
-    CHECK (f.song().tracks[0].inputChannels == std::vector<int> { 0 });
+    CHECK (overdub::song::trackInput (f.song(), f.song().tracks[0].id).armed);
+    CHECK (overdub::song::trackInput (f.song(), f.song().tracks[0].id).inputChannels == std::vector<int> { 0 });
     CHECK (f.openSong->package().undoLabel() == "Add Track 1");
 
     REQUIRE (page.rows.size() == 1);
@@ -63,8 +63,8 @@ TEST_CASE ("with a device that has no inputs, Add Track adds a Track with no inp
     MainWindowFixture f (newSong(), {}, {});
     click (f.window->recordPage.addTrackButton);
     REQUIRE (f.song().tracks.size() == 1);
-    CHECK (f.song().tracks[0].armed);
-    CHECK (f.song().tracks[0].inputChannels.empty());
+    CHECK (overdub::song::trackInput (f.song(), f.song().tracks[0].id).armed);
+    CHECK (overdub::song::trackInput (f.song(), f.song().tracks[0].id).inputChannels.empty());
     CHECK (f.rowNamed ("Track 1").inputPicker.getText() == "No input");
 }
 
@@ -81,7 +81,7 @@ TEST_CASE ("undo removes an added Track and redo brings it back Armed", "[ui][re
 
     click (f.window->topBar.redoButton);
     REQUIRE (page.rows.size() == 1);
-    CHECK (f.trackNamed ("Track 1").armed);
+    CHECK (f.inputOf ("Track 1").armed);
     CHECK (f.rowNamed ("Track 1").armButton.getToggleState());
 }
 

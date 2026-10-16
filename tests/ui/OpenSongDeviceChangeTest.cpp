@@ -43,12 +43,10 @@ struct DeviceChangeFixture
     explicit DeviceChangeFixture (bool cameraArmed = false, int deviceSampleRate = testSampleRate)
     {
         auto song = overdub::song::makeEmptySong (testSampleRate);
-        auto guitar = trackWith ("guitar", {});
-        guitar.armed = true;
-        guitar.inputChannels = { 0 };
-        song.tracks = { guitar };
-        song.cameraArmed = cameraArmed;
-        song.cameraDeviceId = cameraArmed ? "camera-usb" : "";
+        song.tracks = { trackWith ("guitar", {}) };
+        song.settings.trackInputs["guitar"] = overdub::song::TrackInput { .armed = true, .inputChannels = { 0 } };
+        song.settings.cameraArmed = cameraArmed;
+        song.settings.cameraDeviceId = cameraArmed ? "camera-usb" : "";
         auto created = SongPackage::create (folder.root.getChildFile ("Song.overdub"), song);
         REQUIRE (created.has_value());
         openSong = std::make_unique<OpenSong> (std::move (*created), binding (deviceSampleRate));
@@ -154,7 +152,7 @@ TEST_CASE ("a Pass the audio device stopped during keeps its Video Take", "[ui][
     REQUIRE (song.passes.size() == 1);
     REQUIRE (song.videoTakes.size() == 1);
     CHECK (song.videoTakes[0].passId == song.passes[0].id);
-    CHECK (song.cameraArmed); // the camera did not go anywhere
+    CHECK (song.settings.cameraArmed); // the camera did not go anywhere
 }
 
 TEST_CASE ("the audio device stopping while idle stops playback and says nothing", "[ui][open_song][device_change]")
@@ -252,8 +250,8 @@ TEST_CASE ("the Armed camera unplugged while idle is closed and disarmed, with a
     CHECK (tierFor (errors[0].code) == Tier::notice);
 
     CHECK_FALSE (f.camera.opened.has_value());
-    CHECK_FALSE (f.openSong->song().cameraArmed);
-    CHECK (f.openSong->song().cameraDeviceId == "camera-usb");
+    CHECK_FALSE (f.openSong->song().settings.cameraArmed);
+    CHECK (f.openSong->song().settings.cameraDeviceId == "camera-usb");
     CHECK (f.openSong->cameraDevices().size() == 1);
     CHECK_FALSE (f.openSong->package().canUndo()); // outside history, like arming
 }
@@ -264,7 +262,7 @@ TEST_CASE ("an unplugged camera that is not Armed only leaves the choices", "[ui
     f.unplugCamera ("camera-usb");
     CHECK (f.openSong->poll().empty());
     CHECK (f.openSong->cameraDevices().size() == 1);
-    CHECK_FALSE (f.openSong->song().cameraArmed);
+    CHECK_FALSE (f.openSong->song().settings.cameraArmed);
 }
 
 TEST_CASE ("the Armed camera unplugged during a Pass: recording goes on, the Pass keeps its Video Take, and the camera is disarmed after", "[ui][open_song][device_change][camera]")
@@ -289,6 +287,6 @@ TEST_CASE ("the Armed camera unplugged during a Pass: recording goes on, the Pas
     REQUIRE (song.passes.size() == 1);
     CHECK (song.takes[0].lengthSamples == 20 * blockSize);
     REQUIRE (song.videoTakes.size() == 1);
-    CHECK_FALSE (song.cameraArmed);
+    CHECK_FALSE (song.settings.cameraArmed);
     CHECK_FALSE (f.camera.opened.has_value());
 }

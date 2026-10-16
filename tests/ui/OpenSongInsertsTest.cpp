@@ -113,6 +113,8 @@ struct InsertsFixture
         REQUIRE (chain.size() == 1);
         return chain[0];
     }
+
+    const std::string& guitarStateHash() const { return overdub::song::pluginStateHash (openSong->song(), guitarSlot().id); }
 };
 
 overdub::song::Song songOnDisk (const juce::File& location)
@@ -213,7 +215,7 @@ TEST_CASE ("plugin state is captured into the next history step and into song.js
     const auto guitarId = f.trackNamed ("Guitar").id;
     REQUIRE (f.openSong->addInsert (guitarId, testPlugin).has_value());
     auto* plugin = fake.succeed (0, 0);
-    CHECK (f.guitarSlot().stateHash.empty()); // the step that added it ran before it loaded
+    CHECK (f.guitarStateHash().empty()); // the step that added it ran before it loaded
 
     // A parameter moved in the plugin: no undo step, but a debounced write captures it.
     plugin->mix->setValueNotifyingHost (0.25f);
@@ -222,14 +224,15 @@ TEST_CASE ("plugin state is captured into the next history step and into song.js
     CHECK (f.openSong->package().hasPendingWrite());
     f.openSong->poll (start + 1s);
     const auto& location = f.openSong->package().location();
-    const auto savedHash = songOnDisk (location).tracks.at (1).insertChain.at (0).stateHash;
+    const auto onDisk = songOnDisk (location);
+    const auto savedHash = overdub::song::pluginStateHash (onDisk, onDisk.tracks.at (1).insertChain.at (0).id);
     REQUIRE_FALSE (savedHash.empty());
     CHECK (f.openSong->package().loadPluginState (savedHash)->toString() == "0.25");
 
     // The next history step holds the state as it is then.
     *plugin->mix = 0.75f;
     REQUIRE (f.openSong->edit (*overdub::song::setTrackMute (f.openSong->song(), guitarId, true), "Mute Guitar").has_value());
-    CHECK (f.openSong->package().loadPluginState (f.guitarSlot().stateHash)->toString() == "0.75");
+    CHECK (f.openSong->package().loadPluginState (f.guitarStateHash())->toString() == "0.75");
 }
 
 TEST_CASE ("AUDelay's state round-trips through a blob and an undo, and through reopening the Song", "[ui][open_song][inserts][au][state]")
@@ -251,7 +254,7 @@ TEST_CASE ("AUDelay's state round-trips through a blob and an undo, and through 
     // An out-of-process AU applies a parameter set asynchronously; reading it back waits for it.
     REQUIRE_THAT (auParameter (first, kDelayParam_DelayTime), Catch::Matchers::WithinAbs (1.5, 1e-6));
     REQUIRE (f.openSong->edit (*overdub::song::setTrackMute (f.openSong->song(), guitarId, true), "Mute Guitar").has_value());
-    const auto hash = f.guitarSlot().stateHash;
+    const auto hash = f.guitarStateHash();
     REQUIRE_FALSE (hash.empty());
     CHECK (f.openSong->package().location().getChildFile ("plugins/" + hash + ".state").existsAsFile());
 
@@ -259,7 +262,7 @@ TEST_CASE ("AUDelay's state round-trips through a blob and an undo, and through 
     REQUIRE (f.openSong->edit (*overdub::song::removeInsert (f.openSong->song(), slotId), overdub::song::removeInsertLabel (f.openSong->song(), slotId)).has_value());
     CHECK_FALSE (f.openSong->insertStatus (slotId).has_value());
     REQUIRE (f.openSong->undo().has_value());
-    CHECK (f.guitarSlot().stateHash == hash);
+    CHECK (f.guitarStateHash() == hash);
     REQUIRE (overdub::plugin::testing::runMessagesUntil ([&] { return f.openSong->insertStatus (slotId) == InsertStatus::ready; }));
     auto* restored = f.openSong->insertHost().processor (slotId);
     CHECK_THAT (auParameter (restored, kDelayParam_DelayTime), Catch::Matchers::WithinAbs (1.5, 1e-6));

@@ -2,6 +2,7 @@
 #include "core/LogEvents.h"
 #include "song/PluginBlobStore.h"
 #include "song/SongJson.h"
+#include "song/TrackEdits.h"
 
 #include "FullSong.h"
 
@@ -22,6 +23,7 @@ using overdub::core::testing::firstEvent;
 using overdub::song::PackageOptions;
 using overdub::song::Song;
 using overdub::song::SongPackage;
+using overdub::song::TrackInput;
 
 namespace
 {
@@ -134,16 +136,16 @@ TEST_CASE ("a change without history reaches song.json only when its save delay 
     auto package = createPackage (temp.package(), song, PackageOptions { .saveDelay = 500ms });
     const auto start = SongPackage::Clock::time_point {};
 
-    song.playhead = 7;
-    package->changeWithoutHistory (song, start);
+    song.settings.playhead = 7;
+    package->changeWithoutHistory (song.settings, start);
     CHECK (package->hasPendingWrite());
 
     REQUIRE (package->writeIfDue (start + 499ms).has_value());
-    CHECK (songOnDisk (temp.package()).playhead == 132300);
+    CHECK (songOnDisk (temp.package()).settings.playhead == 132300);
 
     ScopedLogCapture capture;
     REQUIRE (package->writeIfDue (start + 500ms).has_value());
-    CHECK (songOnDisk (temp.package()).playhead == 7);
+    CHECK (songOnDisk (temp.package()).settings.playhead == 7);
     CHECK_FALSE (package->hasPendingWrite());
     CHECK (firstEvent (capture, "song.saved").at ("lvl") == "debug");
 }
@@ -155,8 +157,8 @@ TEST_CASE ("an edit, undo or redo writes song.json at once, pending changes incl
     auto package = createPackage (temp.package(), song, PackageOptions { .saveDelay = 500ms });
 
     auto moved = song;
-    moved.playhead = 7;
-    package->changeWithoutHistory (moved);
+    moved.settings.playhead = 7;
+    package->changeWithoutHistory (moved.settings);
     REQUIRE (package->edit (renamedFirstTrack (moved, "Lead"), "Rename Track").has_value());
     CHECK_FALSE (package->hasPendingWrite());
     CHECK (songOnDisk (temp.package()) == renamedFirstTrack (moved, "Lead"));
@@ -255,8 +257,8 @@ TEST_CASE ("reopening after a crash before song.json keeps the state outside his
     CrashInjector crash;
     {
         auto package = createPackage (temp.package(), song, crash.options());
-        song.playhead = 7;
-        package->changeWithoutHistory (song);
+        song.settings.playhead = 7;
+        package->changeWithoutHistory (song.settings);
         REQUIRE (package->flush().has_value());
         *crash.crashAt = "song.json";
         CHECK_FALSE (package->edit (renamedFirstTrack (song, "Lead"), "Rename Track").has_value());
@@ -278,34 +280,33 @@ TEST_CASE ("later changes do not push back a pending write", "[song][package]")
 
     for (int step = 0; step < 10; ++step)
     {
-        song.playhead = step;
-        package->changeWithoutHistory (song, start + step * 100ms);
+        song.settings.playhead = step;
+        package->changeWithoutHistory (song.settings, start + step * 100ms);
         REQUIRE (package->writeIfDue (start + step * 100ms).has_value());
     }
 
-    CHECK (songOnDisk (temp.package()).playhead >= 5);
+    CHECK (songOnDisk (temp.package()).settings.playhead >= 5);
 }
 
 TEST_CASE ("a change without history is saved but adds no undo step", "[song][package]")
 {
     TempDirectory temp;
     auto song = overdub::song::testing::fullyPopulatedSong();
-    song.tracks.at (0).armed = false;
+    song.settings.trackInputs.at ("track-guitar").armed = false;
     createPackage (temp.package(), song);
 
     {
         auto opened = openPackage (temp.package());
         auto changed = opened.package->song();
-        changed.tracks.at (0).armed = true;
-        changed.tracks.at (0).inputChannels = { 0 };
-        changed.tracks.at (0).insertChain.at (0).stateHash = "cccc"; // plugin parameters changed
-        opened.package->changeWithoutHistory (changed);
+        changed.settings.trackInputs.at ("track-guitar") = TrackInput { .armed = true, .inputChannels = { 0 } };
+        changed.settings.pluginStateHashBySlot.at ("slot-1") = "cccc"; // plugin parameters changed
+        opened.package->changeWithoutHistory (changed.settings);
         CHECK_FALSE (opened.package->canUndo());
     }
 
     const auto reopened = openPackage (temp.package());
-    CHECK (reopened.package->song().tracks.at (0).armed);
-    CHECK (reopened.package->song().tracks.at (0).inputChannels == std::vector<int> { 0 });
+    CHECK (reopened.package->song().settings.trackInputs.at ("track-guitar") == TrackInput { .armed = true, .inputChannels = { 0 } });
+    CHECK (reopened.package->song().settings.pluginStateHashBySlot.at ("slot-1") == "cccc");
     CHECK_FALSE (reopened.package->canUndo());
 }
 
@@ -421,27 +422,64 @@ TEST_CASE ("undo and redo survive closing and reopening the Song", "[song][packa
     CHECK (reopened.package->song() == song);
 }
 
-TEST_CASE ("undo keeps Armed, input channels, playhead and the other state outside history", "[song][package][history]")
+TEST_CASE ("undo and redo restore the content and keep every setting outside history as it is", "[song][package][history]")
 {
     TempDirectory temp;
     auto song = overdub::song::testing::fullyPopulatedSong();
     auto package = createPackage (temp.package(), song);
     REQUIRE (package->edit (renamedFirstTrack (song, "Lead"), "Rename Track").has_value());
 
-    auto settings = package->song();
-    settings.tracks.at (0).armed = false;
-    settings.tracks.at (0).inputChannels = { 0 };
+    auto settings = package->song().settings;
+    settings.trackInputs.at ("track-guitar") = TrackInput { .armed = false, .inputChannels = { 0 } };
+    settings.trackInputs.at ("track-backing").armed = true;
+    settings.pluginStateHashBySlot.at ("slot-1") = "cccc";
     settings.playhead = 999;
     settings.preRoll = overdub::song::PreRoll::fourSeconds;
     settings.cameraArmed = false;
     settings.cameraDeviceId = "camera-usb";
+    settings.exportVideoTakeId = "video-2";
     package->changeWithoutHistory (settings);
 
     REQUIRE (package->undo().has_value());
-
-    auto expected = settings;
-    expected.tracks.at (0).name = "Guitar";
+    auto expected = song;
+    expected.settings = settings;
     CHECK (package->song() == expected);
+
+    REQUIRE (package->redo().has_value());
+    CHECK (package->song() == renamedFirstTrack (expected, "Lead"));
+}
+
+TEST_CASE ("a Track deleted and brought back by undo, or added and brought back by redo, gets the Armed and input channels its snapshot holds", "[song][package][history]")
+{
+    TempDirectory temp;
+    const auto song = overdub::song::testing::fullyPopulatedSong(); // Guitar: Armed on inputs 2 and 3
+    auto package = createPackage (temp.package(), song);
+
+    auto disarmed = package->song().settings;
+    disarmed.trackInputs.at ("track-guitar") = TrackInput { .armed = false, .inputChannels = { 0 } };
+    disarmed.trackInputs.at ("track-backing").armed = true;
+    package->changeWithoutHistory (disarmed);
+    auto deleted = overdub::song::deleteTrack (package->song(), "track-guitar");
+    REQUIRE (deleted.has_value());
+    REQUIRE (package->edit (deleted->song, deleted->label).has_value());
+
+    REQUIRE (package->undo().has_value());
+    const auto& undone = package->song();
+    REQUIRE (undone.tracks.size() == 2);
+    // The snapshot's, not the Guitar's state when it was deleted.
+    CHECK (trackInput (undone, "track-guitar") == TrackInput { .armed = true, .inputChannels = { 2, 3 } });
+    // A Track the current Song has keeps its current state.
+    CHECK (trackInput (undone, "track-backing") == TrackInput { .armed = true, .inputChannels = { 0 } });
+
+    auto added = overdub::song::addTrack (package->song(), { 1 }, overdub::song::randomPick());
+    REQUIRE (package->edit (added.song, added.label).has_value());
+    auto addedDisarmed = package->song().settings;
+    addedDisarmed.trackInputs.at (added.trackId).armed = false;
+    package->changeWithoutHistory (addedDisarmed);
+    REQUIRE (package->undo().has_value());
+    REQUIRE (package->redo().has_value());
+    REQUIRE (package->song().tracks.size() == 3);
+    CHECK (trackInput (package->song(), added.trackId) == TrackInput { .armed = true, .inputChannels = { 1 } }); // as the redo snapshot holds it
 }
 
 TEST_CASE ("undo and redo keep the current plugin state of every Insert Chain slot that still exists", "[song][package][history]")
@@ -451,27 +489,28 @@ TEST_CASE ("undo and redo keep the current plugin state of every Insert Chain sl
     auto package = createPackage (temp.package(), song);
 
     auto withNewSlot = song;
-    withNewSlot.tracks.at (0).insertChain.push_back (overdub::song::testing::insertSlot ("slot-new", "dddd"));
+    withNewSlot.tracks.at (0).insertChain.push_back (overdub::song::testing::insertSlot ("slot-new"));
+    withNewSlot.settings.pluginStateHashBySlot["slot-new"] = "dddd";
     REQUIRE (package->edit (withNewSlot, "Add Plugin").has_value());
 
-    auto tweaked = package->song(); // parameters changed in the plugins' own editors
-    tweaked.tracks.at (0).insertChain.at (0).stateHash = "cccc";
-    tweaked.tracks.at (0).insertChain.back().stateHash = "ffff";
-    tweaked.master.insertChain.at (0).stateHash = "eeee";
+    auto tweaked = package->song().settings; // parameters changed in the plugins' own editors
+    tweaked.pluginStateHashBySlot.at ("slot-1") = "cccc";
+    tweaked.pluginStateHashBySlot.at ("slot-new") = "ffff";
+    tweaked.pluginStateHashBySlot.at ("slot-master") = "eeee";
     package->changeWithoutHistory (tweaked);
 
     REQUIRE (package->undo().has_value());
     const auto& undone = package->song();
     REQUIRE (undone.tracks.at (0).insertChain.size() == 2);
-    CHECK (undone.tracks.at (0).insertChain.at (0).stateHash == "cccc");
-    CHECK (undone.master.insertChain.at (0).stateHash == "eeee");
+    CHECK (pluginStateHash (undone, "slot-1") == "cccc");
+    CHECK (pluginStateHash (undone, "slot-master") == "eeee");
 
     REQUIRE (package->redo().has_value());
     const auto& redone = package->song();
     REQUIRE (redone.tracks.at (0).insertChain.size() == 3);
-    CHECK (redone.tracks.at (0).insertChain.at (0).stateHash == "cccc");
-    CHECK (redone.tracks.at (0).insertChain.back().stateHash == "dddd"); // not in the Song undo left: the snapshot's state
-    CHECK (redone.master.insertChain.at (0).stateHash == "eeee");
+    CHECK (pluginStateHash (redone, "slot-1") == "cccc");
+    CHECK (pluginStateHash (redone, "slot-new") == "dddd"); // not in the Song undo left: the snapshot's state
+    CHECK (pluginStateHash (redone, "slot-master") == "eeee");
 }
 
 TEST_CASE ("live plugin state is captured into every history step and every debounced write", "[song][package][plugins]")
@@ -484,30 +523,30 @@ TEST_CASE ("live plugin state is captured into every history step and every debo
     int captures = 0;
     package->setPluginStateCapture ([&captures] (Song& captured) {
         ++captures;
-        captured.tracks.at (0).insertChain.at (0).stateHash = "live-" + std::to_string (captures);
+        captured.settings.pluginStateHashBySlot["slot-1"] = "live-" + std::to_string (captures);
     });
 
     // A history step holds the state captured as it was made.
     REQUIRE (package->edit (renamedFirstTrack (package->song(), "Bass"), "Rename").has_value());
     CHECK (captures == 1);
-    CHECK (package->song().tracks.at (0).insertChain.at (0).stateHash == "live-1");
-    CHECK (songOnDisk (temp.package()).tracks.at (0).insertChain.at (0).stateHash == "live-1");
+    CHECK (pluginStateHash (package->song(), "slot-1") == "live-1");
+    CHECK (pluginStateHash (songOnDisk (temp.package()), "slot-1") == "live-1");
 
     // A debounced write captures again, just before it writes song.json.
     const auto start = SongPackage::Clock::now();
-    auto armed = package->song();
-    armed.tracks.at (0).armed = ! armed.tracks.at (0).armed;
+    auto armed = package->song().settings;
+    armed.trackInputs.at ("track-guitar").armed = ! armed.trackInputs.at ("track-guitar").armed;
     package->changeWithoutHistory (armed, start);
     CHECK (captures == 1);
     REQUIRE (package->writeIfDue (start + 500ms).has_value());
     CHECK (captures == 2);
-    CHECK (songOnDisk (temp.package()).tracks.at (0).insertChain.at (0).stateHash == "live-2");
+    CHECK (pluginStateHash (songOnDisk (temp.package()), "slot-1") == "live-2");
 
     // Undo keeps the slot's live state, captured as the undo happens.
     REQUIRE (package->undo().has_value());
     CHECK (captures == 3);
     CHECK (package->song().tracks.at (0).name == song.tracks.at (0).name);
-    CHECK (package->song().tracks.at (0).insertChain.at (0).stateHash == "live-3");
+    CHECK (pluginStateHash (package->song(), "slot-1") == "live-3");
 
     // Nothing pending: flush writes nothing and captures nothing.
     REQUIRE (package->flush().has_value());
@@ -761,7 +800,8 @@ TEST_CASE ("on open, unreferenced plugin blobs are deleted and referenced ones s
 
     auto song = overdub::song::makeEmptySong (48000);
     song.tracks.push_back (overdub::song::Track { .id = "track-1", .name = "Guitar" });
-    song.tracks.at (0).insertChain.push_back (InsertSlot { .id = "slot-baseline", .stateHash = onlyInBaseline });
+    song.tracks.at (0).insertChain.push_back (InsertSlot { .id = "slot-baseline" });
+    song.settings.pluginStateHashBySlot["slot-baseline"] = onlyInBaseline;
 
     std::string inUndoSteps, onlyInRedoStep, onlyInSongJson, unreferenced;
     {
@@ -773,16 +813,18 @@ TEST_CASE ("on open, unreferenced plugin blobs are deleted and referenced ones s
         unreferenced = *package->storePluginState (juce::MemoryBlock ("never used", 10));
 
         auto replaced = song;
-        replaced.tracks.at (0).insertChain = { InsertSlot { .id = "slot-1", .stateHash = inUndoSteps } };
+        replaced.tracks.at (0).insertChain = { InsertSlot { .id = "slot-1" } };
+        replaced.settings.pluginStateHashBySlot = { { "slot-1", inUndoSteps } };
         REQUIRE (package->edit (replaced, "Replace Plugin").has_value()); // snapshot 1
 
         auto added = replaced;
-        added.tracks.at (0).insertChain.push_back (InsertSlot { .id = "slot-2", .stateHash = onlyInRedoStep });
+        added.tracks.at (0).insertChain.push_back (InsertSlot { .id = "slot-2" });
+        added.settings.pluginStateHashBySlot["slot-2"] = onlyInRedoStep;
         REQUIRE (package->edit (added, "Add Plugin").has_value()); // snapshot 2
         REQUIRE (package->undo().has_value());                     // snapshot 2 stays as redo
 
-        auto tweaked = package->song(); // a parameter change: song.json only
-        tweaked.tracks.at (0).insertChain.at (0).stateHash = onlyInSongJson;
+        auto tweaked = package->song().settings; // a parameter change: song.json only
+        tweaked.pluginStateHashBySlot.at ("slot-1") = onlyInSongJson;
         package->changeWithoutHistory (tweaked);
     } // closing flushes song.json
     const auto blob = [&] (const std::string& hash) { return temp.package().getChildFile ("plugins/" + hash + ".state"); };
@@ -895,7 +937,9 @@ TEST_CASE ("a track name that is not valid UTF-8 is an Error, never an exception
     SECTION ("a change without history, flushed and then closed")
     {
         auto package = createPackage (temp.package(), song);
-        package->changeWithoutHistory (invalidName);
+        auto invalidCamera = song.settings;
+        invalidCamera.cameraDeviceId = "cam\xff\xfe";
+        package->changeWithoutHistory (invalidCamera);
         const auto flushed = package->flush();
         REQUIRE_FALSE (flushed.has_value());
         CHECK (flushed.error().code == "song.json_unserializable");

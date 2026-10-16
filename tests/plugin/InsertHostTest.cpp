@@ -83,9 +83,9 @@ struct FakeInstantiator
     }
 };
 
-InsertSlot slotNamed (const std::string& id, std::string stateHash = {})
+InsertSlot slotNamed (const std::string& id)
 {
-    return InsertSlot { .id = id, .component = { "aufx", "test", "ovdb" }, .name = id, .stateHash = std::move (stateHash) };
+    return InsertSlot { .id = id, .component = { "aufx", "test", "ovdb" }, .name = id };
 }
 
 // Track A with slots a1, a2; Track B with none; the Master with m1.
@@ -232,7 +232,7 @@ TEST_CASE ("a slot's saved state is restored when its plugin arrives", "[plugin]
     states.blobs["hash-0.25"] = juce::MemoryBlock ("0.25", 4);
     InsertHost host { fake.instantiator(), states.loader(), hostRate, hostBlock };
     auto song = songWithChains();
-    song.tracks[0].insertChain[0].stateHash = "hash-0.25";
+    song.settings.pluginStateHashBySlot["a1"] = "hash-0.25";
     host.sync (song);
 
     auto* restored = fake.succeed (0, 0.9f);
@@ -245,7 +245,7 @@ TEST_CASE ("a missing state blob is logged and the plugin still loads with its d
     FakeStateStore states;
     InsertHost host { fake.instantiator(), states.loader(), hostRate, hostBlock };
     auto song = songWithChains();
-    song.tracks[0].insertChain[0].stateHash = "hash-gone";
+    song.settings.pluginStateHashBySlot["a1"] = "hash-gone";
     host.sync (song);
     ScopedLogCapture capture;
 
@@ -264,16 +264,16 @@ TEST_CASE ("captureStates stores every ready plugin's state into its slot's hash
     FakeStateStore states;
     InsertHost host { fake.instantiator(), states.loader(), hostRate, hostBlock };
     auto song = songWithChains();
-    song.tracks[0].insertChain[1].stateHash = "hash-kept";
+    song.settings.pluginStateHashBySlot["a2"] = "hash-kept";
     host.sync (song);
     fake.succeed (0, 0.25f);
     fake.succeed (2, 1.0f);
 
     REQUIRE (host.captureStates (song, states.store()) == 0);
 
-    CHECK (song.tracks[0].insertChain[0].stateHash == "hash-0.25");
-    CHECK (song.tracks[0].insertChain[1].stateHash == "hash-kept"); // still loading: unchanged
-    CHECK (song.master.insertChain[0].stateHash == "hash-1");
+    CHECK (pluginStateHash (song, "a1") == "hash-0.25");
+    CHECK (pluginStateHash (song, "a2") == "hash-kept"); // still loading: unchanged
+    CHECK (pluginStateHash (song, "m1") == "hash-1");
     CHECK (states.blobs.at ("hash-0.25").toString() == "0.25");
 }
 
@@ -361,7 +361,7 @@ TEST_CASE ("a state that cannot be stored is logged per slot and the slot keeps 
     FakeInstantiator fake;
     InsertHost host { fake.instantiator(), {}, hostRate, hostBlock };
     auto song = songWithChains();
-    song.tracks[0].insertChain[0].stateHash = "hash-old";
+    song.settings.pluginStateHashBySlot["a1"] = "hash-old";
     host.sync (song);
     fake.succeed (0);
     fake.succeed (2);
@@ -372,7 +372,7 @@ TEST_CASE ("a state that cannot be stored is logged per slot and the slot keeps 
     });
 
     CHECK (failures == 2);
-    CHECK (song.tracks[0].insertChain[0].stateHash == "hash-old");
+    CHECK (pluginStateHash (song, "a1") == "hash-old");
     const auto logged = eventsNamed (capture, "song.write_failed");
     REQUIRE (logged.size() == 2);
     CHECK (logged[0].at ("slot_id") == "a1");
@@ -386,8 +386,8 @@ TEST_CASE ("plugin.insert_ready says whether the saved state was really restored
     states.blobs["hash-0.25"] = juce::MemoryBlock ("0.25", 4);
     InsertHost host { fake.instantiator(), states.loader(), hostRate, hostBlock };
     auto song = songWithChains();
-    song.tracks[0].insertChain[0].stateHash = "hash-0.25";
-    song.tracks[0].insertChain[1].stateHash = "hash-gone";
+    song.settings.pluginStateHashBySlot["a1"] = "hash-0.25";
+    song.settings.pluginStateHashBySlot["a2"] = "hash-gone";
     host.sync (song);
     ScopedLogCapture capture;
 
@@ -492,7 +492,6 @@ TEST_CASE ("a crashed slot reloads with the state the Song holds for it now", "[
 
     REQUIRE (fake.requests.size() == 4);
     CHECK (fake.requests[3].slot.id == "a1");
-    CHECK (fake.requests[3].slot.stateHash == "hash-0.25");
     CHECK (host.status ("a1") == InsertStatus::loading);
     CHECK (host.reloadCrashed (song) == 0); // already loading
     const auto reloading = eventsNamed (capture, "plugin.insert_reloading");

@@ -3,7 +3,6 @@
 #include <juce_core/juce_core.h>
 
 #include <algorithm>
-#include <map>
 
 namespace overdub::song
 {
@@ -43,65 +42,74 @@ Song makeEmptySong (int sampleRate)
     return song;
 }
 
+const TrackInput& trackInput (const Song& song, const Id& trackId)
+{
+    static const TrackInput none;
+    const auto found = song.settings.trackInputs.find (trackId);
+    return found != song.settings.trackInputs.end() ? found->second : none;
+}
+
+const std::string& pluginStateHash (const Song& song, const Id& slotId)
+{
+    static const std::string none;
+    const auto found = song.settings.pluginStateHashBySlot.find (slotId);
+    return found != song.settings.pluginStateHashBySlot.end() ? found->second : none;
+}
+
 namespace
 {
-// Every Insert Chain slot of the Song, Master's included, as slot id to state hash.
-std::map<Id, std::string> stateHashBySlotId (const Song& song)
+std::set<Id> trackIds (const Song& song)
 {
-    std::map<Id, std::string> hashes;
+    std::set<Id> ids;
+    for (const auto& track : song.tracks)
+        ids.insert (track.id);
+    return ids;
+}
+
+// Every Insert Chain slot id of the Song, Master's included.
+std::set<Id> insertSlotIds (const Song& song)
+{
+    std::set<Id> ids;
     for (const auto& slot : song.master.insertChain)
-        hashes[slot.id] = slot.stateHash;
+        ids.insert (slot.id);
     for (const auto& track : song.tracks)
         for (const auto& slot : track.insertChain)
-            hashes[slot.id] = slot.stateHash;
-    return hashes;
+            ids.insert (slot.id);
+    return ids;
 }
 
-void keepCurrentStateHashes (std::vector<InsertSlot>& insertChain, const std::map<Id, std::string>& currentHashes)
+// An entry for each id the snapshot has: the current one when the current Song has that id too,
+// else the snapshot's.
+template <typename Entry>
+std::map<Id, Entry> entriesAfterRestore (const std::set<Id>& snapshotIds,
+                                         const std::map<Id, Entry>& snapshotEntries,
+                                         const std::set<Id>& currentIds,
+                                         const std::map<Id, Entry>& currentEntries)
 {
-    for (auto& slot : insertChain)
-        if (const auto current = currentHashes.find (slot.id); current != currentHashes.end())
-            slot.stateHash = current->second;
+    std::map<Id, Entry> entries;
+    for (const auto& id : snapshotIds)
+    {
+        const auto& from = currentIds.contains (id) ? currentEntries : snapshotEntries;
+        if (const auto entry = from.find (id); entry != from.end())
+            entries.emplace (id, entry->second);
+    }
+    return entries;
 }
 } // namespace
 
-Song keepStateOutsideHistory (Song snapshot, const Song& current)
+Song withContentOf (Song snapshot, const Song& current)
 {
-    snapshot.preRoll = current.preRoll;
-    snapshot.cameraArmed = current.cameraArmed;
-    snapshot.cameraDeviceId = current.cameraDeviceId;
-    snapshot.playhead = current.playhead;
+    auto settings = current.settings;
+    settings.trackInputs = entriesAfterRestore (trackIds (snapshot), snapshot.settings.trackInputs, trackIds (current), current.settings.trackInputs);
+    settings.pluginStateHashBySlot = entriesAfterRestore (insertSlotIds (snapshot), snapshot.settings.pluginStateHashBySlot, insertSlotIds (current), current.settings.pluginStateHashBySlot);
 
-    const bool exportChoiceExists = ! current.exportVideoTakeId.has_value()
-                                 || std::ranges::any_of (snapshot.videoTakes, [&] (const VideoTake& videoTake) { return videoTake.id == *current.exportVideoTakeId; });
-    if (exportChoiceExists)
-        snapshot.exportVideoTakeId = current.exportVideoTakeId;
+    const auto& exportChoice = current.settings.exportVideoTakeId;
+    if (exportChoice.has_value() && ! std::ranges::contains (snapshot.videoTakes, *exportChoice, &VideoTake::id))
+        settings.exportVideoTakeId = snapshot.settings.exportVideoTakeId;
 
-    for (auto& track : snapshot.tracks)
-    {
-        const auto currentTrack = std::ranges::find (current.tracks, track.id, &Track::id);
-        if (currentTrack == current.tracks.end())
-            continue;
-        track.armed = currentTrack->armed;
-        track.inputChannels = currentTrack->inputChannels;
-    }
-
-    const auto currentHashes = stateHashBySlotId (current);
-    keepCurrentStateHashes (snapshot.master.insertChain, currentHashes);
-    for (auto& track : snapshot.tracks)
-        keepCurrentStateHashes (track.insertChain, currentHashes);
+    snapshot.settings = std::move (settings);
     return snapshot;
 }
-
-namespace
-{
-void addHashes (const std::vector<InsertSlot>& insertChain, std::set<std::string>& hashes)
-{
-    for (const auto& slot : insertChain)
-        if (! slot.stateHash.empty())
-            hashes.insert (slot.stateHash);
-}
-} // namespace
 
 std::vector<std::string> trackColours (const Song& song)
 {
@@ -114,9 +122,9 @@ std::vector<std::string> trackColours (const Song& song)
 std::set<std::string> pluginStateHashes (const Song& song)
 {
     std::set<std::string> hashes;
-    addHashes (song.master.insertChain, hashes);
-    for (const auto& track : song.tracks)
-        addHashes (track.insertChain, hashes);
+    for (const auto& slotId : insertSlotIds (song))
+        if (const auto& hash = pluginStateHash (song, slotId); ! hash.empty())
+            hashes.insert (hash);
     return hashes;
 }
 } // namespace overdub::song

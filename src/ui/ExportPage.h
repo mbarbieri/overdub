@@ -33,7 +33,7 @@ struct ExportPageState
     double progress = 0.0; // 0..1 while rendering
     std::optional<juce::File> finishedFile;
     std::vector<video::VideoTakeSpan> videoTakes; // the Song's, in its order
-    std::optional<song::Id> storedVideoTakeId;     // Song::exportVideoTakeId
+    std::optional<song::Id> storedVideoTakeId;     // SongSettings::exportVideoTakeId
 };
 
 // What the span bar shows, in Song samples.

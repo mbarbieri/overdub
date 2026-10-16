@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -82,8 +83,7 @@ public:
         Track added;
         added.id = makeId();
         added.name = name;
-        added.armed = armed;
-        added.inputChannels = std::move (inputChannels);
+        trackInputs[added.id] = TrackInput { .armed = armed, .inputChannels = std::move (inputChannels) };
         tracks.push_back (std::move (added));
         return *this;
     }
@@ -105,6 +105,7 @@ public:
         {
             auto song = fixture->package->song();
             song.tracks.insert (song.tracks.end(), tracks.begin(), tracks.end());
+            song.settings.trackInputs.insert (trackInputs.begin(), trackInputs.end());
             REQUIRE (fixture->package->edit (song, "Add Tracks").has_value());
         }
         return fixture;
@@ -121,6 +122,7 @@ private:
     int songSampleRate = 48000;
     std::vector<BackingSpec> backingTracks;
     std::vector<Track> tracks;
+    std::map<Id, TrackInput> trackInputs;
 };
 
 // The 3-Track fixture the UI tests and snapshots use: a Backing Track "Band Mix", and "Guitar"

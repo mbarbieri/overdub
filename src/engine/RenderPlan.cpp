@@ -112,7 +112,7 @@ private:
     std::map<std::string, SourceAudio> loaded;
 };
 
-std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLoader& loader, const LiveInput& liveInput, bool monitored)
+std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, const song::TrackInput& input, SourceLoader& loader, const LiveInput& liveInput, bool monitored)
 {
     std::vector<LayeredClip> layered;
     std::vector<SourceAudio> sources;
@@ -124,7 +124,7 @@ std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLo
             sources.push_back (std::move (audio));
     }
     // Only a monitored Armed Track hears its input; any other Track's input channels stay silent.
-    auto monitorChannels = track.armed && monitored ? track.inputChannels : std::vector<int> {};
+    auto monitorChannels = input.armed && monitored ? input.inputChannels : std::vector<int> {};
     return std::make_unique<TrackPlayer> (juce::String (track.id), flattenClips (layered), std::move (sources), liveInput, std::move (monitorChannels));
 }
 
@@ -174,11 +174,11 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
     {
         trackIds.push_back (track.id);
         trackStrips.push_back (std::make_unique<StripControl>());
-        if (track.armed)
+        if (const auto& input = song::trackInput (song, track.id); input.armed)
         {
             auto tap = std::make_unique<InputTap>();
             tap->trackId = track.id;
-            tap->channels = track.inputChannels;
+            tap->channels = input.inputChannels;
             inputTaps.push_back (std::move (tap));
         }
     }
@@ -205,7 +205,7 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
         const auto& track = song.tracks[trackIndex];
         clipCount += (int) track.clips.size();
         const auto monitored = ! monitoredTracks.has_value() || monitoredTracks->contains (track.id);
-        const auto player = graph.addNode (makeTrackPlayer (track, loader, liveInput, monitored), {}, Graph::UpdateKind::none)->nodeID;
+        const auto player = graph.addNode (makeTrackPlayer (track, song::trackInput (song, track.id), loader, liveInput, monitored), {}, Graph::UpdateKind::none)->nodeID;
 
         const auto chain = addChain (graph, makeChain (makeInserts, track.id, track.insertChain));
         insertCount += chain.count;

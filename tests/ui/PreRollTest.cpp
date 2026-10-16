@@ -59,9 +59,8 @@ struct PreRollFixture
         click.name = "Click";
         auto guitar = trackWith ("guitar", {});
         guitar.name = "Guitar";
-        guitar.armed = true;
-        guitar.inputChannels = { 0 };
         song.tracks = { click, guitar };
+        song.settings.trackInputs["guitar"] = overdub::song::TrackInput { .armed = true, .inputChannels = { 0 } };
         REQUIRE ((*created)->edit (song, "Set up").has_value());
 
         openSong = std::make_unique<OpenSong> (std::move (*created), AudioBinding { &engine, RecordLatency { 200, 312, 0 }, { "In 1", "In 2" } });
@@ -223,7 +222,7 @@ TEST_CASE ("changing pre-roll writes the Song without a history step, and not wh
     const auto stepBefore = f.openSong->package().undoLabel();
 
     f.openSong->setPreRoll (PreRoll::fourSeconds);
-    CHECK (f.song().preRoll == PreRoll::fourSeconds);
+    CHECK (f.song().settings.preRoll == PreRoll::fourSeconds);
     CHECK (f.openSong->package().undoLabel() == stepBefore);
     CHECK (f.openSong->package().hasPendingWrite());
 
@@ -233,9 +232,9 @@ TEST_CASE ("changing pre-roll writes the Song without a history step, and not wh
     REQUIRE (json.has_value());
     const auto written = overdub::song::songFromJson (*json);
     REQUIRE (written.has_value());
-    CHECK (written->preRoll == PreRoll::fourSeconds);
+    CHECK (written->settings.preRoll == PreRoll::fourSeconds);
 
     REQUIRE (f.openSong->record().has_value());
     f.openSong->setPreRoll (PreRoll::off);
-    CHECK (f.song().preRoll == PreRoll::fourSeconds);
+    CHECK (f.song().settings.preRoll == PreRoll::fourSeconds);
 }

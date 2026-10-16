@@ -190,7 +190,7 @@ TEST_CASE ("the Record stage shows playback when not recording, and the camera's
 
     // Armed and stopped: the live feed, to frame the shot.
     click (page.cameraArmButton);
-    REQUIRE (f.song().cameraArmed);
+    REQUIRE (f.song().settings.cameraArmed);
     CHECK_FALSE (page.showsStagePlayback());
     CHECK (isShown (page.cameraStage));
 

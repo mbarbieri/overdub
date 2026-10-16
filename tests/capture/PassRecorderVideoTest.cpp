@@ -51,10 +51,8 @@ struct VideoFixture
         REQUIRE (created.has_value());
         package = std::move (*created);
         auto song = package->song();
-        auto track = trackWith ("track-guitar", {});
-        track.armed = true;
-        track.inputChannels = { 0 };
-        song.tracks.push_back (track);
+        song.tracks.push_back (trackWith ("track-guitar", {}));
+        song.settings.trackInputs["track-guitar"] = overdub::song::TrackInput { .armed = true, .inputChannels = { 0 } };
         REQUIRE (package->edit (song, "Set up").has_value());
         engine.loadSong (package->song(), package->location());
         device.hostTimeNs = firstBlockHostNs;

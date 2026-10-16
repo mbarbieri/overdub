@@ -76,6 +76,8 @@ struct MainWindowFixture
         return *found;
     }
 
+    const song::TrackInput& inputOf (const std::string& trackName) const { return song::trackInput (song(), trackNamed (trackName).id); }
+
     TrackRow& rowNamed (const std::string& name)
     {
         const auto& trackId = trackNamed (name).id;

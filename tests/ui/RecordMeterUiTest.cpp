@@ -104,7 +104,7 @@ TEST_CASE ("a Track that is not Armed meters on its Record row what its Mixer me
     RecordMeterFixture f;
     auto& row = f.rowNamed ("Band Mix");
     auto& strip = f.stripNamed ("Band Mix");
-    REQUIRE (! f.trackNamed ("Band Mix").armed);
+    REQUIRE (! f.inputOf ("Band Mix").armed);
 
     f.openSong->playOrStop();
     f.runBlocks (4);

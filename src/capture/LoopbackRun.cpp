@@ -60,8 +60,7 @@ core::Expected<void> LoopbackRun::begin()
     song::Track loopbackTrack;
     loopbackTrack.id = song::makeId();
     loopbackTrack.name = "Loopback";
-    loopbackTrack.armed = true;
-    loopbackTrack.inputChannels = { 0 };
+    song.settings.trackInputs[loopbackTrack.id] = song::TrackInput { .armed = true, .inputChannels = { 0 } };
     song.tracks.push_back (loopbackTrack);
     if (auto edited = package->edit (song, "Add Loopback Track"); ! edited.has_value())
         return std::unexpected (edited.error());
