@@ -251,8 +251,12 @@ TEST_CASE ("Esc during a grip drag cancels it and leaves the order unchanged", "
     auto& headerGrip = f.editHeaderNamed ("Band Mix").grip;
     pressAndDragGrip (headerGrip, timeline, timeline.getHeight());
     REQUIRE (timeline.trackDrag().isActive());
+    core::ScopedLogCapture capture;
     CHECK (pressKey (*f.window, juce::KeyPress (juce::KeyPress::escapeKey)));
     CHECK_FALSE (timeline.trackDrag().isActive());
+    const auto cancelled = core::testing::firstEvent (capture, "ui.track_drag_cancelled");
+    CHECK (cancelled.at ("page") == "edit");
+    CHECK (cancelled.at ("reason") == "escape");
     releaseGrip (headerGrip, timeline, timeline.getHeight());
 
     CHECK (f.song() == songBefore);
