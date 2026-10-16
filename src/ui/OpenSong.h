@@ -69,9 +69,9 @@
 // export's custody of the plugins: poll() tells it whether the audio thread has taken the empty
 // plan (Engine::hasPendingPlan), and it renders the Song through its own plan of the same graph,
 // sharing the plugins, or gives the export up after ExportRun::audioTimeout (issue #64). While it
-// runs, record, play, import and Separation are refused (ui.export_running), and edits change the Song but not the
-// engine; the InsertHost follows them through the run (a removed slot stays hosted until the
-// export ends, issue #65). When it ends, poll() reloads the engine with the current Song and
+// runs, record, play, import and Separation are refused (ui.export_running), and edits change the
+// Song but not the engine; the InsertHost follows them through the run (a removed slot stays hosted
+// until the export ends, issue #65). When it ends, poll() reloads the engine with the current Song and
 // returns its Error. Without audio the export starts at once. Detaching the audio stops a running
 // export (logged as ui.export_stopped).
 //

@@ -448,7 +448,8 @@ bool MainComponent::applyEdit (core::Expected<song::Song> changed, const std::st
 
 void MainComponent::armCamera (bool armed)
 {
-    if (openSong == nullptr)
+    // No camera access prompt for an arm the running activity would refuse.
+    if (openSong == nullptr || openSong->refusalOf (Gesture::setCameraArmed).has_value())
         return;
     const auto apply = [this] (bool arm) {
         if (openSong == nullptr)
@@ -627,7 +628,8 @@ void MainComponent::convertSampleRate (int toRate)
 
 void MainComponent::chooseInsert (const song::Id& trackId)
 {
-    if (openSong == nullptr || ! chooseInsertPlugin)
+    // No plugin menu for an Insert the running activity would refuse.
+    if (openSong == nullptr || openSong->refusalOf (Gesture::addInsert).has_value() || ! chooseInsertPlugin)
         return;
     auto plugins = listInsertPlugins ? listInsertPlugins() : std::vector<plugin::AvailableAudioUnit> {};
     chooseInsertPlugin (plugins, [safeThis = juce::Component::SafePointer<MainComponent> (this), trackId, plugins] (std::optional<std::size_t> picked) {
@@ -727,7 +729,8 @@ void MainComponent::handleUnlessRefused (const core::Expected<void>& result)
 
 void MainComponent::handleOperationError (const core::Error& error)
 {
-    // The edit the operation was for would be refused anyway: that is what happened, not presented.
+    // During a Pass, a Separation or a conversion the edit is refused anyway: report the refusal,
+    // not the operation's Error.
     handleUnlessRefused (openSong->refusalOf (Gesture::edit).value_or (error));
 }
 

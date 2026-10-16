@@ -76,6 +76,6 @@ enum class Gesture
 // None when it is allowed.
 std::optional<core::Error> refusal (const Activity& activity, Gesture gesture);
 
-// Whether the Error is one refusal() returns.
+// Whether the Error is one refusal() returns (its code, with the field `gesture`).
 bool isRefusal (const core::Error& error);
 } // namespace overdub::ui
