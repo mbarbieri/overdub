@@ -1,16 +1,13 @@
 #include "engine/MixLaw.h"
 
+#include "core/Decibels.h"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 
 namespace overdub::engine
 {
-float volumeGain (double volumeDb)
-{
-    return (float) std::pow (10.0, volumeDb / 20.0);
-}
-
 ChannelGains panGains (double pan)
 {
     const auto clamped = std::clamp (pan, -1.0, 1.0);
@@ -34,7 +31,7 @@ MixGains mixGains (const song::Song& song)
 {
     const auto anySoloed = std::ranges::any_of (song.tracks, &song::Track::solo);
     MixGains gains;
-    gains.master = volumeGain (song.master.volumeDb);
+    gains.master = (float) core::decibelsToGain (song.master.volumeDb);
     for (const auto& track : song.tracks)
     {
         if (! isAudible (track, anySoloed))
@@ -42,7 +39,7 @@ MixGains mixGains (const song::Song& song)
             gains.tracks.push_back ({ 0.0f, 0.0f });
             continue;
         }
-        const auto volume = volumeGain (track.volumeDb);
+        const auto volume = (float) core::decibelsToGain (track.volumeDb);
         const auto pan = panGains (track.pan);
         gains.tracks.push_back ({ volume * pan.left, volume * pan.right });
     }

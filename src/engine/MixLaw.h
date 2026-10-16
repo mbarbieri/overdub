@@ -29,9 +29,6 @@ struct ChannelGains
     bool operator== (const ChannelGains&) const = default;
 };
 
-// 10^(volumeDb / 20).
-float volumeGain (double volumeDb);
-
 // The constant-power pan gains for pan in [-1, 1] (clamped).
 ChannelGains panGains (double pan);
 

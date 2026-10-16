@@ -1,5 +1,6 @@
 #include "ui/MixerGeometry.h"
 
+#include "core/Decibels.h"
 #include "song/MixEdits.h"
 
 #include <algorithm>
@@ -108,7 +109,7 @@ double meterPosition (float peak)
 {
     if (peak <= 0.0f)
         return 0.0;
-    const auto db = 20.0 * std::log10 ((double) peak);
+    const auto db = core::gainToDecibels ((double) peak);
     if (db <= song::minVolumeDb)
         return 0.0;
     return dbToFaderPosition (db);

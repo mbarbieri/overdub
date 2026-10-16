@@ -62,14 +62,14 @@ std::optional<std::size_t> choiceIndexFor (const std::vector<InputChoice>& choic
 
 song::Song withArmed (song::Song song, const song::Id& trackId, bool armed)
 {
-    if (auto track = std::ranges::find (song.tracks, trackId, &song::Track::id); track != song.tracks.end())
+    if (auto* track = song::findTrack (song, trackId))
         track->armed = armed;
     return song;
 }
 
 song::Song withInputChannels (song::Song song, const song::Id& trackId, std::vector<int> inputChannels)
 {
-    if (auto track = std::ranges::find (song.tracks, trackId, &song::Track::id); track != song.tracks.end())
+    if (auto* track = song::findTrack (song, trackId))
         track->inputChannels = std::move (inputChannels);
     return song;
 }

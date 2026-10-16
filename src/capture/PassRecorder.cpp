@@ -489,8 +489,8 @@ core::Expected<RecordedPass> PassRecorder::addPass (song::SongPackage::Clock::ti
         changed.takes.push_back (take);
         pass.takeIds.push_back (take.id);
 
-        const auto track = std::ranges::find (changed.tracks, writer->trackId, &song::Track::id);
-        if (track == changed.tracks.end())
+        auto* track = song::findTrack (changed, writer->trackId);
+        if (track == nullptr)
             continue; // deleted during the Pass: the Take stays, unheard
         if (auto clip = song::clipAsRecorded (take, pass.startSample, song::makeId()))
             track->clips.push_back (std::move (*clip));

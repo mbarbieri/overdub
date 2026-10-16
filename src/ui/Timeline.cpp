@@ -1,5 +1,6 @@
 #include "ui/Timeline.h"
 
+#include "core/Decibels.h"
 #include "core/Error.h"
 #include "core/Log.h"
 #include "song/ClipEdits.h"
@@ -885,7 +886,7 @@ void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Colou
             const auto columns = waveformColumns (peaks, sourceStart, timelineView.samplesPerPixel, lastX - firstX);
             const auto centre = (float) waveArea.getCentreY();
             const auto halfHeight = (float) waveArea.getHeight() * 0.5f;
-            const auto gain = (float) song::linearGain (clip.gainDb);
+            const auto gain = (float) core::decibelsToGain (clip.gainDb);
             g.setColour (colours::onTrackColour.withAlpha (0.55f));
             for (std::size_t i = 0; i < columns.size(); ++i)
             {

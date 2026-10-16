@@ -55,6 +55,7 @@ TEST_CASE ("an Insert is added to the end of a Track's or the Master's chain", "
     const auto unknown = addInsert (songWithGuitar(), "track-nope", slotNamed ("slot-1", "AUDelay"));
     REQUIRE_FALSE (unknown.has_value());
     CHECK (unknown.error().code == "song.track_not_found");
+    CHECK (unknown.error().fields.at ("track_id") == "track-nope");
 }
 
 TEST_CASE ("an Insert is removed from whichever chain holds it", "[song][inserts]")

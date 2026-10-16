@@ -1,7 +1,5 @@
 #include "song/InsertEdits.h"
 
-#include "song/MixEdits.h"
-
 #include <algorithm>
 
 namespace overdub::song
@@ -17,8 +15,8 @@ std::string chainOwnerName (const Song& song, const Id& trackId)
 {
     if (trackId.empty())
         return "Master";
-    const auto track = std::ranges::find (song.tracks, trackId, &Track::id);
-    return track != song.tracks.end() ? track->name : "Track";
+    const auto* track = findTrack (song, trackId);
+    return track != nullptr ? track->name : "Track";
 }
 
 // Where a slot is: the chain's owner (empty Track id = the Master) and the slot itself.
@@ -67,10 +65,10 @@ core::Expected<Song> addInsert (Song song, const Id& trackId, InsertSlot slot)
         song.master.insertChain.push_back (std::move (slot));
         return song;
     }
-    const auto track = std::ranges::find (song.tracks, trackId, &Track::id);
-    if (track == song.tracks.end())
-        return std::unexpected (trackNotFound (trackId));
-    track->insertChain.push_back (std::move (slot));
+    const auto track = lookupTrack (song, trackId);
+    if (! track.has_value())
+        return std::unexpected (track.error());
+    (*track)->insertChain.push_back (std::move (slot));
     return song;
 }
 

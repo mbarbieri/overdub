@@ -18,12 +18,6 @@ SampleCount passStartOf (const Song& song, const Take& take)
     return pass != song.passes.end() ? pass->startSample : take.origin;
 }
 
-Track* mutableTrack (Song& song, const Id& trackId)
-{
-    const auto track = std::ranges::find (song.tracks, trackId, &Track::id);
-    return track != song.tracks.end() ? &*track : nullptr;
-}
-
 SampleCount overlapLength (const std::vector<SampleSpan>& spans, SampleSpan within)
 {
     SampleCount total = 0;
@@ -88,12 +82,6 @@ const Take* findTake (const Song& song, const Id& takeId)
 {
     const auto take = std::ranges::find (song.takes, takeId, &Take::id);
     return take != song.takes.end() ? &*take : nullptr;
-}
-
-const Track* findTrack (const Song& song, const Id& trackId)
-{
-    const auto track = std::ranges::find (song.tracks, trackId, &Track::id);
-    return track != song.tracks.end() ? &*track : nullptr;
 }
 
 std::optional<Clip> clipAsRecorded (const Take& take, SampleCount passStart, const Id& clipId)
@@ -213,7 +201,7 @@ core::Expected<Song> swapClipTake (Song song, const Id& clipId, const Id& takeId
         return std::unexpected (core::Error { "song.take_not_under_clip", "the Take has no audio under the Clip", { { "clip_id", clipId }, { "take_id", takeId } } });
 
     const auto origin = take->origin;
-    auto* track = mutableTrack (song, trackOfClip (song, clipId)->id);
+    auto* track = findTrack (song, trackOfClip (song, clipId)->id);
     auto& clip = *std::ranges::find (track->clips, clipId, &Clip::id);
     clip.source = ClipSource { ClipSourceKind::take, takeId };
     clip.timelineStart = start;
@@ -229,7 +217,7 @@ core::Expected<Song> bringBackTake (Song song, const Id& takeId, const Id& newCl
     const auto* take = findTake (song, takeId);
     if (take == nullptr)
         return std::unexpected (takeNotFound (takeId));
-    auto* track = mutableTrack (song, take->trackId);
+    auto* track = findTrack (song, take->trackId);
     if (track == nullptr)
         return std::unexpected (core::Error { "song.take_track_missing", "the Track the Take was recorded on is gone", { { "take_id", takeId }, { "track_id", take->trackId } } });
     auto clip = clipAsRecorded (*take, passStartOf (song, *take), newClipId);
@@ -249,7 +237,7 @@ core::Expected<Song> bringBackPass (Song song, const Id& passId)
     {
         if (take.passId != passId)
             continue;
-        auto* track = mutableTrack (song, take.trackId);
+        auto* track = findTrack (song, take.trackId);
         if (track == nullptr)
             continue; // its Track was deleted: skipped
         if (auto clip = clipAsRecorded (take, passStartOf (song, take), makeId()))

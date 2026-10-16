@@ -1,4 +1,6 @@
 #include "engine/MixLaw.h"
+#include "core/Decibels.h"
+#include "support/RealtimeGuardCatch.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -34,10 +36,23 @@ TEST_CASE ("the pan law gives exactly one side at the ends and -3 dB on each sid
 
 TEST_CASE ("volume in dB becomes its linear gain", "[engine][mixer]")
 {
-    CHECK_THAT (volumeGain (0.0), WithinAbs (1.0, 0.0));
-    CHECK_THAT (volumeGain (-6.0), WithinAbs (0.501187, 1.0e-6));
-    CHECK_THAT (volumeGain (12.0), WithinAbs (3.981072, 1.0e-6));
-    CHECK_THAT (volumeGain (-60.0), WithinAbs (0.001, 1.0e-9));
+    song::Song song;
+    song.master.volumeDb = 12.0;
+    for (const auto volumeDb : { 0.0, -6.0, -60.0 })
+        song.tracks.push_back (song::Track { .volumeDb = volumeDb, .pan = -1.0 });
+
+    const auto gains = mixGains (song);
+    CHECK_THAT (gains.tracks[0].left, WithinAbs (1.0, 0.0));
+    CHECK_THAT (gains.tracks[1].left, WithinAbs (0.501187, 1.0e-6));
+    CHECK_THAT (gains.tracks[2].left, WithinAbs (0.001, 1.0e-9));
+    CHECK_THAT (gains.master, WithinAbs (3.981072, 1.0e-6));
+}
+
+TEST_CASE ("the volume law's dB conversion neither allocates nor locks", "[engine][mixer][rt]")
+{
+    auto volume = 0.0f;
+    REQUIRE_REALTIME_SAFE (volume = (float) overdub::core::decibelsToGain (-6.0206));
+    CHECK_THAT (volume, WithinAbs (0.5, 1.0e-6));
 }
 
 TEST_CASE ("mute silences a Track and any solo silences every Track that is not soloed", "[engine][mixer]")

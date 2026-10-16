@@ -37,7 +37,6 @@ std::string_view toString (HeardStatus status);
 int passNumber (const Song& song, const Id& passId);
 
 const Take* findTake (const Song& song, const Id& takeId);
-const Track* findTrack (const Song& song, const Id& trackId);
 
 // The Clip that plays a Take as recorded: from passStart (or the Take's origin, if later) to the
 // end of the Take, reading the Take where that Song sample belongs; gain 0 dB, no fades. None when

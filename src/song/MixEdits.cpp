@@ -1,19 +1,11 @@
 #include "song/MixEdits.h"
 
-#include "song/TakeEdits.h"
-
 #include <algorithm>
 
 namespace overdub::song
 {
 namespace
 {
-Track* findMutableTrack (Song& song, const Id& trackId)
-{
-    const auto found = std::ranges::find (song.tracks, trackId, &Track::id);
-    return found != song.tracks.end() ? &*found : nullptr;
-}
-
 std::string trackName (const Song& song, const Id& trackId)
 {
     const auto* track = findTrack (song, trackId);
@@ -24,10 +16,10 @@ std::string trackName (const Song& song, const Id& trackId)
 template <typename Change>
 core::Expected<Song> changeTrack (Song song, const Id& trackId, Change change)
 {
-    auto* track = findMutableTrack (song, trackId);
-    if (track == nullptr)
-        return std::unexpected (trackNotFound (trackId));
-    change (*track);
+    const auto track = lookupTrack (song, trackId);
+    if (! track.has_value())
+        return std::unexpected (track.error());
+    change (**track);
     return song;
 }
 
@@ -45,11 +37,6 @@ Song withMixOf (Song song, const Song& from)
     return song;
 }
 } // namespace
-
-core::Error trackNotFound (const Id& trackId)
-{
-    return core::Error { "song.track_not_found", "no Track with this id in the Song", { { "track_id", trackId } } };
-}
 
 core::Expected<Song> setTrackVolume (Song song, const Id& trackId, double volumeDb)
 {

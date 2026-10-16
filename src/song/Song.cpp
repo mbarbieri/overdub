@@ -4,12 +4,40 @@
 
 #include <algorithm>
 #include <map>
+#include <utility>
 
 namespace overdub::song
 {
 Id makeId()
 {
     return juce::Uuid().toDashedString().toLowerCase().toStdString();
+}
+
+const Track* findTrack (const Song& song, const Id& trackId)
+{
+    const auto track = std::ranges::find (song.tracks, trackId, &Track::id);
+    return track != song.tracks.end() ? &*track : nullptr;
+}
+
+Track* findTrack (Song& song, const Id& trackId)
+{
+    const auto track = std::ranges::find (song.tracks, trackId, &Track::id);
+    return track != song.tracks.end() ? &*track : nullptr;
+}
+
+core::Expected<const Track*> lookupTrack (const Song& song, const Id& trackId)
+{
+    if (const auto* track = findTrack (song, trackId))
+        return track;
+    return std::unexpected (core::Error { "song.track_not_found", "no Track with this id in the Song", { { "track_id", trackId } } });
+}
+
+core::Expected<Track*> lookupTrack (Song& song, const Id& trackId)
+{
+    const auto track = lookupTrack (std::as_const (song), trackId);
+    if (! track.has_value())
+        return std::unexpected (track.error());
+    return const_cast<Track*> (*track);
 }
 
 std::string_view toString (ClipSourceKind kind)
@@ -79,8 +107,8 @@ Song keepStateOutsideHistory (Song snapshot, const Song& current)
 
     for (auto& track : snapshot.tracks)
     {
-        const auto currentTrack = std::ranges::find (current.tracks, track.id, &Track::id);
-        if (currentTrack == current.tracks.end())
+        const auto* currentTrack = findTrack (current, track.id);
+        if (currentTrack == nullptr)
             continue;
         track.armed = currentTrack->armed;
         track.inputChannels = currentTrack->inputChannels;
