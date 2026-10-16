@@ -194,7 +194,8 @@ private:
     void splitSelectedClip();
     void deleteSelection();
     void nudgePlayhead (int seconds);
-    void applyEdit (core::Expected<song::Song> changed, const std::string& label);
+    // Whether the edit was applied; an Error is handled (a refusal is not presented).
+    bool applyEdit (core::Expected<song::Song> changed, const std::string& label);
     void armCamera (bool armed);
     void setMute (const song::Id& trackId, bool mute);
     void setSolo (const song::Id& trackId, bool solo);
@@ -220,6 +221,14 @@ private:
     void post (UserMessage message);
     void presentMessages();
     void handleErrors (const std::vector<core::Error>& errors);
+    // handleError, except that an OpenSong refusal (ui/Activity.h) is logged at debug only: a gesture
+    // the running activity refuses is not presented. record, startExport and startSeparation
+    // present their refusals with handleError.
+    void handleUnlessRefused (const core::Error& error);
+    void handleUnlessRefused (const core::Expected<void>& result);
+    // A Song operation's Error (the Song as it is cannot take it), unless the edit it was for is
+    // refused anyway: then the refusal, not presented.
+    void handleOperationError (const core::Error& error);
     void takeKeyboardFocus();
     // Commits the Mixer's and the Record page's pending arrow-key bursts.
     void commitKeyBursts();

@@ -10,6 +10,7 @@
 #include "plugin/InsertHost.h"
 #include "song/SeparationRun.h"
 #include "song/SongPackage.h"
+#include "ui/Activity.h"
 #include "ui/ExportRun.h"
 #include "video/FrameSelection.h"
 #include "video/VideoPlayback.h"
@@ -23,12 +24,18 @@
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // One open Song bound to the live engine (issue #27): what the main window's gestures do. It owns
 // the package, keeps the engine playing the current Song (reloaded after every change; a change
 // only to the mix is applied with Engine::setMix instead, so it plays on without a plan rebuild,
-// issue #31), and runs at most one Pass (capture/PassRecorder.h).
+// issue #31), and runs at most one activity at a time: a Pass (capture/PassRecorder.h), a Separation
+// or an export (ui/Activity.h).
+//
+// Refusals (issue #145): ui/Activity.h's refusal() is the one table of which gestures each activity
+// refuses. A refused gesture changes nothing and returns that Error (ui.stop_recording_first,
+// ui.separation_running or ui.export_running); importFiles returns it for each file.
 //
 // Invariant: every Pass it starts is finished by it. stop() asks the audio thread to
 // end the Pass; poll() (from the window's timer) ends its movie once the audio thread has ended
@@ -39,7 +46,8 @@
 // OpenSong waits for the movie and finishes the Pass.
 //
 // While a Pass runs (pre-roll included), only stop, play/stop and rewind act: undo, redo, edits,
-// seeks, import, arm, input, pre-roll and Monitoring are ignored, so the Song and the engine's plan stay as the Pass started.
+// seeks, import, arm, input, pre-roll, Monitoring, the camera, Mixer previews, export and
+// Separation are refused, so the Song and the engine's plan stay as the Pass started.
 //
 // The camera (issue #35): the Song's camera arm and camera choice live outside history. While the
 // camera is Armed it is open (its live feed shows on the Record stage) and each Pass also records a
@@ -61,7 +69,7 @@
 // export's custody of the plugins: poll() tells it whether the audio thread has taken the empty
 // plan (Engine::hasPendingPlan), and it renders the Song through its own plan of the same graph,
 // sharing the plugins, or gives the export up after ExportRun::audioTimeout (issue #64). While it
-// runs, record and play are refused (ui.export_running), and edits change the Song but not the
+// runs, record, play, import and Separation are refused (ui.export_running), and edits change the Song but not the
 // engine; the InsertHost follows them through the run (a removed slot stays hosted until the
 // export ends, issue #65). When it ends, poll() reloads the engine with the current Song and
 // returns its Error. Without audio the export starts at once. Detaching the audio stops a running
@@ -86,16 +94,17 @@
 // Separation (issue #114, ADR 0007): startSeparation stops the transport and starts a
 // song::SeparationRun on a Track's Backing Track with the tools set by setSeparationTools; poll()
 // advances it, and once it ends reloads the engine (the six new Tracks, the source Track muted) and
-// returns its Error. While it runs, record (ui.separation_running), play, edits, undo, redo,
-// import, arm, input, pre-roll, Monitoring, the camera and Mixer previews are refused: the
-// Separation dialog is modal, and the Song stays as the Separation started. It is refused while a Pass
-// (ui.stop_recording_first) or an export (ui.export_running) runs. cancelSeparation() (the dialog's
+// returns its Error. While it runs, record, play, edits, undo, redo, import, arm, input, pre-roll,
+// Monitoring, the camera, Mixer previews, export and conversion are refused (ui.separation_running):
+// the Separation dialog is modal, and the Song stays as the Separation started. It is refused while
+// a Pass (ui.stop_recording_first), a conversion (ui.conversion_running) or an export
+// (ui.export_running) runs. cancelSeparation() (the dialog's
 // Cancel) and closing the Song kill the helper; the Song is unchanged.
 //
 // Sample rate conversion (issue #160, ADR 0004 amendment): startSampleRateConversion stops the
 // transport and starts a song::SampleRateConversionRun; poll() advances it and returns its Error.
-// While it runs the Song is locked as during a Separation (record and play refused with
-// ui.conversion_running), and it is refused while a Pass, an export or a Separation runs. When the
+// While it runs the Song is locked as during a Separation (refused with ui.conversion_running,
+// export included), and it is refused while a Pass, an export or a Separation runs. When the
 // Song's rate changes (the conversion, or an undo or redo across one), the audio is detached at once
 // (nothing plays the Song at the wrong speed) and takeSampleRateChanged() tells the owner to open
 // the device at the new rate (logged as ui.song_rate_changed: from_rate, to_rate).
@@ -154,13 +163,16 @@ public:
     // The engine and its plan are untouched. A running Pass keeps the latency it started with.
     void setCalibrationOffset (song::SampleCount offsetSamples) { binding.latency.calibrationOffsetSamples = offsetSamples; }
 
+    // The Error the running activity would refuse this gesture with (ui/Activity.h); none when allowed.
+    std::optional<core::Error> refusalOf (Gesture gesture) const { return refusal (activity, gesture); }
+
     // True from record() until poll() (or detachAudio(), when the movie is complete) has finished the Pass (its movie completed).
-    bool isRecording() const { return recorder != nullptr; }
+    bool isRecording() const { return std::holds_alternative<PassActivity> (activity); }
     // True while isRecording() but the audio thread has ended the Pass: nothing is captured any more,
     // the Pass is only being saved (its movie completing, issue #91). Gestures stay refused.
     bool isSavingPass() const;
     // The number of the Pass being recorded (from 1); 0 when not recording.
-    int recordingPassNumber() const { return recordingPass; }
+    int recordingPassNumber() const;
     bool isPlaying() const;
     song::SampleCount position() const;
     // The transport as the video sees it: playing, position, the latest anchor and the device's
@@ -173,7 +185,7 @@ public:
     // runs. With the transport stopped and the Song's pre-roll on (issue #32), playback starts that
     // many seconds before the playhead (at 0 at the earliest) and the Pass waits for the playhead,
     // its record point: only from there on is input captured.
-    // Errors: audioProblem()'s, or PassRecorder::start's (capture.nothing_armed, ...).
+    // Errors: refusal()'s, audioProblem()'s, or PassRecorder::start's (capture.nothing_armed, ...).
     core::Expected<void> record();
     // The record point while a Pass waits for it during pre-roll; none otherwise.
     std::optional<song::SampleCount> preRollRecordPoint() const;
@@ -181,27 +193,28 @@ public:
     std::optional<song::SampleCount> runningPassStart() const;
     // Stops the transport and asks the audio thread to end a running Pass.
     void stop();
-    // Plays, or stops (as stop()) when playing or recording.
-    void playOrStop();
+    // Plays, or stops (as stop()) when playing or recording. Does nothing without audio.
+    // Errors: refusal()'s.
+    core::Expected<void> playOrStop();
     // To the start of the Song; ends a running Pass (as stop()).
     void rewind();
-    // Moves the playhead to this Song sample (0 or later). Ignored while a Pass runs.
-    void seek (song::SampleCount sample);
+    // Moves the playhead to this Song sample (0 or later). Errors: refusal()'s.
+    core::Expected<void> seek (song::SampleCount sample);
 
-    // Errors: SongPackage::undo / redo's (song.history_empty when there is no step).
+    // Errors: refusal()'s, SongPackage::undo / redo's (song.history_empty when there is no step).
     core::Expected<void> undo();
     core::Expected<void> redo();
 
     // An undoable change (Edit mode's Clip operations): one history step named `label`, then the
-    // engine plays the changed Song. Ignored (returns success) while a Pass runs.
-    // Errors: SongPackage::edit's.
+    // engine plays the changed Song.
+    // Errors: refusal()'s, SongPackage::edit's.
     core::Expected<void> edit (song::Song changed, std::string label);
 
     // The engine plays this Song's mix (a Mixer gesture in progress) without changing the Song or
-    // its history; ignored unless it differs from the Song only in its mix, and while a Pass or a
-    // Separation runs.
+    // its history; does nothing without audio or unless it differs from the Song only in its mix.
     // A finished gesture is an edit(); an abandoned one previews song() again.
-    void previewMix (const song::Song& candidate);
+    // Errors: refusal()'s.
+    core::Expected<void> previewMix (const song::Song& candidate);
     // Each Mixer strip's peak since the previous call (Engine::takeMeterPeaks); none without audio.
     engine::MeterPeaks meterPeaks();
 
@@ -212,8 +225,8 @@ public:
 
     // Adds this AU at the end of the Track's Insert Chain (the Master's for an empty trackId) as
     // one undo step "Add AUDelay to Guitar"; it is heard once it has loaded. Returns the new
-    // slot's id; an empty id while a Pass runs (nothing is added).
-    // Errors: song.track_not_found, SongPackage::edit's.
+    // slot's id.
+    // Errors: refusal()'s, song.track_not_found, SongPackage::edit's.
     core::Expected<song::Id> addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin);
     // A plugin's state may have changed without a parameter report (its editor window closed):
     // schedules the debounced song.json write, which captures every plugin's state. No undo step.
@@ -224,15 +237,15 @@ public:
     plugin::InsertHost& insertHost() { return inserts; }
 
     // Starts exporting the mix (with the request's Video Take for an MP4, issue #38) to the
-    // request's file (see the header comment); `now` starts ExportRun::audioTimeout. Ignored while
-    // an export runs.
-    // Errors: ui.stop_recording_first while a Pass runs, ui.no_video_take (an MP4 without a
-    // Video Take of the Song), and without audio ui.export_plugin_crashed (ExportRun's).
+    // request's file (see the header comment); `now` starts ExportRun::audioTimeout. Does nothing
+    // while an export runs.
+    // Errors: refusal()'s, ui.no_video_take (an MP4 without a Video Take of the Song), and
+    // without audio ui.export_plugin_crashed (ExportRun's).
     core::Expected<void> startExport (exporting::ExportRequest request, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
-    ExportPhase exportPhase() const { return exportRun.has_value() ? exportRun->phase() : ExportPhase::idle; }
-    bool isExporting() const { return exportRun.has_value(); }
+    ExportPhase exportPhase() const;
+    bool isExporting() const { return std::holds_alternative<ExportActivity> (activity); }
     // The fraction of the running export written, 0..1 (0 while it waits for the audio).
-    double exportProgress() const { return exportRun.has_value() ? exportRun->progress() : 0.0; }
+    double exportProgress() const;
     // The file the last export wrote, once it finished; none before (or after one failed).
     const std::optional<juce::File>& lastExportedFile() const { return lastExport; }
 
@@ -241,62 +254,62 @@ public:
     void setExportVideoTake (const song::Id& videoTakeId);
 
     // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
-    // Ignored while a Pass or a Separation runs.
-    void setPreRoll (song::PreRoll preRoll);
+    // Errors: refusal()'s.
+    core::Expected<void> setPreRoll (song::PreRoll preRoll);
 
-    // Ignored while a Pass or a Separation runs.
-    void setArmed (const song::Id& trackId, bool armed);
-    void setInputChannels (const song::Id& trackId, std::vector<int> inputChannels);
+    // Errors: refusal()'s.
+    core::Expected<void> setArmed (const song::Id& trackId, bool armed);
+    core::Expected<void> setInputChannels (const song::Id& trackId, std::vector<int> inputChannels);
     // The camera Video Takes are recorded from (not owned; it must outlive this OpenSong, or be
     // detached with null first) and the camera calibration file. Opens the camera when the Song's
     // camera is Armed. Errors: the camera's open() Errors (the camera is then disarmed).
     core::Expected<void> attachCamera (capture::Camera* camera, juce::File calibrationFile);
     // Arms (opening the Song's chosen camera, or the default one, which then becomes the choice) or
-    // disarms (closing it) the camera. Ignored while a Pass or a Separation runs. Without a camera, arming does
-    // nothing. Errors: the camera's open() Errors (the camera stays disarmed).
+    // disarms (closing it) the camera. Without a camera, arming does nothing.
+    // Errors: refusal()'s, the camera's open() Errors (the camera stays disarmed).
     core::Expected<void> setCameraArmed (bool armed);
-    // Chooses the camera (reopened when Armed). Ignored while a Pass or a Separation runs.
-    // Errors: the camera's open() Errors (the camera is then disarmed).
+    // Chooses the camera (reopened when Armed).
+    // Errors: refusal()'s, the camera's open() Errors (the camera is then disarmed).
     core::Expected<void> setCameraDevice (const std::string& cameraId);
     // The cameras on offer, as listed when the camera was attached, armed or chosen.
     const std::vector<capture::CameraDevice>& cameraDevices() const { return cameras; }
     // The live feed (a CALayer*) while the camera is Armed and open; null otherwise.
     void* cameraPreviewLayer() const;
 
-    // Monitoring is transient (not in the Song): hearing an Armed Track's live input. Ignored while
-    // a Pass or a Separation runs. The engine is given the monitored Tracks with the Song.
-    void setMonitoring (const song::Id& trackId, bool on);
+    // Monitoring is transient (not in the Song): hearing an Armed Track's live input. The engine is
+    // given the monitored Tracks with the Song. Errors: refusal()'s.
+    core::Expected<void> setMonitoring (const song::Id& trackId, bool on);
     bool isMonitoring (const song::Id& trackId) const { return monitored.contains (trackId); }
 
-    // Whether Tracks can be added by import or deleted now: not while a Pass, a Separation or an
-    // Export runs.
-    bool canChangeTracks() const { return ! songLocked() && ! isExporting(); }
-    // One Backing Track import per file (SongPackage::importBackingTracks); empty when ! canChangeTracks().
+    // Whether Tracks can be added by import or deleted now (Gesture::changeTracks): not while a
+    // Pass, a Separation or an export runs.
+    bool canChangeTracks() const { return ! refusalOf (Gesture::changeTracks).has_value(); }
+    // One Backing Track import per file (SongPackage::importBackingTracks); refusal()'s for each
+    // file when ! canChangeTracks().
     std::vector<core::Expected<song::Id>> importFiles (const std::vector<juce::File>& files);
 
     // The model and helper a Separation uses (none by default: Separation is unavailable).
     void setSeparationTools (song::SeparationTools tools) { separationTools = std::move (tools); }
-    // Starts separating the Track's Backing Track (see the header comment). Ignored while one runs.
-    // Errors: ui.stop_recording_first, ui.export_running, song::SeparationRun::start's.
+    // Starts separating the Track's Backing Track (see the header comment). Does nothing while one
+    // runs. Errors: refusal()'s, song::SeparationRun::start's.
     core::Expected<void> startSeparation (const song::Id& trackId, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
-    bool isSeparating() const { return separation != nullptr; }
+    bool isSeparating() const { return std::holds_alternative<SeparationActivity> (activity); }
     // Cancels the running Separation (song::SeparationRun::cancel: the helper is killed, its
     // output deleted, the Song unchanged) and reloads the engine. Nothing when none runs.
     void cancelSeparation (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
     // The running Separation's progress and source file name; empty when none runs.
-    song::SeparationProgress separationProgress() const { return separation != nullptr ? separation->progress() : song::SeparationProgress {}; }
-    std::string separationSourceName() const { return separation != nullptr ? separation->sourceName() : std::string(); }
+    song::SeparationProgress separationProgress() const;
+    std::string separationSourceName() const;
 
-    // Starts converting the Song to `toRate` (see the header comment). Ignored while one runs.
-    // Errors: ui.stop_recording_first, ui.export_running, ui.separation_running,
-    // song::SampleRateConversionRun::start's.
+    // Starts converting the Song to `toRate` (see the header comment). Does nothing while one runs.
+    // Errors: refusal()'s, song::SampleRateConversionRun::start's.
     core::Expected<void> startSampleRateConversion (int toRate, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
-    bool isConverting() const { return conversion != nullptr; }
+    bool isConverting() const { return std::holds_alternative<ConversionActivity> (activity); }
     // Stops the running conversion (its files deleted, the Song unchanged). Nothing when none runs.
     void cancelSampleRateConversion (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
     // The running conversion's fraction done (0..1) and target rate; 0 when none runs.
-    double conversionFraction() const { return conversion != nullptr ? conversion->fraction() : 0.0; }
-    int conversionTargetRate() const { return conversion != nullptr ? conversion->toRate() : 0; }
+    double conversionFraction() const;
+    int conversionTargetRate() const;
     // True once after the Song's rate changed: the audio is detached and should be opened again at
     // the Song's rate.
     bool takeSampleRateChanged() { return std::exchange (sampleRateChanged, false); }
@@ -315,11 +328,9 @@ private:
     void reloadEngine();
     // Whether the audio thread no longer renders a plan that holds the plugins (none without audio).
     bool audioLetGoOfPlugins() const;
-    // When the ExportRun says it ended: destroys it, reloads the engine and keeps its file.
+    // When the ExportRun says it ended: ends the export, reloads the engine and keeps its file.
     // Returns its Error; none (nothing done) while it runs.
     std::optional<core::Error> endExportIfEnded (std::optional<ExportEnd> end);
-    // True while a Pass, a Separation or a conversion runs: the Song may not change by a gesture.
-    bool songLocked() const { return recorder != nullptr || separation != nullptr || conversion != nullptr; }
     // Advances a running Separation; once it ends, reloads the engine and returns its Error.
     std::optional<core::Error> advanceSeparation (song::SongPackage::Clock::time_point now);
     // Advances a running conversion; once it ends, updates the engine and returns its Error.
@@ -327,6 +338,7 @@ private:
     // After a history change: detaches the audio when the rate changed since `before`, else setMix
     // when only the mix changed, else reloadEngine.
     void updateEngine (const song::Song& before);
+    // Ends the running Pass (one must run) with what its recorder finished.
     std::vector<core::Error> finishPass (capture::FinishedPass finished);
     // The crashes the InsertHost heard since the last poll, as Notice errors (ui.plugin_crashed,
     // ui.plugin_crashed_repeatedly: slot_ids, names), after the export's Error when they end it.
@@ -343,10 +355,7 @@ private:
     static int blockSizeOf (const AudioBinding& audio);
 
     std::unique_ptr<song::SongPackage> package_;
-    // After package_: destroyed before it (the run kills its helper and deletes its output folder).
     song::SeparationTools separationTools;
-    std::unique_ptr<song::SeparationRun> separation;
-    std::unique_ptr<song::SampleRateConversionRun> conversion; // after package_: destroyed (cancelled) first
     bool sampleRateChanged = false;
     // After package_: destroyed first, once the destructor has captured its state and unhooked it.
     plugin::InsertHost inserts;
@@ -356,15 +365,13 @@ private:
     capture::Camera* camera = nullptr;
     juce::File cameraCalibrationFile;
     std::vector<capture::CameraDevice> cameras;
-    bool cameraLostDuringPass = false; // disarmed once the Pass is finished
     // Set while a device at another rate than the Song's is attached (ui.sample_rate_mismatch).
     std::optional<core::Error> rateMismatch;
-    std::unique_ptr<capture::PassRecorder> recorder;
-    int recordingPass = 0;
-    std::optional<song::SampleCount> preRollPoint; // the running Pass's record point, when it used pre-roll
     video::VideoPlayback playback;
     std::optional<juce::File> lastExport;
-    // Last: destroyed first, so a running render stops before the plugins and the package go.
-    std::optional<ExportRun> exportRun;
+    // Last: destroyed first, so a running export stops rendering before the plugins and the package
+    // go, and a running Separation (its helper killed, its output folder deleted) or conversion (its
+    // files deleted) is cancelled before the package.
+    Activity activity;
 };
 } // namespace overdub::ui

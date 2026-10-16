@@ -111,33 +111,32 @@ MainComponent::MainComponent()
     runDialog.onCancel = [this] { cancelRun(); };
     recordPage.onArm = [this] (const song::Id& trackId, bool armed) {
         if (openSong != nullptr)
-            openSong->setArmed (trackId, armed);
+            handleUnlessRefused (openSong->setArmed (trackId, armed));
         refresh();
     };
     recordPage.onInput = [this] (const song::Id& trackId, std::vector<int> channels) {
         if (openSong != nullptr)
-            openSong->setInputChannels (trackId, std::move (channels));
+            handleUnlessRefused (openSong->setInputChannels (trackId, std::move (channels)));
         refresh();
         takeKeyboardFocus();
     };
     recordPage.onMonitoring = [this] (const song::Id& trackId, bool on) {
         if (openSong != nullptr)
-            openSong->setMonitoring (trackId, on);
+            handleUnlessRefused (openSong->setMonitoring (trackId, on));
         refresh();
     };
     recordPage.onMute = [this] (const song::Id& trackId, bool mute) { setMute (trackId, mute); };
     recordPage.onSolo = [this] (const song::Id& trackId, bool solo) { setSolo (trackId, solo); };
     recordPage.onPreRoll = [this] (song::PreRoll preRoll) {
         if (openSong != nullptr)
-            openSong->setPreRoll (preRoll);
+            handleUnlessRefused (openSong->setPreRoll (preRoll));
         refresh();
     };
     recordPage.onCameraArm = [this] (bool armed) { armCamera (armed); };
     recordPage.onCameraDevice = [this] (const std::string& cameraId) {
         if (openSong == nullptr)
             return;
-        if (auto chosen = openSong->setCameraDevice (cameraId); ! chosen.has_value())
-            handleError (chosen.error());
+        handleUnlessRefused (openSong->setCameraDevice (cameraId));
         refresh();
     };
     recordPage.onJumpToPass = [this] (const song::Id& passId) { jumpToPass (passId); };
@@ -147,7 +146,7 @@ MainComponent::MainComponent()
     };
     recordPage.onSeek = [this] (song::SampleCount sample) {
         if (openSong != nullptr)
-            openSong->seek (sample);
+            handleUnlessRefused (openSong->seek (sample));
         refresh();
     };
     recordPage.peaksFor = [this] (const song::ClipSource& source) -> const song::Peaks& {
@@ -158,7 +157,7 @@ MainComponent::MainComponent()
     recordPage.insertActions = chainActions;
     recordPage.mix.onPreview = [this] (const song::Song& preview) {
         if (openSong != nullptr)
-            openSong->previewMix (preview);
+            handleUnlessRefused (openSong->previewMix (preview));
     };
     recordPage.mix.onEdit = [this] (song::Song changed, std::string label) { applyEdit (std::move (changed), label); };
     editPage.mixer.insertActions = chainActions;
@@ -184,19 +183,19 @@ MainComponent::MainComponent()
     };
     editPage.onSeek = [this] (song::SampleCount sample) {
         if (openSong != nullptr)
-            openSong->seek (sample);
+            handleUnlessRefused (openSong->seek (sample));
         refresh();
     };
     editPage.onArm = [this] (const song::Id& trackId, bool armed) {
         if (openSong != nullptr)
-            openSong->setArmed (trackId, armed);
+            handleUnlessRefused (openSong->setArmed (trackId, armed));
         refresh();
     };
     editPage.onMute = [this] (const song::Id& trackId, bool mute) { setMute (trackId, mute); };
     editPage.onSolo = [this] (const song::Id& trackId, bool solo) { setSolo (trackId, solo); };
     editPage.onMixPreview = [this] (const song::Song& preview) {
         if (openSong != nullptr)
-            openSong->previewMix (preview);
+            handleUnlessRefused (openSong->previewMix (preview));
     };
     editPage.onToggleVideo = [this] { setVideoPreviewWanted (! videoPreviewWanted); };
     editPage.onDeleteTrack = [this] (const song::Id& trackId) { askToDeleteTrack (trackId); };
@@ -362,19 +361,17 @@ void MainComponent::perform (Command command)
                 recordPage.clearClipIndicators();
             break;
         }
-        case Command::playOrStop: openSong->playOrStop(); break;
+        case Command::playOrStop: handleUnlessRefused (openSong->playOrStop()); break;
         case Command::rewind: openSong->rewind(); break;
         case Command::undo:
             commitKeyBursts();
             if (openSong->package().canUndo())
-                if (auto undone = openSong->undo(); ! undone.has_value())
-                    handleError (undone.error());
+                handleUnlessRefused (openSong->undo());
             break;
         case Command::redo:
             commitKeyBursts();
             if (openSong->package().canRedo())
-                if (auto redone = openSong->redo(); ! redone.has_value())
-                    handleError (redone.error());
+                handleUnlessRefused (openSong->redo());
             break;
         case Command::splitClip:
             if (currentMode == Mode::edit)
@@ -403,41 +400,36 @@ void MainComponent::perform (Command command)
 void MainComponent::splitSelectedClip()
 {
     const auto selected = editPage.timeline.selectedClip();
-    if (! selected.has_value() || passRunning())
+    if (! selected.has_value())
         return;
     const auto rightHalf = song::makeId();
-    auto split = song::splitClip (openSong->song(), *selected, openSong->position(), rightHalf);
-    const auto wasSplit = split.has_value();
-    applyEdit (std::move (split), song::splitClipLabel);
-    if (wasSplit)
+    if (applyEdit (song::splitClip (openSong->song(), *selected, openSong->position(), rightHalf), song::splitClipLabel))
         editPage.timeline.selectClip (rightHalf);
 }
 
 void MainComponent::deleteSelection()
 {
-    if (passRunning())
-        return;
     if (const auto videoTake = editPage.timeline.selectedVideoTake())
         applyEdit (song::deleteVideoTake (openSong->song(), *videoTake), song::deleteVideoTakeLabel);
     else if (const auto clip = editPage.timeline.selectedClip())
         applyEdit (song::deleteClip (openSong->song(), *clip), song::deleteClipLabel);
 }
 
-// OpenSong::seek clamps at the Song's start and ignores seeks while a Pass runs.
+// OpenSong::seek clamps at the Song's start and refuses seeks while a Pass runs.
 void MainComponent::nudgePlayhead (int seconds)
 {
     const auto offset = (song::SampleCount) seconds * openSong->song().sampleRate;
-    openSong->seek (openSong->position() + offset);
+    handleUnlessRefused (openSong->seek (openSong->position() + offset));
 }
 
-void MainComponent::applyEdit (core::Expected<song::Song> changed, const std::string& label)
+bool MainComponent::applyEdit (core::Expected<song::Song> changed, const std::string& label)
 {
-    if (openSong == nullptr || passRunning())
-        return;
+    if (openSong == nullptr)
+        return false;
     if (! changed.has_value())
     {
-        handleError (changed.error());
-        return;
+        handleOperationError (changed.error());
+        return false;
     }
     for (auto* mix : { &editPage.mixer.mix, &recordPage.mix })
     {
@@ -448,20 +440,20 @@ void MainComponent::applyEdit (core::Expected<song::Song> changed, const std::st
         mix->commitKeyBurst();
         changed = std::move (carried);
     }
-    if (auto edited = openSong->edit (std::move (*changed), label); ! edited.has_value())
-        handleError (edited.error());
+    auto edited = openSong->edit (std::move (*changed), label);
+    handleUnlessRefused (edited);
     refresh();
+    return edited.has_value();
 }
 
 void MainComponent::armCamera (bool armed)
 {
-    if (openSong == nullptr || passRunning())
+    if (openSong == nullptr)
         return;
     const auto apply = [this] (bool arm) {
         if (openSong == nullptr)
             return;
-        if (auto changed = openSong->setCameraArmed (arm); ! changed.has_value())
-            handleError (changed.error());
+        handleUnlessRefused (openSong->setCameraArmed (arm));
         refresh();
     };
     if (! armed || ! askCameraAccess)
@@ -497,7 +489,7 @@ void MainComponent::jumpToPass (const song::Id& passId)
     const auto pass = std::ranges::find (passes, passId, &song::Pass::id);
     if (! OVERDUB_CHECK (pass != passes.end(), "ui.pass_row_unknown", { "pass_id", passId }))
         return;
-    openSong->seek (pass->startSample);
+    handleUnlessRefused (openSong->seek (pass->startSample));
     refresh();
 }
 
@@ -515,13 +507,15 @@ void MainComponent::showMode (Mode mode)
 
 void MainComponent::addTrack()
 {
-    if (openSong == nullptr || passRunning())
+    if (openSong == nullptr)
         return;
     // Ready to record: Armed on the device's first input, or on none when it has no inputs.
     auto inputChannels = openSong->audio().inputChannelNames.empty() ? std::vector<int> {} : std::vector<int> { 0 };
     auto added = song::addTrack (openSong->song(), std::move (inputChannels), song::randomPick());
-    core::logEvent (core::Level::info, "ui.track_added", { { "track_id", added.trackId }, { "input_channels", added.song.tracks.back().inputChannels } });
-    applyEdit (std::move (added.song), added.label);
+    const core::Fields fields { { "track_id", added.trackId }, { "input_channels", added.song.tracks.back().inputChannels } };
+    if (! applyEdit (std::move (added.song), added.label))
+        return;
+    core::logEvent (core::Level::info, "ui.track_added", fields);
     takeKeyboardFocus();
 }
 
@@ -532,7 +526,7 @@ void MainComponent::importFiles (const std::vector<juce::File>& files)
     commitKeyBursts();
     for (const auto& result : openSong->importFiles (files))
         if (! result.has_value())
-            handleError (result.error());
+            handleUnlessRefused (result.error());
     refresh();
     takeKeyboardFocus();
 }
@@ -559,36 +553,34 @@ void MainComponent::deleteTrack (const song::Id& trackId)
     auto deleted = song::deleteTrack (openSong->song(), trackId);
     if (! deleted.has_value())
         return;
-    applyEdit (std::move (deleted->song), deleted->label);
-    if (song::findTrack (openSong->song(), trackId) != nullptr)
-        return; // the edit failed, and applyEdit reported it
+    if (! applyEdit (std::move (deleted->song), deleted->label))
+        return;
     // Monitoring is transient: a deleted Track stops, and undo brings it back not Monitoring.
-    openSong->setMonitoring (trackId, false);
+    handleUnlessRefused (openSong->setMonitoring (trackId, false));
     core::logEvent (core::Level::info, "ui.track_deleted", { { "track_id", trackId }, { "label", deleted->label } });
     takeKeyboardFocus();
 }
 
 void MainComponent::moveTrack (const song::Id& trackId, std::size_t toIndex)
 {
-    if (openSong == nullptr || passRunning())
+    if (openSong == nullptr)
         return;
     auto moved = song::moveTrack (openSong->song(), trackId, toIndex);
     if (! moved.has_value())
     {
-        handleError (moved.error());
+        handleOperationError (moved.error());
         return;
     }
     if (! moved->has_value())
         return; // dropped back in its own slot: no undo step, no save
-    applyEdit (std::move ((*moved)->song), (*moved)->label);
-    const auto& tracks = openSong->song().tracks;
-    if (toIndex >= tracks.size() || tracks[toIndex].id != trackId)
-        return; // the Song is locked (a Separation runs), or the edit failed and applyEdit reported it
+    if (! applyEdit (std::move ((*moved)->song), (*moved)->label))
+        return;
     core::logEvent (core::Level::info, "ui.track_moved", { { "track_id", trackId }, { "to", toIndex } });
 }
 
 void MainComponent::showTrackMenu (const song::Id& trackId)
 {
+    // The run dialog is modal: no menu opens under it.
     if (openSong == nullptr || runShowing() || ! chooseTrackMenuItem)
         return;
     auto items = trackMenuFor (openSong->song(), trackId, TrackMenuState { .passRunning = openSong->isRecording(), .exportRunning = openSong->isExporting() });
@@ -635,7 +627,7 @@ void MainComponent::convertSampleRate (int toRate)
 
 void MainComponent::chooseInsert (const song::Id& trackId)
 {
-    if (openSong == nullptr || openSong->isRecording() || ! chooseInsertPlugin)
+    if (openSong == nullptr || ! chooseInsertPlugin)
         return;
     auto plugins = listInsertPlugins ? listInsertPlugins() : std::vector<plugin::AvailableAudioUnit> {};
     chooseInsertPlugin (plugins, [safeThis = juce::Component::SafePointer<MainComponent> (this), trackId, plugins] (std::optional<std::size_t> picked) {
@@ -643,8 +635,8 @@ void MainComponent::chooseInsert (const song::Id& trackId)
             return;
         auto added = safeThis->openSong->addInsert (trackId, plugins[*picked]);
         if (! added.has_value())
-            safeThis->handleError (added.error());
-        else if (! added->empty())
+            safeThis->handleUnlessRefused (added.error());
+        else
             safeThis->pendingEditorSlot = *added; // its editor opens once it has loaded
         safeThis->refresh();
     });
@@ -717,6 +709,26 @@ void MainComponent::handleError (const core::Error& error)
     const auto message = userMessageFor (error.code, error.fields);
     core::logError (error, message.tier == Tier::notice ? core::Level::warn : core::Level::error);
     post (message);
+}
+
+void MainComponent::handleUnlessRefused (const core::Error& error)
+{
+    if (! isRefusal (error))
+        return handleError (error);
+    // The page's controls already show the gesture is unavailable: no Notice (issue #145).
+    core::logError (error, core::Level::debug);
+}
+
+void MainComponent::handleUnlessRefused (const core::Expected<void>& result)
+{
+    if (! result.has_value())
+        handleUnlessRefused (result.error());
+}
+
+void MainComponent::handleOperationError (const core::Error& error)
+{
+    // The edit the operation was for would be refused anyway: that is what happened, not presented.
+    handleUnlessRefused (openSong->refusalOf (Gesture::edit).value_or (error));
 }
 
 void MainComponent::showNotice (const std::string& code)
