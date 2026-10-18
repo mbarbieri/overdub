@@ -77,6 +77,7 @@ public:
     // The settings window's offer: this device type's input and output devices, the open
     // device's sample rates and buffer sizes, and the current choice.
     ui::DeviceChoices deviceChoices() override;
+    ui::DeviceOffer offerFor (const std::string& inputDevice, const std::string& outputDevice) override;
 
 private:
     void timerCallback() override;

@@ -1,8 +1,10 @@
 #include "ui/DeviceSettingsPanel.h"
 
+#include "core/Log.h"
 #include "ui/Colours.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 namespace overdub::ui
 {
@@ -44,8 +46,32 @@ T pickedFrom (const std::vector<T>& values, const juce::ComboBox& picker, T fall
 }
 } // namespace
 
+std::vector<int> offeredByBoth (const std::vector<int>& first, const std::vector<int>& second)
+{
+    std::vector<int> both;
+    for (const auto value : first)
+        if (std::ranges::contains (second, value))
+            both.push_back (value);
+    return both;
+}
+
+int keptOrNearest (const std::vector<int>& offered, int wanted)
+{
+    int nearest = 0;
+    for (const auto value : offered)
+    {
+        const auto distance = std::abs (value - wanted);
+        const auto nearestDistance = std::abs (nearest - wanted);
+        if (nearest == 0 || distance < nearestDistance || (distance == nearestDistance && value > nearest))
+            nearest = value;
+    }
+    return nearest;
+}
+
 DeviceSettingsPanel::DeviceSettingsPanel()
 {
+    inputPicker.onChange = [this] { listPickedDevicesOffer(); };
+    outputPicker.onChange = [this] { listPickedDevicesOffer(); };
     applyButton.onClick = [this] {
         if (onApply)
             onApply (picked());
@@ -67,6 +93,21 @@ void DeviceSettingsPanel::show (const DeviceChoices& choices)
     fill (outputPicker, names (choices.outputDevices), juce::String::fromUTF8 (choices.current.outputDevice.c_str()));
     fill (sampleRatePicker, numbers (choices.sampleRates, " Hz"), juce::String (choices.current.sampleRate) + " Hz");
     fill (bufferSizePicker, numbers (choices.bufferSizes, " samples"), juce::String (choices.current.bufferSize) + " samples");
+}
+
+void DeviceSettingsPanel::listPickedDevicesOffer()
+{
+    if (! offerForDevices)
+        return;
+    const auto current = picked();
+    const auto offer = offerForDevices (current.inputDevice, current.outputDevice);
+    core::logEvent (core::Level::debug,
+                    "ui.device_offer_listed",
+                    { { "input_device", current.inputDevice }, { "output_device", current.outputDevice }, { "sample_rates", offer.sampleRates }, { "buffer_sizes", offer.bufferSizes } });
+    offered.sampleRates = offer.sampleRates;
+    offered.bufferSizes = offer.bufferSizes;
+    fill (sampleRatePicker, numbers (offer.sampleRates, " Hz"), juce::String (keptOrNearest (offer.sampleRates, current.sampleRate)) + " Hz");
+    fill (bufferSizePicker, numbers (offer.bufferSizes, " samples"), juce::String (keptOrNearest (offer.bufferSizes, current.bufferSize)) + " samples");
 }
 
 engine::DeviceSettings DeviceSettingsPanel::picked() const

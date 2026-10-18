@@ -49,6 +49,9 @@ public:
     virtual int sampleRate() const = 0;
     // The settings window's offer for this device type, and the current choice.
     virtual DeviceChoices deviceChoices() = 0;
+    // What a pair of devices of this device type offers, listed in the settings window before
+    // they are applied (issue #159). Empty for a device that cannot be found.
+    virtual DeviceOffer offerFor (const std::string& inputDevice, const std::string& outputDevice) = 0;
 
     // Called (message thread) with each device change that matters (engine::classifyDeviceChange).
     // The callee must not destroy this LiveAudio from inside the call.

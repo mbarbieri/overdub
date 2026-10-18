@@ -6,6 +6,7 @@
 #include "engine/LatencyCalibration.h"
 
 #include <algorithm>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,6 +28,9 @@ struct FakeMachine
     std::string outputDevice = "Scarlett 2i2 USB";
     int deviceRate = engine::testing::testSampleRate;
     std::vector<int> offeredRates { engine::testing::testSampleRate };
+    // More devices, listed for input and output, and what each offers in the settings window
+    // (offerFor); a device not listed here offers offeredRates and liveBlockSize.
+    std::map<std::string, DeviceOffer> offersByDevice;
     juce::File latencyCalibrationFile;
 };
 
@@ -44,9 +48,15 @@ public:
         choices.deviceType = "Fake";
         choices.inputDevices = { machine.inputDevice };
         choices.outputDevices = { machine.outputDevice };
+        for (const auto& [device, offer] : machine.offersByDevice)
+            for (auto* listed : { &choices.inputDevices, &choices.outputDevices })
+                if (! std::ranges::contains (*listed, device))
+                    listed->push_back (device);
         choices.sampleRates = machine.offeredRates;
         choices.bufferSizes = { liveBlockSize };
         choices.current = engine::DeviceSettings { .deviceType = "Fake", .inputDevice = machine.inputDevice, .outputDevice = machine.outputDevice, .sampleRate = rate, .bufferSize = liveBlockSize };
+        offers = machine.offersByDevice;
+        defaultOffer = DeviceOffer { machine.offeredRates, { liveBlockSize } };
         stored = engine::findCalibrationOffset (machine.latencyCalibrationFile, key).value_or (std::nullopt);
         latency.calibrationOffsetSamples = stored.value_or (0);
         audioEngine = std::make_unique<engine::Engine> (engine::EngineConfig { .numOutputChannels = 2, .maxBlockSize = liveBlockSize });
@@ -74,6 +84,18 @@ public:
     }
     int sampleRate() const override { return rate; }
     DeviceChoices deviceChoices() override { return choices; }
+    DeviceOffer offerFor (const std::string& inputDevice, const std::string& outputDevice) override
+    {
+        const auto offerOf = [&] (const std::string& device) {
+            const auto found = offers.find (device);
+            return found != offers.end() ? found->second : defaultOffer;
+        };
+        if (inputDevice == outputDevice)
+            return offerOf (outputDevice);
+        const auto input = offerOf (inputDevice);
+        const auto output = offerOf (outputDevice);
+        return { offeredByBoth (output.sampleRates, input.sampleRates), offeredByBoth (output.bufferSizes, input.bufferSizes) };
+    }
 
     // Runs device callbacks, as the device's audio thread would.
     void run (int blocks)
@@ -97,6 +119,8 @@ private:
     std::optional<song::SampleCount> stored;
     capture::RecordLatency latency;
     DeviceChoices choices;
+    std::map<std::string, DeviceOffer> offers;
+    DeviceOffer defaultOffer;
     std::unique_ptr<engine::Engine> audioEngine;
     engine::testing::LoopbackDevice device { 2, liveBlockSize, 512 };
 };

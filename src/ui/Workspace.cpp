@@ -155,7 +155,10 @@ void Workspace::attachSettingsPanels (DeviceSettingsPanel* devices, CalibrationP
     devicePanel = devices;
     calibrationPanel = calibration;
     if (devicePanel != nullptr)
+    {
         devicePanel->onApply = [this] (const engine::DeviceSettings& settings) { applyDeviceSettings (settings); };
+        devicePanel->offerForDevices = [this] (const std::string& input, const std::string& output) { return live->offerFor (input, output); };
+    }
     if (calibrationPanel != nullptr)
     {
         calibrationPanel->onMeasureLatency = [this] { measureLatency(); };
@@ -183,6 +186,20 @@ void Workspace::applyDeviceSettings (const engine::DeviceSettings& settings)
     if (auto written = engine::writeDeviceSettings (files.deviceSettings, settings); ! written.has_value())
         content.handleError (written.error());
     reopenAudio();
+    showRateSubstitution (settings.sampleRate);
+}
+
+void Workspace::showRateSubstitution (int requestedRate)
+{
+    // The Song's rate wins when the device offers it, and a mismatch has its own Notice.
+    const auto openedRate = live->sampleRate();
+    if (requestedRate <= 0 || openedRate <= 0 || openedRate == requestedRate || openedRate == openSongRate().value_or (0))
+        return;
+    if (song != nullptr && song->audioProblem().has_value())
+        return;
+    content.handleError (core::Error { "ui.device_rate_substituted",
+                                       "the audio device opened at another rate than the one picked",
+                                       { { "requested_rate", requestedRate }, { "opened_rate", openedRate }, { "device", live->calibrationKey().outputDevice } } });
 }
 
 void Workspace::reopenAudio()
