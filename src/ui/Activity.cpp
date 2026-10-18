@@ -19,7 +19,8 @@ constexpr GestureRule ruleFor (Gesture gesture)
 {
     // The Separation and conversion dialogs are modal, and the Song stays as the run started (ADR
     // 0007, ADR 0004 amendment). A Pass keeps the Song and the engine's plan as it started. An
-    // export renders its own plan, so the Song may change, but no Track is added or deleted under it.
+    // export renders its own plan, so the Song may change, but no Track is imported or deleted under
+    // it.
     switch (gesture)
     {
         // { name, refused by a Pass, by a Separation, by a conversion, by an export }

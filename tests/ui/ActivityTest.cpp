@@ -187,6 +187,15 @@ TEST_CASE ("a refusal names its gesture", "[ui][activity]")
     CHECK (refused.error().fields == core::Fields { { "gesture", "undo" } });
 }
 
+TEST_CASE ("an Error is a refusal only with a refusal code and the field gesture", "[ui][activity]")
+{
+    const auto refused = refusal (Activity { ExportActivity {} }, Gesture::record);
+    REQUIRE (refused.has_value());
+    CHECK (isRefusal (*refused));
+    CHECK_FALSE (isRefusal (core::Error { "ui.export_running", "an export is running", {} }));
+    CHECK_FALSE (isRefusal (core::Error { "song.track_not_found", "no such Track", { { "gesture", "edit" } } }));
+}
+
 TEST_CASE ("only one activity runs: starting another one is refused while it runs, and allowed once it ends", "[ui][activity]")
 {
     ActivityFixture a { Running::exporting };
@@ -208,8 +217,17 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
                                                                                        : conversion;
     ActivityFixture a { running };
     auto& window = *a.f.window;
+    int pluginMenusShown = 0;
+    int cameraAccessAsked = 0;
     window.listInsertPlugins = [] { return std::vector { testPlugin }; };
-    window.chooseInsertPlugin = [] (const std::vector<overdub::plugin::AvailableAudioUnit>&, std::function<void (std::optional<std::size_t>)> done) { done (0); };
+    window.chooseInsertPlugin = [&pluginMenusShown] (const std::vector<overdub::plugin::AvailableAudioUnit>&, std::function<void (std::optional<std::size_t>)> done) {
+        ++pluginMenusShown;
+        done (0);
+    };
+    window.askCameraAccess = [&cameraAccessAsked] (std::function<void (bool)> done) {
+        ++cameraAccessAsked;
+        done (true);
+    };
     const auto before = a.f.song();
     const auto guitarId = a.guitarId();
 
@@ -234,6 +252,8 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
 
     CHECK (presented (capture).empty());
     CHECK (a.f.alertsShown.empty());
+    CHECK (pluginMenusShown == 0); // no dialog opens for a gesture refused anyway
+    CHECK (cameraAccessAsked == 0);
     CHECK (a.f.song() == before);
     const auto refusal = firstEvent (capture, code);
     CHECK (refusal.at ("lvl") == "debug");

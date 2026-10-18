@@ -222,8 +222,8 @@ private:
     void presentMessages();
     void handleErrors (const std::vector<core::Error>& errors);
     // handleError, except that an OpenSong refusal (ui/Activity.h) is logged at debug only: a gesture
-    // the running activity refuses is not presented. record, startExport and startSeparation
-    // present their refusals with handleError.
+    // the running activity refuses is not presented. record, startExport, startSeparation and
+    // convertSampleRate present their refusals with handleError.
     void handleUnlessRefused (const core::Error& error);
     void handleUnlessRefused (const core::Expected<void>& result);
     // A Song operation's Error (the Song as it is cannot take it), unless the edit it was for is

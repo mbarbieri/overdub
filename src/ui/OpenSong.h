@@ -30,12 +30,13 @@
 // One open Song bound to the live engine (issue #27): what the main window's gestures do. It owns
 // the package, keeps the engine playing the current Song (reloaded after every change; a change
 // only to the mix is applied with Engine::setMix instead, so it plays on without a plan rebuild,
-// issue #31), and runs at most one activity at a time: a Pass (capture/PassRecorder.h), a Separation
-// or an export (ui/Activity.h).
+// issue #31), and runs at most one activity at a time: a Pass (capture/PassRecorder.h), a
+// Separation, a sample rate conversion or an export (ui/Activity.h).
 //
 // Refusals (issue #145): ui/Activity.h's refusal() is the one table of which gestures each activity
 // refuses. A refused gesture changes nothing and returns that Error (ui.stop_recording_first,
-// ui.separation_running or ui.export_running); importFiles returns it for each file.
+// ui.separation_running, ui.conversion_running or ui.export_running); importFiles returns it for
+// each file.
 //
 // Invariant: every Pass it starts is finished by it. stop() asks the audio thread to
 // end the Pass; poll() (from the window's timer) ends its movie once the audio thread has ended
@@ -46,8 +47,8 @@
 // OpenSong waits for the movie and finishes the Pass.
 //
 // While a Pass runs (pre-roll included), only stop, play/stop and rewind act: undo, redo, edits,
-// seeks, import, arm, input, pre-roll, Monitoring, the camera, Mixer previews, export and
-// Separation are refused, so the Song and the engine's plan stay as the Pass started.
+// seeks, import, arm, input, pre-roll, Monitoring, the camera, Mixer previews, export, Separation
+// and conversion are refused, so the Song and the engine's plan stay as the Pass started.
 //
 // The camera (issue #35): the Song's camera arm and camera choice live outside history. While the
 // camera is Armed it is open (its live feed shows on the Record stage) and each Pass also records a
@@ -69,8 +70,8 @@
 // export's custody of the plugins: poll() tells it whether the audio thread has taken the empty
 // plan (Engine::hasPendingPlan), and it renders the Song through its own plan of the same graph,
 // sharing the plugins, or gives the export up after ExportRun::audioTimeout (issue #64). While it
-// runs, record, play, import and Separation are refused (ui.export_running), and edits change the
-// Song but not the engine; the InsertHost follows them through the run (a removed slot stays hosted
+// runs, record, play, import, Track delete, Separation and conversion are refused
+// (ui.export_running), and edits change the Song but not the engine; the InsertHost follows them through the run (a removed slot stays hosted
 // until the export ends, issue #65). When it ends, poll() reloads the engine with the current Song and
 // returns its Error. Without audio the export starts at once. Detaching the audio stops a running
 // export (logged as ui.export_stopped).
