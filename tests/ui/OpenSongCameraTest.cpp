@@ -195,15 +195,15 @@ TEST_CASE ("a Pass whose movie failed is kept and reports the movie's Error", "[
     CHECK (fixture.openSong->song().passes.size() == 1);
 }
 
-TEST_CASE ("the camera arm and choice are ignored while a Pass runs", "[ui][camera][record]")
+TEST_CASE ("the camera arm and choice are refused while a Pass runs", "[ui][camera][record]")
 {
     CameraFixture fixture;
     REQUIRE (fixture.openSong->attachCamera (&fixture.camera, fixture.calibrationFile).has_value());
     REQUIRE (fixture.openSong->record().has_value());
     fixture.device.run (fixture.engine, 2);
 
-    REQUIRE (fixture.openSong->setCameraArmed (true).has_value());
-    REQUIRE (fixture.openSong->setCameraDevice ("camera-usb").has_value());
+    CHECK (fixture.openSong->setCameraArmed (true).error().code == "ui.stop_recording_first");
+    CHECK (fixture.openSong->setCameraDevice ("camera-usb").error().code == "ui.stop_recording_first");
     CHECK_FALSE (fixture.openSong->song().cameraArmed);
     CHECK (fixture.openSong->song().cameraDeviceId.empty());
 }

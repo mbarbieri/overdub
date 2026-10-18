@@ -168,7 +168,7 @@ TEST_CASE ("Separate... on a Backing Track's row opens a modal dialog whose prog
     CHECK_FALSE (isShown (dialog));
 }
 
-TEST_CASE ("while a Separation runs, arm, input, pre-roll, Monitoring, the camera and Mixer previews are ignored", "[ui][separation]")
+TEST_CASE ("while a Separation runs, arm, input, pre-roll, Monitoring, the camera and Mixer previews are refused", "[ui][separation]")
 {
     SeparateFixture s;
     const auto& guitarId = s.f.trackNamed ("Guitar").id;
@@ -178,12 +178,12 @@ TEST_CASE ("while a Separation runs, arm, input, pre-roll, Monitoring, the camer
 
     auto quieter = before;
     quieter.master.volumeDb = -60.0;
-    s.f.openSong->setArmed (guitarId, false);
-    s.f.openSong->setInputChannels (guitarId, { 1 });
-    s.f.openSong->setPreRoll (before.preRoll == song::PreRoll::off ? song::PreRoll::oneSecond : song::PreRoll::off);
-    s.f.openSong->setMonitoring (guitarId, true);
-    s.f.openSong->previewMix (quieter);
-    CHECK (s.f.openSong->setCameraArmed (true).has_value());
+    CHECK (s.f.openSong->setArmed (guitarId, false).error().code == "ui.separation_running");
+    CHECK (s.f.openSong->setInputChannels (guitarId, { 1 }).error().code == "ui.separation_running");
+    CHECK (s.f.openSong->setPreRoll (before.preRoll == song::PreRoll::off ? song::PreRoll::oneSecond : song::PreRoll::off).error().code == "ui.separation_running");
+    CHECK (s.f.openSong->setMonitoring (guitarId, true).error().code == "ui.separation_running");
+    CHECK (s.f.openSong->previewMix (quieter).error().code == "ui.separation_running");
+    CHECK (s.f.openSong->setCameraArmed (true).error().code == "ui.separation_running");
 
     CHECK (s.f.song() == before);
     CHECK_FALSE (s.f.openSong->isMonitoring (guitarId));
