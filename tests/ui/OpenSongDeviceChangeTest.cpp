@@ -181,6 +181,7 @@ TEST_CASE ("a device at another rate than the Song's is not used: the Song opens
     CHECK (problem->code == "ui.sample_rate_mismatch");
     CHECK (problem->fields["song_rate"] == testSampleRate);
     CHECK (problem->fields["device_rate"] == 44100);
+    CHECK (problem->fields["rate_offered"] == false);
     CHECK (tierFor (problem->code) == Tier::notice);
 
     // Neither recording nor playback runs at the wrong speed.
@@ -199,6 +200,20 @@ TEST_CASE ("a device at another rate than the Song's is not used: the Song opens
     REQUIRE (f.openSong->record().has_value());
     f.device.run (f.engine, 4);
     CHECK (f.engine.isRecording());
+}
+
+TEST_CASE ("a device at another rate that offers the Song's rate says the mismatch can be fixed in Settings", "[ui][open_song][device_change][sample_rate]")
+{
+    DeviceChangeFixture f;
+    CHECK (f.openSong->detachAudio().empty());
+    auto binding = f.binding (44100);
+    binding.offeredSampleRates = { 44100, testSampleRate };
+    f.openSong->attachAudio (binding);
+
+    const auto problem = f.openSong->audioProblem();
+    REQUIRE (problem.has_value());
+    CHECK (problem->code == "ui.sample_rate_mismatch");
+    CHECK (problem->fields["rate_offered"] == true);
 }
 
 TEST_CASE ("without a device the audio problem is that none is open; a device that reports no rate is taken at the Song's", "[ui][open_song][device_change][sample_rate]")

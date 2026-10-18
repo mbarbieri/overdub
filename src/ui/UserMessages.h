@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Log.h"
+
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,6 +28,7 @@ struct UserMessage
 {
     Tier tier = Tier::alert;
     std::string code; // an Error.code or Notice code, e.g. "capture.pass_empty"
+    core::Fields fields = {}; // the Error's fields: ui.sample_rate_mismatch's sentence names them
 
     bool operator== (const UserMessage&) const = default;
 };
@@ -34,10 +37,12 @@ struct UserMessage
 Tier tierFor (std::string_view code);
 
 // The sentence the user reads for a code; unknown codes get a generic sentence that names it.
-std::string sentenceFor (std::string_view code);
+// ui.sample_rate_mismatch names song_rate and device_rate, and points to Settings only when
+// rate_offered (the device offers the Song's rate).
+std::string sentenceFor (std::string_view code, const core::Fields& fields = {});
 
-// {tierFor (code), code}.
-UserMessage userMessageFor (std::string_view code);
+// {tierFor (code), code, fields}.
+UserMessage userMessageFor (std::string_view code, core::Fields fields = {});
 
 class UserMessageQueue
 {

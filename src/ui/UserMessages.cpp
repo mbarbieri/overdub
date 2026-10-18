@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <utility>
 
 namespace overdub::ui
@@ -41,7 +42,7 @@ constexpr std::array codeTable {
     CodeEntry { "ui.latency_not_calibrated", Tier::notice, "This audio device is not calibrated, so Takes may land late. Calibrate it in Settings." },
     CodeEntry { "ui.calibration_running", Tier::notice, "Wait for the latency measurement to finish." },
     CodeEntry { "capture.calibration_timeout", Tier::notice, "The audio device stopped during the measurement. Check the device, then measure again." },
-    CodeEntry { "ui.sample_rate_mismatch", Tier::notice, "The audio device runs at another sample rate than this Song, so it plays and records nothing. Pick the Song's rate in Settings." },
+    CodeEntry { "ui.sample_rate_mismatch", Tier::notice, "The audio device runs at another sample rate than this Song, so it plays and records nothing." },
     CodeEntry { "ui.audio_device_lost", Tier::notice, "The audio device was disconnected. Overdub switched to another device." },
     CodeEntry { "ui.camera_disconnected", Tier::notice, "The camera was disconnected and is no longer Armed." },
     CodeEntry { "capture.clap_no_video_take", Tier::notice, "No Pass has a Video Take yet. Arm the camera and record a Pass clapping in frame." },
@@ -92,6 +93,18 @@ const CodeEntry* entryFor (std::string_view code)
     const auto found = std::ranges::find (codeTable, code, &CodeEntry::code);
     return found == codeTable.end() ? nullptr : &*found;
 }
+
+// Without both rates (a Notice posted by code only) the table's sentence is shown.
+std::optional<std::string> sampleRateMismatchSentence (const core::Fields& fields)
+{
+    if (! fields.is_object() || ! fields.contains ("song_rate") || ! fields.contains ("device_rate"))
+        return std::nullopt;
+    const auto songRate = std::to_string (fields["song_rate"].get<int>());
+    const auto deviceRate = std::to_string (fields["device_rate"].get<int>());
+    if (fields.value ("rate_offered", false))
+        return "The audio device runs at " + deviceRate + " Hz and this Song is at " + songRate + " Hz, so it plays and records nothing. Pick " + songRate + " Hz in Settings.";
+    return "This Song is at " + songRate + " Hz, which the audio device (at " + deviceRate + " Hz) doesn't offer, so it plays and records nothing. Use a device that offers " + songRate + " Hz, or record in a new Song.";
+}
 } // namespace
 
 const char* tierName (Tier tier)
@@ -105,16 +118,19 @@ Tier tierFor (std::string_view code)
     return entry != nullptr ? entry->tier : Tier::alert;
 }
 
-std::string sentenceFor (std::string_view code)
+std::string sentenceFor (std::string_view code, const core::Fields& fields)
 {
+    if (code == "ui.sample_rate_mismatch")
+        if (auto sentence = sampleRateMismatchSentence (fields))
+            return *sentence;
     if (const auto* entry = entryFor (code))
         return std::string (entry->sentence);
     return "Something went wrong (" + std::string (code) + ").";
 }
 
-UserMessage userMessageFor (std::string_view code)
+UserMessage userMessageFor (std::string_view code, core::Fields fields)
 {
-    return UserMessage { tierFor (code), std::string (code) };
+    return UserMessage { tierFor (code), std::string (code), std::move (fields) };
 }
 
 void UserMessageQueue::post (UserMessage message)

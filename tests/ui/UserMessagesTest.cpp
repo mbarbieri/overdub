@@ -87,3 +87,16 @@ TEST_CASE ("device changes the user need not decide on are Notices; a Pass cut s
     for (const auto* code : { "ui.audio_device_lost", "ui.sample_rate_mismatch", "ui.camera_disconnected", "ui.audio_device_lost_during_pass" })
         CHECK (sentenceFor (code).find (code) == std::string::npos);
 }
+
+TEST_CASE ("the sample rate mismatch Notice points to Settings only when the device offers the Song's rate", "[ui][messages][sample_rate]")
+{
+    const overdub::core::Fields offered { { "song_rate", 44100 }, { "device_rate", 48000 }, { "rate_offered", true } };
+    CHECK (sentenceFor ("ui.sample_rate_mismatch", offered)
+           == "The audio device runs at 48000 Hz and this Song is at 44100 Hz, so it plays and records nothing. Pick 44100 Hz in Settings.");
+
+    const overdub::core::Fields notOffered { { "song_rate", 44100 }, { "device_rate", 48000 }, { "rate_offered", false } };
+    CHECK (sentenceFor ("ui.sample_rate_mismatch", notOffered)
+           == "This Song is at 44100 Hz, which the audio device (at 48000 Hz) doesn't offer, so it plays and records nothing. Use a device that offers 44100 Hz, or record in a new Song.");
+
+    CHECK (sentenceFor ("ui.sample_rate_mismatch") == "The audio device runs at another sample rate than this Song, so it plays and records nothing.");
+}
