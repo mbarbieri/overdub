@@ -106,6 +106,8 @@ struct AudioBinding
     // The device's sample rate in Hz; 0 when it reports none (taken to be the Song's). A device at
     // another rate than the Song's is not used (issue #41, ADR 0004 amendment).
     int sampleRate = 0;
+    // The rates the device offers, in Hz: whether the mismatch can be fixed in Settings.
+    std::vector<int> offeredSampleRates = {};
 };
 
 class OpenSong

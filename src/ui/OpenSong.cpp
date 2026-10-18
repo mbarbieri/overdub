@@ -65,7 +65,9 @@ void OpenSong::attachAudio (AudioBinding audio)
         // The Song's rate is fixed (ADR 0004): played at another rate it would change speed and pitch.
         rateMismatch = core::Error { "ui.sample_rate_mismatch",
                                      "the audio device runs at another rate than the Song",
-                                     { { "song_rate", song().sampleRate }, { "device_rate", audio.sampleRate } } };
+                                     { { "song_rate", song().sampleRate },
+                                       { "device_rate", audio.sampleRate },
+                                       { "rate_offered", std::ranges::contains (audio.offeredSampleRates, song().sampleRate) } } };
         audio.engine = nullptr;
     }
     binding = std::move (audio);

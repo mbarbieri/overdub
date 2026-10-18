@@ -61,6 +61,7 @@ public:
         binding.inputChannelNames = { "In 1", "In 2" };
         binding.outputDeviceName = key.outputDevice;
         binding.sampleRate = rate;
+        binding.offeredSampleRates = choices.sampleRates;
         return binding;
     }
     capture::RecordLatency recordLatency() const override { return latency; }

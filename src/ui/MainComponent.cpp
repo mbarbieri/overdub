@@ -702,7 +702,7 @@ void MainComponent::syncPluginWindows()
 
 void MainComponent::handleError (const core::Error& error)
 {
-    const auto message = userMessageFor (error.code);
+    const auto message = userMessageFor (error.code, error.fields);
     core::logError (error, message.tier == Tier::notice ? core::Level::warn : core::Level::error);
     post (message);
 }
@@ -730,7 +730,7 @@ void MainComponent::presentMessages()
 {
     for (const auto& message : messages.takeReady (passRunning()))
     {
-        const auto sentence = juce::String::fromUTF8 (sentenceFor (message.code).c_str());
+        const auto sentence = juce::String::fromUTF8 (sentenceFor (message.code, message.fields).c_str());
         if (message.tier == Tier::notice)
         {
             core::logEvent (core::Level::info, "ui.notice_shown", messageFields (message));

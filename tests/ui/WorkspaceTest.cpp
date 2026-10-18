@@ -300,6 +300,36 @@ TEST_CASE ("a Song at a rate the device does not offer opens without audio and s
     CHECK (contains (messageCodes (capture), "ui.sample_rate_mismatch"));
 }
 
+TEST_CASE ("on a device that doesn't offer the Song's rate, opening and Record both say so and name both rates; no Pass starts", "[ui][workspace][rate]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    overdub::core::ScopedLogCapture capture;
+    const auto expected = juce::String ("This Song is at 44100 Hz, which the audio device (at 48000 Hz) doesn't offer, so it plays and records nothing. Use a device that offers 44100 Hz, or record in a new Song.");
+
+    f.openSong (44100);
+    CHECK (f.content.noticeLine.text() == expected);
+
+    f.content.noticeLine.dismiss();
+    REQUIRE (f.content.noticeLine.text().isEmpty());
+    f.content.perform (overdub::ui::Command::record);
+    CHECK (f.content.noticeLine.text() == expected);
+    CHECK_FALSE (f.song().isRecording());
+    CHECK (f.song().song().passes.empty());
+
+    std::vector<overdub::core::Fields> mismatches;
+    for (const auto& event : capture.events())
+        if (event.at ("event") == "ui.sample_rate_mismatch")
+            mismatches.push_back (event);
+    REQUIRE (mismatches.size() == 2);
+    for (const auto& event : mismatches)
+    {
+        CHECK (event.at ("song_rate") == 44100);
+        CHECK (event.at ("device_rate") == overdub::engine::testing::testSampleRate);
+        CHECK (event.at ("rate_offered") == false);
+    }
+}
+
 TEST_CASE ("a latency calibration binds the Song again only once the audio thread has taken the newest plan", "[ui][workspace][calibration]")
 {
     WorkspaceFixture f;
