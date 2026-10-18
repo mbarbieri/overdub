@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -28,6 +29,7 @@ using overdub::ui::WorkspaceFiles;
 using overdub::ui::testing::FakeLiveAudio;
 using overdub::ui::testing::FakeMachine;
 using namespace std::chrono_literals;
+using overdub::ui::testing::choose;
 using overdub::ui::testing::click;
 using overdub::ui::testing::isShown;
 
@@ -595,4 +597,62 @@ TEST_CASE ("a conversion is refused while a Pass runs", "[ui][workspace][convers
     CHECK_FALSE (f.song().isConverting());
     CHECK (f.song().isRecording());
     CHECK (contains (messageCodes (capture), "ui.stop_recording_first"));
+}
+
+//==============================================================================
+// The settings window's offer (issue #159)
+
+TEST_CASE ("the settings window lists the rates of the devices being picked, only those both offer", "[ui][workspace][settings]")
+{
+    WorkspaceFixture f;
+    f.machine.inputDevice = "MacBook Pro Microphone";
+    f.machine.outputDevice = "MacBook Pro Speakers";
+    f.machine.deviceRate = 44100;
+    f.machine.offeredRates = { 44100, 48000 };
+    f.machine.offersByDevice["NUX NGA-3BT"] = { { 48000 }, { 256 } };
+    f.launch();
+    f.devicePanel.show (f.audio().deviceChoices());
+    REQUIRE (f.devicePanel.sampleRatePicker.getText() == "44100 Hz");
+    std::optional<overdub::engine::DeviceSettings> applied;
+    f.devicePanel.onApply = [&] (const overdub::engine::DeviceSettings& settings) { applied = settings; };
+
+    choose (f.devicePanel.inputPicker, 1); // NUX NGA-3BT in, MacBook Pro Speakers out
+    REQUIRE (f.devicePanel.inputPicker.getText() == "NUX NGA-3BT");
+    REQUIRE (f.devicePanel.sampleRatePicker.getNumItems() == 1);
+    CHECK (f.devicePanel.sampleRatePicker.getText() == "48000 Hz");
+    CHECK (f.devicePanel.bufferSizePicker.getText() == "256 samples");
+
+    click (f.devicePanel.applyButton);
+    REQUIRE (applied.has_value());
+    CHECK (applied->sampleRate == 48000);
+}
+
+TEST_CASE ("a picked rate that opens at another one says so", "[ui][workspace][settings][rate]")
+{
+    WorkspaceFixture f; // the device runs at 48 kHz whatever is picked
+    f.launch();
+    overdub::core::ScopedLogCapture capture;
+    auto settings = f.audio().deviceChoices().current;
+    settings.sampleRate = 44100;
+
+    f.workspace->applyDeviceSettings (settings);
+
+    std::vector<overdub::core::Fields> substituted;
+    for (const auto& event : capture.events())
+        if (event.at ("event") == "ui.device_rate_substituted")
+            substituted.push_back (event);
+    REQUIRE (substituted.size() == 1);
+    CHECK (substituted[0].at ("requested_rate") == 44100);
+    CHECK (substituted[0].at ("opened_rate") == 48000);
+    CHECK (f.content.noticeLine.text() == "The audio device doesn't offer 44100 Hz, so it opened at 48000 Hz.");
+}
+
+TEST_CASE ("a picked rate that opens as picked, or at the open Song's rate, says nothing", "[ui][workspace][settings][rate]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    overdub::core::ScopedLogCapture capture;
+    f.workspace->applyDeviceSettings (f.audio().deviceChoices().current);
+    CHECK_FALSE (contains (messageCodes (capture), "ui.device_rate_substituted"));
 }

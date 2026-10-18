@@ -130,6 +130,8 @@ private:
     void reopenAudio();
     void watchDevices();
     void answerSongRateChange();
+    // ui.device_rate_substituted (a Notice) when a picked rate opened at another one (issue #159).
+    void showRateSubstitution (int requestedRate);
     void answerDeviceChange();
     void pollLatencyRun (song::SongPackage::Clock::time_point now);
     bool latencyMeasuring() const;

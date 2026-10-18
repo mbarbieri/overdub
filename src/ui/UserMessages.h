@@ -29,7 +29,7 @@ struct UserMessage
 {
     Tier tier = Tier::alert;
     std::string code; // an Error.code or Notice code, e.g. "capture.pass_empty"
-    core::Fields fields = {}; // the Error's fields: ui.sample_rate_mismatch's sentence names them
+    core::Fields fields = {}; // the Error's fields, which a few sentences name
 
     bool operator== (const UserMessage&) const = default;
 };
@@ -39,7 +39,8 @@ Tier tierFor (std::string_view code);
 
 // The sentence the user reads for a code; unknown codes get a generic sentence that names it.
 // ui.sample_rate_mismatch names song_rate and device_rate, and points to Settings only when
-// rate_offered (the device offers the Song's rate).
+// rate_offered (the device offers the Song's rate); ui.device_rate_substituted names
+// requested_rate and opened_rate.
 std::string sentenceFor (std::string_view code, const core::Fields& fields = {});
 
 // The rate a Notice offers to convert the Song to: the device's, for a ui.sample_rate_mismatch

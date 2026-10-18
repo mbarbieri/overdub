@@ -43,6 +43,7 @@ constexpr std::array codeTable {
     CodeEntry { "ui.calibration_running", Tier::notice, "Wait for the latency measurement to finish." },
     CodeEntry { "capture.calibration_timeout", Tier::notice, "The audio device stopped during the measurement. Check the device, then measure again." },
     CodeEntry { "ui.sample_rate_mismatch", Tier::notice, "The audio device runs at another sample rate than this Song, so it plays and records nothing." },
+    CodeEntry { "ui.device_rate_substituted", Tier::notice, "The audio device opened at another sample rate than the one picked." },
     CodeEntry { "ui.audio_device_lost", Tier::notice, "The audio device was disconnected. Overdub switched to another device." },
     CodeEntry { "ui.camera_disconnected", Tier::notice, "The camera was disconnected and is no longer Armed." },
     CodeEntry { "capture.clap_no_video_take", Tier::notice, "No Pass has a Video Take yet. Arm the camera and record a Pass clapping in frame." },
@@ -109,6 +110,12 @@ std::optional<std::string> sampleRateMismatchSentence (const core::Fields& field
         return "The audio device runs at " + deviceRate + " Hz and this Song is at " + songRate + " Hz, so it plays and records nothing. Pick " + songRate + " Hz in Settings.";
     return "This Song is at " + songRate + " Hz, which the audio device (at " + deviceRate + " Hz) doesn't offer, so it plays and records nothing. Use a device that offers " + songRate + " Hz, or record in a new Song.";
 }
+std::optional<std::string> rateSubstitutedSentence (const core::Fields& fields)
+{
+    if (! fields.is_object() || ! fields.contains ("requested_rate") || ! fields.contains ("opened_rate"))
+        return std::nullopt;
+    return "The audio device doesn't offer " + std::to_string (fields["requested_rate"].get<int>()) + " Hz, so it opened at " + std::to_string (fields["opened_rate"].get<int>()) + " Hz.";
+}
 } // namespace
 
 const char* tierName (Tier tier)
@@ -126,6 +133,9 @@ std::string sentenceFor (std::string_view code, const core::Fields& fields)
 {
     if (code == "ui.sample_rate_mismatch")
         if (auto sentence = sampleRateMismatchSentence (fields))
+            return *sentence;
+    if (code == "ui.device_rate_substituted")
+        if (auto sentence = rateSubstitutedSentence (fields))
             return *sentence;
     if (const auto* entry = entryFor (code))
         return std::string (entry->sentence);

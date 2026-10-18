@@ -244,6 +244,38 @@ ui::DeviceChoices LiveEngine::deviceChoices()
     return choices;
 }
 
+ui::DeviceOffer LiveEngine::offerFor (const std::string& inputDevice, const std::string& outputDevice)
+{
+    auto* type = deviceManager.getCurrentDeviceTypeObject();
+    if (type == nullptr)
+        return {};
+    // The open pair is asked directly; any other is created only to be asked, never opened.
+    const auto setup = deviceManager.getAudioDeviceSetup();
+    auto* open = deviceManager.getCurrentAudioDevice();
+    const auto offerOf = [&] (const std::string& input, const std::string& output) {
+        ui::DeviceOffer offer;
+        std::unique_ptr<juce::AudioIODevice> created;
+        auto* device = open;
+        if (open == nullptr || setup.inputDeviceName.toStdString() != input || setup.outputDeviceName.toStdString() != output)
+        {
+            created.reset (type->createDevice (juce::String::fromUTF8 (output.c_str()), juce::String::fromUTF8 (input.c_str())));
+            device = created.get();
+        }
+        if (device == nullptr)
+            return offer;
+        for (const auto rate : device->getAvailableSampleRates())
+            offer.sampleRates.push_back (juce::roundToInt (rate));
+        for (const auto size : device->getAvailableBufferSizes())
+            offer.bufferSizes.push_back (size);
+        return offer;
+    };
+    if (inputDevice.empty() || outputDevice.empty() || inputDevice == outputDevice)
+        return offerOf (inputDevice, outputDevice);
+    const auto input = offerOf (inputDevice, {});
+    const auto output = offerOf ({}, outputDevice);
+    return { ui::offeredByBoth (output.sampleRates, input.sampleRates), ui::offeredByBoth (output.bufferSizes, input.bufferSizes) };
+}
+
 void LiveEngine::timerCallback()
 {
     if (audioEngine != nullptr)
