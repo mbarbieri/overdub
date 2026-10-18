@@ -8,7 +8,7 @@
 #include "ui/Pages.h"
 #include "ui/PluginWindows.h"
 #include "ui/RecordPage.h"
-#include "ui/SeparationDialog.h"
+#include "ui/RunDialog.h"
 #include "ui/TopBar.h"
 #include "ui/UserMessages.h"
 #include "ui/VideoPreviewWindow.h"
@@ -82,6 +82,11 @@
 // the helper's progress; it closes only when the Separation ends (its Error, if any, presented by
 // its tier) or its Cancel is clicked (OpenSong::cancelSeparation).
 //
+// Sample rate conversion (issue #160): convertSampleRate (the File menu, or the action of the
+// ui.sample_rate_mismatch Notice when the device does not offer the Song's rate) starts one
+// (OpenSong::startSampleRateConversion). While it runs the same modal dialog shows its progress;
+// Cancel stops it (OpenSong::cancelSampleRateConversion), and its Error is presented by its tier.
+//
 // Every 30 ms (and from tick() in tests) it polls the open Song, which finishes a stopped Pass,
 // refreshes the top bar and the page, feeds the Mixer's and the Record rows' meters from one
 // poll of the engine's peaks, and presents queued messages: Notices at once, Alerts only
@@ -110,6 +115,9 @@ public:
     void handleError (const core::Error& error);
     // Presents a Notice-tier code that was already logged where it arose (e.g. song.history_dropped).
     void showNotice (const std::string& code);
+
+    // Converts the open Song to `toRate` (see the header comment).
+    void convertSampleRate (int toRate);
 
     // One poll at `now` (OpenSong::poll): finish a stopped Pass, write a due song.json, refresh,
     // present messages.
@@ -172,7 +180,7 @@ public:
     ExportPage exportPage;
     NoSongPage noSongPage;
     NoticeLine noticeLine;
-    SeparationDialog separationDialog;
+    RunDialog runDialog;
     // The plugin editor windows; tests set showOnDesktop false before opening any.
     PluginWindows pluginWindows;
     // False in tests: the Video Preview is built, never put on the desktop.
@@ -199,8 +207,10 @@ private:
     void moveTrack (const song::Id& trackId, std::size_t toIndex);
     void showTrackMenu (const song::Id& trackId);
     void startSeparation (const song::Id& trackId);
-    void cancelSeparation();
-    bool separating() const { return openSong != nullptr && openSong->isSeparating(); }
+    // Cancels the Separation or the conversion the dialog shows.
+    void cancelRun();
+    // True while the modal run dialog shows: a Separation or a conversion runs.
+    bool runShowing() const { return openSong != nullptr && (openSong->isSeparating() || openSong->isConverting()); }
     void startExport (const exporting::ExportRequest& request);
     void chooseExportFile (const juce::File& current);
     void chooseInsert (const song::Id& trackId);

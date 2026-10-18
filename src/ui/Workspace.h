@@ -34,7 +34,9 @@
 // short is finished first by the window's poll, its Alert shown; an export is stopped), and once no
 // Pass, export or loopback run is running when the saved choice came back or a device appeared.
 // A lost device that falls back to another shows ui.audio_device_lost. Logs ui.audio_reopened
-// (info: change).
+// (info: change). When the open Song's rate changes (a sample rate conversion, or an undo or redo
+// across one, issue #160), tick() opens the audio again under the same rule (change
+// song_rate_changed).
 //
 // Calibration (issue #39): a device opened without a stored latency calibration shows the
 // ui.latency_not_calibrated Notice. measureLatency() detaches the open Song from the engine and runs
@@ -127,6 +129,7 @@ private:
     // open Song and shows what the user needs to know.
     void reopenAudio();
     void watchDevices();
+    void answerSongRateChange();
     void answerDeviceChange();
     void pollLatencyRun (song::SongPackage::Clock::time_point now);
     bool latencyMeasuring() const;

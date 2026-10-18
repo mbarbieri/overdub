@@ -236,7 +236,7 @@ core::Expected<const Track*> lookupTrack (const Song& song, const Id& trackId);
 core::Expected<Track*> lookupTrack (Song& song, const Id& trackId);
 
 // Undo and redo restore a snapshot's undoable content but keep the current state that lives
-// outside history: pre-roll, camera arm and device, playhead, the export choice (unless it would
+// outside history: pre-roll, camera arm and device, playhead (converted to the snapshot's rate), the export choice (unless it would
 // name a Video Take the snapshot does not have), per Track id Armed and input channels, and per
 // Insert Chain slot id (Master's included) the plugin state hash: plugin parameters are outside
 // history. A slot only the snapshot has keeps the snapshot's hash.

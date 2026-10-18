@@ -149,6 +149,7 @@ public:
     // Prepares every ready plugin for a new device shape. Invariant (the caller's): no plan may be
     // rendering them, i.e. no engine that ever played them still has a device calling process().
     void prepare (double sampleRate, int blockSize);
+    double preparedSampleRate() const { return sampleRate; }
 
 private:
     struct Entry

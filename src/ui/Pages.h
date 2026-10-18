@@ -25,7 +25,9 @@ public:
     juce::TextButton openSongButton { "Open..." };
 };
 
-// The Notice tier (ADR 0006): a non-modal one-liner that hides itself after `visibleFor`.
+// The Notice tier (ADR 0006): a non-modal one-liner that hides itself after `visibleFor`. A Notice
+// may offer one action (issue #160), a button at its right end: it then stays until the action is
+// clicked, another Notice replaces it or dismiss() is called.
 class NoticeLine final : public juce::Component, private juce::Timer
 {
 public:
@@ -33,16 +35,21 @@ public:
 
     NoticeLine();
 
-    void show (const juce::String& sentence);
+    void show (const juce::String& sentence, const juce::String& actionLabel = {}, std::function<void()> onAction = {});
     void dismiss();
 
     const juce::String& text() const { return sentence; }
+    bool hasAction() const { return action != nullptr; }
 
+    void resized() override;
     void paint (juce::Graphics& g) override;
+
+    juce::TextButton actionButton; // public so tests can click it
 
 private:
     void timerCallback() override { dismiss(); }
 
     juce::String sentence;
+    std::function<void()> action;
 };
 } // namespace overdub::ui

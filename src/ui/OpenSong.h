@@ -22,6 +22,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 // One open Song bound to the live engine (issue #27): what the main window's gestures do. It owns
@@ -90,6 +91,14 @@
 // Separation dialog is modal, and the Song stays as the Separation started. It is refused while a Pass
 // (ui.stop_recording_first) or an export (ui.export_running) runs. cancelSeparation() (the dialog's
 // Cancel) and closing the Song kill the helper; the Song is unchanged.
+//
+// Sample rate conversion (issue #160, ADR 0004 amendment): startSampleRateConversion stops the
+// transport and starts a song::SampleRateConversionRun; poll() advances it and returns its Error.
+// While it runs the Song is locked as during a Separation (record and play refused with
+// ui.conversion_running), and it is refused while a Pass, an export or a Separation runs. When the
+// Song's rate changes (the conversion, or an undo or redo across one), the audio is detached at once
+// (nothing plays the Song at the wrong speed) and takeSampleRateChanged() tells the owner to open
+// the device at the new rate (logged as ui.song_rate_changed: from_rate, to_rate).
 //
 // Message thread only.
 namespace overdub::ui
@@ -278,6 +287,20 @@ public:
     song::SeparationProgress separationProgress() const { return separation != nullptr ? separation->progress() : song::SeparationProgress {}; }
     std::string separationSourceName() const { return separation != nullptr ? separation->sourceName() : std::string(); }
 
+    // Starts converting the Song to `toRate` (see the header comment). Ignored while one runs.
+    // Errors: ui.stop_recording_first, ui.export_running, ui.separation_running,
+    // song::SampleRateConversionRun::start's.
+    core::Expected<void> startSampleRateConversion (int toRate, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
+    bool isConverting() const { return conversion != nullptr; }
+    // Stops the running conversion (its files deleted, the Song unchanged). Nothing when none runs.
+    void cancelSampleRateConversion (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
+    // The running conversion's fraction done (0..1) and target rate; 0 when none runs.
+    double conversionFraction() const { return conversion != nullptr ? conversion->fraction() : 0.0; }
+    int conversionTargetRate() const { return conversion != nullptr ? conversion->toRate() : 0; }
+    // True once after the Song's rate changed: the audio is detached and should be opened again at
+    // the Song's rate.
+    bool takeSampleRateChanged() { return std::exchange (sampleRateChanged, false); }
+
     // Call regularly (window timer): advances an export (starts it once the audio has let go of
     // the plugins, or gives it up after ExportRun::audioTimeout; once it ends, reloads the engine and
     // returns its Error), finishes a Pass the audio thread has ended, rebuilds the plan when a
@@ -295,11 +318,14 @@ private:
     // When the ExportRun says it ended: destroys it, reloads the engine and keeps its file.
     // Returns its Error; none (nothing done) while it runs.
     std::optional<core::Error> endExportIfEnded (std::optional<ExportEnd> end);
-    // True while a Pass or a Separation runs: the Song may not change by a gesture.
-    bool songLocked() const { return recorder != nullptr || separation != nullptr; }
+    // True while a Pass, a Separation or a conversion runs: the Song may not change by a gesture.
+    bool songLocked() const { return recorder != nullptr || separation != nullptr || conversion != nullptr; }
     // Advances a running Separation; once it ends, reloads the engine and returns its Error.
     std::optional<core::Error> advanceSeparation (song::SongPackage::Clock::time_point now);
-    // After a history change: setMix when only the mix changed since `before`, else reloadEngine.
+    // Advances a running conversion; once it ends, updates the engine and returns its Error.
+    std::optional<core::Error> advanceConversion (song::SongPackage::Clock::time_point now);
+    // After a history change: detaches the audio when the rate changed since `before`, else setMix
+    // when only the mix changed, else reloadEngine.
     void updateEngine (const song::Song& before);
     std::vector<core::Error> finishPass (capture::FinishedPass finished);
     // The crashes the InsertHost heard since the last poll, as Notice errors (ui.plugin_crashed,
@@ -320,6 +346,8 @@ private:
     // After package_: destroyed before it (the run kills its helper and deletes its output folder).
     song::SeparationTools separationTools;
     std::unique_ptr<song::SeparationRun> separation;
+    std::unique_ptr<song::SampleRateConversionRun> conversion; // after package_: destroyed (cancelled) first
+    bool sampleRateChanged = false;
     // After package_: destroyed first, once the destructor has captured its state and unhooked it.
     plugin::InsertHost inserts;
     AudioBinding binding;

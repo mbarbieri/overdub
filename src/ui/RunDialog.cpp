@@ -1,4 +1,4 @@
-#include "ui/SeparationDialog.h"
+#include "ui/RunDialog.h"
 
 #include "song/Separation.h"
 #include "ui/Colours.h"
@@ -38,11 +38,24 @@ std::string separationStatusText (const song::SeparationProgress& progress)
     return "Chunk " + std::to_string (progress.chunksDone) + " of " + std::to_string (progress.chunks) + " \xc2\xb7 " + std::to_string (percent) + "%";
 }
 
-SeparationDialog::SeparationDialog()
+RunDialogText separationDialogText (const std::string& sourceName, const song::SeparationProgress& progress)
+{
+    return { separationTitleText (sourceName), separationHintText(), separationStatusText (progress) };
+}
+
+RunDialogText conversionDialogText (int toRate, double fraction)
+{
+    return {
+        "Converting to " + std::to_string (toRate) + " Hz",
+        "Resampling every Take and deriving every Backing Track again from its original. Undo brings the Song back at its old rate.",
+        std::to_string ((int) std::floor (fraction * 100.0)) + "%",
+    };
+}
+
+RunDialog::RunDialog()
 {
     title.setFont (juce::FontOptions (16.0f, juce::Font::bold));
     title.setColour (juce::Label::textColourId, colours::text);
-    hint.setText (juce::String::fromUTF8 (separationHintText().c_str()), juce::dontSendNotification);
     hint.setColour (juce::Label::textColourId, colours::dimText);
     hint.setFont (juce::FontOptions (12.0f));
     statusLabel.setColour (juce::Label::textColourId, colours::dimText);
@@ -59,19 +72,20 @@ SeparationDialog::SeparationDialog()
     setInterceptsMouseClicks (true, true);
 }
 
-void SeparationDialog::show (const std::string& sourceName, const song::SeparationProgress& progress)
+void RunDialog::show (const RunDialogText& text, double fraction)
 {
-    title.setText (juce::String::fromUTF8 (separationTitleText (sourceName).c_str()), juce::dontSendNotification);
-    statusLabel.setText (juce::String::fromUTF8 (separationStatusText (progress).c_str()), juce::dontSendNotification);
-    progressBar.setFraction (progress.fraction());
+    title.setText (juce::String::fromUTF8 (text.title.c_str()), juce::dontSendNotification);
+    hint.setText (juce::String::fromUTF8 (text.hint.c_str()), juce::dontSendNotification);
+    statusLabel.setText (juce::String::fromUTF8 (text.status.c_str()), juce::dontSendNotification);
+    progressBar.setFraction (fraction);
 }
 
-juce::Rectangle<int> SeparationDialog::panelBounds() const
+juce::Rectangle<int> RunDialog::panelBounds() const
 {
     return getLocalBounds().withSizeKeepingCentre (std::min (panelWidth, getWidth() - 32), panelHeight);
 }
 
-void SeparationDialog::resized()
+void RunDialog::resized()
 {
     auto area = panelBounds().reduced (20, 16);
     title.setBounds (area.removeFromTop (24));
@@ -85,7 +99,7 @@ void SeparationDialog::resized()
     cancelButton.setBounds (area.removeFromTop (26).removeFromRight (90));
 }
 
-void SeparationDialog::paint (juce::Graphics& g)
+void RunDialog::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colours::black.withAlpha (0.55f));
     const auto panel = panelBounds().toFloat();

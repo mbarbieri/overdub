@@ -12,6 +12,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 using overdub::engine::DeviceChange;
@@ -27,6 +28,8 @@ using overdub::ui::WorkspaceFiles;
 using overdub::ui::testing::FakeLiveAudio;
 using overdub::ui::testing::FakeMachine;
 using namespace std::chrono_literals;
+using overdub::ui::testing::click;
+using overdub::ui::testing::isShown;
 
 // The main window's device and calibration policy (issue #105), driven through the Workspace with
 // the test LiveAudio: devices are lost, reconfigured or come back by the test's word, and the
@@ -471,4 +474,125 @@ TEST_CASE ("opening another Song, changing the device and quitting are refused w
     f.song().cancelSeparation();
     CHECK (f.workspace->isIdle());
     CHECK (f.workspace->mayQuitOrNotice());
+}
+
+//==============================================================================
+// Sample rate conversion (issue #160)
+
+namespace
+{
+// Polls as the window's timers would until the conversion has ended.
+void finishConversion (WorkspaceFixture& f)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (30);
+    while (f.song().isConverting() && std::chrono::steady_clock::now() < deadline)
+    {
+        f.tick();
+        std::this_thread::sleep_for (std::chrono::milliseconds (5));
+    }
+    REQUIRE_FALSE (f.song().isConverting());
+    f.tick(); // the Workspace answers the rate change
+}
+} // namespace
+
+TEST_CASE ("the mismatch Notice offers to convert the Song to the device's rate; converted, it plays and records on that device", "[ui][workspace][rate][conversion]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong (44100); // the device runs at 48 kHz only
+    overdub::core::ScopedLogCapture capture;
+
+    auto& action = f.content.noticeLine.actionButton;
+    REQUIRE (isShown (action));
+    CHECK (action.getButtonText() == "Convert to 48000 Hz");
+    click (action);
+    REQUIRE (f.song().isConverting());
+    CHECK (isShown (f.content.runDialog));
+    CHECK (f.content.runDialog.title.getText() == "Converting to 48000 Hz");
+    CHECK_FALSE (isShown (action));
+
+    finishConversion (f);
+    CHECK_FALSE (isShown (f.content.runDialog));
+    CHECK (f.song().song().sampleRate == 48000);
+    CHECK (f.song().package().undoLabel() == "Convert to 48000 Hz");
+    REQUIRE (f.opened.size() == 2);
+    CHECK (f.openedForRates.back() == 48000);
+    CHECK_FALSE (f.song().audioProblem().has_value());
+    CHECK (f.song().audio().engine == f.audio().engine());
+
+    REQUIRE (f.song().record().has_value());
+    f.runBlocks (20);
+    CHECK (f.song().isRecording());
+    f.song().stop();
+    f.runBlocks (1);
+    CHECK_FALSE (f.song().isRecording());
+    CHECK (f.song().song().passes.size() == 1);
+
+    std::vector<overdub::core::Fields> reopened;
+    for (const auto& event : capture.events())
+        if (event.at ("event") == "ui.audio_reopened")
+            reopened.push_back (event);
+    REQUIRE (reopened.size() == 1);
+    CHECK (reopened[0].at ("change") == "song_rate_changed");
+}
+
+TEST_CASE ("undoing a conversion brings the Song back at its old rate, without audio on a device that does not offer it", "[ui][workspace][rate][conversion][history]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong (44100);
+    f.content.convertSampleRate (48000);
+    finishConversion (f);
+    REQUIRE (f.song().song().sampleRate == 48000);
+
+    f.content.perform (overdub::ui::Command::undo);
+    f.tick();
+    CHECK (f.song().song().sampleRate == 44100);
+    REQUIRE (f.opened.size() == 3);
+    REQUIRE (f.song().audioProblem().has_value());
+    CHECK (f.song().audioProblem()->code == "ui.sample_rate_mismatch");
+
+    f.content.perform (overdub::ui::Command::redo);
+    f.tick();
+    CHECK (f.song().song().sampleRate == 48000);
+    CHECK_FALSE (f.song().audioProblem().has_value());
+}
+
+TEST_CASE ("while a conversion runs, recording, other Songs and device changes wait; Cancel leaves the Song as it was", "[ui][workspace][conversion]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong (44100);
+    const auto before = f.song().song();
+    f.content.convertSampleRate (48000);
+    REQUIRE (f.song().isConverting());
+    overdub::core::ScopedLogCapture capture;
+
+    const auto recorded = f.song().record();
+    REQUIRE_FALSE (recorded.has_value());
+    CHECK (recorded.error().code == "ui.conversion_running");
+    CHECK_FALSE (f.workspace->isIdle());
+    CHECK_FALSE (f.workspace->idleOrNotice());
+    CHECK (contains (messageCodes (capture), "ui.conversion_running"));
+
+    click (f.content.runDialog.cancelButton);
+    CHECK_FALSE (f.song().isConverting());
+    CHECK_FALSE (isShown (f.content.runDialog));
+    f.tick();
+    CHECK (f.song().song() == before);
+    CHECK (f.opened.size() == 1);
+}
+
+TEST_CASE ("a conversion is refused while a Pass runs", "[ui][workspace][conversion][record]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    REQUIRE (f.song().record().has_value());
+    overdub::core::ScopedLogCapture capture;
+
+    f.content.convertSampleRate (44100);
+    CHECK_FALSE (f.song().isConverting());
+    CHECK (f.song().isRecording());
+    CHECK (contains (messageCodes (capture), "ui.stop_recording_first"));
 }

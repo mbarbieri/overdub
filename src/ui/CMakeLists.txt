@@ -29,7 +29,7 @@ target_sources(overdub_ui PRIVATE
     Pages.cpp
     RecordPage.cpp
     RecordView.cpp
-    SeparationDialog.cpp
+    RunDialog.cpp
     SongFiles.cpp
     SongOverview.cpp
     TakeLanes.cpp
