@@ -11,6 +11,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <memory>
+#include <vector>
 
 namespace overdub::app
 {
@@ -39,6 +40,9 @@ private:
     void chooseSongToOpen();
     void duplicateSong();
     void showSettings();
+    // File > Convert Sample Rate: one item per rate the open device offers (offeredMenuRates).
+    juce::PopupMenu convertSampleRateMenu();
+    void convertSampleRate (int toRate);
     void updateTitle();
 
     juce::String appName;
@@ -51,6 +55,7 @@ private:
     std::unique_ptr<ui::Workspace> workspace;
     juce::TimedCallback workspaceTick { [this] { workspace->tick(); } };
     std::unique_ptr<juce::FileChooser> chooser;
+    std::vector<int> offeredMenuRates; // as the File menu last listed them
     std::unique_ptr<juce::DocumentWindow> settingsWindow;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)

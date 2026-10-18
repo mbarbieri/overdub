@@ -100,3 +100,16 @@ TEST_CASE ("the sample rate mismatch Notice points to Settings only when the dev
 
     CHECK (sentenceFor ("ui.sample_rate_mismatch") == "The audio device runs at another sample rate than this Song, so it plays and records nothing.");
 }
+
+TEST_CASE ("a mismatch Notice offers converting the Song to the device's rate only when the device does not offer the Song's", "[ui][messages][sample_rate][conversion]")
+{
+    const auto offered = userMessageFor ("ui.sample_rate_mismatch", { { "song_rate", 44100 }, { "device_rate", 48000 }, { "rate_offered", true } });
+    CHECK_FALSE (conversionOfferedBy (offered).has_value());
+
+    const auto notOffered = userMessageFor ("ui.sample_rate_mismatch", { { "song_rate", 44100 }, { "device_rate", 48000 }, { "rate_offered", false } });
+    CHECK (conversionOfferedBy (notOffered) == 48000);
+    CHECK (conversionActionText (48000) == "Convert to 48000 Hz");
+
+    CHECK_FALSE (conversionOfferedBy (userMessageFor ("ui.sample_rate_mismatch")).has_value());
+    CHECK_FALSE (conversionOfferedBy (userMessageFor ("ui.no_audio_device")).has_value());
+}

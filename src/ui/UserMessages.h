@@ -2,6 +2,7 @@
 
 #include "core/Log.h"
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -40,6 +41,12 @@ Tier tierFor (std::string_view code);
 // ui.sample_rate_mismatch names song_rate and device_rate, and points to Settings only when
 // rate_offered (the device offers the Song's rate).
 std::string sentenceFor (std::string_view code, const core::Fields& fields = {});
+
+// The rate a Notice offers to convert the Song to: the device's, for a ui.sample_rate_mismatch
+// whose device does not offer the Song's rate (issue #160). None for any other message.
+std::optional<int> conversionOfferedBy (const UserMessage& message);
+// The Notice action's label: "Convert to 48000 Hz".
+std::string conversionActionText (int toRate);
 
 // {tierFor (code), code, fields}.
 UserMessage userMessageFor (std::string_view code, core::Fields fields = {});

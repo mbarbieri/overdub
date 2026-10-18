@@ -108,7 +108,7 @@ MainComponent::MainComponent()
     revealInFinder = [] (const juce::File& file) { file.revealToUser(); };
 
     topBar.onCommand = [this] (Command command) { perform (command); };
-    separationDialog.onCancel = [this] { cancelSeparation(); };
+    runDialog.onCancel = [this] { cancelRun(); };
     recordPage.onArm = [this] (const song::Id& trackId, bool armed) {
         if (openSong != nullptr)
             openSong->setArmed (trackId, armed);
@@ -237,7 +237,7 @@ MainComponent::MainComponent()
     addChildComponent (exportPage);
     addChildComponent (noSongPage);
     addChildComponent (noticeLine);
-    addChildComponent (separationDialog); // last: on top of everything
+    addChildComponent (runDialog); // last: on top of everything
 
     setWantsKeyboardFocus (true);
     addMouseListener (this, true);
@@ -339,8 +339,8 @@ void MainComponent::chooseExportFile (const juce::File& current)
 
 void MainComponent::perform (Command command)
 {
-    // The Separation dialog is modal: nothing acts while it shows.
-    if (separating())
+    // The run dialog is modal: nothing acts while it shows.
+    if (runShowing())
         return;
     if (const auto mode = modeFor (command))
     {
@@ -589,7 +589,7 @@ void MainComponent::moveTrack (const song::Id& trackId, std::size_t toIndex)
 
 void MainComponent::showTrackMenu (const song::Id& trackId)
 {
-    if (openSong == nullptr || separating() || ! chooseTrackMenuItem)
+    if (openSong == nullptr || runShowing() || ! chooseTrackMenuItem)
         return;
     auto items = trackMenuFor (openSong->song(), trackId, TrackMenuState { .passRunning = openSong->isRecording(), .exportRunning = openSong->isExporting() });
     chooseTrackMenuItem (items, [safeThis = juce::Component::SafePointer<MainComponent> (this), trackId, items] (std::optional<std::size_t> picked) {
@@ -612,13 +612,25 @@ void MainComponent::startSeparation (const song::Id& trackId)
     refresh();
 }
 
-void MainComponent::cancelSeparation()
+void MainComponent::cancelRun()
 {
     if (openSong == nullptr)
         return;
     openSong->cancelSeparation();
+    openSong->cancelSampleRateConversion();
     refresh();
     takeKeyboardFocus();
+}
+
+void MainComponent::convertSampleRate (int toRate)
+{
+    if (openSong == nullptr || runShowing())
+        return;
+    commitKeyBursts();
+    core::logEvent (core::Level::info, "ui.sample_rate_conversion_requested", { { "from_rate", openSong->song().sampleRate }, { "to_rate", toRate } });
+    if (auto started = openSong->startSampleRateConversion (toRate); ! started.has_value())
+        handleError (started.error());
+    refresh();
 }
 
 void MainComponent::chooseInsert (const song::Id& trackId)
@@ -734,7 +746,10 @@ void MainComponent::presentMessages()
         if (message.tier == Tier::notice)
         {
             core::logEvent (core::Level::info, "ui.notice_shown", messageFields (message));
-            noticeLine.show (sentence);
+            if (const auto rate = conversionOfferedBy (message))
+                noticeLine.show (sentence, juce::String::fromUTF8 (conversionActionText (*rate).c_str()), [this, toRate = *rate] { convertSampleRate (toRate); });
+            else
+                noticeLine.show (sentence);
         }
         else
         {
@@ -824,9 +839,14 @@ void MainComponent::refresh()
     recordPage.setVisible (songOpen && currentMode == Mode::record);
     editPage.setVisible (songOpen && currentMode == Mode::edit);
     exportPage.setVisible (songOpen && currentMode == Mode::exportSong);
-    if (separating())
-        separationDialog.show (openSong->separationSourceName(), openSong->separationProgress());
-    separationDialog.setVisible (separating());
+    if (openSong != nullptr && openSong->isSeparating())
+        runDialog.show (separationDialogText (openSong->separationSourceName(), openSong->separationProgress()), openSong->separationProgress().fraction());
+    else if (openSong != nullptr && openSong->isConverting())
+        runDialog.show (conversionDialogText (openSong->conversionTargetRate(), openSong->conversionFraction()), openSong->conversionFraction());
+    runDialog.setVisible (runShowing());
+    // The conversion a Notice offers no longer applies once the Song is at the device's rate.
+    if (noticeLine.hasAction() && (openSong == nullptr || ! openSong->audioProblem().has_value()))
+        noticeLine.dismiss();
     syncVideoPreview();
 }
 
@@ -838,8 +858,8 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
         .command = modifiers.isCommandDown(),
         .shift = modifiers.isShiftDown(),
     });
-    // The Separation dialog is modal: it swallows every key while it shows.
-    if (separating())
+    // The run dialog is modal: it swallows every key while it shows.
+    if (runShowing())
         return true;
     if (key.isKeyCode (juce::KeyPress::escapeKey) && editPage.timeline.cancelGesture ("escape"))
         return true;
@@ -885,7 +905,7 @@ void MainComponent::resized()
     for (auto* page : std::initializer_list<juce::Component*> { &recordPage, &editPage, &exportPage, &noSongPage })
         page->setBounds (layout.page);
     noticeLine.setBounds (layout.noticeLine);
-    separationDialog.setBounds (getLocalBounds());
+    runDialog.setBounds (getLocalBounds());
 }
 
 void MainComponent::paint (juce::Graphics& g)

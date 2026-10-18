@@ -15,7 +15,9 @@ enum MenuItem
     duplicateSongItem,
     settingsItem,
     undoItem,
-    redoItem
+    redoItem,
+    // File > Convert Sample Rate: this plus the rate's index in the device's offered rates.
+    convertSampleRateItemBase = 100
 };
 
 juce::File defaultSongFolder()
@@ -152,6 +154,8 @@ juce::PopupMenu MainWindow::getMenuForIndex (int topLevelMenuIndex, const juce::
         menu.addItem (newSongItem, "New Song...", idle);
         menu.addItem (openSongItem, "Open...", idle);
         menu.addItem (duplicateSongItem, "Duplicate...", idle && openSong != nullptr);
+        const auto rates = convertSampleRateMenu();
+        menu.addSubMenu ("Convert Sample Rate", rates, idle && openSong != nullptr && ! offeredMenuRates.empty());
         menu.addSeparator();
         menu.addItem (settingsItem, "Settings...", idle);
         return menu;
@@ -169,8 +173,32 @@ juce::PopupMenu MainWindow::getMenuForIndex (int topLevelMenuIndex, const juce::
     return menu;
 }
 
+juce::PopupMenu MainWindow::convertSampleRateMenu()
+{
+    // The open device's rates (issue #160); the Song's own is ticked and disabled.
+    juce::PopupMenu rates;
+    offeredMenuRates = workspace->liveAudio().deviceChoices().sampleRates;
+    const auto* openSong = workspace->openSong();
+    const auto songRate = openSong != nullptr ? openSong->song().sampleRate : 0;
+    const auto canConvert = openSong != nullptr && ! openSong->isExporting();
+    for (std::size_t i = 0; i < offeredMenuRates.size(); ++i)
+    {
+        const auto rate = offeredMenuRates[i];
+        rates.addItem (convertSampleRateItemBase + (int) i, juce::String (rate) + " Hz", canConvert && rate != songRate, rate == songRate);
+    }
+    return rates;
+}
+
+void MainWindow::convertSampleRate (int toRate)
+{
+    if (workspace->idleOrNotice())
+        content.convertSampleRate (toRate);
+}
+
 void MainWindow::menuItemSelected (int menuItemID, int)
 {
+    if (const auto index = menuItemID - convertSampleRateItemBase; index >= 0 && index < (int) offeredMenuRates.size())
+        return convertSampleRate (offeredMenuRates[(std::size_t) index]);
     switch (menuItemID)
     {
         case newSongItem: newSong(); break;

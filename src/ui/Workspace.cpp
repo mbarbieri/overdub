@@ -47,7 +47,7 @@ Workspace::~Workspace()
 
 bool Workspace::isIdle() const
 {
-    return ! latencyMeasuring() && ! (song != nullptr && (song->isRecording() || song->isSeparating()));
+    return ! latencyMeasuring() && ! (song != nullptr && (song->isRecording() || song->isSeparating() || song->isConverting()));
 }
 
 bool Workspace::idleOrNotice()
@@ -56,8 +56,12 @@ bool Workspace::idleOrNotice()
         return true;
     if (latencyMeasuring())
         content.showNotice ("ui.calibration_running");
+    else if (song->isSeparating())
+        content.showNotice ("ui.separation_running");
+    else if (song->isConverting())
+        content.showNotice ("ui.conversion_running");
     else
-        content.showNotice (song->isSeparating() ? "ui.separation_running" : "ui.stop_recording_first");
+        content.showNotice ("ui.stop_recording_first");
     return false;
 }
 
@@ -208,8 +212,19 @@ void Workspace::watchDevices()
 
 void Workspace::tick (song::SongPackage::Clock::time_point now)
 {
+    answerSongRateChange();
     answerDeviceChange();
     pollLatencyRun (now);
+}
+
+void Workspace::answerSongRateChange()
+{
+    // The Song detached its audio when its rate changed (issue #160): the device is opened again
+    // at the new rate when it offers it, as when a Song opens.
+    if (song == nullptr || ! isIdle() || ! song->takeSampleRateChanged())
+        return;
+    core::logEvent (core::Level::info, "ui.audio_reopened", { { "change", "song_rate_changed" } });
+    reopenAudio();
 }
 
 void Workspace::answerDeviceChange()

@@ -124,7 +124,7 @@ std::vector<std::vector<float>> renderSoloed (const song::Song& songToRender, co
 TEST_CASE ("Separate... on a Backing Track's row opens a modal dialog whose progress bar follows the helper", "[ui][separation]")
 {
     SeparateFixture s;
-    auto& dialog = s.f.window->separationDialog;
+    auto& dialog = s.f.window->runDialog;
     CHECK_FALSE (isShown (dialog));
 
     s.menuPick = std::nullopt; // dismissed
@@ -383,7 +383,7 @@ TEST_CASE ("a helper that fails is an Alert, the dialog closes and the Song is u
     CHECK (shown.at ("code") == "song.separation_failed");
     CHECK (shown.at ("tier") == "alert");
     CHECK (s.f.alertsShown.size() == 1);
-    CHECK_FALSE (isShown (s.f.window->separationDialog));
+    CHECK_FALSE (isShown (s.f.window->runDialog));
     CHECK (s.f.song() == before);
 }
 
@@ -412,7 +412,7 @@ TEST_CASE ("the dialog's Cancel kills the helper at once, deletes its output and
     const auto undoLabel = s.f.openSong->package().undoLabel();
     const auto canRedo = s.f.openSong->package().canRedo();
     const auto files = packageFiles (s.f.openSong->package());
-    auto& dialog = s.f.window->separationDialog;
+    auto& dialog = s.f.window->runDialog;
     ScopedLogCapture capture;
     s.rightClickRow ("Band Mix");
     s.f.window->tick(); // started
@@ -466,7 +466,7 @@ TEST_CASE ("a helper that fails, crashes, never starts or ends without every par
         s.f.window->tick();
 
     CHECK_FALSE (s.f.openSong->isSeparating());
-    CHECK_FALSE (isShown (s.f.window->separationDialog));
+    CHECK_FALSE (isShown (s.f.window->runDialog));
     const auto shown = firstEvent (capture, "ui.alert_shown");
     CHECK (shown.at ("code") == c.code);
     CHECK (shown.at ("tier") == "alert");
@@ -524,7 +524,7 @@ TEST_CASE ("Separate... is disabled with a tooltip during a Pass", "[ui][separat
 TEST_CASE ("the Separation dialog closes only on success, Cancel or failure: clicks and keys do not close it", "[ui][separation]")
 {
     SeparateFixture s;
-    auto& dialog = s.f.window->separationDialog;
+    auto& dialog = s.f.window->runDialog;
     s.rightClickRow ("Band Mix");
     REQUIRE (isShown (dialog));
 

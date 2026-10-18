@@ -72,7 +72,12 @@ void OpenSong::attachAudio (AudioBinding audio)
     }
     binding = std::move (audio);
     if (binding.engine == nullptr)
+    {
+        // Nothing renders the plugins without an engine: an export renders them at the Song's rate.
+        if (inserts.preparedSampleRate() != song().sampleRate)
+            inserts.prepare (song().sampleRate, blockSizeOf (binding));
         return;
+    }
     // Invariant (see attachAudio in OpenSong.h): no engine renders the plugins now.
     inserts.prepare (song().sampleRate, blockSizeOf (binding));
     binding.engine->stop();
@@ -150,6 +155,8 @@ core::Expected<void> OpenSong::record()
         return {};
     if (isSeparating())
         return std::unexpected (core::Error { "ui.separation_running", "a Separation is running", {} });
+    if (isConverting())
+        return std::unexpected (core::Error { "ui.conversion_running", "a sample rate conversion is running", {} });
     if (isExporting())
         return std::unexpected (core::Error { "ui.export_running", "an export is running", {} });
     if (binding.engine == nullptr)
@@ -230,7 +237,7 @@ void OpenSong::stop()
 
 void OpenSong::playOrStop()
 {
-    if (binding.engine == nullptr || isExporting() || isSeparating())
+    if (binding.engine == nullptr || isExporting() || isSeparating() || isConverting())
         return;
     if (recorder != nullptr || binding.engine->isPlaying())
         stop();
@@ -375,6 +382,8 @@ core::Expected<void> OpenSong::startSeparation (const song::Id& trackId, song::S
         return std::unexpected (core::Error { "ui.stop_recording_first", "a Pass is running", {} });
     if (isExporting())
         return std::unexpected (core::Error { "ui.export_running", "an export is running", {} });
+    if (isConverting())
+        return std::unexpected (core::Error { "ui.conversion_running", "a sample rate conversion is running", {} });
     if (isSeparating())
         return {};
     auto started = song::SeparationRun::start (*package_, trackId, separationTools, now);
@@ -409,6 +418,48 @@ std::optional<core::Error> OpenSong::advanceSeparation (song::SongPackage::Clock
     return std::nullopt;
 }
 
+core::Expected<void> OpenSong::startSampleRateConversion (int toRate, song::SongPackage::Clock::time_point now)
+{
+    if (recorder != nullptr)
+        return std::unexpected (core::Error { "ui.stop_recording_first", "a Pass is running", {} });
+    if (isExporting())
+        return std::unexpected (core::Error { "ui.export_running", "an export is running", {} });
+    if (isSeparating())
+        return std::unexpected (core::Error { "ui.separation_running", "a Separation is running", {} });
+    if (isConverting())
+        return {};
+    auto started = song::SampleRateConversionRun::start (*package_, toRate, now);
+    if (! started.has_value())
+        return std::unexpected (started.error());
+    conversion = std::move (*started);
+    if (binding.engine != nullptr)
+        binding.engine->stop();
+    return {};
+}
+
+void OpenSong::cancelSampleRateConversion (song::SongPackage::Clock::time_point now)
+{
+    if (conversion == nullptr)
+        return;
+    conversion->cancel (now);
+    conversion.reset();
+}
+
+std::optional<core::Error> OpenSong::advanceConversion (song::SongPackage::Clock::time_point now)
+{
+    if (conversion == nullptr)
+        return std::nullopt;
+    const auto before = song();
+    auto ended = conversion->advance (now);
+    if (! ended.has_value())
+        return std::nullopt;
+    conversion.reset();
+    updateEngine (before);
+    if (! ended->has_value())
+        return ended->error();
+    return std::nullopt;
+}
+
 std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point now)
 {
     auto errors = handleCrashes();
@@ -422,6 +473,8 @@ std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point no
             for (auto& error : finishPass (std::move (*finished)))
                 errors.push_back (std::move (error));
     if (auto error = advanceSeparation (now))
+        errors.push_back (std::move (*error));
+    if (auto error = advanceConversion (now))
         errors.push_back (std::move (*error));
 
     // A crashed plugin reloads only once no Pass or export runs (a Pass keeps its plan anyway).
@@ -624,6 +677,15 @@ capture::SampleCount OpenSong::cameraCalibrationSamples (const std::string& came
 
 void OpenSong::updateEngine (const song::Song& before)
 {
+    if (before.sampleRate != song().sampleRate)
+    {
+        // The device runs at the old rate: the owner opens it again at the new one.
+        core::logEvent (core::Level::info, "ui.song_rate_changed", { { "from_rate", before.sampleRate }, { "to_rate", song().sampleRate } });
+        for (const auto& error : detachAudio())
+            core::logError (error);
+        sampleRateChanged = true;
+        return;
+    }
     if (binding.engine != nullptr && song::differsOnlyInMix (before, song()) && binding.engine->setMix (song()))
         return;
     reloadEngine();
@@ -645,6 +707,8 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, so
 {
     if (recorder != nullptr)
         return std::unexpected (core::Error { "ui.stop_recording_first", "a Pass is running", {} });
+    if (isConverting())
+        return std::unexpected (core::Error { "ui.conversion_running", "a sample rate conversion is running", {} });
     if (isExporting())
         return {};
     std::optional<exporting::MovieSource> movie;

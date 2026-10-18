@@ -42,22 +42,45 @@ void NoSongPage::paint (juce::Graphics& g)
 
 NoticeLine::NoticeLine()
 {
-    setInterceptsMouseClicks (false, false);
+    // Only the action button takes clicks; the rest of the line lets them through.
+    setInterceptsMouseClicks (false, true);
+    actionButton.setWantsKeyboardFocus (false);
+    actionButton.onClick = [this] {
+        auto clicked = std::move (action);
+        dismiss();
+        if (clicked)
+            clicked();
+    };
+    addChildComponent (actionButton);
 }
 
-void NoticeLine::show (const juce::String& newSentence)
+void NoticeLine::show (const juce::String& newSentence, const juce::String& actionLabel, std::function<void()> onAction)
 {
     sentence = newSentence;
+    action = std::move (onAction);
+    actionButton.setButtonText (actionLabel);
+    actionButton.setVisible (action != nullptr);
     setVisible (true);
+    resized();
     repaint();
-    startTimer (visibleForMs);
+    if (action != nullptr)
+        stopTimer();
+    else
+        startTimer (visibleForMs);
 }
 
 void NoticeLine::dismiss()
 {
     stopTimer();
     sentence.clear();
+    action = nullptr;
+    actionButton.setVisible (false);
     setVisible (false);
+}
+
+void NoticeLine::resized()
+{
+    actionButton.setBounds (getLocalBounds().reduced (6, 3).removeFromRight (150));
 }
 
 void NoticeLine::paint (juce::Graphics& g)
@@ -66,6 +89,9 @@ void NoticeLine::paint (juce::Graphics& g)
     g.fillRect (getLocalBounds());
     g.setColour (colours::text);
     g.setFont (juce::FontOptions (13.0f));
-    g.drawText (sentence, getLocalBounds().reduced (12, 0), juce::Justification::centredLeft);
+    auto textArea = getLocalBounds().reduced (12, 0);
+    if (actionButton.isVisible())
+        textArea.removeFromRight (actionButton.getWidth() + 12);
+    g.drawText (sentence, textArea, juce::Justification::centredLeft);
 }
 } // namespace overdub::ui

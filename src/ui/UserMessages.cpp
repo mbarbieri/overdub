@@ -47,6 +47,8 @@ constexpr std::array codeTable {
     CodeEntry { "ui.camera_disconnected", Tier::notice, "The camera was disconnected and is no longer Armed." },
     CodeEntry { "capture.clap_no_video_take", Tier::notice, "No Pass has a Video Take yet. Arm the camera and record a Pass clapping in frame." },
     CodeEntry { "ui.separation_running", Tier::notice, "Wait for the Separation to finish, or cancel it." },
+    CodeEntry { "ui.conversion_running", Tier::notice, "Wait for the sample rate conversion to finish, or cancel it." },
+    CodeEntry { "song.sample_rate_unchanged", Tier::notice, "The Song is at that sample rate already." },
     CodeEntry { "song.track_not_separable", Tier::notice, "Only a Track whose Clips all play one Backing Track can be separated." },
 
     // Alerts: an action failed or data may be lost.
@@ -86,6 +88,8 @@ constexpr std::array codeTable {
     CodeEntry { "song.separation_start_failed", Tier::alert, "The Separation could not be started; the Song is unchanged." },
     CodeEntry { "song.separation_failed", Tier::alert, "The Separation failed; the Song is unchanged." },
     CodeEntry { "song.separation_parts_invalid", Tier::alert, "The Separation failed; the Song is unchanged." },
+    CodeEntry { "song.conversion_failed", Tier::alert, "A Take or Backing Track could not be converted, so the Song keeps its sample rate." },
+    CodeEntry { "song.sample_rate_invalid", Tier::alert, "That is not a sample rate the Song can be converted to." },
 };
 
 const CodeEntry* entryFor (std::string_view code)
@@ -126,6 +130,20 @@ std::string sentenceFor (std::string_view code, const core::Fields& fields)
     if (const auto* entry = entryFor (code))
         return std::string (entry->sentence);
     return "Something went wrong (" + std::string (code) + ").";
+}
+
+std::optional<int> conversionOfferedBy (const UserMessage& message)
+{
+    const auto& fields = message.fields;
+    if (message.code != "ui.sample_rate_mismatch" || ! fields.is_object() || fields.value ("rate_offered", true))
+        return std::nullopt;
+    const auto deviceRate = fields.value ("device_rate", 0);
+    return deviceRate > 0 ? std::optional (deviceRate) : std::nullopt;
+}
+
+std::string conversionActionText (int toRate)
+{
+    return "Convert to " + std::to_string (toRate) + " Hz";
 }
 
 UserMessage userMessageFor (std::string_view code, core::Fields fields)
