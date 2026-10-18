@@ -1,5 +1,7 @@
 #include "song/Song.h"
 
+#include "song/SampleRateConversion.h"
+
 #include <juce_core/juce_core.h>
 
 #include <algorithm>
@@ -97,7 +99,8 @@ Song keepStateOutsideHistory (Song snapshot, const Song& current)
     snapshot.preRoll = current.preRoll;
     snapshot.cameraArmed = current.cameraArmed;
     snapshot.cameraDeviceId = current.cameraDeviceId;
-    snapshot.playhead = current.playhead;
+    // A step across a sample rate conversion keeps the playhead at the same time.
+    snapshot.playhead = snapshot.sampleRate == current.sampleRate ? current.playhead : convertedSamples (current.playhead, current.sampleRate, snapshot.sampleRate);
 
     const bool exportChoiceExists = ! current.exportVideoTakeId.has_value()
                                  || std::ranges::any_of (snapshot.videoTakes, [&] (const VideoTake& videoTake) { return videoTake.id == *current.exportVideoTakeId; });

@@ -3,6 +3,7 @@
 #include "core/Error.h"
 #include "song/AtomicWrite.h"
 #include "song/Peaks.h"
+#include "song/SampleRateConversion.h"
 #include "song/Song.h"
 #include "song/SongHistory.h"
 
@@ -163,6 +164,13 @@ public:
     // Errors: separableBackingTrack's, song.separation_parts_invalid, writeBackingTrackFiles's,
     // edit()'s.
     core::Expected<std::vector<Id>> addSeparation (const Id& sourceTrackId, const std::vector<juce::File>& partFiles, const std::string& model, Clock::time_point now = Clock::now());
+
+    // Applies a sample rate conversion whose media convertMediaFiles wrote (issue #160): the Song
+    // at `toRate` (convertedSong) as one undo step "Convert to <rate> Hz". Until the history step is
+    // committed a failure deletes the media and leaves the Song unchanged; once committed, a failed
+    // song.json write is returned but the conversion stands. Undo keeps every file, so redo plays.
+    // Errors: edit()'s.
+    core::Expected<void> applySampleRateConversion (int toRate, const ConvertedMedia& media, Clock::time_point now = Clock::now());
 
     // True when the Backing Track's derived file is not there to play (shown as missing).
     bool isBackingTrackMissing (const Id& backingTrackId) const;

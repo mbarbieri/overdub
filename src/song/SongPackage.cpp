@@ -249,6 +249,14 @@ core::Expected<Id> SongPackage::importBackingTrack (const juce::File& source, Cl
     return backingTrack->id;
 }
 
+core::Expected<void> SongPackage::applySampleRateConversion (int toRate, const ConvertedMedia& media, Clock::time_point now)
+{
+    auto edited = commitEdit (convertedSong (currentSong, toRate, media), conversionStepLabel (toRate), now);
+    if (! edited.committed)
+        deleteConvertedMedia (root, media);
+    return edited.result;
+}
+
 std::vector<core::Expected<Id>> SongPackage::importBackingTracks (const std::vector<juce::File>& sources, Clock::time_point now)
 {
     std::vector<core::Expected<Id>> results;
