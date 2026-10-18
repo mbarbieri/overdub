@@ -27,7 +27,7 @@ struct RecordFaderFixture : MainWindowFixture
     RecordFaderFixture()
     {
         REQUIRE (mode() == Mode::record);
-        REQUIRE (isShown (window->recordPage));
+        REQUIRE (isShown (window->songView()->recordPage));
     }
 
     Mode mode() const { return window->mode(); }
@@ -37,14 +37,14 @@ struct RecordFaderFixture : MainWindowFixture
     MixerStrip& stripNamed (const std::string& name)
     {
         const auto& trackId = trackNamed (name).id;
-        for (auto& strip : window->editPage.mixer.strips)
+        for (auto& strip : window->songView()->editPage.mixer.strips)
             if (strip->trackId() == trackId)
                 return *strip;
         FAIL ("no strip for Track " << name);
-        return *window->editPage.mixer.strips.front();
+        return *window->songView()->editPage.mixer.strips.front();
     }
 
-    MixFocus& focus() { return window->recordPage.mix; }
+    MixFocus& focus() { return window->songView()->recordPage.mix; }
 
     std::string undoLabel() const { return openSong->package().undoLabel(); }
 
@@ -282,7 +282,7 @@ TEST_CASE ("while a Record fader has focus the arrows do not move the playhead; 
 
     clickAt (fader, fader.thumbCentre());
     REQUIRE (f.focus().focusedControl().has_value());
-    f.mouseDownOn (f.window->recordPage.overview);
+    f.mouseDownOn (f.window->songView()->recordPage.overview);
     CHECK (! f.focus().focusedControl().has_value());
     CHECK (! fader.isFocusShown());
 
@@ -349,7 +349,7 @@ TEST_CASE ("a burst on a Record fader is committed at once by focus loss, a mode
     SECTION ("a click elsewhere")
     {
         startBurst();
-        f.mouseDownOn (f.window->recordPage.overview);
+        f.mouseDownOn (f.window->songView()->recordPage.overview);
         CHECK_THAT (guitarDb(), WithinAbs (-2.0, 1.0e-9));
         CHECK (f.undoLabel() == "Guitar Volume");
     }
@@ -404,7 +404,7 @@ TEST_CASE ("while a Pass runs, pre-roll included, the Record fader is dimmed and
     drag (fader, fader.thumbCentre(), fader.thumbCentre().translated (-40, 0));
     REQUIRE (f.focus().focusedControl().has_value());
 
-    choose (f.window->recordPage.preRollPicker, preRollChoiceIndex (overdub::song::PreRoll::twoSeconds));
+    choose (f.window->songView()->recordPage.preRollPicker, preRollChoiceIndex (overdub::song::PreRoll::twoSeconds));
     f.openSong->seek (3 * f.song().sampleRate);
     f.runBlocks (0);
     REQUIRE (pressKey (*f.window, 'r'));

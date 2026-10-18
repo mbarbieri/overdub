@@ -237,18 +237,18 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
         window.perform (Command::undo); // the run dialog is modal: commands do nothing
         window.perform (Command::redo);
     }
-    window.recordPage.onMute (guitarId, true);
-    window.recordPage.onArm (guitarId, false);
-    window.recordPage.onInput (guitarId, { 1 });
-    window.recordPage.onMonitoring (guitarId, true);
-    window.recordPage.onPreRoll (song::PreRoll::twoSeconds);
-    window.recordPage.onCameraArm (true);
-    window.recordPage.onCameraDevice ("camera-usb");
-    window.recordPage.onAddTrack();
-    window.recordPage.onMoveTrack (guitarId, 0);
-    window.recordPage.insertActions.add (guitarId);
-    window.recordPage.insertActions.bypass ("no-such-slot", true); // an operation that fails, for an edit refused anyway
-    window.recordPage.mix.onPreview (withMasterDb (before, -3.0));
+    window.songView()->recordPage.actions().mute (guitarId, true);
+    window.songView()->recordPage.actions().arm (guitarId, false);
+    window.songView()->recordPage.onInput (guitarId, { 1 });
+    window.songView()->recordPage.onMonitoring (guitarId, true);
+    window.songView()->recordPage.onPreRoll (song::PreRoll::twoSeconds);
+    window.songView()->recordPage.onCameraArm (true);
+    window.songView()->recordPage.onCameraDevice ("camera-usb");
+    window.songView()->recordPage.onAddTrack();
+    window.songView()->recordPage.actions().moveTrack (guitarId, 0);
+    window.songView()->recordPage.insertActions.add (guitarId);
+    window.songView()->recordPage.insertActions.bypass ("no-such-slot", true); // an operation that fails, for an edit refused anyway
+    window.songView()->recordPage.mix.onPreview (withMasterDb (before, -3.0));
 
     CHECK (presented (capture).empty());
     CHECK (a.f.alertsShown.empty());

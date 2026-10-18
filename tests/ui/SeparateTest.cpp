@@ -368,7 +368,7 @@ TEST_CASE ("snapshots of the Tracks a Separation adds, named with emoji, on the 
     window.tick();
     CHECK (writeSnapshot (window, "issue-136", "edit-headers-mixer").existsAsFile());
     CHECK (writeSnapshot (s.f.editHeaderNamed (bassTrackName), "issue-136", "edit-header-bass").existsAsFile());
-    CHECK (writeSnapshot (*window.editPage.mixer.strips.at (1), "issue-136", "mixer-strip-bass").existsAsFile());
+    CHECK (writeSnapshot (*window.songView()->editPage.mixer.strips.at (1), "issue-136", "mixer-strip-bass").existsAsFile());
 }
 
 TEST_CASE ("a helper that fails is an Alert, the dialog closes and the Song is unchanged", "[ui][separation]")
@@ -541,7 +541,7 @@ TEST_CASE ("the Separation dialog closes only on success, Cancel or failure: cli
 TEST_CASE ("the Edit Timeline scrolls to show the Tracks a Separation adds below the source Track", "[ui][separation][vertical_scroll]")
 {
     SeparateFixture s;
-    auto& timeline = s.f.window->editPage.timeline;
+    auto& timeline = s.f.window->songView()->editPage.timeline;
     // The Timeline gets the Song only in Edit mode: shown once, it knows the Tracks before the
     // Separation, which runs from a Record row.
     REQUIRE (pressKey (*s.f.window, '2'));

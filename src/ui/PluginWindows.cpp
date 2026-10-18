@@ -201,7 +201,10 @@ void PluginWindows::close (const song::Id& slotId)
 void PluginWindows::closeAll()
 {
     while (! windows.empty())
-        close (windows.begin()->first);
+    {
+        const auto slotId = windows.begin()->first; // a copy: close erases the key it refers to
+        close (slotId);
+    }
 }
 
 void PluginWindows::sync (const std::function<std::optional<PluginWindowState> (const song::Id&)>& stateOf,

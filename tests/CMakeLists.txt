@@ -101,6 +101,7 @@ target_sources(overdub_tests PRIVATE
     ui/SeparateTest.cpp
     ui/SnapshotTest.cpp
     ui/SongFilesTest.cpp
+    ui/SongViewTest.cpp
     ui/TakeLanesTest.cpp
     ui/TakeLanesUiTest.cpp
     ui/TimelineGesturesTest.cpp

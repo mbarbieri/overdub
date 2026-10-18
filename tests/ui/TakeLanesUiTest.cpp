@@ -40,7 +40,7 @@ struct TakeLanesFixture : MainWindowFixture
         runBlocks (1);
     }
 
-    Timeline& timeline() { return window->editPage.timeline; }
+    Timeline& timeline() { return window->songView()->editPage.timeline; }
 
     TrackHeader& headerOf (const std::string& trackName)
     {
@@ -179,7 +179,7 @@ TEST_CASE ("clicking a lane where no Take Clip sounds brings the whole Take back
 TEST_CASE ("Passes opens the Passes list, and Bring back puts the whole Pass back on top as one step", "[ui][take_lanes]")
 {
     TakeLanesFixture f;
-    auto& page = f.window->editPage;
+    auto& page = f.window->songView()->editPage;
     const auto before = f.song();
     CHECK (! page.isPassesPanelOpen());
 
@@ -214,7 +214,7 @@ TEST_CASE ("Passes opens the Passes list, and Bring back puts the whole Pass bac
 TEST_CASE ("Take Lanes and Bring back do nothing while a Pass records", "[ui][take_lanes][record]")
 {
     TakeLanesFixture f;
-    auto& page = f.window->editPage;
+    auto& page = f.window->songView()->editPage;
     f.timeline().setTakeLanesUnfolded (f.trackNamed ("Guitar").id, true);
     click (page.passesButton);
     const auto pass1 = f.takeOf ("Guitar", 1);

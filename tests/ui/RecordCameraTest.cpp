@@ -30,7 +30,7 @@ struct CameraWindowFixture : MainWindowFixture
         REQUIRE (isShown (page()));
     }
 
-    RecordPage& page() { return window->recordPage; }
+    RecordPage& page() { return window->songView()->recordPage; }
 };
 } // namespace
 

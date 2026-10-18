@@ -62,7 +62,7 @@ TEST_CASE ("the Video toggle shows and hides the floating Video Preview, which f
     VideoWindowFixture f;
     ScopedLogCapture capture;
     f.toEditMode();
-    auto& toggle = f.window->editPage.toolbar.videoButton;
+    auto& toggle = f.window->songView()->editPage.toolbar.videoButton;
     CHECK (isShown (toggle));
     CHECK_FALSE (toggle.getToggleState());
     CHECK_FALSE (f.window->isVideoPreviewShown());
@@ -97,7 +97,7 @@ TEST_CASE ("Camera lane blocks sit at the Video Takes' sample positions and span
 {
     VideoWindowFixture f;
     f.toEditMode();
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     timeline.setView (0, 1000); // 1000 samples per pixel: 48 px per second
     const auto laneX = timeline.cameraLaneBounds().getX();
 
@@ -122,7 +122,7 @@ TEST_CASE ("the Video Preview shows the frame at the playhead, the newest Pass's
 {
     VideoWindowFixture f;
     f.toEditMode();
-    click (f.window->editPage.toolbar.videoButton);
+    click (f.window->songView()->editPage.toolbar.videoButton);
 
     // Stopped at 2.5 s: Pass A's movie at 1.5 s, frame 45.
     f.openSong->seek (rate * 5 / 2);
@@ -157,7 +157,7 @@ TEST_CASE ("while playing, the Video Preview shows the frame heard one refresh f
 {
     VideoWindowFixture f;
     f.toEditMode();
-    click (f.window->editPage.toolbar.videoButton);
+    click (f.window->songView()->editPage.toolbar.videoButton);
     f.openSong->seek (rate * 3 / 2); // 1.5 s
     f.runBlocks (1);
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
@@ -178,7 +178,7 @@ TEST_CASE ("while playing, the Video Preview shows the frame heard one refresh f
 TEST_CASE ("the Record stage shows playback when not recording, and the camera's feed while Armed and stopped or recording", "[ui][video][record_page]")
 {
     VideoWindowFixture f;
-    auto& page = f.window->recordPage;
+    auto& page = f.window->songView()->recordPage;
     f.openSong->seek (2 * rate);
     f.runBlocks (1);
 

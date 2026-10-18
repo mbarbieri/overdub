@@ -11,6 +11,7 @@
 #include "ui/PassesPanel.h"
 #include "ui/RecordView.h"
 #include "ui/SongOverview.h"
+#include "ui/TrackActions.h"
 #include "ui/TrackDrag.h"
 #include "ui/TrackRowEdits.h"
 #include "ui/VideoScreen.h"
@@ -182,7 +183,10 @@ private:
 class RecordPage final : public juce::Component
 {
 public:
-    RecordPage();
+    // `actions` must outlive the page.
+    explicit RecordPage (const TrackActions& actions);
+    // The shared Track gestures this page's rows, overview and grips report through.
+    const TrackActions& actions() const { return trackActions; }
 
     // The rows and pickers; `song` is the Song they were made from, whose volumes the faders change.
     void show (const RecordPageState& state, const song::Song& song);
@@ -205,15 +209,10 @@ public:
     // True when `component` is the focused fader or inside it.
     bool isFocusedControl (const juce::Component* component);
 
-    std::function<void (const song::Id&, bool)> onArm;
     std::function<void (const song::Id&, std::vector<int>)> onInput;
     std::function<void (const song::Id&, bool)> onMonitoring;
-    std::function<void (const song::Id&, bool)> onMute;
-    std::function<void (const song::Id&, bool)> onSolo;
     // A row's menu was asked for (issue #114).
     std::function<void (const song::Id&)> onTrackMenu;
-    // A grip drag dropped the Track at this index of the Track order (a different one).
-    std::function<void (const song::Id& trackId, std::size_t toIndex)> onMoveTrack;
 
     // The grip drag in progress, if any; cancelTrackDrag ends it without a drop and returns whether
     // there was one (Esc).
@@ -232,13 +231,9 @@ public:
     // A click on a Pass row: jump to that Pass's start.
     std::function<void (const song::Id& passId)> onJumpToPass;
     std::function<void (const song::Id& passId)> onBringBack;
-    // A click on the overview, at this Song sample.
-    std::function<void (song::SampleCount sample)> onSeek;
-    // The Backing Tracks' peaks, for the strip's envelope (OpenSong::peaks).
-    PeaksLookup peaksFor;
 
-    // The faders' focus, arrow keys and undo steps (its onPreview and onEdit are the window's); the
-    // window sends it keys and commit triggers.
+    // The faders' focus, arrow keys and undo steps (its onEdit is the window's; it previews through
+    // TrackActions::previewMix); the window sends it keys and commit triggers.
     MixFocus mix;
     std::vector<std::unique_ptr<TrackRow>> rows;
     juce::TextButton addTrackButton { "Add Track" };
@@ -263,6 +258,7 @@ private:
     TrackRow* rowFor (const song::Id& trackId);
     void showFocus();
 
+    const TrackActions& trackActions;
     song::PreRoll shownPreRoll = song::PreRoll::off;
     TrackDrag activeTrackDrag;
     bool rowsEnabled = true;

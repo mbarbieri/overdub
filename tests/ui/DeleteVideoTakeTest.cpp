@@ -40,8 +40,8 @@ struct VideoTakeFixture : MainWindowFixture
         timeline().setView (0, 1000);
     }
 
-    Timeline& timeline() { return window->editPage.timeline; }
-    ClipToolbar& toolbar() { return window->editPage.toolbar; }
+    Timeline& timeline() { return window->songView()->editPage.timeline; }
+    ClipToolbar& toolbar() { return window->songView()->editPage.toolbar; }
 
     // A point inside the older Video Take's block that the newer one does not cover (2 s).
     juce::Point<int> olderTakePoint()

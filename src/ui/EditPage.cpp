@@ -248,7 +248,8 @@ void MixerDivider::paint (juce::Graphics& g)
 
 //==============================================================================
 
-EditPage::EditPage()
+EditPage::EditPage (const TrackActions& trackActions)
+    : timeline (trackActions)
 {
     toolbar.onSplit = [this] {
         if (onSplit)
@@ -294,22 +295,6 @@ EditPage::EditPage()
         if (onEdit)
             onEdit (std::move (changed), std::move (label));
     };
-    timeline.onSeek = [this] (song::SampleCount sample) {
-        if (onSeek)
-            onSeek (sample);
-    };
-    timeline.onArm = [this] (const song::Id& trackId, bool armed) {
-        if (onArm)
-            onArm (trackId, armed);
-    };
-    timeline.onMute = [this] (const song::Id& trackId, bool mute) {
-        if (onMute)
-            onMute (trackId, mute);
-    };
-    timeline.onSolo = [this] (const song::Id& trackId, bool solo) {
-        if (onSolo)
-            onSolo (trackId, solo);
-    };
     timeline.onDeleteTrack = [this] (const song::Id& trackId) {
         if (onDeleteTrack)
             onDeleteTrack (trackId);
@@ -319,10 +304,7 @@ EditPage::EditPage()
         if (onEdit)
             onEdit (std::move (changed), std::move (label));
     };
-    mixer.onPreview = [this] (const song::Song& preview) {
-        if (onMixPreview)
-            onMixPreview (preview);
-    };
+    mixer.onPreview = [&trackActions] (const song::Song& preview) { trackActions.previewMix (preview); };
 
     passesButton.setButtonText (juce::String::fromUTF8 ("Passes \xE2\x96\xBE"));
     passesButton.setWantsKeyboardFocus (false);

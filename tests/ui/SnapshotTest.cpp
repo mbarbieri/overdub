@@ -64,7 +64,7 @@ TEST_CASE ("snapshots of the Edit timeline with overlapping Clips, zoomed in and
     REQUIRE (f.trackNamed ("Guitar").clips.size() == 2);
 
     REQUIRE (pressKey (window, '2'));
-    auto& timeline = window.editPage.timeline;
+    auto& timeline = window.songView()->editPage.timeline;
     timeline.selectClip (f.trackNamed ("Guitar").clips[1].id);
     f.openSong->seek (72000);
     f.runBlocks (0);
@@ -77,7 +77,7 @@ TEST_CASE ("snapshots of the Edit timeline with overlapping Clips, zoomed in and
     window.tick();
     CHECK (writeSnapshot (window, slice, "edit-overlap-zoomed-out").existsAsFile());
 
-    click (window.editPage.toolbar.mixerButton);
+    click (window.songView()->editPage.toolbar.mixerButton);
     timeline.setView (0, 512);
     window.tick();
     CHECK (writeSnapshot (window, slice, "edit-mixer-hidden").existsAsFile());
@@ -104,7 +104,7 @@ TEST_CASE ("snapshots of Clips with fades and non-zero gain", "[ui][snapshot][cl
     REQUIRE (f.trackNamed ("Guitar").clips.size() == 1);
 
     REQUIRE (pressKey (window, '2'));
-    auto& page = window.editPage;
+    auto& page = window.songView()->editPage;
     auto& timeline = page.timeline;
     timeline.setView (0, 512);
     window.tick();
@@ -162,7 +162,7 @@ TEST_CASE ("snapshots of a Track with three Take Lanes unfolded, partly heard, a
     REQUIRE (f.trackNamed ("Guitar").clips.size() == 3);
 
     REQUIRE (pressKey (window, '2'));
-    auto& timeline = window.editPage.timeline;
+    auto& timeline = window.songView()->editPage.timeline;
     const auto& guitarId = f.trackNamed ("Guitar").id;
     timeline.setTakeLanesUnfolded (guitarId, true);
     const auto lanes = timeline.takeLanesShown (guitarId);
@@ -174,8 +174,8 @@ TEST_CASE ("snapshots of a Track with three Take Lanes unfolded, partly heard, a
     window.tick();
     CHECK (writeSnapshot (window, slice, "edit-take-lanes-unfolded").existsAsFile());
 
-    click (window.editPage.passesButton);
-    REQUIRE (window.editPage.isPassesPanelOpen());
+    click (window.songView()->editPage.passesButton);
+    REQUIRE (window.songView()->editPage.isPassesPanelOpen());
     window.tick();
     CHECK (writeSnapshot (window, slice, "edit-passes-panel").existsAsFile());
 }
@@ -202,7 +202,7 @@ TEST_CASE ("snapshots of the Mixer with four strips and the Master, and hidden",
     REQUIRE (f.song().passes.size() == 1);
 
     REQUIRE (pressKey (window, '2'));
-    auto& mixer = window.editPage.mixer;
+    auto& mixer = window.songView()->editPage.mixer;
     REQUIRE (mixer.strips.size() == 4);
     const auto dragFader = [] (overdub::ui::MixerFader& fader, int deltaY) {
         const auto grab = fader.thumbCentre();
@@ -218,19 +218,19 @@ TEST_CASE ("snapshots of the Mixer with four strips and the Master, and hidden",
     dragPan (mixer.strips[3]->panControl, 30);
     dragFader (mixer.masterStrip.fader, 8);
     click (mixer.strips[2]->muteButton); // Vocals muted
-    click (window.editPage.timeline.headers[3]->soloButton); // Keys soloed from its header
-    click (window.editPage.timeline.headers[3]->soloButton); // and unsoloed again
+    click (window.songView()->editPage.timeline.headers[3]->soloButton); // Keys soloed from its header
+    click (window.songView()->editPage.timeline.headers[3]->soloButton); // and unsoloed again
     REQUIRE (f.trackNamed ("Vocals").mute);
 
     f.openSong->seek (0);
     REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
     f.runBlocks (60);
-    window.editPage.timeline.setView (0, 512);
+    window.songView()->editPage.timeline.setView (0, 512);
     window.tick();
     REQUIRE (mixer.masterStrip.meter.level() > 0.0f);
     CHECK (writeSnapshot (window, slice, "edit-mixer").existsAsFile());
 
-    click (window.editPage.toolbar.mixerButton);
+    click (window.songView()->editPage.toolbar.mixerButton);
     window.tick();
     CHECK (writeSnapshot (window, slice, "edit-mixer-hidden").existsAsFile());
 
@@ -267,7 +267,7 @@ TEST_CASE ("snapshots of Record mode during a pre-roll countdown and during a Pa
     f.runBlocks (1);
     REQUIRE (f.song().passes.size() == 1);
 
-    choose (window.recordPage.preRollPicker, overdub::ui::preRollChoiceIndex (overdub::song::PreRoll::twoSeconds));
+    choose (window.songView()->recordPage.preRollPicker, overdub::ui::preRollChoiceIndex (overdub::song::PreRoll::twoSeconds));
     f.openSong->seek (5 * 48000);
     f.runBlocks (0);
     REQUIRE (pressKey (window, 'r'));
@@ -296,7 +296,7 @@ TEST_CASE ("snapshots of Record mode's camera arm, picker and stage", "[ui][snap
     window.tick();
     CHECK (writeSnapshot (window, slice, "record-camera-disarmed").existsAsFile());
 
-    click (window.recordPage.cameraArmButton);
+    click (window.songView()->recordPage.cameraArmButton);
     REQUIRE (f.song().cameraArmed);
     CHECK (writeSnapshot (window, slice, "record-camera-armed").existsAsFile());
 
@@ -326,10 +326,10 @@ TEST_CASE ("snapshots of Edit mode with the Camera lane and the Video Preview", 
     REQUIRE (f.openSong->edit (changed, "Add Video Takes").has_value());
 
     REQUIRE (pressKey (window, '2'));
-    window.editPage.timeline.setView (0, 250);
+    window.songView()->editPage.timeline.setView (0, 250);
     f.openSong->seek (4 * 48000);
     f.runBlocks (1);
-    click (window.editPage.toolbar.videoButton);
+    click (window.songView()->editPage.toolbar.videoButton);
     window.refreshVideo (f.device.hostTimeNs);
     REQUIRE (window.videoPreviewWindow() != nullptr);
     CHECK (writeSnapshot (window, slice, "edit-camera-lane").existsAsFile());

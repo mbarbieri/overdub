@@ -42,7 +42,7 @@ std::vector<song::Id> trackIds (const song::Song& song)
 std::vector<song::Id> headerTrackIds (MainWindowFixture& f)
 {
     std::vector<song::Id> ids;
-    for (const auto& header : f.window->editPage.timeline.headers)
+    for (const auto& header : f.window->songView()->editPage.timeline.headers)
         ids.push_back (header->trackId());
     return ids;
 }
@@ -50,7 +50,7 @@ std::vector<song::Id> headerTrackIds (MainWindowFixture& f)
 std::vector<song::Id> rowTrackIds (MainWindowFixture& f)
 {
     std::vector<song::Id> ids;
-    for (const auto& row : f.window->recordPage.rows)
+    for (const auto& row : f.window->songView()->recordPage.rows)
         ids.push_back (row->trackId());
     return ids;
 }
@@ -58,7 +58,7 @@ std::vector<song::Id> rowTrackIds (MainWindowFixture& f)
 std::vector<song::Id> stripTrackIds (MainWindowFixture& f)
 {
     std::vector<song::Id> ids;
-    for (const auto& strip : f.window->editPage.mixer.strips)
+    for (const auto& strip : f.window->songView()->editPage.mixer.strips)
         ids.push_back (strip->trackId());
     return ids;
 }
@@ -117,7 +117,7 @@ TEST_CASE ("dragging an Edit header's grip between two other Tracks moves it as 
 {
     MainWindowFixture f;
     REQUIRE (pressKey (*f.window, '2'));
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     REQUIRE (trackNames (f.song()) == std::vector<std::string> { "Band Mix", "Guitar", "Vocals" });
     const auto songBefore = f.song();
     const auto vocalsId = f.trackNamed ("Vocals").id;
@@ -147,7 +147,7 @@ TEST_CASE ("dragging an Edit header's grip between two other Tracks moves it as 
 TEST_CASE ("dragging a Record row's grip between two other Tracks moves it as one Move Track undo step", "[ui][track_reorder]")
 {
     MainWindowFixture f;
-    auto& page = f.window->recordPage;
+    auto& page = f.window->songView()->recordPage;
     REQUIRE (isShown (page));
     const auto songBefore = f.song();
     const auto rows = page.trackRowSpans();
@@ -172,7 +172,7 @@ TEST_CASE ("dragging a Record row's grip between two other Tracks moves it as on
 TEST_CASE ("a grip dragged to the top or the bottom moves the Track first or last", "[ui][track_reorder]")
 {
     MainWindowFixture f;
-    auto& page = f.window->recordPage;
+    auto& page = f.window->songView()->recordPage;
     dragGripTo (f.rowNamed ("Vocals").grip, page, 0);
     CHECK (trackNames (f.song()) == std::vector<std::string> { "Vocals", "Band Mix", "Guitar" });
 
@@ -180,7 +180,7 @@ TEST_CASE ("a grip dragged to the top or the bottom moves the Track first or las
     CHECK (trackNames (f.song()) == std::vector<std::string> { "Band Mix", "Guitar", "Vocals" });
 
     REQUIRE (pressKey (*f.window, '2'));
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     // Above the Camera lane, the Track still lands first: drops only land between Tracks.
     dragGripTo (f.editHeaderNamed ("Guitar").grip, timeline, timeline.cameraLaneBounds().getY());
     CHECK (trackNames (f.song()) == std::vector<std::string> { "Guitar", "Band Mix", "Vocals" });
@@ -191,7 +191,7 @@ TEST_CASE ("a grip dropped back in its own slot changes nothing and adds no undo
     MainWindowFixture f;
     const auto songBefore = f.song();
     const auto labelBefore = f.openSong->package().undoLabel();
-    auto& page = f.window->recordPage;
+    auto& page = f.window->songView()->recordPage;
     const auto recordRows = page.trackRowSpans();
 
     core::ScopedLogCapture capture;
@@ -200,7 +200,7 @@ TEST_CASE ("a grip dropped back in its own slot changes nothing and adds no undo
     dragGripTo (f.rowNamed ("Guitar").grip, page, centreOf (recordRows[2]));
 
     REQUIRE (pressKey (*f.window, '2'));
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     dragGripTo (f.editHeaderNamed ("Band Mix").grip, timeline, centreOf (timeline.trackRowSpans()[1]));
 
     CHECK (f.song() == songBefore);
@@ -212,7 +212,7 @@ TEST_CASE ("a grip dropped back in its own slot changes nothing and adds no undo
 TEST_CASE ("while a grip drags, the row follows the pointer and an insertion line marks the drop slot", "[ui][track_reorder]")
 {
     MainWindowFixture f;
-    auto& page = f.window->recordPage;
+    auto& page = f.window->songView()->recordPage;
     auto& grip = f.rowNamed ("Band Mix").grip;
     const auto rows = page.trackRowSpans();
     const auto bandMixRow = f.rowNamed ("Band Mix").getBounds();
@@ -238,7 +238,7 @@ TEST_CASE ("Esc during a grip drag cancels it and leaves the order unchanged", "
     const auto songBefore = f.song();
     const auto labelBefore = f.openSong->package().undoLabel();
 
-    auto& page = f.window->recordPage;
+    auto& page = f.window->songView()->recordPage;
     auto& rowGrip = f.rowNamed ("Vocals").grip;
     pressAndDragGrip (rowGrip, page, 0);
     REQUIRE (page.trackDrag().isActive());
@@ -247,7 +247,7 @@ TEST_CASE ("Esc during a grip drag cancels it and leaves the order unchanged", "
     releaseGrip (rowGrip, page, 0);
 
     REQUIRE (pressKey (*f.window, '2'));
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     auto& headerGrip = f.editHeaderNamed ("Band Mix").grip;
     pressAndDragGrip (headerGrip, timeline, timeline.getHeight());
     REQUIRE (timeline.trackDrag().isActive());
@@ -270,7 +270,7 @@ TEST_CASE ("while a Pass runs, the grips are disabled and a grip drag does nothi
     REQUIRE (f.openSong->isRecording());
     const auto namesBefore = trackNames (f.song());
 
-    auto& page = f.window->recordPage;
+    auto& page = f.window->songView()->recordPage;
     auto& rowGrip = f.rowNamed ("Vocals").grip;
     CHECK_FALSE (rowGrip.isEnabled());
     pressAndDragGrip (rowGrip, page, 0);
@@ -279,7 +279,7 @@ TEST_CASE ("while a Pass runs, the grips are disabled and a grip drag does nothi
     CHECK (trackNames (f.song()) == namesBefore);
 
     REQUIRE (pressKey (*f.window, '2'));
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     auto& headerGrip = f.editHeaderNamed ("Vocals").grip;
     CHECK_FALSE (headerGrip.isEnabled());
     pressAndDragGrip (headerGrip, timeline, 0);
@@ -291,7 +291,7 @@ TEST_CASE ("while a Pass runs, the grips are disabled and a grip drag does nothi
 TEST_CASE ("a Pass starting during a grip drag cancels the drag", "[ui][track_reorder]")
 {
     MainWindowFixture f;
-    auto& page = f.window->recordPage;
+    auto& page = f.window->songView()->recordPage;
     auto& grip = f.rowNamed ("Vocals").grip;
     pressAndDragGrip (grip, page, 0);
     REQUIRE (page.trackDrag().isActive());
@@ -313,7 +313,7 @@ TEST_CASE ("unfolded Take Lanes stay under their Track after it moves", "[ui][tr
     REQUIRE (f.song().passes.size() == 1);
 
     REQUIRE (pressKey (*f.window, '2'));
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     const auto guitarId = f.trackNamed ("Guitar").id;
     timeline.setTakeLanesUnfolded (guitarId, true);
     const auto lanes = timeline.takeLanesShown (guitarId);
@@ -332,5 +332,5 @@ TEST_CASE ("unfolded Take Lanes stay under their Track after it moves", "[ui][tr
     CHECK (lane.getBottom() == rows[1].getStart());
     // Guitar's header is first, over its own lane, and Band Mix's comes after the Take Lane.
     CHECK (headerTrackIds (f) == trackIds (f.song()));
-    CHECK (f.window->editPage.timeline.getLocalArea (&f.editHeaderNamed ("Band Mix"), f.editHeaderNamed ("Band Mix").getLocalBounds()).getY() == rows[1].getStart());
+    CHECK (f.window->songView()->editPage.timeline.getLocalArea (&f.editHeaderNamed ("Band Mix"), f.editHeaderNamed ("Band Mix").getLocalBounds()).getY() == rows[1].getStart());
 }

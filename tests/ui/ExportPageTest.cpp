@@ -57,7 +57,7 @@ std::vector<double> tickUntilExported (MainWindowFixture& f)
     while (f.openSong->isExporting() && std::chrono::steady_clock::now() < deadline)
     {
         f.runBlocks (1);
-        seen.push_back (f.window->exportPage.progress());
+        seen.push_back (f.window->songView()->exportPage.progress());
         std::this_thread::sleep_for (std::chrono::milliseconds (2));
     }
     return seen;
@@ -151,7 +151,7 @@ TEST_CASE ("Export mode exports the open Song's mix to the chosen file and revea
     window.chooseExportDestination = [chosen] (juce::File, std::function<void (std::optional<juce::File>)> done) { done (chosen); };
 
     REQUIRE (pressKey (window, '3'));
-    auto& page = window.exportPage;
+    auto& page = window.songView()->exportPage;
     CHECK (page.destination().getFileName().endsWith (".wav"));
     click (page.m4aButton);
     click (page.chooseButton);
@@ -217,10 +217,10 @@ TEST_CASE ("an export that cannot write its file is an Alert, and the page is re
     ExportFolder folder;
     const auto blocker = folder.root.getChildFile ("not-a-folder");
     REQUIRE (blocker.replaceWithText ("x"));
-    window.exportPage.setDestination (blocker.getChildFile ("Song.wav"));
+    window.songView()->exportPage.setDestination (blocker.getChildFile ("Song.wav"));
 
     ScopedLogCapture capture;
-    click (window.exportPage.exportButton);
+    click (window.songView()->exportPage.exportButton);
     tickUntilExported (f);
     REQUIRE (! f.openSong->isExporting());
 
@@ -230,8 +230,8 @@ TEST_CASE ("an export that cannot write its file is an Alert, and the page is re
     CHECK (failed[0]["lvl"] == "error");
     CHECK (failed[0]["step"] == "folder");
     CHECK (! f.openSong->lastExportedFile().has_value());
-    CHECK (window.exportPage.exportButton.isEnabled());
-    CHECK (! isShown (window.exportPage.revealButton));
+    CHECK (window.songView()->exportPage.exportButton.isEnabled());
+    CHECK (! isShown (window.songView()->exportPage.revealButton));
 }
 
 TEST_CASE ("a Song without Clips is a Notice, not an export", "[ui][export]")
@@ -240,10 +240,10 @@ TEST_CASE ("a Song without Clips is a Notice, not an export", "[ui][export]")
     ExportFolder folder;
     auto& window = *f.window;
     REQUIRE (pressKey (window, '3'));
-    window.exportPage.setDestination (folder.root.getChildFile ("Empty.wav"));
+    window.songView()->exportPage.setDestination (folder.root.getChildFile ("Empty.wav"));
 
     ScopedLogCapture capture;
-    click (window.exportPage.exportButton);
+    click (window.songView()->exportPage.exportButton);
     tickUntilExported (f);
 
     CHECK (window.noticeLine.text() == juce::String ("The Song has no Clips to export."));
@@ -301,8 +301,8 @@ TEST_CASE ("an export whose audio device stopped calling back fails with an Aler
     CHECK (stopped[0]["reason"] == "audio_unresponsive");
     CHECK (stopped[0]["phase"] == "waiting_for_audio");
     CHECK (! destination.exists());
-    CHECK (window.exportPage.exportButton.isEnabled());
-    CHECK (window.exportPage.statusLabel.getText().isEmpty());
+    CHECK (window.songView()->exportPage.exportButton.isEnabled());
+    CHECK (window.songView()->exportPage.statusLabel.getText().isEmpty());
 
     // Once the device calls back again it plays the Song, and the next export runs.
     f.engine.play();
@@ -323,10 +323,10 @@ TEST_CASE ("snapshots of the Export page with WAV selected, and after an export"
     window.exportFolder = folder.root;
     window.setOpenSong (f.openSong.get()); // the destination follows the export folder
     REQUIRE (pressKey (window, '3'));
-    REQUIRE (window.exportPage.wavButton.getToggleState());
+    REQUIRE (window.songView()->exportPage.wavButton.getToggleState());
     CHECK (writeSnapshot (window, slice, "export-wav").existsAsFile());
 
-    click (window.exportPage.exportButton);
+    click (window.songView()->exportPage.exportButton);
     tickUntilExported (f);
     REQUIRE (f.openSong->lastExportedFile().has_value());
     CHECK (writeSnapshot (window, slice, "export-finished").existsAsFile());

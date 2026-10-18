@@ -33,21 +33,21 @@ TEST_CASE ("keys 1 to 3 show the Record, Edit and Export pages", "[ui][main]")
 {
     MainWindowFixture f;
     auto& window = *f.window;
-    CHECK (isShown (window.recordPage));
+    CHECK (isShown (window.songView()->recordPage));
 
     CHECK (pressKey (window, '2'));
     CHECK (window.mode() == Mode::edit);
-    CHECK (isShown (window.editPage));
-    CHECK (! isShown (window.recordPage));
+    CHECK (isShown (window.songView()->editPage));
+    CHECK (! isShown (window.songView()->recordPage));
     CHECK (window.topBar.editModeButton.getToggleState());
 
     CHECK (pressKey (window, '3'));
-    CHECK (isShown (window.exportPage));
-    CHECK (! isShown (window.editPage));
+    CHECK (isShown (window.songView()->exportPage));
+    CHECK (! isShown (window.songView()->editPage));
 
     CHECK (pressKey (window, '1'));
-    CHECK (isShown (window.recordPage));
-    CHECK (! isShown (window.exportPage));
+    CHECK (isShown (window.songView()->recordPage));
+    CHECK (! isShown (window.songView()->exportPage));
     CHECK (window.topBar.recordModeButton.getToggleState());
 
     CHECK (! pressKey (window, 'x'));
@@ -57,9 +57,9 @@ TEST_CASE ("clicking a mode button shows its page", "[ui][main]")
 {
     MainWindowFixture f;
     click (f.window->topBar.exportModeButton);
-    CHECK (isShown (f.window->exportPage));
+    CHECK (isShown (f.window->songView()->exportPage));
     click (f.window->topBar.recordModeButton);
-    CHECK (isShown (f.window->recordPage));
+    CHECK (isShown (f.window->songView()->recordPage));
 }
 
 TEST_CASE ("R in any mode records a Pass and Space stops it, as one labelled undo step", "[ui][main][record]")
@@ -109,11 +109,11 @@ TEST_CASE ("Undo and Redo buttons show the step labels and step through them", "
     click (topBar.undoButton);
     CHECK (text (topBar.undoButton) == "Undo Import Band Mix.wav");
     CHECK (text (topBar.redoButton) == "Redo Add Tracks");
-    CHECK (f.window->recordPage.rows.size() == 1);
+    CHECK (f.window->songView()->recordPage.rows.size() == 1);
 
     click (topBar.redoButton);
     CHECK (text (topBar.undoButton) == "Undo Add Tracks");
-    CHECK (f.window->recordPage.rows.size() == 3);
+    CHECK (f.window->songView()->recordPage.rows.size() == 3);
 
     REQUIRE (pressKey (*f.window, 'z', juce::ModifierKeys::commandModifier));
     CHECK (text (topBar.redoButton) == "Redo Add Tracks");
@@ -153,11 +153,11 @@ TEST_CASE ("an injected import adds a Track row named after the file", "[ui][mai
     const auto file = f.fixture->writeSineFile ("Drums.wav", 1.0, 110.0);
     f.window->chooseFilesToImport = [file] (std::function<void (std::vector<juce::File>)> done) { done ({ file }); };
 
-    REQUIRE (f.window->recordPage.rows.size() == 3);
-    click (f.window->recordPage.importButton);
+    REQUIRE (f.window->songView()->recordPage.rows.size() == 3);
+    click (f.window->songView()->recordPage.importButton);
 
-    REQUIRE (f.window->recordPage.rows.size() == 4);
-    CHECK (f.window->recordPage.rows.back()->nameLabel.getText() == "Drums");
+    REQUIRE (f.window->songView()->recordPage.rows.size() == 4);
+    CHECK (f.window->songView()->recordPage.rows.back()->nameLabel.getText() == "Drums");
     CHECK (text (f.window->topBar.undoButton) == "Undo Import Drums.wav");
 }
 
@@ -169,14 +169,14 @@ TEST_CASE ("a failed import is an Alert", "[ui][main][import][messages]")
     f.window->chooseFilesToImport = [notAudio] (std::function<void (std::vector<juce::File>)> done) { done ({ notAudio }); };
 
     ScopedLogCapture capture;
-    click (f.window->recordPage.importButton);
+    click (f.window->songView()->recordPage.importButton);
 
     const auto shown = eventsNamed (capture, "ui.alert_shown");
     REQUIRE (shown.size() == 1);
     CHECK (shown[0].at ("code") == "song.import_unreadable");
     CHECK (shown[0].at ("tier") == "alert");
     CHECK (f.alertsShown.size() == 1);
-    CHECK (f.window->recordPage.rows.size() == 3);
+    CHECK (f.window->songView()->recordPage.rows.size() == 3);
 }
 
 TEST_CASE ("an Alert raised during a Pass waits until the Pass stops; a Notice shows at once", "[ui][main][messages]")
@@ -232,7 +232,7 @@ TEST_CASE ("with no Song open the window offers New Song and Open", "[ui][main]"
     window.onNewSong = [&] { ++newSongs; };
 
     CHECK (isShown (window.noSongPage));
-    CHECK (! isShown (window.recordPage));
+    CHECK (window.songView() == nullptr);
     CHECK (! window.topBar.recordButton.isEnabled());
     CHECK (pressKey (window, 'r')); // used, but there is nothing to record into
 

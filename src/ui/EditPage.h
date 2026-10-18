@@ -6,6 +6,7 @@
 #include "ui/PassesPanel.h"
 #include "ui/TakeLanes.h"
 #include "ui/Timeline.h"
+#include "ui/TrackActions.h"
 #include "ui/TransportText.h"
 #include "video/FrameSelection.h"
 
@@ -116,7 +117,8 @@ private:
 class EditPage final : public juce::Component
 {
 public:
-    EditPage();
+    // `trackActions` must outlive the page; its Timeline shares it.
+    explicit EditPage (const TrackActions& trackActions);
 
     // The Song and transport the timeline and the Clip toolbar show.
     void show (const TimelineState& state);
@@ -132,13 +134,6 @@ public:
     void setVideoPreviewShown (bool shown);
 
     std::function<void (song::Song changed, std::string label)> onEdit;
-    // The Song a Mixer gesture in progress would make (OpenSong::previewMix).
-    std::function<void (const song::Song& preview)> onMixPreview;
-    std::function<void (song::SampleCount sample)> onSeek;
-    std::function<void (const song::Id& trackId, bool armed)> onArm;
-    // M and S in the Track headers.
-    std::function<void (const song::Id& trackId, bool mute)> onMute;
-    std::function<void (const song::Id& trackId, bool solo)> onSolo;
     // The × in a Track's header (Timeline::onDeleteTrack).
     std::function<void (const song::Id& trackId)> onDeleteTrack;
     std::function<void()> onSplit;

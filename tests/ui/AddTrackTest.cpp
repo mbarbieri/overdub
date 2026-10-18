@@ -20,7 +20,7 @@ std::unique_ptr<song::testing::FixtureSong> newSong()
 TEST_CASE ("Add Track on a new Song shows one Armed row on the first input", "[ui][record_page][add_track]")
 {
     MainWindowFixture f (newSong());
-    auto& page = f.window->recordPage;
+    auto& page = f.window->songView()->recordPage;
     REQUIRE (page.rows.empty());
     CHECK (isShown (page.emptyLabel));
     CHECK (isShown (page.addTrackButton));
@@ -45,7 +45,7 @@ TEST_CASE ("Add Track on a new Song shows one Armed row on the first input", "[u
 TEST_CASE ("a Pass records a Take onto an added Track", "[ui][record_page][add_track]")
 {
     MainWindowFixture f (newSong());
-    click (f.window->recordPage.addTrackButton);
+    click (f.window->songView()->recordPage.addTrackButton);
 
     REQUIRE (pressKey (*f.window, 'r'));
     f.runBlocks (20);
@@ -61,7 +61,7 @@ TEST_CASE ("a Pass records a Take onto an added Track", "[ui][record_page][add_t
 TEST_CASE ("with a device that has no inputs, Add Track adds a Track with no input", "[ui][record_page][add_track]")
 {
     MainWindowFixture f (newSong(), {}, {});
-    click (f.window->recordPage.addTrackButton);
+    click (f.window->songView()->recordPage.addTrackButton);
     REQUIRE (f.song().tracks.size() == 1);
     CHECK (f.song().tracks[0].armed);
     CHECK (f.song().tracks[0].inputChannels.empty());
@@ -71,7 +71,7 @@ TEST_CASE ("with a device that has no inputs, Add Track adds a Track with no inp
 TEST_CASE ("undo removes an added Track and redo brings it back Armed", "[ui][record_page][add_track]")
 {
     MainWindowFixture f (newSong());
-    auto& page = f.window->recordPage;
+    auto& page = f.window->songView()->recordPage;
     click (page.addTrackButton);
     REQUIRE (page.rows.size() == 1);
 
@@ -88,7 +88,7 @@ TEST_CASE ("undo removes an added Track and redo brings it back Armed", "[ui][re
 TEST_CASE ("Add Track is disabled while a Pass runs", "[ui][record_page][add_track]")
 {
     MainWindowFixture f;
-    auto& page = f.window->recordPage;
+    auto& page = f.window->songView()->recordPage;
     CHECK (page.addTrackButton.isEnabled());
 
     REQUIRE (pressKey (*f.window, 'r'));

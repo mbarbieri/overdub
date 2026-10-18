@@ -65,7 +65,7 @@ TEST_CASE ("the Import dialog offers every importable extension", "[ui][drop]")
 TEST_CASE ("dropping audio files on the Timeline imports each as its own Track and undo step", "[ui][drop]")
 {
     MainWindowFixture f;
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     const auto drums = f.fixture->writeSineFile ("Drums.wav", 1.0, 110.0);
     const auto bass = f.fixture->writeSineFile ("Bass.wav", 1.0, 55.0);
     const auto namesBefore = trackNames (f.song());
@@ -93,7 +93,7 @@ TEST_CASE ("dropping audio files on the Timeline imports each as its own Track a
 TEST_CASE ("a drop imports only its audio files and says nothing about the rest", "[ui][drop]")
 {
     MainWindowFixture f;
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     const auto drums = f.fixture->writeSineFile ("Drums.wav", 1.0, 110.0);
     const auto notes = f.fixture->folder.getChildFile ("notes.txt");
     const auto loops = f.fixture->folder.getChildFile ("Loops");
@@ -119,7 +119,7 @@ TEST_CASE ("a drop imports only its audio files and says nothing about the rest"
 TEST_CASE ("a drag with no audio file is refused and leaves the Song unchanged", "[ui][drop]")
 {
     MainWindowFixture f;
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     const auto notes = f.fixture->folder.getChildFile ("notes.txt");
     const auto loops = f.fixture->folder.getChildFile ("Loops.wav");
     REQUIRE (notes.replaceWithText ("not audio"));
@@ -141,7 +141,7 @@ TEST_CASE ("a drag with no audio file is refused and leaves the Song unchanged",
 TEST_CASE ("the Timeline is highlighted while an audio file drag hovers", "[ui][drop]")
 {
     MainWindowFixture f;
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     const auto paths = pathsOf ({ f.fixture->writeSineFile ("Drums.wav", 1.0, 110.0) });
     REQUIRE_FALSE (timeline.isDropHighlighted());
 
@@ -158,7 +158,7 @@ TEST_CASE ("the Timeline is highlighted while an audio file drag hovers", "[ui][
 TEST_CASE ("a dropped file that fails to decode is an Alert, and the other files are imported", "[ui][drop][messages]")
 {
     MainWindowFixture f;
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     const auto broken = f.fixture->folder.getChildFile ("Broken.wav");
     REQUIRE (broken.replaceWithText ("not audio"));
     const auto drums = f.fixture->writeSineFile ("Drums.wav", 1.0, 110.0);
@@ -178,7 +178,7 @@ TEST_CASE ("a dropped file that fails to decode is an Alert, and the other files
 TEST_CASE ("while a Pass runs, a drag is refused and nothing is imported", "[ui][drop]")
 {
     MainWindowFixture f;
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     const auto paths = pathsOf ({ f.fixture->writeSineFile ("Drums.wav", 1.0, 110.0) });
     REQUIRE (pressKey (*f.window, 'r'));
     REQUIRE (f.openSong->isRecording());
@@ -194,7 +194,7 @@ TEST_CASE ("while a Pass runs, a drag is refused and nothing is imported", "[ui]
 TEST_CASE ("while an Export runs, a drag is refused and nothing is imported", "[ui][drop]")
 {
     MainWindowFixture f;
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     const auto paths = pathsOf ({ f.fixture->writeSineFile ("Drums.wav", 1.0, 110.0) });
     REQUIRE (f.openSong->startExport ({ exporting::ExportFormat::wav, f.fixture->folder.getChildFile ("Song.wav") }).has_value());
     REQUIRE (f.openSong->isExporting());
@@ -210,7 +210,7 @@ TEST_CASE ("while an Export runs, a drag is refused and nothing is imported", "[
 TEST_CASE ("while a Separation runs, a drag is refused and nothing is imported", "[ui][drop]")
 {
     MainWindowFixture f { song::testing::FixtureSongBuilder {}.sampleRate (song::testing::helperSampleRate).backingTrack ("Band Mix", 2.0, 220.0).build() };
-    auto& timeline = f.window->editPage.timeline;
+    auto& timeline = f.window->songView()->editPage.timeline;
     f.openSong->setSeparationTools (song::SeparationTools {
         .model = song::testing::writeStandInModel (f.fixture->folder),
         .startHelper = song::testing::fakeSeparationHelper ({}, std::make_shared<song::testing::FakeHelperLog>()),
@@ -232,6 +232,6 @@ TEST_CASE ("snapshot: the Edit page while an audio file drag hovers the Timeline
 {
     MainWindowFixture f;
     REQUIRE (pressKey (*f.window, '2'));
-    f.window->editPage.timeline.fileDragEnter (pathsOf ({ f.fixture->writeSineFile ("Drums.wav", 1.0, 110.0) }), 10, 10);
+    f.window->songView()->editPage.timeline.fileDragEnter (pathsOf ({ f.fixture->writeSineFile ("Drums.wav", 1.0, 110.0) }), 10, 10);
     CHECK (writeSnapshot (*f.window, "issue-123", "timeline-drop-highlight").existsAsFile());
 }

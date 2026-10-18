@@ -31,8 +31,8 @@ struct RecordMeterFixture : MainWindowFixture
         // A visit to Edit mode builds the Mixer's strips; their meters move in every mode.
         window->perform (Command::showEdit);
         window->perform (Command::showRecord);
-        REQUIRE (isShown (window->recordPage));
-        REQUIRE (window->editPage.mixer.strips.size() == song().tracks.size());
+        REQUIRE (isShown (window->songView()->recordPage));
+        REQUIRE (window->songView()->editPage.mixer.strips.size() == song().tracks.size());
     }
 
     // Puts `samples` on a device input channel from the next block on.
@@ -47,11 +47,11 @@ struct RecordMeterFixture : MainWindowFixture
     MixerStrip& stripNamed (const std::string& name)
     {
         const auto& trackId = trackNamed (name).id;
-        for (auto& strip : window->editPage.mixer.strips)
+        for (auto& strip : window->songView()->editPage.mixer.strips)
             if (strip->trackId() == trackId)
                 return *strip;
         FAIL ("no strip for Track " << name);
-        return *window->editPage.mixer.strips.front();
+        return *window->songView()->editPage.mixer.strips.front();
     }
 };
 

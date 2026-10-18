@@ -266,7 +266,8 @@ void TrackRow::paint (juce::Graphics& g)
 
 //==============================================================================
 
-RecordPage::RecordPage()
+RecordPage::RecordPage (const TrackActions& actions)
+    : trackActions (actions)
 {
     addTrackButton.setWantsKeyboardFocus (false);
     addTrackButton.onClick = [this] {
@@ -325,10 +326,8 @@ RecordPage::RecordPage()
         if (onBringBack)
             onBringBack (passId);
     };
-    overview.onSeek = [this] (song::SampleCount sample) {
-        if (onSeek)
-            onSeek (sample);
-    };
+    overview.onSeek = [this] (song::SampleCount sample) { trackActions.seek (sample); };
+    mix.onPreview = [this] (const song::Song& preview) { trackActions.previewMix (preview); };
     mix.onFocusChanged = [this] { showFocus(); };
     mix.onKeyValue = [this] (const MixerControl& control, double value) {
         if (auto* row = rowFor (control.trackId))
@@ -410,10 +409,7 @@ void RecordPage::clearClipIndicators()
 
 void RecordPage::connectRow (TrackRow& row, const song::Id& trackId)
 {
-    row.onArm = [this, trackId] (bool armed) {
-        if (onArm)
-            onArm (trackId, armed);
-    };
+    row.onArm = [this, trackId] (bool armed) { trackActions.arm (trackId, armed); };
     row.onInput = [this, trackId] (std::vector<int> channels) {
         if (onInput)
             onInput (trackId, std::move (channels));
@@ -422,14 +418,8 @@ void RecordPage::connectRow (TrackRow& row, const song::Id& trackId)
         if (onMonitoring)
             onMonitoring (trackId, on);
     };
-    row.onMute = [this, trackId] (bool mute) {
-        if (onMute)
-            onMute (trackId, mute);
-    };
-    row.onSolo = [this, trackId] (bool solo) {
-        if (onSolo)
-            onSolo (trackId, solo);
-    };
+    row.onMute = [this, trackId] (bool mute) { trackActions.mute (trackId, mute); };
+    row.onSolo = [this, trackId] (bool solo) { trackActions.solo (trackId, solo); };
     row.onMenu = [this, trackId] {
         if (onTrackMenu)
             onTrackMenu (trackId);
@@ -480,8 +470,8 @@ void RecordPage::dropTrack (TrackRow& row, juce::Point<int> inGrip)
     if (! drop.has_value())
         return;
     core::logEvent (core::Level::debug, "ui.track_dropped", { { "page", "record" }, { "track_id", drop->trackId }, { "from", drop->from }, { "to", drop->to } });
-    if (drop->to != drop->from && onMoveTrack)
-        onMoveTrack (drop->trackId, drop->to);
+    if (drop->to != drop->from)
+        trackActions.moveTrack (drop->trackId, drop->to);
 }
 
 bool RecordPage::cancelTrackDrag()
@@ -528,7 +518,7 @@ void RecordPage::showSong (const song::Song& song, const RecordTransport& newTra
         passesList.show (passRows (song), editable);
         if (passesList.numRows() != rowsBefore)
             resized();
-        envelope = peaksFor ? backingEnvelope (song, peaksFor) : BackingEnvelope {};
+        envelope = backingEnvelope (song, trackActions.peaksFor);
     }
     transport = newTransport;
     showLookAhead();
