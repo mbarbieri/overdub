@@ -94,6 +94,9 @@ public:
     exporting::ExportRequest request() const;
     // The progress bar's value, 0..1.
     double progress() const { return progressBar.fraction(); }
+    // The form's choices, as its toggles set them.
+    void chooseFormat (exporting::ExportFormat format);
+    void chooseLength (exporting::VideoLength length);
 
     void resized() override;
     void paint (juce::Graphics& g) override;
@@ -130,8 +133,6 @@ public:
     juce::TextButton revealButton { "Reveal in Finder" };
 
 private:
-    void chooseFormat (exporting::ExportFormat format);
-    void chooseLength (exporting::VideoLength length);
     void pickVideoTake();
     // The Video Take shown: the page's pick while it is still in the Song, else the default.
     std::optional<video::VideoTakeSpan> shownVideoTake() const;

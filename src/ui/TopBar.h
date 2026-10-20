@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ui/Commands.h"
+#include "ui/Intent.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -9,7 +9,7 @@
 
 // The always-visible top bar (issue #9 resolution): Record · Edit · Export, the transport
 // (⏮ ▶/■ ●) with the clock and its REC · PASS n line, and Undo / Redo naming their steps.
-// Thin: it shows a TopBarState and turns clicks into Commands.
+// Thin: it shows a TopBarState and turns clicks into Intents.
 namespace overdub::ui
 {
 struct TopBarState
@@ -51,7 +51,7 @@ public:
     void resized() override;
     void paint (juce::Graphics& g) override;
 
-    std::function<void (Command)> onCommand;
+    IntentSink onIntent;
 
     // Children are public so tests can click them (ADR 0005 UI amendment).
     juce::TextButton recordModeButton { "Record" };
@@ -65,7 +65,7 @@ public:
     juce::TextButton redoButton { "Redo" };
 
 private:
-    void send (Command command);
+    void send (const Intent& intent);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TopBar)
 };

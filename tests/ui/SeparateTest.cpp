@@ -155,8 +155,8 @@ TEST_CASE ("Separate... on a Backing Track's row opens a modal dialog whose prog
     CHECK (pressKey (*s.f.window, ' '));
     CHECK (pressKey (*s.f.window, 'r'));
     CHECK (pressKey (*s.f.window, 'z', juce::ModifierKeys (juce::ModifierKeys::commandModifier)));
-    s.f.window->perform (Command::playOrStop);
-    s.f.window->perform (Command::undo);
+    s.f.window->run (SongIntent { intent::PlayOrStop {} });
+    s.f.window->run (SongIntent { intent::Undo {} });
     CHECK_FALSE (s.f.openSong->isPlaying());
     CHECK_FALSE (s.f.openSong->isRecording());
     CHECK (s.f.song() == before);
@@ -267,16 +267,16 @@ TEST_CASE ("a Separation is one undo step: undo and redo restore the Song exactl
     const auto separated = s.f.song();
     const auto root = s.f.openSong->package().location();
 
-    s.f.window->perform (Command::undo);
+    s.f.window->run (SongIntent { intent::Undo {} });
     CHECK (s.f.song() == before);
     CHECK_FALSE (s.f.trackNamed ("Band Mix").mute);
     CHECK (s.f.openSong->package().redoLabel() == "Separate Band Mix.wav");
     for (const auto& backingTrack : separated.backingTracks)
         CHECK (song::derivedFileFor (root, backingTrack).existsAsFile()); // redo plays
 
-    s.f.window->perform (Command::redo);
+    s.f.window->run (SongIntent { intent::Redo {} });
     CHECK (s.f.song() == separated);
-    s.f.window->perform (Command::undo);
+    s.f.window->run (SongIntent { intent::Undo {} });
     CHECK (s.f.song() == before);
 }
 

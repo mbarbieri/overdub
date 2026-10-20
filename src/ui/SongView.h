@@ -1,14 +1,15 @@
 #pragma once
 
 #include "core/Error.h"
-#include "ui/Commands.h"
 #include "ui/EditPage.h"
 #include "ui/ExportPage.h"
 #include "ui/InsertChain.h"
+#include "ui/Intent.h"
 #include "ui/OpenSong.h"
 #include "ui/PluginWindows.h"
 #include "ui/RecordPage.h"
 #include "ui/RunDialog.h"
+#include "ui/SongEdits.h"
 #include "ui/TopBar.h"
 #include "ui/TrackActions.h"
 
@@ -31,6 +32,14 @@ class VideoScreen;
 // that answers later (a chooser, a confirmation, camera access) holds a SafePointer to this
 // object and is dropped once the Song has closed.
 //
+// run() is the Song group's one handler (ADR 0008): an exhaustive visit into the private methods
+// below, which keep every side effect a gesture has (a pending arrow-key burst committed and
+// carried, the right half selected after a split, Monitoring off after a Track delete, clip
+// indicators out when a Pass starts, refusals presented only for record, export, Separation and
+// conversion). A gesture that does nothing returns an Error logged at debug and never presented.
+// The Mixer, the Track delete, split and delete, and import reach it through MainComponent::run;
+// the other pages' callbacks still call the same methods directly (issue #168 moves them).
+//
 // `song` and `window` must outlive this object. Message thread only.
 class SongView final : public juce::Component
 {
@@ -45,8 +54,7 @@ public:
 
     OpenSong& currentSong() const { return openSong; }
 
-    // Runs a command that acts on the Song (MainComponent::perform handles the mode commands).
-    void perform (Command command);
+    IntentResult run (const SongIntent& intent);
     // Shows the Song on the pages (the window's mode picks the visible one) and fills the top
     // bar's Song fields.
     void refresh (TopBarState& topBar);
@@ -65,9 +73,8 @@ public:
     void releaseFocus();
     // Commits the Mixer's and the Record page's pending arrow-key bursts.
     void commitKeyBursts();
-    // Cancels the Separation or the conversion the run dialog shows.
-    void cancelRun();
-    void convertSampleRate (int toRate);
+    // Starts converting the Song to `toRate` (the App group's convert_sample_rate, issue #160).
+    IntentResult convertSampleRate (int toRate);
     // True while a Separation or a conversion runs: the window's modal run dialog shows.
     bool runShowing() const { return openSong.isSeparating() || openSong.isConverting(); }
     // Shows the running Separation's or conversion's progress on the dialog.
@@ -86,34 +93,59 @@ private:
     InsertChainActions makeInsertChainActions();
     void wirePages();
 
-    void jumpToPass (const song::Id& passId);
-    void splitSelectedClip();
-    void deleteSelection();
-    void nudgePlayhead (int seconds);
-    // Whether the edit was applied; an Error is handled (a refusal is not presented).
-    bool applyEdit (core::Expected<song::Song> changed, const std::string& label);
+    // The Error the edit's Song operation or OpenSong handled when it was not applied.
+    IntentResult applyEdit (core::Expected<song::Song> changed, const std::string& label);
+    // A Mix's pending burst as its own undo step, through edit (not a nested run).
+    void commitKeyBurst (MixFocus& mix);
+    // The plain edit on the Song as it is now (ui/SongEdits.h), through applyEdit.
+    IntentResult edit (const intent::Edit& edit);
     // A Song operation's Error (the Song as it is cannot take it), unless the edit it was for is
-    // refused anyway: then the refusal, not presented.
-    void handleOperationError (const core::Error& error);
-    void armCamera (bool armed);
-    void setCameraArmed (bool armed);
-    void setMute (const song::Id& trackId, bool mute);
-    void setSolo (const song::Id& trackId, bool solo);
+    // refused anyway: then the refusal, not presented. Returns the Error it handled.
+    core::Error handleOperationError (const core::Error& error);
+    // OpenSong's result, presented unless it is a refusal (MainComponent::handleUnlessRefused).
+    IntentResult unlessRefused (const core::Expected<void>& result);
+    // OpenSong's result, presented even when it is a refusal (MainComponent::handleError).
+    IntentResult presented (const core::Expected<void>& result);
+
+    IntentResult record();
+    IntentResult undo();
+    IntentResult redo();
+    IntentResult seek (song::SampleCount sample);
+    IntentResult jumpToPass (const song::Id& passId);
+    IntentResult nudgePlayhead (Direction direction);
     // Adds an empty Track, Armed on the first input, as one undo step (issue #109).
-    void addTrack();
+    IntentResult addTrack();
     void askToImport();
-    void importFiles (const std::vector<juce::File>& files);
+    IntentResult importFiles (const std::vector<core::AbsolutePath>& files);
     // The × in an Edit Track header: asks, then deletes the Track as one undo step (issue #124).
     void askToDeleteTrack (const song::Id& trackId);
-    void deleteTrack (const song::Id& trackId);
-    void moveTrack (const song::Id& trackId, std::size_t toIndex);
+    IntentResult deleteTrack (const song::Id& trackId);
+    IntentResult moveTrack (const song::Id& trackId, std::size_t toIndex);
+    IntentResult setArmed (const song::Id& trackId, bool armed);
+    IntentResult setInputChannels (const song::Id& trackId, std::vector<int> channels);
+    IntentResult setMonitoring (const song::Id& trackId, bool on);
+    IntentResult setPreRoll (song::PreRoll preRoll);
+    IntentResult armCamera (bool armed);
+    IntentResult cameraAccessAnswered (bool granted);
+    IntentResult setCameraArmed (bool armed);
+    IntentResult setCameraDevice (const std::string& cameraId);
     void showTrackMenu (const song::Id& trackId);
-    void startSeparation (const song::Id& trackId);
-    void startExport (const exporting::ExportRequest& request);
+    IntentResult startSeparation (const song::Id& trackId);
+    IntentResult cancelRun();
+    IntentResult splitSelectedClip();
+    IntentResult deleteSelection();
+    IntentResult takeLaneClick (const song::Id& takeId, song::SampleCount at);
+    IntentResult previewMix (const intent::PreviewMix& preview);
+    IntentResult startExport (const exporting::ExportRequest& request);
+    IntentResult setExportVideoTake (const song::Id& videoTakeId);
+    IntentResult revealExport();
     void chooseExportFile (const juce::File& current);
     void chooseInsert (const song::Id& trackId);
-    void addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin);
-    void openInsertEditor (const song::Id& slotId);
+    IntentResult addInsert (const intent::AddInsert& insert);
+    IntentResult addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin);
+    IntentResult openInsertEditor (const song::Id& slotId);
+    IntentResult closePluginWindow (const song::Id& slotId);
+    IntentResult clearClipIndicator (const song::Id& trackId);
     void syncPluginWindows();
     void handleErrors (const std::vector<core::Error>& errors);
     void takeKeyboardFocus();

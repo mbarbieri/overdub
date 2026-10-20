@@ -29,8 +29,8 @@ struct RecordMeterFixture : MainWindowFixture
     RecordMeterFixture()
     {
         // A visit to Edit mode builds the Mixer's strips; their meters move in every mode.
-        window->perform (Command::showEdit);
-        window->perform (Command::showRecord);
+        window->run (WindowIntent { intent::ShowMode { Mode::edit } });
+        window->run (WindowIntent { intent::ShowMode { Mode::record } });
         REQUIRE (isShown (window->songView()->recordPage));
         REQUIRE (window->songView()->editPage.mixer.strips.size() == song().tracks.size());
     }

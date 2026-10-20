@@ -317,7 +317,7 @@ TEST_CASE ("on a device that doesn't offer the Song's rate, opening and Record b
 
     f.content.noticeLine.dismiss();
     REQUIRE (f.content.noticeLine.text().isEmpty());
-    f.content.perform (overdub::ui::Command::record);
+    f.content.run (overdub::ui::SongIntent { overdub::ui::intent::Record {} });
     CHECK (f.content.noticeLine.text() == expected);
     CHECK_FALSE (f.song().isRecording());
     CHECK (f.song().song().passes.empty());
@@ -543,18 +543,18 @@ TEST_CASE ("undoing a conversion brings the Song back at its old rate, without a
     WorkspaceFixture f;
     f.launch();
     f.openSong (44100);
-    f.content.convertSampleRate (48000);
+    f.content.run (overdub::ui::AppIntent { overdub::ui::intent::ConvertSampleRate { 48000 } });
     finishConversion (f);
     REQUIRE (f.song().song().sampleRate == 48000);
 
-    f.content.perform (overdub::ui::Command::undo);
+    f.content.run (overdub::ui::SongIntent { overdub::ui::intent::Undo {} });
     f.tick();
     CHECK (f.song().song().sampleRate == 44100);
     REQUIRE (f.opened.size() == 3);
     REQUIRE (f.song().audioProblem().has_value());
     CHECK (f.song().audioProblem()->code == "ui.sample_rate_mismatch");
 
-    f.content.perform (overdub::ui::Command::redo);
+    f.content.run (overdub::ui::SongIntent { overdub::ui::intent::Redo {} });
     f.tick();
     CHECK (f.song().song().sampleRate == 48000);
     CHECK_FALSE (f.song().audioProblem().has_value());
@@ -566,7 +566,7 @@ TEST_CASE ("while a conversion runs, recording, other Songs and device changes w
     f.launch();
     f.openSong (44100);
     const auto before = f.song().song();
-    f.content.convertSampleRate (48000);
+    f.content.run (overdub::ui::AppIntent { overdub::ui::intent::ConvertSampleRate { 48000 } });
     REQUIRE (f.song().isConverting());
     overdub::core::ScopedLogCapture capture;
 
@@ -593,7 +593,7 @@ TEST_CASE ("a conversion is refused while a Pass runs", "[ui][workspace][convers
     REQUIRE (f.song().record().has_value());
     overdub::core::ScopedLogCapture capture;
 
-    f.content.convertSampleRate (44100);
+    f.content.run (overdub::ui::AppIntent { overdub::ui::intent::ConvertSampleRate { 44100 } });
     CHECK_FALSE (f.song().isConverting());
     CHECK (f.song().isRecording());
     CHECK (contains (messageCodes (capture), "ui.stop_recording_first"));

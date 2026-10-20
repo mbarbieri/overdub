@@ -55,14 +55,14 @@ TopBar::TopBar()
         modeButton->setColour (juce::TextButton::buttonOnColourId, colours::accent);
     }
 
-    recordModeButton.onClick = [this] { send (Command::showRecord); };
-    editModeButton.onClick = [this] { send (Command::showEdit); };
-    exportModeButton.onClick = [this] { send (Command::showExport); };
-    rewindButton.onClick = [this] { send (Command::rewind); };
-    playStopButton.onClick = [this] { send (Command::playOrStop); };
-    recordButton.onClick = [this] { send (Command::record); };
-    undoButton.onClick = [this] { send (Command::undo); };
-    redoButton.onClick = [this] { send (Command::redo); };
+    recordModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::record } }); };
+    editModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::edit } }); };
+    exportModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::exportSong } }); };
+    rewindButton.onClick = [this] { send (SongIntent { intent::Rewind {} }); };
+    playStopButton.onClick = [this] { send (SongIntent { intent::PlayOrStop {} }); };
+    recordButton.onClick = [this] { send (SongIntent { intent::Record {} }); };
+    undoButton.onClick = [this] { send (SongIntent { intent::Undo {} }); };
+    redoButton.onClick = [this] { send (SongIntent { intent::Redo {} }); };
 
     for (auto* button : { &recordModeButton, &editModeButton, &exportModeButton, &rewindButton, &playStopButton, &recordButton, &undoButton, &redoButton })
     {
@@ -72,10 +72,10 @@ TopBar::TopBar()
     addAndMakeVisible (clock);
 }
 
-void TopBar::send (Command command)
+void TopBar::send (const Intent& intent)
 {
-    if (onCommand)
-        onCommand (command);
+    if (onIntent)
+        onIntent (intent);
 }
 
 void TopBar::show (const TopBarState& state)

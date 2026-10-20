@@ -234,8 +234,8 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
     ScopedLogCapture capture;
     if (running == Running::pass)
     {
-        window.perform (Command::undo); // the run dialog is modal: commands do nothing
-        window.perform (Command::redo);
+        window.run (SongIntent { intent::Undo {} });
+        window.run (SongIntent { intent::Redo {} });
     }
     window.songView()->recordPage.actions().mute (guitarId, true);
     window.songView()->recordPage.actions().arm (guitarId, false);
@@ -248,7 +248,7 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
     window.songView()->recordPage.actions().moveTrack (guitarId, 0);
     window.songView()->recordPage.insertActions.add (guitarId);
     window.songView()->recordPage.insertActions.bypass ("no-such-slot", true); // an operation that fails, for an edit refused anyway
-    window.songView()->recordPage.mix.onPreview (withMasterDb (before, -3.0));
+    window.songView()->recordPage.mix.onPreview (intent::PreviewMix { intent::SetMasterVolume { -3.0 } });
 
     CHECK (presented (capture).empty());
     CHECK (a.f.alertsShown.empty());
@@ -263,7 +263,7 @@ TEST_CASE ("the window still presents a refused record as a Notice while an expo
 {
     ActivityFixture a { Running::exporting };
     ScopedLogCapture capture;
-    a.f.window->perform (Command::record);
+    a.f.window->run (SongIntent { intent::Record {} });
 
     const auto shown = presented (capture);
     REQUIRE (shown.size() == 1);
