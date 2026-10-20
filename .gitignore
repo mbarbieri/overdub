@@ -5,3 +5,6 @@ dist/
 *.safetensors
 *.ckpt
 *.pth
+
+# Agent worktrees; skills under .claude/skills/ are committed.
+.claude/worktrees/
