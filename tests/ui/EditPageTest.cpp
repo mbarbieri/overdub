@@ -302,6 +302,24 @@ TEST_CASE ("the zoom buttons halve and double the samples per pixel, and Clips r
     CHECK (f.bandMixClip().timelineStart == 10 * start * 2);
 }
 
+TEST_CASE ("a trackpad pinch zooms the timeline around the pointer", "[ui][edit][pinch]")
+{
+    EditFixture f;
+    f.timeline().setView (48000, f.samplesPerPixel());
+    const auto start = f.samplesPerPixel();
+    const auto pointer = f.timeline().rulerBounds().getCentre();
+    const auto underPointer = sampleForX (f.timeline().view(), pointer.x);
+
+    f.timeline().mouseMagnify (mouseEventAt (f.timeline(), pointer.toFloat(), {}), 2.0f);
+    CHECK (f.samplesPerPixel() == start / 2);
+    CHECK (sampleForX (f.timeline().view(), pointer.x) == underPointer);
+
+    // A pinch over a Track header reaches the Timeline too.
+    auto& header = *f.timeline().headers.front();
+    header.mouseMagnify (mouseEventAt (header, header.getLocalBounds().getCentre().toFloat(), {}), 0.25f);
+    CHECK (f.samplesPerPixel() == start * 2);
+}
+
 TEST_CASE ("scrolling shows the Song from a later sample", "[ui][edit]")
 {
     EditFixture f;

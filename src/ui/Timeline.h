@@ -36,7 +36,8 @@
 // down sets the gain; the drag is previewed and reported once, on mouse up, as one Song and its
 // undo label. Clicking a Video Take's block in the Camera lane selects it (issue #128; it cannot be
 // dragged). Clicking empty lane space clears the selection; clicking or dragging
-// in the ruler moves the playhead. The scroll bar and the mouse wheel scroll; zoomIn/zoomOut zoom.
+// in the ruler moves the playhead. The scroll bar and the mouse wheel scroll; zoomIn/zoomOut zoom, and so
+// does a trackpad pinch, around the pointer (issue #164, pinchZoomed).
 // Selection and the view are transient UI state, never in the Song.
 //
 // Vertical scrolling (issue #127): when the Track rows are taller than the space under the Camera
@@ -207,6 +208,7 @@ public:
     void mouseDrag (const juce::MouseEvent& event) override;
     void mouseUp (const juce::MouseEvent& event) override;
     void mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) override;
+    void mouseMagnify (const juce::MouseEvent& event, float scaleFactor) override;
     void resized() override;
     void paint (juce::Graphics& g) override;
     void paintOverChildren (juce::Graphics& g) override;
@@ -281,6 +283,7 @@ private:
     Gesture gesture;
     TimelineView timelineView;
     int verticalScrollPixels = 0;
+    double pinchPendingLevels = 0.0; // PinchZoom::pendingLevels between pinch events
     TimelineLayout layout;
     juce::Component trackHeaderColumn; // the tracks viewport's header column: cuts off scrolled headers
     Selection selection;

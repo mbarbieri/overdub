@@ -63,6 +63,49 @@ TEST_CASE ("zooming halves or doubles the samples per pixel, within the limits",
     CHECK (zoomedOut (TimelineView { .samplesPerPixel = maxSamplesPerPixel }).samplesPerPixel == maxSamplesPerPixel);
 }
 
+TEST_CASE ("a pinch zooms by whole levels around the pointer, once it reaches half a level", "[ui][timeline][pinch]")
+{
+    // The sample under x = 150 is 60000 + 50 * 512 = 85600.
+    const TimelineView view { .firstSample = 60000, .samplesPerPixel = 512, .laneX = 100 };
+
+    const auto spread = pinchZoomed (view, 0.0, 2.0f, 150);
+    CHECK (spread.view.samplesPerPixel == 256);
+    CHECK (spread.view.firstSample == 85600 - 50 * 256);
+    CHECK (sampleForX (spread.view, 150) == 85600);
+    CHECK (spread.pendingLevels == 0.0);
+
+    const auto closed = pinchZoomed (view, 0.0, 0.5f, 150);
+    CHECK (closed.view.samplesPerPixel == 1024);
+    CHECK (sampleForX (closed.view, 150) == 85600);
+
+    // A third of a level waits; a second third takes the level, and pinching back returns.
+    const auto third = std::exp2 (1.0 / 3.0);
+    const auto small = pinchZoomed (view, 0.0, (float) third, 150);
+    CHECK (small.view == view);
+    const auto twoThirds = pinchZoomed (small.view, small.pendingLevels, (float) third, 150);
+    CHECK (twoThirds.view.samplesPerPixel == 256);
+    const auto back = pinchZoomed (twoThirds.view, twoThirds.pendingLevels, (float) (1.0 / third / third), 150);
+    CHECK (back.view.samplesPerPixel == 512);
+
+    // Left of the lanes, the anchor is laneX; zooming out never scrolls before the Song's start.
+    CHECK (pinchZoomed (view, 0.0, 2.0f, 20).view.firstSample == 60000);
+    CHECK (pinchZoomed (view, 0.0, 0.25f, 150).view.firstSample == 0);
+}
+
+TEST_CASE ("a pinch past a zoom limit builds up nothing to pinch back", "[ui][timeline][pinch]")
+{
+    const TimelineView tightest { .firstSample = 0, .samplesPerPixel = minSamplesPerPixel, .laneX = 0 };
+    const auto further = pinchZoomed (tightest, 0.0, 16.0f, 0);
+    CHECK (further.view.samplesPerPixel == minSamplesPerPixel);
+    CHECK (further.pendingLevels == 0.0);
+    CHECK (pinchZoomed (further.view, further.pendingLevels, 0.7f, 0).view.samplesPerPixel == minSamplesPerPixel * 2);
+
+    const TimelineView widest { .firstSample = 0, .samplesPerPixel = maxSamplesPerPixel, .laneX = 0 };
+    const auto wider = pinchZoomed (widest, 0.0, 1.0f / 16.0f, 0);
+    CHECK (wider.view.samplesPerPixel == maxSamplesPerPixel);
+    CHECK (pinchZoomed (wider.view, wider.pendingLevels, 1.5f, 0).view.samplesPerPixel == maxSamplesPerPixel / 2);
+}
+
 TEST_CASE ("hit-testing finds a Clip's body and its edges, top layer first", "[ui][timeline]")
 {
     // 100 samples per pixel from x = 0: "low" spans x [0, 60), "high" spans x [20, 40).

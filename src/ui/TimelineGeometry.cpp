@@ -49,6 +49,30 @@ TimelineView zoomedOut (TimelineView view)
     return view;
 }
 
+PinchZoom pinchZoomed (TimelineView view, double pendingLevels, float scaleFactor, int anchorX)
+{
+    auto levels = pendingLevels + std::log2 ((double) scaleFactor);
+    auto samplesPerPixel = view.samplesPerPixel;
+    while (levels >= 0.5 && samplesPerPixel > minSamplesPerPixel)
+    {
+        samplesPerPixel = std::max (minSamplesPerPixel, samplesPerPixel / 2);
+        levels -= 1.0;
+    }
+    while (levels <= -0.5 && samplesPerPixel < maxSamplesPerPixel)
+    {
+        samplesPerPixel = std::min (maxSamplesPerPixel, samplesPerPixel * 2);
+        levels += 1.0;
+    }
+    if (std::abs (levels) >= 0.5)
+        levels = 0.0;
+
+    const auto anchor = std::max (anchorX, view.laneX);
+    const auto anchorSample = sampleForX (view, anchor);
+    view.samplesPerPixel = samplesPerPixel;
+    view.firstSample = std::max<SampleCount> (0, anchorSample - (SampleCount) (anchor - view.laneX) * samplesPerPixel);
+    return { view, levels };
+}
+
 ClipColumns clipColumns (const TimelineView& view, const song::Clip& clip)
 {
     const auto left = xForSample (view, clip.timelineStart);
