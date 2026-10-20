@@ -28,11 +28,11 @@
 // run (ADR 0008) is the one entry for an Intent (ui/Intent.h), from a key, the top bar, the Edit
 // menu, a page or the control socket: it logs ui.intent_run (debug: op, origin; not for
 // preview_mix, which a Mixer drag runs every frame and which refreshes nothing) and routes the
-// Window group here, the Song group to the SongView (ui.no_song_open while none is open) and
-// convert_sample_rate to the SongView; the rest of the App group is not routed yet
-// (ui.intent_not_routed, issue #170). While the modal run dialog shows only cancel_run and quit
-// run (ui.run_dialog_open). It returns what the handler did or the Error it handled; Errors are
-// presented exactly as the gestures always presented them.
+// Window group here, the Song group to the SongView (ui.no_song_open while none is open) and the
+// App group to runAppIntent, which the ui::Workspace sets (issue #170; unset, as in a window
+// without one: ui.intent_not_routed). While the modal run dialog shows only cancel_run and the App
+// group run (ui.run_dialog_open); the Workspace refuses App Intents itself. It returns what the handler did or the
+// Error it handled; Errors are presented exactly as the gestures always presented them.
 //
 // Record mode (issue #32): the pre-roll picker sets the Song's pre-roll (no undo step); a click on a
 // Pass row moves the playhead to the Pass's start, and on the overview to the Song sample there;
@@ -183,6 +183,8 @@ public:
     juce::File exportFolder = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Overdub");
     // The time a key press happens (the Mixer's arrow-key bursts); tests set a fixed one.
     std::function<song::SongPackage::Clock::time_point()> clock = [] { return song::SongPackage::Clock::now(); };
+    // The App group's owner (the ui::Workspace): runs every AppIntent that run is given.
+    std::function<IntentResult (const AppIntent&)> runAppIntent;
     // The File menu's New Song and Open, offered on the no-Song page.
     std::function<void()> onNewSong;
     std::function<void()> onOpenSong;

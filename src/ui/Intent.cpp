@@ -38,6 +38,11 @@ std::string_view opName (const Intent& intent)
     return core::operationName (intent);
 }
 
+core::Error noSongOpen (std::string_view op)
+{
+    return core::Error { "ui.no_song_open", "no Song is open", { { "op", std::string (op) } } };
+}
+
 std::optional<Intent> intentForKey (KeyChord key)
 {
     const auto character = lowerCase (key.character);

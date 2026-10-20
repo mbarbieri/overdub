@@ -1,6 +1,7 @@
 #include "ui/CalibrationPanel.h"
 
 #include "capture/CameraCalibration.h"
+#include "core/Described.h"
 #include "ui/CalibrationText.h"
 #include "ui/Colours.h"
 #include "ui/UserMessages.h"
@@ -28,6 +29,27 @@ void styleLabel (juce::Label& label, juce::Colour colour)
 }
 } // namespace
 
+LatencyMeasured latencyMeasured (core::Expected<capture::LoopbackMeasurement> outcome, std::optional<song::SampleCount> offsetInUse)
+{
+    LatencyMeasured measured { std::move (outcome), std::nullopt };
+    // Offsets measured with the calibration in use: storing their sum lands Takes where heard.
+    if (const auto& result = measured.outcome; result.has_value() && capture::loopbackPassed (*result) && (result->offsetSamples != 0 || ! offsetInUse.has_value()))
+        measured.toStore = intent::SaveLatencyCalibration { offsetInUse.value_or (0) + result->offsetSamples };
+    return measured;
+}
+
+ClapMeasured clapMeasured (core::Expected<capture::VideoTakeClaps> outcome)
+{
+    ClapMeasured measured { std::move (outcome), std::nullopt };
+    if (const auto& claps = measured.outcome; claps.has_value() && claps->report.meanOffsetMs.has_value() && ! claps->outputDevice.empty())
+        measured.toStore = intent::SaveCameraCalibration {
+            .cameraId = claps->cameraId,
+            .outputDevice = claps->outputDevice,
+            .offsetMs = capture::calibratedCameraOffsetMs (claps->appliedCalibrationSamples, claps->sampleRate, *claps->report.meanOffsetMs),
+        };
+    return measured;
+}
+
 CalibrationPanel::CalibrationPanel()
 {
     cableInstructions.setText ("Connect a cable from output 1 to input 1 (or turn the speakers up near the microphone) "
@@ -47,21 +69,15 @@ CalibrationPanel::CalibrationPanel()
     for (auto* label : { &cableInstructions, &clapInstructions })
         styleLabel (*label, colours::dimText);
 
-    measureLatencyButton.onClick = [this] {
-        if (onMeasureLatency)
-            onMeasureLatency();
-    };
+    measureLatencyButton.onClick = [this] { runIntent (intent::MeasureLatency {}); };
     saveLatencyButton.onClick = [this] {
-        if (latencyToStore.has_value() && onSaveLatency)
-            onSaveLatency (*latencyToStore);
+        if (const auto* measured = std::get_if<LatencyMeasured> (&current.latency); measured != nullptr && measured->toStore.has_value())
+            runIntent (*measured->toStore);
     };
-    measureClapButton.onClick = [this] {
-        if (onMeasureClap)
-            onMeasureClap();
-    };
+    measureClapButton.onClick = [this] { runIntent (intent::MeasureClapPass {}); };
     saveCameraButton.onClick = [this] {
-        if (cameraToStore.has_value() && onSaveCamera)
-            onSaveCamera (cameraToStore->first, cameraToStore->second);
+        if (const auto* measured = std::get_if<ClapMeasured> (&current.clap); measured != nullptr && measured->toStore.has_value())
+            runIntent (*measured->toStore);
     };
 
     for (auto* child : std::initializer_list<juce::Component*> { &latencyTitle, &deviceLabel, &latencyStatusLabel, &cableInstructions, &measureLatencyButton, &latencyResultLabel, &cameraTitle, &cameraStatusLabel, &clapInstructions, &measureClapButton, &clapResultLabel })
@@ -70,76 +86,57 @@ CalibrationPanel::CalibrationPanel()
     addChildComponent (saveCameraButton);
 }
 
-void CalibrationPanel::show (const CalibrationStatus& status)
+void CalibrationPanel::runIntent (const AppIntent& intent)
 {
-    current = status;
-    latencyToStore.reset();
-    cameraToStore.reset();
+    if (onIntent)
+        onIntent (intent);
+}
 
+void CalibrationPanel::show (const CalibrationState& state)
+{
+    current = state;
+    const auto& status = state.status;
     deviceLabel.setText (status.deviceOpen ? utf8 (status.deviceText) : "No audio device is open.", juce::dontSendNotification);
     latencyStatusLabel.setText (status.deviceOpen ? utf8 (latencyCalibrationText (status.latencyOffset, status.sampleRate)) : "", juce::dontSendNotification);
-    measureLatencyButton.setEnabled (status.deviceOpen);
-    latencyResultLabel.setText ({}, juce::dontSendNotification);
-    saveLatencyButton.setVisible (false);
-
     const auto camera = status.cameraId.empty() ? std::string ("No camera chosen: pick one in Record mode.")
                                                 : (status.cameraName.empty() ? status.cameraId : status.cameraName) + ". " + cameraCalibrationText (status.cameraOffsetMs);
     cameraStatusLabel.setText (utf8 (camera), juce::dontSendNotification);
     measureClapButton.setEnabled (! status.cameraId.empty() && status.deviceOpen);
-    clapResultLabel.setText ({}, juce::dontSendNotification);
-    saveCameraButton.setVisible (false);
+    showLatencyRun (state.latency);
+    showClapRun (state.clap);
 }
 
-void CalibrationPanel::showLatencyMeasuring()
+void CalibrationPanel::showLatencyRun (const LatencyRun& run)
 {
-    measureLatencyButton.setEnabled (false);
-    saveLatencyButton.setVisible (false);
-    latencyToStore.reset();
-    latencyResultLabel.setText ("Measuring: noise bursts play for about 7 seconds...", juce::dontSendNotification);
+    measureLatencyButton.setEnabled (current.status.deviceOpen && ! std::holds_alternative<LatencyMeasuring> (run));
+    const auto [text, offered] = core::visitExhaustively (
+        run,
+        core::Overloaded {
+            [] (const std::monostate&) { return std::pair { std::string(), false }; },
+            [] (const LatencyMeasuring&) { return std::pair { std::string ("Measuring: noise bursts play for about 7 seconds..."), false }; },
+            [this] (const LatencyMeasured& measured) {
+        const auto& outcome = measured.outcome;
+        return std::pair { outcome.has_value() ? latencyResultText (*outcome, current.status.sampleRate) : sentenceFor (outcome.error().code), measured.toStore.has_value() };
+    },
+        });
+    latencyResultLabel.setText (utf8 (text), juce::dontSendNotification);
+    saveLatencyButton.setVisible (offered);
 }
 
-void CalibrationPanel::showLatencyResult (const core::Expected<capture::LoopbackMeasurement>& result)
+void CalibrationPanel::showClapRun (const ClapRun& run)
 {
-    measureLatencyButton.setEnabled (current.deviceOpen);
-    latencyToStore.reset();
-    if (! result.has_value())
-    {
-        latencyResultLabel.setText (utf8 (sentenceFor (result.error().code)), juce::dontSendNotification);
-        saveLatencyButton.setVisible (false);
-        return;
-    }
-
-    latencyResultLabel.setText (utf8 (latencyResultText (*result, current.sampleRate)), juce::dontSendNotification);
-    // Offsets measured with the calibration in use: storing their sum lands Takes where heard. A
-    // zero result changes nothing, except on a device never calibrated, where storing it marks the
-    // device calibrated (no more ui.latency_not_calibrated).
-    if (capture::loopbackPassed (*result) && (result->offsetSamples != 0 || ! current.latencyOffset.has_value()))
-        latencyToStore = current.latencyOffset.value_or (0) + result->offsetSamples;
-    saveLatencyButton.setVisible (latencyToStore.has_value());
-}
-
-void CalibrationPanel::showClapResult (const core::Expected<capture::VideoTakeClaps>& result)
-{
-    cameraToStore.reset();
-    if (! result.has_value())
-    {
-        clapResultLabel.setText (utf8 (sentenceFor (result.error().code)), juce::dontSendNotification);
-        saveCameraButton.setVisible (false);
-        return;
-    }
-
-    clapResultLabel.setText (utf8 (clapResultText (result->report, result->outputDevice)), juce::dontSendNotification);
-    if (result->report.meanOffsetMs.has_value() && ! result->outputDevice.empty())
-        cameraToStore = std::pair { capture::CameraCalibrationKey { result->cameraId, result->outputDevice },
-                                    capture::calibratedCameraOffsetMs (result->appliedCalibrationSamples, result->sampleRate, *result->report.meanOffsetMs) };
-    saveCameraButton.setVisible (cameraToStore.has_value());
-}
-
-void CalibrationPanel::showCameraSaved (const capture::CameraCalibrationKey& key, double offsetMs)
-{
-    cameraToStore.reset();
-    saveCameraButton.setVisible (false);
-    clapResultLabel.setText (utf8 (cameraCalibrationSavedText (offsetMs, key.outputDevice)), juce::dontSendNotification);
+    const auto [text, offered] = core::visitExhaustively (
+        run,
+        core::Overloaded {
+            [] (const std::monostate&) { return std::pair { std::string(), false }; },
+            [] (const ClapMeasured& measured) {
+        const auto& outcome = measured.outcome;
+        return std::pair { outcome.has_value() ? clapResultText (outcome->report, outcome->outputDevice) : sentenceFor (outcome.error().code), measured.toStore.has_value() };
+    },
+            [] (const CameraSaved& saved) { return std::pair { cameraCalibrationSavedText (saved.stored.offsetMs, saved.stored.outputDevice), false }; },
+        });
+    clapResultLabel.setText (utf8 (text), juce::dontSendNotification);
+    saveCameraButton.setVisible (offered);
 }
 
 void CalibrationPanel::resized()

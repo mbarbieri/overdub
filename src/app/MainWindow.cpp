@@ -58,15 +58,19 @@ public:
 class SettingsWindow final : public juce::DocumentWindow
 {
 public:
-    explicit SettingsWindow (std::unique_ptr<SettingsContent> content)
-        : DocumentWindow ("Settings", juce::Colours::black, juce::DocumentWindow::closeButton)
+    SettingsWindow (std::unique_ptr<SettingsContent> content, std::function<void()> whenClosed)
+        : DocumentWindow ("Settings", juce::Colours::black, juce::DocumentWindow::closeButton),
+          onClose (std::move (whenClosed))
     {
         setUsingNativeTitleBar (true);
         setContentOwned (content.release(), false);
         centreWithSize (settingsWidth, devicePanelHeight + calibrationPanelHeight);
     }
 
-    void closeButtonPressed() override { setVisible (false); }
+    void closeButtonPressed() override { onClose(); }
+
+private:
+    std::function<void()> onClose;
 };
 
 juce::PopupMenu::Item historyItem (int id, const juce::String& verb, bool enabled, const std::string& label, const char* shortcut)
@@ -111,6 +115,8 @@ MainWindow::MainWindow (const juce::String& name,
         updateTitle();
         content.grabKeyboardFocus();
     };
+    workspace->onShowSettings = [this] (bool shown) { showSettingsWindow (shown); };
+    workspace->onQuit = [] { juce::JUCEApplicationBase::quit(); };
 
     juce::PopupMenu appleMenuExtras;
     appleMenuExtras.addItem (settingsItem, "Settings...");
@@ -140,11 +146,6 @@ MainWindow::~MainWindow()
 void MainWindow::closeButtonPressed()
 {
     juce::JUCEApplication::getInstance()->systemRequestedQuit();
-}
-
-bool MainWindow::mayQuitOrNotice()
-{
-    return workspace == nullptr || workspace->mayQuitOrNotice();
 }
 
 //==============================================================================
@@ -200,22 +201,16 @@ juce::PopupMenu MainWindow::convertSampleRateMenu()
     return rates;
 }
 
-void MainWindow::convertSampleRate (int toRate)
-{
-    if (workspace->idleOrNotice())
-        content.run (ui::AppIntent { ui::intent::ConvertSampleRate { toRate } });
-}
-
 void MainWindow::menuItemSelected (int menuItemID, int)
 {
     if (const auto index = menuItemID - convertSampleRateItemBase; index >= 0 && index < (int) offeredMenuRates.size())
-        return convertSampleRate (offeredMenuRates[(std::size_t) index]);
+        return (void) content.run (ui::AppIntent { ui::intent::ConvertSampleRate { offeredMenuRates[(std::size_t) index] } });
     switch (menuItemID)
     {
         case newSongItem: newSong(); break;
         case openSongItem: chooseSongToOpen(); break;
         case duplicateSongItem: duplicateSong(); break;
-        case settingsItem: showSettings(); break;
+        case settingsItem: content.run (ui::AppIntent { ui::intent::ShowSettings { true } }); break;
         case undoItem: content.run (ui::SongIntent { ui::intent::Undo {} }); break;
         case redoItem: content.run (ui::SongIntent { ui::intent::Redo {} }); break;
         default: break;
@@ -223,7 +218,7 @@ void MainWindow::menuItemSelected (int menuItemID, int)
 }
 
 //==============================================================================
-// Songs. Each dialog's callback checks again: a Pass may have started while it was open.
+// Songs
 
 void MainWindow::newSong()
 {
@@ -231,13 +226,8 @@ void MainWindow::newSong()
         return;
     chooser = std::make_unique<juce::FileChooser> ("New Song", defaultSongFolder().getChildFile ("Untitled.overdub"), "*.overdub");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& finished) {
-        const auto chosen = finished.getResult();
-        if (chosen == juce::File() || ! workspace->idleOrNotice())
-            return;
-        auto created = ui::createSongAt (chosen, workspace->liveAudio().sampleRate());
-        if (! created.has_value())
-            return content.handleError (created.error());
-        workspace->showSong (std::move (*created), {});
+        if (const auto chosen = finished.getResult(); chosen != juce::File())
+            content.run (ui::AppIntent { ui::intent::NewSongAt { { chosen.getFullPathName().toStdString() } } });
     });
 }
 
@@ -248,10 +238,8 @@ void MainWindow::chooseSongToOpen()
     chooser = std::make_unique<juce::FileChooser> ("Open Song", defaultSongFolder(), "*.overdub");
     const auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories | juce::FileBrowserComponent::canSelectFiles;
     chooser->launchAsync (flags, [this] (const juce::FileChooser& finished) {
-        const auto chosen = finished.getResult();
-        if (chosen == juce::File() || ! workspace->idleOrNotice())
-            return;
-        workspace->openSongFrom (chosen);
+        if (const auto chosen = finished.getResult(); chosen != juce::File())
+            content.run (ui::AppIntent { ui::intent::OpenSongAt { { chosen.getFullPathName().toStdString() } } });
     });
 }
 
@@ -262,15 +250,8 @@ void MainWindow::duplicateSong()
     const auto current = workspace->openSong()->package().location();
     chooser = std::make_unique<juce::FileChooser> ("Duplicate Song", current.getSiblingFile (current.getFileNameWithoutExtension() + " copy.overdub"), "*.overdub");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& finished) {
-        const auto chosen = finished.getResult();
-        auto* openSong = workspace->openSong();
-        if (chosen == juce::File() || openSong == nullptr || ! workspace->idleOrNotice())
-            return;
-        auto duplicated = ui::duplicateSongTo (openSong->package(), chosen);
-        if (! duplicated.has_value())
-            return content.handleError (duplicated.error());
-        // The duplicate becomes the open Song; the original stays as it was.
-        workspace->openSongFrom (*duplicated);
+        if (const auto chosen = finished.getResult(); chosen != juce::File())
+            content.run (ui::AppIntent { ui::intent::DuplicateSongTo { { chosen.getFullPathName().toStdString() } } });
     });
 }
 
@@ -286,18 +267,26 @@ void MainWindow::updateTitle()
 //==============================================================================
 // Settings
 
-void MainWindow::showSettings()
+void MainWindow::showSettingsWindow (bool shown)
 {
-    if (! workspace->idleOrNotice())
+    if (! shown)
+    {
+        if (settingsWindow != nullptr)
+            settingsWindow->setVisible (false);
         return;
+    }
     if (settingsWindow == nullptr)
     {
         auto settingsContent = std::make_unique<SettingsContent>();
         workspace->attachSettingsPanels (&settingsContent->devices, &settingsContent->calibration);
-        settingsWindow = std::make_unique<SettingsWindow> (std::move (settingsContent));
+        settingsWindow = std::make_unique<SettingsWindow> (std::move (settingsContent), [this] { content.run (ui::AppIntent { ui::intent::ShowSettings { false } }); });
     }
-    workspace->refreshSettingsPanels();
     settingsWindow->setVisible (true);
     settingsWindow->toFront (true);
+}
+
+void MainWindow::requestQuit()
+{
+    content.run (ui::AppIntent { ui::intent::Quit {} });
 }
 } // namespace overdub::app

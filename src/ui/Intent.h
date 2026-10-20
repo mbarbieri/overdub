@@ -766,6 +766,9 @@ using IntentSink = std::function<void (const Intent&)>;
 // "show_mode", "move_clip", ...: the op name of the leaf.
 std::string_view opName (const Intent& intent);
 
+// ui.no_song_open for `op`: what an Intent that needs the open Song answers while none is.
+core::Error noSongOpen (std::string_view op);
+
 // The characters macOS delivers for the backspace key (labelled delete) and the forward delete
 // key, as JUCE's KeyPress::backspaceKey and KeyPress::deleteKey report them.
 inline constexpr char32_t backspaceCharacter = 0x7f;
