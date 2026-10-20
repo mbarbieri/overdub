@@ -1,5 +1,6 @@
 #include "control/Controller.h"
 
+#include "control/ControllerHarness.h"
 #include "core/BuildInfo.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -7,11 +8,14 @@
 
 #include <unistd.h>
 
+#include <array>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace overdub::control;
+using namespace overdub::control::testing;
 using nlohmann::json;
 using overdub::core::Level;
 
@@ -21,33 +25,6 @@ std::string logLine (std::string_view event, Level level = Level::info, const ov
 {
     return overdub::core::formatLogLine ({ .level = level, .event = event, .fields = &fields });
 }
-
-std::vector<json> takeLines (Controller& controller, ConnectionId connection)
-{
-    const auto output = std::string (controller.pendingOutput (connection));
-    controller.consumeOutput (connection, output.size());
-    std::vector<json> lines;
-    std::size_t start = 0;
-    for (auto end = output.find ('\n'); end != std::string::npos; end = output.find ('\n', start))
-    {
-        lines.push_back (json::parse (output.substr (start, end - start)));
-        start = end + 1;
-    }
-    CHECK (start == output.size());
-    return lines;
-}
-
-struct ProcessTap
-{
-    explicit ProcessTap (std::shared_ptr<EventTap> installed)
-        : tap (std::move (installed))
-    {
-        overdub::core::processLogger().addTap (tap);
-    }
-    ~ProcessTap() { overdub::core::processLogger().removeTap (tap); }
-
-    std::shared_ptr<EventTap> tap;
-};
 
 const Clock::time_point start {};
 
@@ -151,6 +128,26 @@ TEST_CASE ("an op the Controller does not know goes to the handler, which answer
         REQUIRE (lines.size() == 1);
         CHECK (lines[0] == json { { "id", 4 }, { "ok", true }, { "seq", 0 }, { "track_id", "t-1" } });
     }
+}
+
+TEST_CASE ("every op in Controller::ownOps is answered by the Controller and never reaches the handler", "[control][controller]")
+{
+    std::vector<std::string> handled;
+    Controller controller { std::make_shared<EventTap>(), [&handled] (const Request& request) -> Reply {
+        handled.push_back (request.op);
+        return json::object();
+    } };
+    const auto client = controller.connect();
+
+    for (const auto op : Controller::ownOps)
+    {
+        controller.receive (client, json { { "id", 1 }, { "op", op } }.dump() + "\n", start);
+        controller.pump (start);
+        CHECK (takeLines (controller, client).size() == 1);
+    }
+
+    CHECK (Controller::ownOps == std::array<std::string_view, 3> { "hello", "subscribe", "wait" });
+    CHECK (handled.empty());
 }
 
 TEST_CASE ("a handler's result cannot overwrite a reply's id, ok or seq", "[control][controller]")

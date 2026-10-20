@@ -6,6 +6,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -90,7 +91,14 @@ public:
     static constexpr std::int64_t defaultWaitMs = 30'000;
     static constexpr std::int64_t maxWaitMs = 10 * 60 * 1000;
 
-    // `otherOps` answers every op that is not hello, subscribe or wait; the default answers
+    // The ops the Controller answers itself. runOp dispatches only these names, and no handler or
+    // Intent may take one (control/IntentOps.cpp static_asserts it).
+    static constexpr std::string_view helloOp = "hello";
+    static constexpr std::string_view subscribeOp = "subscribe";
+    static constexpr std::string_view waitOp = "wait";
+    static constexpr std::array ownOps { helloOp, subscribeOp, waitOp };
+
+    // `otherOps` answers every op not in ownOps; the default answers
     // control.unknown_op.
     explicit Controller (std::shared_ptr<EventTap> tap, OpHandler otherOps = {});
 

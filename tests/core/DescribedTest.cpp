@@ -186,6 +186,34 @@ TEST_CASE ("op names are listed in declaration order, and a vocabulary with two 
     STATIC_REQUIRE_FALSE (core::operationNamesAreUnique<std::variant<Command, Twin>>());
 }
 
+TEST_CASE ("operationSchemas gives each leaf's op and the JSON form of each field, in declaration order", "[core][described]")
+{
+    const nlohmann::json paintSchema {
+        { "op", "paint" },
+        { "fields",
+          nlohmann::json::array ({
+              { { "key", "wall" }, { "type", "string" } },
+              { { "key", "colour" }, { "type", "string" }, { "enum", nlohmann::json::array ({ "red", "blue" }) } },
+              { { "key", "coats" }, { "type", "number" }, { "optional", true } },
+              { { "key", "layers" }, { "type", "array" }, { "items", { { "type", "integer" } } } },
+              { { "key", "file" }, { "type", "string" }, { "format", "absolute_path" } },
+          }) },
+    };
+    const nlohmann::json eraseSchema {
+        { "op", "erase" },
+        { "fields", nlohmann::json::array ({ { { "key", "index" }, { "type", "integer" }, { "minimum", 0 } }, { { "key", "at" }, { "type", "integer" } } }) },
+    };
+
+    CHECK (core::operationSchemas<Command>()
+           == nlohmann::json::array ({
+               paintSchema,
+               eraseSchema,
+               { { "op", "rest" }, { "fields", nlohmann::json::array() } },
+               { { "op", "preview" },
+                 { "fields", nlohmann::json::array ({ { { "key", "tool" }, { "type", "object" }, { "optional", true }, { "ops", nlohmann::json::array ({ paintSchema, eraseSchema }) } } }) } },
+           }));
+}
+
 TEST_CASE ("visitExhaustively takes only one handler per alternative, never a catch-all", "[core][described]")
 {
     const auto all = core::Overloaded { onTool, onRest, onPreview };
