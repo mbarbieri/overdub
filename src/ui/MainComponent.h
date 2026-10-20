@@ -26,7 +26,8 @@
 // keys do nothing.
 //
 // run (ADR 0008) is the one entry for an Intent (ui/Intent.h), from a key, the top bar, the Edit
-// menu, a page or the control socket: it logs ui.intent_run (debug: op, origin) and routes the
+// menu, a page or the control socket: it logs ui.intent_run (debug: op, origin; not for
+// preview_mix, which a Mixer drag runs every frame and which refreshes nothing) and routes the
 // Window group here, the Song group to the SongView (ui.no_song_open while none is open) and
 // convert_sample_rate to the SongView; the rest of the App group is not routed yet
 // (ui.intent_not_routed, issue #170). While the modal run dialog shows only cancel_run and quit

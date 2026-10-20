@@ -118,11 +118,17 @@ bool MixFocus::handleKey (const juce::KeyPress& key, Clock::time_point now)
 
 void MixFocus::commitKeyBurst()
 {
+    if (auto burst = takeKeyBurst(); burst.has_value() && onEdit)
+        onEdit (*burst);
+}
+
+std::optional<intent::Edit> MixFocus::takeKeyBurst()
+{
     if (! keyBurst.has_value())
-        return;
+        return std::nullopt;
     const auto burst = *keyBurst;
-    keyBurst.reset(); // before reporting: the edit comes back here through show
-    report (asEdit (mixEditFor (burst.control, burst.value)));
+    keyBurst.reset(); // before its edit runs: the edit comes back here through show
+    return reportable (asEdit (mixEditFor (burst.control, burst.value)));
 }
 
 void MixFocus::commitKeyBurstIfDue (Clock::time_point now)
@@ -169,13 +175,20 @@ void MixFocus::preview (const intent::MixEdit& edit)
 
 void MixFocus::report (const intent::Edit& edit)
 {
+    if (auto reported = reportable (edit); reported.has_value() && onEdit)
+        onEdit (*reported);
+}
+
+std::optional<intent::Edit> MixFocus::reportable (const intent::Edit& edit) const
+{
     if (! editable)
-        return;
+        return std::nullopt;
     const auto changed = editedSong (current, edit);
     // The controls exist only for the shown Song's Tracks, so the Track is there.
     if (! OVERDUB_CHECK (changed.has_value(), "ui.mixer_edit_failed", { "op", std::string (core::operationName (edit)) }))
-        return;
-    if (changed->song != current && onEdit)
-        onEdit (edit);
+        return std::nullopt;
+    if (changed->song == current)
+        return std::nullopt;
+    return edit;
 }
 } // namespace overdub::ui

@@ -265,7 +265,7 @@ IntentResult SongView::applyEdit (core::Expected<song::Song> changed, const std:
             continue;
         // `changed` was made from the Song before the burst: commit the burst, then keep its value.
         auto carried = mix->withKeyBurstCarried (std::move (*changed));
-        mix->commitKeyBurst();
+        commitKeyBurst (*mix);
         changed = std::move (carried);
     }
     auto edited = unlessRefused (openSong.edit (std::move (*changed), label));
@@ -766,14 +766,22 @@ void SongView::releaseFocusOutside (const juce::Component* clicked)
 
 void SongView::releaseFocus()
 {
+    commitKeyBursts();
     editPage.mixer.mix.releaseFocus();
     recordPage.mix.releaseFocus();
 }
 
 void SongView::commitKeyBursts()
 {
-    editPage.mixer.mix.commitKeyBurst();
-    recordPage.mix.commitKeyBurst();
+    commitKeyBurst (editPage.mixer.mix);
+    commitKeyBurst (recordPage.mix);
+}
+
+// Not a run of its own: only the Intent that committed the burst is logged, with its origin.
+void SongView::commitKeyBurst (MixFocus& mix)
+{
+    if (auto burst = mix.takeKeyBurst())
+        edit (*burst);
 }
 
 void SongView::handleErrors (const std::vector<core::Error>& errors)

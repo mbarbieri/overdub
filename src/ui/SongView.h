@@ -96,6 +96,8 @@ private:
 
     // The Error the edit's Song operation or OpenSong handled when it was not applied.
     IntentResult applyEdit (core::Expected<song::Song> changed, const std::string& label);
+    // A Mix's pending burst as its own undo step, through edit (not a nested run).
+    void commitKeyBurst (MixFocus& mix);
     // The plain edit on the Song as it is now (ui/SongEdits.h), through applyEdit.
     IntentResult edit (const intent::Edit& edit);
     // A Song operation's Error (the Song as it is cannot take it), unless the edit it was for is

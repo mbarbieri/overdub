@@ -73,8 +73,11 @@ public:
     bool handleKey (const juce::KeyPress& key, Clock::time_point now);
 
     bool hasKeyBurst() const { return keyBurst.has_value(); }
-    // Reports the burst of arrow presses (if any) as one undo step now.
+    // Reports the burst of arrow presses (if any) as one undo step now (onEdit).
     void commitKeyBurst();
+    // Ends the burst (if any) and returns the edit commitKeyBurst would report, for a caller that
+    // runs it itself inside the Intent it is handling.
+    std::optional<intent::Edit> takeKeyBurst();
     // Commits the burst once keyBurstDuration has passed since its last press.
     void commitKeyBurstIfDue (Clock::time_point now);
     // An edit made from the Song before the burst was committed, with the burst's value carried into
@@ -109,6 +112,8 @@ private:
     };
 
     void preview (const intent::MixEdit& edit);
+    // The edit unless it changes nothing or the controls are not editable.
+    std::optional<intent::Edit> reportable (const intent::Edit& edit) const;
     void notifyFocusChanged();
 
     song::Song current;

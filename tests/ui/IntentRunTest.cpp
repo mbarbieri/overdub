@@ -109,9 +109,14 @@ TEST_CASE ("a pending Mixer arrow-key burst followed by a mute keeps both, as tw
     REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::downKey, {}, 0)));
     REQUIRE_THAT (song::findTrack (f.song(), guitarId)->volumeDb, WithinAbs (0.0, 1.0e-9)); // the burst is pending
 
-    SECTION ("the mute from the socket")
+    SECTION ("the mute from the socket, logged as one control run")
     {
+        core::ScopedLogCapture capture;
         CHECK (runEdit (f, intent::SetTrackMute { bandMixId, true }).has_value());
+        const auto runs = eventsNamed (capture, "ui.intent_run");
+        REQUIRE (runs.size() == 1);
+        CHECK (runs[0].at ("op") == "set_track_mute");
+        CHECK (runs[0].at ("origin") == "control");
     }
     SECTION ("the mute from the Band Mix strip's M")
     {
@@ -125,6 +130,42 @@ TEST_CASE ("a pending Mixer arrow-key burst followed by a mute keeps both, as tw
     CHECK_FALSE (f.trackNamed ("Band Mix").mute);
     CHECK_THAT (song::findTrack (f.song(), guitarId)->volumeDb, WithinAbs (-2.0, 1.0e-9));
     CHECK (f.openSong->package().undoLabel() == "Guitar Volume");
+}
+
+TEST_CASE ("a pending Mixer arrow-key burst is committed by a mode change from the socket, logged as that one control run", "[ui][intent][mixer]")
+{
+    MainWindowFixture f;
+    REQUIRE (pressKey (*f.window, '2'));
+    const auto guitarId = f.trackNamed ("Guitar").id;
+    auto& fader = stripNamed (f, "Guitar").fader;
+    clickAt (fader, fader.thumbCentre());
+    REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::downKey, {}, 0)));
+    core::ScopedLogCapture capture;
+
+    CHECK (f.window->run (WindowIntent { intent::ShowMode { Mode::record } }, Origin::control).has_value());
+
+    CHECK_THAT (song::findTrack (f.song(), guitarId)->volumeDb, WithinAbs (-1.0, 1.0e-9));
+    CHECK (f.openSong->package().undoLabel() == "Guitar Volume");
+    const auto runs = eventsNamed (capture, "ui.intent_run");
+    REQUIRE (runs.size() == 1);
+    CHECK (runs[0].at ("op") == "show_mode");
+    CHECK (runs[0].at ("origin") == "control");
+}
+
+TEST_CASE ("a Mixer fader drag logs one run, for the edit its release commits, and none per frame", "[ui][intent][mixer]")
+{
+    MainWindowFixture f;
+    REQUIRE (pressKey (*f.window, '2'));
+    auto& fader = stripNamed (f, "Guitar").fader;
+    const auto grab = fader.thumbCentre();
+    core::ScopedLogCapture capture;
+
+    drag (fader, grab, grab.translated (0, -30));
+
+    const auto runs = eventsNamed (capture, "ui.intent_run");
+    REQUIRE (runs.size() == 1);
+    CHECK (runs[0].at ("op") == "set_track_volume");
+    CHECK (runs[0].at ("origin") == "user");
 }
 
 TEST_CASE ("a mix preview from the socket is heard without changing the Song, and an empty one goes back to the Song", "[ui][intent][mixer]")
