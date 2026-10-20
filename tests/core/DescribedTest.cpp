@@ -3,6 +3,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -71,6 +73,13 @@ struct Twin
     static constexpr std::string_view op = "rest";
 };
 
+struct SameKeyTwice
+{
+    int first = 0;
+    int second = 0;
+    static constexpr auto fields = std::tuple { core::field ("value", &SameKeyTwice::first), core::field ("value", &SameKeyTwice::second) };
+};
+
 constexpr auto badField = "test.bad_field";
 constexpr auto unknownOp = "test.unknown_op";
 
@@ -127,6 +136,18 @@ TEST_CASE ("integers are checked against their member's range", "[core][describe
     CHECK (core::fromJson<Erase> (nlohmann::json { { "index", 4 }, { "at", -48000 } }, badField) == Erase { 4, -48000 });
     CHECK_FALSE (core::fromJson<Erase> (nlohmann::json { { "index", -1 }, { "at", 0 } }, badField).has_value());
     CHECK_FALSE (core::fromJson<Erase> (nlohmann::json { { "index", 1.5 }, { "at", 0 } }, badField).has_value());
+
+    const auto pastSigned = core::fromJson<Erase> (nlohmann::json { { "index", 1 }, { "at", std::numeric_limits<std::uint64_t>::max() } }, badField);
+    REQUIRE_FALSE (pastSigned.has_value());
+    CHECK (pastSigned.error().code == badField);
+    CHECK (pastSigned.error().fields.at ("key") == "at");
+}
+
+TEST_CASE ("a field table with two equal keys is caught", "[core][described]")
+{
+    STATIC_REQUIRE (core::fieldKeysAreUnique<Paint>());
+    STATIC_REQUIRE (core::fieldKeysAreUnique<Rest>());
+    STATIC_REQUIRE_FALSE (core::fieldKeysAreUnique<SameKeyTwice>());
 }
 
 TEST_CASE ("an operation's JSON names its op, and parsing it wraps the leaf in every enclosing variant", "[core][described]")
@@ -174,6 +195,8 @@ TEST_CASE ("visitExhaustively takes only one handler per alternative, never a ca
     STATIC_REQUIRE_FALSE (canVisit<decltype (core::Overloaded { onTool, onRest })>);
     STATIC_REQUIRE_FALSE (canVisit<decltype (core::Overloaded { onTool, onRest, onPreview, [] (const auto&) { return 0; } })>);
     STATIC_REQUIRE_FALSE (canVisit<decltype ([] (const auto&) { return 0; })>);
+    STATIC_REQUIRE_FALSE (canVisit<decltype ([] (const Command&) { return 0; })>);
+    STATIC_REQUIRE_FALSE (canVisit<decltype (core::Overloaded { onTool, onRest, [] (const Command&) { return 0; } })>);
 
     CHECK (core::visitExhaustively (Command { Rest {} }, all) == 2);
     CHECK (core::visitExhaustively (Command { Tool { Erase {} } }, all) == 1);

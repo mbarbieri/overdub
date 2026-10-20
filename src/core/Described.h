@@ -141,6 +141,22 @@ constexpr bool operationNamesAreUnique()
     return true;
 }
 
+// True when no two fields of a described struct share a key. toJson and fromJson static_assert it.
+template <Described T>
+constexpr bool fieldKeysAreUnique()
+{
+    return std::apply (
+        [] (const auto&... described) {
+        const std::array<std::string_view, sizeof...(described)> keys { described.key... };
+        for (std::size_t i = 0; i < keys.size(); ++i)
+            for (std::size_t j = i + 1; j < keys.size(); ++j)
+                if (keys[i] == keys[j])
+                    return false;
+        return true;
+    },
+        T::fields);
+}
+
 // The op name of the leaf a variant of operations holds.
 template <typename T>
 std::string_view operationName (const T& value)
@@ -252,6 +268,9 @@ bool decode (const nlohmann::json& json, Member& member, std::string_view errorC
     else if constexpr (std::is_integral_v<Member>)
     {
         if (! json.is_number_integer())
+            return false;
+        // An unsigned JSON number past INT64_MAX would wrap negative as an int64_t.
+        if (json.is_number_unsigned() && json.get<std::uint64_t>() > (std::uint64_t) std::numeric_limits<std::int64_t>::max())
             return false;
         const auto value = json.get<std::int64_t>();
         if (value < std::numeric_limits<Member>::min() || value > std::numeric_limits<Member>::max())
@@ -392,6 +411,7 @@ std::optional<Expected<Variant>> parseAs (const nlohmann::json& object, std::str
 template <Described T>
 nlohmann::json toJson (const T& value)
 {
+    static_assert (fieldKeysAreUnique<T>(), "two fields of a described struct share a key");
     auto object = nlohmann::json::object();
     std::apply ([&] (const auto&... described) { (detail::writeField (object, value, described), ...); }, T::fields);
     return object;
@@ -403,6 +423,7 @@ nlohmann::json toJson (const T& value)
 template <Described T>
 Expected<T> fromJson (const nlohmann::json& object, std::string_view errorCode)
 {
+    static_assert (fieldKeysAreUnique<T>(), "two fields of a described struct share a key");
     if (! object.is_object())
         return std::unexpected (detail::fieldError (errorCode, "", "object"));
     for (const auto& [key, item] : object.items())
@@ -457,9 +478,11 @@ template <typename Handlers, typename... Alternatives>
 inline constexpr bool handlesEach<Handlers, std::variant<Alternatives...>> = (std::is_invocable_v<Handlers&, const Alternatives&> && ...);
 
 // Handlers that take each alternative of the variant and are not a catch-all: a handler that would
-// also take NotAnAlternative (a lambda taking `auto`) would hide an alternative left unhandled.
+// also take NotAnAlternative (a lambda taking `auto`) or the variant itself (which every
+// alternative converts to) would hide an alternative left unhandled.
 template <typename Handlers, typename Variant>
-concept HandlesEachAlternative = handlesEach<Handlers, Variant> && ! std::is_invocable_v<Handlers&, const NotAnAlternative&>;
+concept HandlesEachAlternative = handlesEach<Handlers, Variant> && ! std::is_invocable_v<Handlers&, const NotAnAlternative&>
+                              && ! std::is_invocable_v<Handlers&, const Variant&>;
 
 // std::visit that does not compile unless every alternative has its own handler.
 template <typename Variant, typename Handlers>
