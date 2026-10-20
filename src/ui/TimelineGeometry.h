@@ -64,6 +64,19 @@ WheelScroll wheelScroll (float deltaX, float deltaY, bool shift);
 TimelineView zoomedIn (TimelineView view);
 TimelineView zoomedOut (TimelineView view);
 
+// A trackpad pinch (issue #164) zooms by whole levels (a level halves or doubles the samples per
+// pixel) around anchorX: the sample under anchorX (or under laneX, left of it) stays there, and
+// firstSample never goes below 0. The pinch is counted in levels, log2 of JUCE's scale factor
+// (above 1: fingers spreading, zoom in), added to pendingLevels; each half level reached takes a
+// level, so pendingLevels stays within (-0.5, 0.5). At a limit it is reset to 0.
+struct PinchZoom
+{
+    TimelineView view;
+    double pendingLevels = 0.0;
+};
+
+PinchZoom pinchZoomed (TimelineView view, double pendingLevels, float scaleFactor, int anchorX);
+
 // A Clip's column range [left, right) in a lane: at least 2 pixels wide so it stays visible.
 struct ClipColumns
 {

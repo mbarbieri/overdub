@@ -517,6 +517,13 @@ void Timeline::mouseWheelMove (const juce::MouseEvent& event, const juce::MouseW
         setVerticalScroll (verticalScrollPixels + scroll.verticalPixels);
 }
 
+void Timeline::mouseMagnify (const juce::MouseEvent& event, float scaleFactor)
+{
+    const auto pinch = pinchZoomed (timelineView, pinchPendingLevels, scaleFactor, event.x);
+    pinchPendingLevels = pinch.pendingLevels;
+    setView (pinch.view.firstSample, pinch.view.samplesPerPixel);
+}
+
 void Timeline::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
 {
     if (bar == &verticalScrollBar)
