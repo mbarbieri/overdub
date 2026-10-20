@@ -62,14 +62,13 @@ bool actsUnderRunDialog (const Intent& running)
 {
     if (const auto* song = std::get_if<SongIntent> (&running))
         return std::holds_alternative<intent::CancelRun> (*song);
+    // The Settings window is not covered by the dialog: its close button still hides it.
     if (const auto* app = std::get_if<AppIntent> (&running))
-        return std::holds_alternative<intent::Quit> (*app);
+    {
+        const auto* settings = std::get_if<intent::ShowSettings> (app);
+        return std::holds_alternative<intent::Quit> (*app) || (settings != nullptr && ! settings->shown);
+    }
     return false;
-}
-
-core::Error noSongOpen (std::string_view op)
-{
-    return core::Error { "ui.no_song_open", "no Song is open", { { "op", std::string (op) } } };
 }
 
 core::Error notRouted (std::string_view op)
@@ -223,26 +222,11 @@ IntentResult MainComponent::run (const Intent& intent, Origin origin)
     return result;
 }
 
-// The app's Workspace will own the App group (issue #170); until then only the conversion, which
-// needs nothing but the open Song, runs.
 IntentResult MainComponent::runApp (const AppIntent& appIntent)
 {
-    using namespace intent;
-    return core::visitExhaustively (
-        appIntent,
-        core::Overloaded {
-            [this] (const NewSongAt&) { return quietError (notRouted (NewSongAt::op)); },
-            [this] (const OpenSongAt&) { return quietError (notRouted (OpenSongAt::op)); },
-            [this] (const DuplicateSongTo&) { return quietError (notRouted (DuplicateSongTo::op)); },
-            [this] (const ConvertSampleRate& convert) { return songContent != nullptr ? songContent->convertSampleRate (convert.rate) : quietError (noSongOpen (ConvertSampleRate::op)); },
-            [this] (const ShowSettings&) { return quietError (notRouted (ShowSettings::op)); },
-            [this] (const ApplyDeviceSettings&) { return quietError (notRouted (ApplyDeviceSettings::op)); },
-            [this] (const MeasureLatency&) { return quietError (notRouted (MeasureLatency::op)); },
-            [this] (const SaveLatencyCalibration&) { return quietError (notRouted (SaveLatencyCalibration::op)); },
-            [this] (const MeasureClapPass&) { return quietError (notRouted (MeasureClapPass::op)); },
-            [this] (const SaveCameraCalibration&) { return quietError (notRouted (SaveCameraCalibration::op)); },
-            [this] (const Quit&) { return quietError (notRouted (Quit::op)); },
-        });
+    if (! runAppIntent)
+        return quietError (notRouted (core::operationName (appIntent)));
+    return runAppIntent (appIntent);
 }
 
 IntentResult MainComponent::runWindow (const WindowIntent& windowIntent)

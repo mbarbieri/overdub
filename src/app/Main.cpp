@@ -73,9 +73,9 @@ public:
 
     void systemRequestedQuit() override
     {
-        // A running Separation's dialog is modal: the app stays until it ends or is cancelled.
-        if (mainWindow != nullptr && ! mainWindow->mayQuitOrNotice())
-            return;
+        // The window's quit Intent quits once the Workspace allows it.
+        if (mainWindow != nullptr)
+            return mainWindow->requestQuit();
         quit();
     }
 

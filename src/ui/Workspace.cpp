@@ -1,6 +1,7 @@
 #include "ui/Workspace.h"
 
 #include "capture/ClapSelftest.h"
+#include "core/Described.h"
 #include "core/Log.h"
 #include "engine/LatencyCalibration.h"
 #include "ui/SongFiles.h"
@@ -32,14 +33,17 @@ Workspace::Workspace (MainComponent& mainContent,
       files (std::move (workspaceFiles)),
       live (std::move (audio))
 {
+    content.runAppIntent = [this] (const AppIntent& intent) { return run (intent); };
     watchDevices();
     if (live->engine() == nullptr)
         content.showNotice ("ui.no_audio_device");
     showLatencyNoticeIfUncalibrated();
+    calibrationState.status = calibrationStatus();
 }
 
 Workspace::~Workspace()
 {
+    content.runAppIntent = nullptr;
     onOpenSongChanged = nullptr; // the owner is being torn down too
     latencyRun.reset();
     closeSong();
@@ -47,30 +51,105 @@ Workspace::~Workspace()
 
 bool Workspace::isIdle() const
 {
-    return ! latencyMeasuring() && ! (song != nullptr && (song->isRecording() || song->isSeparating() || song->isConverting()));
+    return ! runningCode().has_value();
+}
+
+std::optional<std::string> Workspace::runningCode() const
+{
+    if (latencyMeasuring())
+        return "ui.calibration_running";
+    if (song == nullptr)
+        return std::nullopt;
+    if (song->isSeparating())
+        return "ui.separation_running";
+    if (song->isConverting())
+        return "ui.conversion_running";
+    if (song->isRecording())
+        return "ui.stop_recording_first";
+    return std::nullopt;
 }
 
 bool Workspace::idleOrNotice()
 {
-    if (isIdle())
-        return true;
-    if (latencyMeasuring())
-        content.showNotice ("ui.calibration_running");
-    else if (song->isSeparating())
-        content.showNotice ("ui.separation_running");
-    else if (song->isConverting())
-        content.showNotice ("ui.conversion_running");
-    else
-        content.showNotice ("ui.stop_recording_first");
-    return false;
+    const auto running = runningCode();
+    if (running.has_value())
+        content.showNotice (*running);
+    return ! running.has_value();
 }
 
-bool Workspace::mayQuitOrNotice()
+IntentResult Workspace::refuseWhileRunning (const std::string& code, std::string_view op)
 {
-    if (song == nullptr || ! song->isSeparating())
-        return true;
-    content.showNotice ("ui.separation_running");
-    return false;
+    return presented (core::Error { code, "waits until what runs has ended", { { "op", std::string (op) } } });
+}
+
+IntentResult Workspace::presented (core::Error error)
+{
+    content.handleError (error);
+    return std::unexpected (std::move (error));
+}
+
+//==============================================================================
+// App Intents (issue #170)
+
+namespace
+{
+juce::File fileAt (const core::AbsolutePath& path)
+{
+    return juce::File (juce::String::fromUTF8 (path.value.c_str()));
+}
+
+// Every App Intent but quit and show_settings (hidden) waits until nothing runs.
+bool waitsForIdle (const AppIntent& intent)
+{
+    if (std::holds_alternative<intent::Quit> (intent))
+        return false;
+    if (const auto* settings = std::get_if<intent::ShowSettings> (&intent))
+        return settings->shown;
+    return true;
+}
+} // namespace
+
+IntentResult Workspace::run (const AppIntent& appIntent)
+{
+    using namespace intent;
+    if (const auto running = runningCode(); running.has_value() && waitsForIdle (appIntent))
+        return refuseWhileRunning (*running, core::operationName (appIntent));
+    return core::visitExhaustively (
+        appIntent,
+        core::Overloaded {
+            [this] (const NewSongAt& create) { return newSongAt (fileAt (create.path)); },
+            [this] (const OpenSongAt& open) { return openSongFrom (fileAt (open.path)); },
+            [this] (const DuplicateSongTo& duplicate) { return duplicateSongTo (fileAt (duplicate.path)); },
+            [this] (const ConvertSampleRate& convert) { return convertSampleRate (convert.rate); },
+            [this] (const ShowSettings& settings) { return showSettings (settings.shown); },
+            [this] (const ApplyDeviceSettings& apply) {
+        return applyDeviceSettings (engine::DeviceSettings { apply.deviceType, apply.inputDevice, apply.outputDevice, apply.sampleRate, apply.bufferSize });
+    },
+            [this] (const MeasureLatency&) { return measureLatency(); },
+            [this] (const SaveLatencyCalibration& save) { return saveLatencyCalibration (save.offsetSamples); },
+            [this] (const MeasureClapPass&) { return measureClapPass(); },
+            [this] (const SaveCameraCalibration& save) { return saveCameraCalibration ({ save.cameraId, save.outputDevice }, save.offsetMs); },
+            [this] (const Quit&) { return quit(); },
+        });
+}
+
+IntentResult Workspace::quit()
+{
+    // A running Separation's dialog is modal: the app stays until it ends or is cancelled.
+    if (song != nullptr && song->isSeparating())
+        return refuseWhileRunning ("ui.separation_running", intent::Quit::op);
+    if (onQuit)
+        onQuit();
+    return IntentDone {};
+}
+
+IntentResult Workspace::showSettings (bool shown)
+{
+    if (onShowSettings)
+        onShowSettings (shown);
+    if (shown)
+        refreshSettingsPanels();
+    return IntentDone {};
 }
 
 //==============================================================================
@@ -87,6 +166,7 @@ void Workspace::showSong (std::unique_ptr<song::SongPackage> package, const std:
         live.reset();
         live = openAudio (songRate);
         watchDevices();
+        calibrationState.latency = {}; // measured on the device closed
         if (devicePanel != nullptr)
             devicePanel->show (live->deviceChoices());
     }
@@ -102,20 +182,48 @@ void Workspace::showSong (std::unique_ptr<song::SongPackage> package, const std:
     content.setOpenSong (song.get());
     for (const auto& notice : notices)
         content.showNotice (notice.code);
-    refreshCalibrationPanel();
+    refreshCalibration();
     if (onOpenSongChanged)
         onOpenSongChanged();
 }
 
-void Workspace::openSongFrom (const juce::File& chosen)
+IntentResult Workspace::newSongAt (const juce::File& chosen)
+{
+    auto created = createSongAt (chosen, live->sampleRate());
+    if (! created.has_value())
+        return presented (created.error());
+    showSong (std::move (*created), {});
+    return IntentDone {};
+}
+
+IntentResult Workspace::openSongFrom (const juce::File& chosen)
 {
     // A package is never open twice: opening the open Song again changes nothing.
     if (song != nullptr && song->package().location() == packageLocationOpened (chosen))
-        return;
+        return IntentDone {};
     auto opened = openSongAt (chosen);
     if (! opened.has_value())
-        return content.handleError (opened.error());
+        return presented (opened.error());
     showSong (std::move (opened->package), opened->notices);
+    return IntentDone {};
+}
+
+IntentResult Workspace::duplicateSongTo (const juce::File& chosen)
+{
+    if (song == nullptr)
+        return content.quietError (noSongOpen (intent::DuplicateSongTo::op));
+    auto duplicated = ui::duplicateSongTo (song->package(), chosen);
+    if (! duplicated.has_value())
+        return presented (duplicated.error());
+    // The duplicate becomes the open Song; the original stays as it was.
+    return openSongFrom (*duplicated);
+}
+
+IntentResult Workspace::convertSampleRate (int toRate)
+{
+    if (content.songView() == nullptr)
+        return content.quietError (noSongOpen (intent::ConvertSampleRate::op));
+    return content.songView()->convertSampleRate (toRate);
 }
 
 void Workspace::closeSong()
@@ -123,6 +231,7 @@ void Workspace::closeSong()
     detachAudio();
     content.setOpenSong (nullptr);
     song.reset();
+    calibrationState.clap = {}; // measured on the Song's Video Take
     if (onOpenSongChanged)
         onOpenSongChanged();
 }
@@ -156,29 +265,25 @@ void Workspace::attachSettingsPanels (DeviceSettingsPanel* devices, CalibrationP
     calibrationPanel = calibration;
     if (devicePanel != nullptr)
     {
-        devicePanel->onApply = [this] (const engine::DeviceSettings& settings) { applyDeviceSettings (settings); };
+        devicePanel->onApply = [this] (const engine::DeviceSettings& settings) {
+            content.run (AppIntent { intent::ApplyDeviceSettings { settings.deviceType, settings.inputDevice, settings.outputDevice, settings.sampleRate, settings.bufferSize } });
+        };
         devicePanel->offerForDevices = [this] (const std::string& input, const std::string& output) { return live->offerFor (input, output); };
     }
     if (calibrationPanel != nullptr)
-    {
-        calibrationPanel->onMeasureLatency = [this] { measureLatency(); };
-        calibrationPanel->onSaveLatency = [this] (song::SampleCount offset) { saveLatencyCalibration (offset); };
-        calibrationPanel->onMeasureClap = [this] { measureClapPass(); };
-        calibrationPanel->onSaveCamera = [this] (const capture::CameraCalibrationKey& key, double offsetMs) { saveCameraCalibration (key, offsetMs); };
-    }
+        calibrationPanel->onIntent = [this] (const Intent& intent) { content.run (intent); };
+    refreshSettingsPanels();
 }
 
 void Workspace::refreshSettingsPanels()
 {
     if (devicePanel != nullptr)
         devicePanel->show (live->deviceChoices());
-    refreshCalibrationPanel();
+    refreshCalibration();
 }
 
-void Workspace::applyDeviceSettings (const engine::DeviceSettings& settings)
+IntentResult Workspace::applyDeviceSettings (const engine::DeviceSettings& settings)
 {
-    if (! idleOrNotice())
-        return;
     core::logEvent (core::Level::info, "ui.device_choice_changed", engine::deviceSettingsFields (settings));
 
     // The engine's shape is fixed per device (engine/Engine.h), so a new choice opens a new
@@ -187,6 +292,7 @@ void Workspace::applyDeviceSettings (const engine::DeviceSettings& settings)
         content.handleError (written.error());
     reopenAudio();
     showRateSubstitution (settings.sampleRate);
+    return IntentDone {};
 }
 
 void Workspace::showRateSubstitution (int requestedRate)
@@ -209,6 +315,7 @@ void Workspace::reopenAudio()
     live.reset();
     live = openAudio (openSongRate());
     watchDevices();
+    calibrationState.latency = {}; // measured on the device closed
     if (song != nullptr)
     {
         song->attachAudio (live->audioBinding());
@@ -298,10 +405,11 @@ CalibrationStatus Workspace::calibrationStatus() const
     return status;
 }
 
-void Workspace::refreshCalibrationPanel()
+void Workspace::refreshCalibration()
 {
-    if (calibrationPanel != nullptr && ! latencyMeasuring())
-        calibrationPanel->show (calibrationStatus());
+    calibrationState.status = calibrationStatus();
+    if (calibrationPanel != nullptr)
+        calibrationPanel->show (calibrationState);
 }
 
 bool Workspace::latencyMeasuring() const
@@ -309,13 +417,11 @@ bool Workspace::latencyMeasuring() const
     return latencyRun != nullptr || latencyOutcome.has_value();
 }
 
-void Workspace::measureLatency()
+IntentResult Workspace::measureLatency()
 {
-    if (! idleOrNotice() || calibrationPanel == nullptr)
-        return;
     auto* engine = live->engine();
     if (engine == nullptr || live->sampleRate() <= 0)
-        return content.showNotice ("ui.no_audio_device");
+        return presented (core::Error { "ui.no_audio_device", "no audio device is open to measure", { { "op", std::string (intent::MeasureLatency::op) } } });
 
     // The run plays its own Song on the engine; the open Song is bound again when it ends.
     detachAudio();
@@ -325,7 +431,9 @@ void Workspace::measureLatency()
         latencyRun = std::move (*started);
     else
         latencyOutcome = std::unexpected (started.error());
-    calibrationPanel->showLatencyMeasuring();
+    calibrationState.latency = LatencyMeasuring {};
+    refreshCalibration();
+    return IntentDone {};
 }
 
 void Workspace::pollLatencyRun (song::SongPackage::Clock::time_point now)
@@ -349,36 +457,40 @@ void Workspace::pollLatencyRun (song::SongPackage::Clock::time_point now)
     // Song's plugins while they are prepared again.
     if (auto* engine = live->engine(); engine != nullptr && engine->hasPendingPlan())
         return;
-    const auto outcome = std::move (*latencyOutcome);
+    auto outcome = std::move (*latencyOutcome);
     latencyOutcome.reset();
     if (song != nullptr)
         song->attachAudio (live->audioBinding());
     content.refresh();
 
-    // A failed run is shown in the panel only: logged once here, at the tier of its code.
+    // A failed run is shown in the CalibrationState only: logged once here, at the tier of its code.
     if (! outcome.has_value())
         core::logError (outcome.error(), tierFor (outcome.error().code) == Tier::notice ? core::Level::warn : core::Level::error);
-    if (calibrationPanel != nullptr)
-        calibrationPanel->showLatencyResult (outcome);
+    else
+        core::logEvent (core::Level::info, "ui.latency_measured", { { "offset_samples", outcome->offsetSamples }, { "jitter_samples", outcome->jitterSamples }, { "passed", capture::loopbackPassed (*outcome) } });
+    calibrationState.latency = latencyMeasured (std::move (outcome), live->storedCalibrationOffset());
+    refreshCalibration();
 }
 
-void Workspace::saveLatencyCalibration (song::SampleCount offsetSamples)
+IntentResult Workspace::saveLatencyCalibration (song::SampleCount offsetSamples)
 {
-    if (! idleOrNotice() || live->engine() == nullptr)
-        return;
+    if (live->engine() == nullptr)
+        return presented (core::Error { "ui.no_audio_device", "no audio device is open to calibrate", { { "op", std::string (intent::SaveLatencyCalibration::op) } } });
     if (auto written = engine::writeCalibrationOffset (files.latencyCalibration, live->calibrationKey(), offsetSamples); ! written.has_value())
-        return content.handleError (written.error());
+        return presented (written.error());
     live->setCalibrationOffset (offsetSamples);
     // The LiveAudio owns the offset; the open Song takes it from there for its next Pass.
     if (song != nullptr)
         song->setCalibrationOffset (live->recordLatency().calibrationOffsetSamples);
-    refreshCalibrationPanel();
+    calibrationState.latency = {};
+    refreshCalibration();
+    return IntentDone {};
 }
 
-void Workspace::measureClapPass()
+IntentResult Workspace::measureClapPass()
 {
-    if (calibrationPanel == nullptr || song == nullptr || ! idleOrNotice())
-        return;
+    if (song == nullptr)
+        return content.quietError (noSongOpen (intent::MeasureClapPass::op));
     auto measured = capture::measureNewestVideoTake (song->song(), song->package().location());
     if (! measured.has_value())
         core::logError (measured.error(), core::Level::warn);
@@ -386,19 +498,17 @@ void Workspace::measureClapPass()
         core::logEvent (core::Level::info,
                         "ui.clap_pass_measured",
                         { { "video_take_id", measured->videoTakeId }, { "camera_id", measured->cameraId }, { "output_device", measured->outputDevice }, { "applied_calibration_samples", measured->appliedCalibrationSamples }, { "report", capture::clapReportFields (measured->report) } });
-    calibrationPanel->showClapResult (measured);
+    calibrationState.clap = clapMeasured (std::move (measured));
+    refreshCalibration();
+    return IntentDone {};
 }
 
-void Workspace::saveCameraCalibration (const capture::CameraCalibrationKey& key, double offsetMs)
+IntentResult Workspace::saveCameraCalibration (const capture::CameraCalibrationKey& key, double offsetMs)
 {
-    // key.outputDevice is the clap Pass's (its Video Take's), not necessarily the one open now.
-    if (! idleOrNotice())
-        return;
     if (auto written = capture::writeCameraCalibration (files.cameraCalibration, key, offsetMs); ! written.has_value())
-        return content.handleError (written.error());
-    // The refresh clears any result shown (CalibrationPanel::show), so the confirmation comes after it.
-    refreshCalibrationPanel();
-    if (calibrationPanel != nullptr && ! latencyMeasuring())
-        calibrationPanel->showCameraSaved (key, offsetMs);
+        return presented (written.error());
+    calibrationState.clap = CameraSaved { intent::SaveCameraCalibration { key.cameraId, key.outputDevice, offsetMs } };
+    refreshCalibration();
+    return IntentDone {};
 }
 } // namespace overdub::ui
