@@ -211,6 +211,18 @@ std::shared_ptr<LogSink> Logger::sink() const
     return currentSink;
 }
 
+void Logger::addTap (std::shared_ptr<LogSink> tap)
+{
+    const std::scoped_lock lock (mutex);
+    taps.push_back (std::move (tap));
+}
+
+void Logger::removeTap (const std::shared_ptr<LogSink>& tap)
+{
+    const std::scoped_lock lock (mutex);
+    std::erase (taps, tap);
+}
+
 void Logger::setMinLevel (Level level)
 {
     currentMinLevel.store (level);
@@ -236,6 +248,8 @@ void Logger::write (const LogRecord& record)
     const std::scoped_lock lock (mutex);
     if (currentSink != nullptr)
         currentSink->writeLine (line);
+    for (const auto& tap : taps)
+        tap->writeLine (line);
 }
 
 Logger& processLogger()

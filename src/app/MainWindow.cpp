@@ -30,6 +30,7 @@ constexpr int calibrationPanelHeight = 520;
 constexpr int settingsWidth = 460;
 // Answers device changes and advances a loopback calibration run.
 constexpr int workspaceTickIntervalMs = 50;
+constexpr int controlPollIntervalMs = 10;
 
 // The settings window's content: the device picker above the calibration panel.
 class SettingsContent final : public juce::Component
@@ -76,7 +77,10 @@ juce::PopupMenu::Item historyItem (int id, const juce::String& verb, bool enable
 }
 } // namespace
 
-MainWindow::MainWindow (const juce::String& name, std::unique_ptr<LiveEngine> liveEngine)
+MainWindow::MainWindow (const juce::String& name,
+                        std::unique_ptr<LiveEngine> liveEngine,
+                        const control::ServerConfig& controlConfig,
+                        std::shared_ptr<control::EventTap> eventTap)
     : DocumentWindow (name,
                       juce::Desktop::getInstance().getDefaultLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId),
                       juce::DocumentWindow::allButtons),
@@ -114,10 +118,16 @@ MainWindow::MainWindow (const juce::String& name, std::unique_ptr<LiveEngine> li
     setVisible (true);
     content.grabKeyboardFocus();
     workspaceTick.startTimer (workspaceTickIntervalMs);
+
+    controlServer = control::Server::start (controlConfig, control::Controller { std::move (eventTap) });
+    if (controlServer != nullptr)
+        controlTick.startTimer (controlPollIntervalMs);
 }
 
 MainWindow::~MainWindow()
 {
+    controlTick.stopTimer();
+    controlServer.reset();
     juce::MenuBarModel::setMacMainMenu (nullptr);
     workspaceTick.stopTimer();
     workspace->attachSettingsPanels (nullptr, nullptr);

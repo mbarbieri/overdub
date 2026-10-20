@@ -22,6 +22,7 @@ target_sources(Overdub PRIVATE
 # overdub_ui links overdub_capture, overdub_engine, overdub_song and overdub_core publicly.
 target_link_libraries(Overdub PRIVATE
     overdub_ui
+    overdub_control
     "-framework AVFoundation"
     juce::juce_recommended_warning_flags)
 
