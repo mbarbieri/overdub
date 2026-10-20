@@ -9,8 +9,11 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
+#include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace overdub;
@@ -214,4 +217,122 @@ TEST_CASE ("insert_plugins lists the AU effects on offer with the component add_
                    { { "type", "aufx" }, { "subtype", "Rvb3" }, { "manufacturer", "Acme" }, { "name", "Room" }, { "version", "2.0.1" }, { "is_auv3", true } },
                }));
     }
+}
+
+TEST_CASE ("every op in appOps is answered by intentOps and is not an Intent", "[control][intent_ops]")
+{
+    SocketToWindow socket;
+
+    for (const auto op : appOps)
+    {
+        const auto reply = socket.request (json { { "id", 1 }, { "op", op } }.dump());
+        CHECK (reply["ok"] == true);
+    }
+    CHECK (appOps == std::array<std::string_view, 2> { "ops", "insert_plugins" });
+}
+
+TEST_CASE ("preview_mix takes a nested edit or null, and a bad nested field is named by its dotted key path", "[control][intent_ops]")
+{
+    core::ScopedLogCapture capture;
+    SocketToWindow socket;
+    const auto before = socket.f.song();
+    const auto guitarId = socket.f.trackNamed ("Guitar").id;
+
+    SECTION ("a valid nested edit")
+    {
+        const auto reply = socket.request (R"({"id":1,"op":"preview_mix","edit":{"op":"set_track_volume","track_id":")" + guitarId + R"(","volume_db":-6.0}})");
+        CHECK (reply == json { { "id", 1 }, { "ok", true }, { "seq", reply["seq"] }, { "created_id", nullptr }, { "awaiting_answer", false } });
+    }
+    SECTION ("null: hear the Song as it is")
+    {
+        const auto reply = socket.request (R"({"id":1,"op":"preview_mix","edit":null})");
+        CHECK (reply["ok"] == true);
+    }
+    SECTION ("bad nested requests")
+    {
+        struct BadNested
+        {
+            std::string edit;
+            json fields;
+        };
+        const std::vector<BadNested> cases {
+            { R"({"op":"nope"})", { { "key", "edit.op" }, { "expected", "one of its op names" } } },
+            { R"({"op":"set_track_volume","track_id":"t"})", { { "key", "edit.volume_db" }, { "expected", "number" } } },
+            { R"({"op":"set_master_volume","volume_db":"loud"})", { { "key", "edit.volume_db" }, { "expected", "number" } } },
+            { R"({"op":"set_master_volume","volume_db":1.0,"pan":0})", { { "key", "edit.pan" }, { "expected", "no such key" } } },
+            { R"({"volume_db":1.0})", { { "key", "edit.op" }, { "expected", "string" } } },
+            { R"(5)", { { "key", "edit" }, { "expected", "operation" } } },
+            { R"({"op":"add_track"})", { { "key", "edit.op" }, { "expected", "one of its op names" } } },
+        };
+        for (const auto& bad : cases)
+        {
+            INFO (bad.edit);
+            const auto reply = socket.request (R"({"id":1,"op":"preview_mix","edit":)" + bad.edit + "}");
+            CHECK (reply["ok"] == false);
+            CHECK (reply["error"]["code"] == "control.bad_field");
+            CHECK (reply["error"]["fields"] == bad.fields);
+        }
+        const auto events = capture.events();
+        CHECK (std::ranges::none_of (events, [] (const json& event) { return event.at ("event") == "ui.intent_run"; }));
+    }
+    CHECK (socket.f.song() == before);
+}
+
+TEST_CASE ("set_input_channels takes only a choice the device's inputs offer, and answers others with a quiet ui.input_channels_unavailable", "[control][intent_ops]")
+{
+    core::ScopedLogCapture capture;
+    SocketToWindow socket;
+    const auto guitarId = socket.f.trackNamed ("Guitar").id;
+    const auto request = [&] (const std::string& channels) {
+        return socket.request (R"({"id":1,"op":"set_input_channels","track_id":")" + guitarId + R"(","channels":)" + channels + "}");
+    };
+
+    for (const auto* offered : { "[]", "[3]", "[2,3]" })
+    {
+        INFO (offered);
+        CHECK (request (offered)["ok"] == true);
+        CHECK (socket.f.trackNamed ("Guitar").inputChannels == json::parse (offered).get<std::vector<int>>());
+    }
+
+    const auto before = socket.f.song();
+    for (const auto* notOffered : { "[4]", "[-1]", "[1,2]", "[0,0]", "[0,1,2]", "[3,2]" })
+    {
+        INFO (notOffered);
+        const auto reply = request (notOffered);
+        REQUIRE (reply["ok"] == false);
+        CHECK (reply["error"]["code"] == "ui.input_channels_unavailable");
+        CHECK (reply["error"]["fields"]["channels"] == json::parse (notOffered));
+        CHECK (reply["error"]["fields"]["input_count"] == 4);
+        CHECK (reply["error"]["fields"]["refused"] == false);
+    }
+    CHECK (socket.f.song() == before);
+    const auto events = capture.events();
+    CHECK (std::ranges::none_of (events, [] (const json& event) { return event.at ("event") == "ui.notice_shown" || event.at ("event") == "ui.alert_shown"; }));
+    CHECK (std::ranges::count_if (events, [] (const json& event) { return event.at ("event") == "ui.input_channels_unavailable" && event.at ("lvl") == "debug"; }) == 6);
+}
+
+TEST_CASE ("an absolute path with a control character is a bad field", "[control][intent_ops]")
+{
+    SocketToWindow socket;
+
+    for (const auto* path : { R"("/tmp/a\u0000b.overdub")", R"("/tmp/a\nb.overdub")", R"("/tmp/a\u001fb.overdub")", R"("/tmp/a\u007fb.overdub")" })
+    {
+        INFO (path);
+        const auto reply = socket.request (std::string (R"({"id":1,"op":"open_song_at","path":)") + path + "}");
+        CHECK (reply["ok"] == false);
+        CHECK (reply["error"]["code"] == "control.bad_field");
+        CHECK (reply["error"]["fields"] == json { { "key", "path" }, { "expected", "absolute path" } });
+    }
+}
+
+TEST_CASE ("a camera arm waiting for the camera access prompt replies awaiting_answer true", "[control][intent_ops][camera]")
+{
+    SocketToWindow socket;
+    std::function<void (bool)> pendingCameraAccess;
+    socket.f.window->askCameraAccess = [&] (std::function<void (bool)> done) { pendingCameraAccess = std::move (done); };
+
+    const auto reply = socket.request (R"({"id":1,"op":"set_camera_armed","armed":true})");
+
+    CHECK (reply == json { { "id", 1 }, { "ok", true }, { "seq", reply["seq"] }, { "created_id", nullptr }, { "awaiting_answer", true } });
+    CHECK (pendingCameraAccess != nullptr);
 }

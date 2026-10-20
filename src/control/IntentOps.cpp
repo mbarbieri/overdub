@@ -4,6 +4,7 @@
 #include "ui/Activity.h"
 #include "ui/MainComponent.h"
 
+#include <algorithm>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -22,9 +23,18 @@ constexpr bool noIntentIsNamed (std::string_view name)
     return true;
 }
 
-static_assert (noIntentIsNamed ("hello") && noIntentIsNamed ("subscribe") && noIntentIsNamed ("wait") && noIntentIsNamed ("ops")
-                   && noIntentIsNamed ("insert_plugins"),
-               "an Intent's op name is taken by a control op");
+constexpr bool reservedOpsAreFree()
+{
+    for (const auto op : Controller::ownOps)
+        if (! noIntentIsNamed (op) || std::ranges::contains (appOps, op))
+            return false;
+    for (const auto op : appOps)
+        if (! noIntentIsNamed (op))
+            return false;
+    return true;
+}
+
+static_assert (reservedOpsAreFree(), "an Intent's op name is taken by a control op, or the Controller and intentOps share one");
 
 constexpr std::string_view groupName (std::type_identity<ui::AppIntent>)
 {
@@ -103,9 +113,9 @@ Reply replyFor (const ui::IntentResult& result)
 OpHandler intentOps (ui::MainComponent& content)
 {
     return [&content] (const Request& request) -> Reply {
-        if (request.op == "ops")
+        if (request.op == opsOp)
             return nlohmann::json { { "ops", intentSchemas (std::type_identity<ui::Intent> {}) } };
-        if (request.op == "insert_plugins")
+        if (request.op == insertPluginsOp)
             return nlohmann::json { { "plugins", insertPlugins (content.listInsertPlugins ? content.listInsertPlugins() : std::vector<plugin::AvailableAudioUnit> {}) } };
         return runIntent (content, request);
     };

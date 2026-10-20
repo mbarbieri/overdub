@@ -146,16 +146,18 @@ void Controller::handleLine (ConnectionId connectionId, Connection& connection, 
 
 std::optional<Reply> Controller::runOp (Connection& connection, const Request& request, Clock::time_point now)
 {
-    if (request.op == "hello")
+    if (! std::ranges::contains (ownOps, request.op))
+        return otherOps (request);
+    if (request.op == helloOp)
         return nlohmann::json {
             { "protocol", protocolVersion },
             { "app", "Overdub" },
             { "version", core::currentBuildInfo().version },
             { "pid", static_cast<int> (::getpid()) },
         };
-    if (request.op == "subscribe")
+    if (request.op == subscribeOp)
         return subscribe (connection, request.fields);
-    if (request.op == "wait")
+    if (request.op == waitOp)
         return startWait (connection, request, now);
     return otherOps (request);
 }

@@ -12,6 +12,7 @@
 
 #include "ui/MainComponent.h"
 #include "ui/TakeLanes.h"
+#include "ui/TrackRowEdits.h"
 #include "ui/TransportText.h"
 #include "ui/VideoScreen.h"
 
@@ -299,6 +300,12 @@ IntentResult SongView::setArmed (const song::Id& trackId, bool armed)
 
 IntentResult SongView::setInputChannels (const song::Id& trackId, std::vector<int> channels)
 {
+    // The input picker offers only inputChoices, so only the socket can name anything else.
+    const auto& inputNames = openSong.audio().inputChannelNames;
+    if (! std::ranges::contains (inputChoices (inputNames), channels, &InputChoice::channels))
+        return window.quietError (quiet ("ui.input_channels_unavailable",
+                                         "the audio device offers no such input",
+                                         { { "track_id", trackId }, { "channels", channels }, { "input_count", inputNames.size() } }));
     auto result = unlessRefused (openSong.setInputChannels (trackId, std::move (channels)));
     window.refresh();
     takeKeyboardFocus();

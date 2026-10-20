@@ -3,6 +3,9 @@
 #include "control/Controller.h"
 #include "ui/Intent.h"
 
+#include <array>
+#include <string_view>
+
 namespace overdub::ui
 {
 class MainComponent;
@@ -18,6 +21,11 @@ class MainComponent;
 //                   answered by replyFor
 namespace overdub::control
 {
+inline constexpr std::string_view opsOp = "ops";
+inline constexpr std::string_view insertPluginsOp = "insert_plugins";
+// The ops intentOps answers beside the Intents.
+inline constexpr std::array appOps { opsOp, insertPluginsOp };
+
 // {"created_id": <id or null>, "awaiting_answer": <bool>}, or the Error the handler handled with
 // the field "refused": whether the running activity refused the Intent (ui::isRefusal).
 Reply replyFor (const ui::IntentResult& result);

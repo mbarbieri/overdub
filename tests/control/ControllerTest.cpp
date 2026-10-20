@@ -8,8 +8,10 @@
 
 #include <unistd.h>
 
+#include <array>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace overdub::control;
@@ -126,6 +128,26 @@ TEST_CASE ("an op the Controller does not know goes to the handler, which answer
         REQUIRE (lines.size() == 1);
         CHECK (lines[0] == json { { "id", 4 }, { "ok", true }, { "seq", 0 }, { "track_id", "t-1" } });
     }
+}
+
+TEST_CASE ("every op in Controller::ownOps is answered by the Controller and never reaches the handler", "[control][controller]")
+{
+    std::vector<std::string> handled;
+    Controller controller { std::make_shared<EventTap>(), [&handled] (const Request& request) -> Reply {
+        handled.push_back (request.op);
+        return json::object();
+    } };
+    const auto client = controller.connect();
+
+    for (const auto op : Controller::ownOps)
+    {
+        controller.receive (client, json { { "id", 1 }, { "op", op } }.dump() + "\n", start);
+        controller.pump (start);
+        CHECK (takeLines (controller, client).size() == 1);
+    }
+
+    CHECK (Controller::ownOps == std::array<std::string_view, 3> { "hello", "subscribe", "wait" });
+    CHECK (handled.empty());
 }
 
 TEST_CASE ("a handler's result cannot overwrite a reply's id, ok or seq", "[control][controller]")

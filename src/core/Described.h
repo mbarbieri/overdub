@@ -4,6 +4,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -34,7 +35,8 @@
 //
 // A table may name members of these kinds: bool, int, std::int64_t, std::size_t, double,
 // std::string, AbsolutePath, an enum with its name table (enumField), std::optional and
-// std::vector of those, and a variant of operations (written as an object with its own "op").
+// std::vector of those, and a variant of operations (written as an object with its own "op"; a
+// bad field inside it is named by its dotted key path, as in "edit.volume_db" or "edit.op").
 // Anything else fails to compile.
 //
 // Pure; no JUCE. `core` logs nothing: a parse failure is an Error whose code the caller names.
@@ -285,7 +287,8 @@ bool decode (const nlohmann::json& json, Member& member, std::string_view errorC
     }
     else if constexpr (std::is_same_v<Member, AbsolutePath>)
     {
-        if (! json.is_string() || ! json.get<std::string>().starts_with ('/'))
+        if (! json.is_string() || ! json.get<std::string>().starts_with ('/')
+            || std::ranges::any_of (json.get<std::string>(), [] (unsigned char c) { return c < 0x20 || c == 0x7f; }))
             return false;
         member = AbsolutePath { json.get<std::string>() };
     }
@@ -317,6 +320,13 @@ bool decode (const nlohmann::json& json, Member& member, std::string_view errorC
     }
     else if constexpr (isVariant<Member>)
     {
+        if (! json.is_object())
+            return false;
+        if (json.contains ("op") && json.at ("op").is_string() && ! std::ranges::contains (operationNames<Member>(), json.at ("op").get<std::string>()))
+        {
+            nestedError = fieldError (errorCode, "op", "one of its op names");
+            return false;
+        }
         auto parsed = parseOperation<Member> (json, errorCode, errorCode);
         if (! parsed.has_value())
         {
@@ -355,7 +365,12 @@ std::optional<Error> readField (const nlohmann::json& object, Owner& owner, cons
     }
     std::optional<Error> nestedError;
     if (! decode (*found, owner.*described.member, errorCode, nestedError))
-        return nestedError.has_value() ? *nestedError : fieldError (errorCode, described.key, expectedKind<Member>());
+    {
+        if (! nestedError.has_value())
+            return fieldError (errorCode, described.key, expectedKind<Member>());
+        nestedError->fields["key"] = std::string (described.key) + "." + nestedError->fields.value ("key", std::string());
+        return nestedError;
+    }
     return std::nullopt;
 }
 
