@@ -24,4 +24,8 @@ if [[ -f "$RUN_DIR/log-path" ]]; then
     cp "$(cat "$RUN_DIR/log-path")" "$RUN_DIR/overdub.jsonl" 2>/dev/null
 fi
 rm -f "$RUN_DIR/pid"
+# The app removes its socket file on quit; the private folder launch.sh chose goes too.
+if [[ -f "$RUN_DIR/socket" ]]; then
+    rmdir "$(dirname "$(cat "$RUN_DIR/socket")")" 2>/dev/null
+fi
 echo "EVIDENCE=$RUN_DIR"
