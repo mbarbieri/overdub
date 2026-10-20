@@ -11,7 +11,6 @@ namespace overdub::control
 {
 namespace
 {
-// Errors the protocol itself raises are answered to the client and logged at debug, once.
 core::Error protocolError (std::string code, std::string message, nlohmann::json fields)
 {
     core::Error error { std::move (code), std::move (message), std::move (fields) };
@@ -235,10 +234,7 @@ std::optional<Reply> Controller::matchWait (const PendingWait& wait, const Deliv
 void Controller::pump (Clock::time_point now)
 {
     deliver (tap->drain());
-    expireWaits (now);
-    // A second drain delivers the control.wait_timed_out lines just logged, so they too precede
-    // their replies.
-    deliver (tap->drain());
+    expireWaitsAndDeliverTheirTimeouts (now);
 
     for (auto& [id, connection] : connections)
         for (const auto& held : std::exchange (connection.held, {}))
@@ -289,7 +285,7 @@ void Controller::deliver (TappedBatch batch)
         lookback.pop_front();
 }
 
-void Controller::expireWaits (Clock::time_point now)
+void Controller::expireWaitsAndDeliverTheirTimeouts (Clock::time_point now)
 {
     for (auto& [id, connection] : connections)
         std::erase_if (connection.waits, [&] (const PendingWait& wait) {
@@ -304,6 +300,7 @@ void Controller::expireWaits (Clock::time_point now)
                                                                            { "timeout_ms", wait.timeoutMs } })) });
             return true;
         });
+    deliver (tap->drain());
 }
 
 void Controller::deliverEvent (Connection& connection, const DeliveredLine& line)
@@ -314,17 +311,16 @@ void Controller::deliverEvent (Connection& connection, const DeliveredLine& line
         ++connection.droppedEvents;
         return;
     }
-    // Every line dropped so far came before this one.
     sendDroppedNotice (connection, line.seq - 1);
     connection.outbox += text;
 }
 
-void Controller::sendDroppedNotice (Connection& connection, std::uint64_t seq)
+void Controller::sendDroppedNotice (Connection& connection, std::uint64_t seqAtOrAfterLastDropped)
 {
     if (connection.droppedEvents == 0 || connection.outbox.size() >= eventBudgetBytes)
         return;
     nlohmann::ordered_json notice;
-    notice["seq"] = seq;
+    notice["seq"] = seqAtOrAfterLastDropped;
     notice["event"] = { { "event", "control.events_dropped" }, { "count", connection.droppedEvents } };
     connection.outbox += dumpLine (notice);
     connection.droppedEvents = 0;

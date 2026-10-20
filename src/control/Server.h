@@ -62,7 +62,6 @@ private:
         int fd = -1;
         ConnectionId connection = 0;
         pid_t peerPid = 0;
-        // The peer shut down its sending side; it may still be reading its replies.
         bool finishedSending = false;
     };
 

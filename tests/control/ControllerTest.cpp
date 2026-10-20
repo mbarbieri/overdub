@@ -22,7 +22,6 @@ std::string logLine (std::string_view event, Level level = Level::info, const ov
     return overdub::core::formatLogLine ({ .level = level, .event = event, .fields = &fields });
 }
 
-// Every line the Connection has been sent so far, parsed; the output is consumed.
 std::vector<json> takeLines (Controller& controller, ConnectionId connection)
 {
     const auto output = std::string (controller.pendingOutput (connection));
@@ -38,7 +37,6 @@ std::vector<json> takeLines (Controller& controller, ConnectionId connection)
     return lines;
 }
 
-// Installs the tap on the process logger for the test's lifetime.
 struct ProcessTap
 {
     explicit ProcessTap (std::shared_ptr<EventTap> installed)

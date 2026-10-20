@@ -31,8 +31,7 @@ public:
         const auto logPath = startLogging();
         const auto args = juce::StringArray::fromTokens (commandLine, true);
         const auto selftestIndex = args.indexOf ("--selftest");
-        // Read once here; the selftests never open the socket. The tap goes in before the first
-        // line so a client's lookback holds the whole launch.
+        // The tap goes in before the first line so a client's lookback holds the whole launch.
         const auto controlConfig = control::serverConfigFrom (std::getenv ("OVERDUB_CONTROL"), std::getenv ("OVERDUB_CONTROL_SOCKET"));
         if (selftestIndex < 0 && controlConfig.enabled)
             core::processLogger().addTap (eventTap);
@@ -153,7 +152,6 @@ private:
     }
 
     core::JuceLoggerBridge juceLoggerBridge;
-    // Every log line, numbered, for the control socket's subscribers.
     std::shared_ptr<control::EventTap> eventTap = std::make_shared<control::EventTap>();
     std::unique_ptr<LiveEngine> liveEngine; // only in --selftest; the window owns its own
     std::unique_ptr<MainWindow> mainWindow; // owns the live engine and the open Song

@@ -155,19 +155,17 @@ private:
     std::optional<Reply> startWait (Connection& connection, const Request& request, Clock::time_point now);
     std::optional<Reply> matchWait (const PendingWait& wait, const DeliveredLine& line) const;
 
-    // Sends the batch to subscribers and answers the waits it satisfies.
     void deliver (TappedBatch batch);
-    void expireWaits (Clock::time_point now);
+    void expireWaitsAndDeliverTheirTimeouts (Clock::time_point now);
     void deliverEvent (Connection& connection, const DeliveredLine& line);
-    // The notice carries `seq`: every line it counts had a seq no greater.
-    void sendDroppedNotice (Connection& connection, std::uint64_t seq);
+    void sendDroppedNotice (Connection& connection, std::uint64_t seqAtOrAfterLastDropped);
     void sendReply (Connection& connection, const HeldReply& held);
 
     std::shared_ptr<EventTap> tap;
     OpHandler otherOps;
     std::map<ConnectionId, Connection> connections;
     ConnectionId nextConnection = 1;
-    std::deque<DeliveredLine> lookback; // the last lookbackLines delivered, oldest first
+    std::deque<DeliveredLine> lookback;
     std::uint64_t lastDeliveredSeq = 0;
 };
 } // namespace overdub::control

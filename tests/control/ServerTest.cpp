@@ -60,7 +60,6 @@ sockaddr_un addressOf (const std::string& path)
     return address;
 }
 
-// A blocking client socket in the test process.
 struct Client
 {
     explicit Client (const std::string& path)
@@ -79,7 +78,6 @@ struct Client
 
     void send (const std::string& text) { REQUIRE (::write (fd, text.data(), text.size()) == (ssize_t) text.size()); }
 
-    // The next line the server wrote, pumping it while waiting; nullopt if none comes.
     std::optional<json> readLine (Server& server)
     {
         for (int attempt = 0; attempt < 200; ++attempt)
@@ -325,7 +323,6 @@ TEST_CASE ("one pump reads a bounded number of bytes from a client", "[control][
     REQUIRE (client.connected);
     const int sendBuffer = 4 << 20;
     REQUIRE (::setsockopt (client.fd, SOL_SOCKET, SO_SNDBUF, &sendBuffer, sizeof (sendBuffer)) == 0);
-    // Blank lines are skipped without a reply, so only the hello after them answers.
     client.send (std::string (2u << 20, '\n') + "{\"id\":1,\"op\":\"hello\"}\n");
 
     server->pump (Clock::now());

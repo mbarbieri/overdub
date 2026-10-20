@@ -62,8 +62,7 @@ core::Expected<void> prepareFolder (const std::string& socketPath, bool privateF
     return {};
 }
 
-// A socket file left by an earlier launch is removed only when nothing answers on it: a live one
-// belongs to another app instance and is never taken over.
+// A live socket belongs to another app instance and is never taken over.
 core::Expected<void> removeStaleSocket (const std::string& path)
 {
     struct stat info {};
@@ -131,8 +130,6 @@ enum class ReadResult
     failed
 };
 
-// Reads until the socket is empty or `limit` bytes are in, so one flooding client cannot hold the
-// message thread; the rest waits for the next pump.
 ReadResult readAvailable (int fd, std::string& into, std::size_t limit)
 {
     char chunk[65536];
@@ -281,7 +278,6 @@ void Server::pump (Clock::time_point now)
 
     acceptClients();
 
-    // A Connection already closing reads nothing more.
     std::vector<pollfd> polled;
     for (const auto& client : clients)
     {
@@ -305,7 +301,6 @@ void Server::pump (Clock::time_point now)
             closing[i] = "read_failed";
     }
 
-    // A peer gone for good abandons its waits now rather than holding its slot until they time out.
     for (std::size_t i = 0; i < clients.size(); ++i)
         if (! closing[i].has_value() && clients[i].finishedSending && peerHungUp (clients[i].fd))
             closing[i] = "peer_closed";
