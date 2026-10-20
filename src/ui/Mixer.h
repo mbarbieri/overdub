@@ -193,16 +193,12 @@ public:
     // True when `component` is the focused control or inside it.
     bool isFocusedControl (const juce::Component* component);
 
-    // The Song a gesture in progress would make (the mix only).
-    std::function<void (const song::Song& preview)> onPreview;
-    // A finished gesture: the changed Song and its undo label.
-    std::function<void (song::Song changed, std::string label)> onEdit;
     // The Insert Chains' gestures (every strip's, the Master's included).
     InsertChainActions insertActions;
     // Each slot's plugin status, for the chips; none: every plugin reads as ready.
     InsertStatusLookup insertStatusOf;
 
-    // The controls' focus, arrow keys and undo steps; the window sends it keys and commit triggers.
+    // The controls' focus, arrow keys and undo steps (their Intents run through the window).
     MixFocus mix;
     std::vector<std::unique_ptr<MixerStrip>> strips;
     MixerStrip masterStrip { true };

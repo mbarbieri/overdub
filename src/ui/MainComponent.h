@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/Error.h"
-#include "ui/Commands.h"
+#include "ui/Intent.h"
 #include "ui/OpenSong.h"
 #include "ui/Pages.h"
 #include "ui/RunDialog.h"
@@ -23,9 +23,15 @@
 // page (Record, Edit (issue #28), or Export (issue #37)), the Notice line, and Alerts.
 // In Edit mode S splits the selected Clip at the playhead and backspace deletes the selected Clip
 // or Video Take (issue #128), each one undo step through OpenSong::edit; in the other modes both
-// keys do nothing. It translates
-// keys and clicks into Commands and OpenSong calls; the logic lives in the pure functions and
-// in OpenSong.
+// keys do nothing.
+//
+// run (ADR 0008) is the one entry for an Intent (ui/Intent.h), from a key, the top bar, the Edit
+// menu, a page or the control socket: it logs ui.intent_run (debug: op, origin) and routes the
+// Window group here, the Song group to the SongView (ui.no_song_open while none is open) and
+// convert_sample_rate to the SongView; the rest of the App group is not routed yet
+// (ui.intent_not_routed, issue #170). While the modal run dialog shows only cancel_run and quit
+// run (ui.run_dialog_open). It returns what the handler did or the Error it handled; Errors are
+// presented exactly as the gestures always presented them.
 //
 // Record mode (issue #32): the pre-roll picker sets the Song's pre-roll (no undo step); a click on a
 // Pass row moves the playhead to the Pass's start, and on the overview to the Song sample there;
@@ -79,7 +85,7 @@
 // the helper's progress; it closes only when the Separation ends (its Error, if any, presented by
 // its tier) or its Cancel is clicked (OpenSong::cancelSeparation).
 //
-// Sample rate conversion (issue #160): convertSampleRate (the File menu, or the action of the
+// Sample rate conversion (issue #160): convert_sample_rate (the File menu, or the action of the
 // ui.sample_rate_mismatch Notice when the device does not offer the Song's rate) starts one
 // (OpenSong::startSampleRateConversion). While it runs the same modal dialog shows its progress;
 // Cancel stops it (OpenSong::cancelSampleRateConversion), and its Error is presented by its tier.
@@ -111,8 +117,11 @@ public:
 
     Mode mode() const { return currentMode; }
 
-    // Runs a command as the matching key or button would.
-    void perform (Command command);
+    // Runs the Intent (see the header comment).
+    IntentResult run (const Intent& intent, Origin origin = Origin::user);
+    // Logs the Error at debug and returns it, never presenting it: what a gesture that did nothing
+    // returns (the UI shows it as unavailable, or it changes nothing).
+    IntentResult quietError (core::Error error);
 
     // Logs the Error once (warn for a Notice, error for an Alert) and presents it by its tier.
     void handleError (const core::Error& error);
@@ -123,9 +132,6 @@ public:
     // convertSampleRate present their refusals with handleError.
     void handleUnlessRefused (const core::Error& error);
     void handleUnlessRefused (const core::Expected<void>& result);
-
-    // Converts the open Song to `toRate` (see the header comment).
-    void convertSampleRate (int toRate);
 
     // One poll at `now` (OpenSong::poll): finish a stopped Pass, write a due song.json, refresh,
     // present messages.
@@ -194,6 +200,8 @@ public:
 private:
     void timerCallback() override { tick(); }
 
+    IntentResult runApp (const AppIntent& intent);
+    IntentResult runWindow (const WindowIntent& intent);
     void showMode (Mode mode);
     void post (UserMessage message);
     void presentMessages();

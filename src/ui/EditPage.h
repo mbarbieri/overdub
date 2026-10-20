@@ -130,6 +130,8 @@ public:
     void setPassesPanelOpen (bool open);
     void setMixerVisible (bool visible);
     int mixerHeight() const { return mixerHeightRequested; }
+    // The Mixer region's height, clamped as the divider's drag clamps it.
+    void setMixerHeight (int height);
     // The Video toggle's state: whether the window shows the Video Preview.
     void setVideoPreviewShown (bool shown);
 

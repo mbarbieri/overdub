@@ -11,13 +11,23 @@
 #include "song/VideoTakeEdits.h"
 
 #include "ui/MainComponent.h"
+#include "ui/TakeLanes.h"
 #include "ui/TransportText.h"
 #include "ui/VideoScreen.h"
 
 #include <algorithm>
+#include <memory>
 
 namespace overdub::ui
 {
+namespace
+{
+core::Error quiet (std::string code, std::string message, core::Fields fields = {})
+{
+    return core::Error { std::move (code), std::move (message), std::move (fields) };
+}
+} // namespace
+
 SongView::SongView (OpenSong& song, MainComponent& mainWindow)
     : openSong (song),
       window (mainWindow),
@@ -39,18 +49,11 @@ SongView::~SongView() = default;
 TrackActions SongView::makeTrackActions()
 {
     TrackActions actions;
-    actions.arm = [this] (const song::Id& trackId, bool armed) {
-        window.handleUnlessRefused (openSong.setArmed (trackId, armed));
-        window.refresh();
-    };
-    actions.mute = [this] (const song::Id& trackId, bool mute) { setMute (trackId, mute); };
-    actions.solo = [this] (const song::Id& trackId, bool solo) { setSolo (trackId, solo); };
+    actions.arm = [this] (const song::Id& trackId, bool armed) { setArmed (trackId, armed); };
+    actions.mute = [this] (const song::Id& trackId, bool mute) { edit (intent::SetTrackMute { trackId, mute }); };
+    actions.solo = [this] (const song::Id& trackId, bool solo) { edit (intent::SetTrackSolo { trackId, solo }); };
     actions.moveTrack = [this] (const song::Id& trackId, std::size_t toIndex) { moveTrack (trackId, toIndex); };
-    actions.seek = [this] (song::SampleCount sample) {
-        window.handleUnlessRefused (openSong.seek (sample));
-        window.refresh();
-    };
-    actions.previewMix = [this] (const song::Song& preview) { window.handleUnlessRefused (openSong.previewMix (preview)); };
+    actions.seek = [this] (song::SampleCount sample) { seek (sample); };
     actions.peaksFor = [this] (const song::ClipSource& source) -> const song::Peaks& { return openSong.peaks (source); };
     return actions;
 }
@@ -60,43 +63,27 @@ InsertChainActions SongView::makeInsertChainActions()
     InsertChainActions actions;
     actions.add = [this] (const song::Id& trackId) { chooseInsert (trackId); };
     actions.open = [this] (const song::Id& slotId) { openInsertEditor (slotId); };
-    actions.bypass = [this] (const song::Id& slotId, bool bypassed) {
-        applyEdit (song::setInsertBypassed (openSong.song(), slotId, bypassed), song::bypassInsertLabel (openSong.song(), slotId, bypassed));
-    };
-    actions.remove = [this] (const song::Id& slotId) {
-        applyEdit (song::removeInsert (openSong.song(), slotId), song::removeInsertLabel (openSong.song(), slotId));
-    };
-    actions.move = [this] (const song::Id& slotId, std::size_t toIndex) {
-        applyEdit (song::moveInsert (openSong.song(), slotId, toIndex), song::moveInsertLabel (openSong.song(), slotId));
-    };
+    actions.bypass = [this] (const song::Id& slotId, bool bypassed) { edit (intent::SetInsertBypassed { slotId, bypassed }); };
+    actions.remove = [this] (const song::Id& slotId) { edit (intent::RemoveInsert { slotId }); };
+    actions.move = [this] (const song::Id& slotId, std::size_t toIndex) { edit (intent::MoveInsert { slotId, toIndex }); };
     return actions;
 }
 
 void SongView::wirePages()
 {
-    recordPage.onInput = [this] (const song::Id& trackId, std::vector<int> channels) {
-        window.handleUnlessRefused (openSong.setInputChannels (trackId, std::move (channels)));
-        window.refresh();
-        takeKeyboardFocus();
-    };
-    recordPage.onMonitoring = [this] (const song::Id& trackId, bool on) {
-        window.handleUnlessRefused (openSong.setMonitoring (trackId, on));
-        window.refresh();
-    };
-    recordPage.onPreRoll = [this] (song::PreRoll preRoll) {
-        window.handleUnlessRefused (openSong.setPreRoll (preRoll));
-        window.refresh();
-    };
+    for (auto* mix : { &editPage.mixer.mix, &recordPage.mix })
+    {
+        mix->onEdit = [this] (const intent::Edit& mixEdit) { window.run (SongIntent { mixEdit }); };
+        mix->onPreview = [this] (const intent::PreviewMix& preview) { window.run (SongIntent { preview }); };
+    }
+
+    recordPage.onInput = [this] (const song::Id& trackId, std::vector<int> channels) { setInputChannels (trackId, std::move (channels)); };
+    recordPage.onMonitoring = [this] (const song::Id& trackId, bool on) { setMonitoring (trackId, on); };
+    recordPage.onPreRoll = [this] (song::PreRoll preRoll) { setPreRoll (preRoll); };
     recordPage.onCameraArm = [this] (bool armed) { armCamera (armed); };
-    recordPage.onCameraDevice = [this] (const std::string& cameraId) {
-        window.handleUnlessRefused (openSong.setCameraDevice (cameraId));
-        window.refresh();
-    };
+    recordPage.onCameraDevice = [this] (const std::string& cameraId) { setCameraDevice (cameraId); };
     recordPage.onJumpToPass = [this] (const song::Id& passId) { jumpToPass (passId); };
-    recordPage.onBringBack = [this] (const song::Id& passId) {
-        applyEdit (song::bringBackPass (openSong.song(), passId), song::bringBackPassLabel (openSong.song(), passId));
-    };
-    recordPage.mix.onEdit = [this] (song::Song changed, std::string label) { applyEdit (std::move (changed), label); };
+    recordPage.onBringBack = [this] (const song::Id& passId) { edit (intent::BringBackPass { passId }); };
     recordPage.onAddTrack = [this] { addTrack(); };
     recordPage.onTrackMenu = [this] (const song::Id& trackId) { showTrackMenu (trackId); };
     recordPage.onImport = [this] { askToImport(); };
@@ -111,104 +98,167 @@ void SongView::wirePages()
     editPage.onEdit = [this] (song::Song changed, std::string label) { applyEdit (std::move (changed), label); };
     editPage.onToggleVideo = [this] { window.setVideoPreviewWanted (! window.isVideoPreviewWanted()); };
     editPage.onDeleteTrack = [this] (const song::Id& trackId) { askToDeleteTrack (trackId); };
-    editPage.onSplit = [this] { window.perform (Command::splitClip); };
-    editPage.onDelete = [this] { window.perform (Command::deleteSelection); };
+    editPage.onSplit = [this] { window.run (SongIntent { intent::SplitSelectedClip {} }); };
+    editPage.onDelete = [this] { window.run (SongIntent { intent::DeleteSelection {} }); };
     editPage.timeline.canImportFiles = [this] { return openSong.canChangeTracks(); };
-    editPage.timeline.onFilesDropped = [this] (std::vector<juce::File> files) { importFiles (files); };
+    editPage.timeline.onFilesDropped = [this] (std::vector<juce::File> files) {
+        intent::ImportFiles import;
+        for (const auto& file : files)
+            import.files.push_back (core::AbsolutePath { file.getFullPathName().toStdString() });
+        window.run (SongIntent { std::move (import) });
+    };
 
     exportPage.onExport = [this] (exporting::ExportRequest request) { startExport (request); };
     exportPage.onChooseDestination = [this] (juce::File current) { chooseExportFile (current); };
-    exportPage.onVideoTakeChosen = [this] (const song::Id& videoTakeId) {
-        openSong.setExportVideoTake (videoTakeId);
-        window.refresh();
-    };
+    exportPage.onVideoTakeChosen = [this] (const song::Id& videoTakeId) { setExportVideoTake (videoTakeId); };
     exportPage.onReveal = [this] (juce::File file) {
         if (window.revealInFinder)
             window.revealInFinder (file);
     };
 }
 
-void SongView::perform (Command command)
+IntentResult SongView::run (const SongIntent& songIntent)
 {
-    switch (command)
-    {
-        case Command::record:
-        {
-            commitKeyBursts();
-            const auto passWasRunning = openSong.isRecording();
-            if (auto started = openSong.record(); ! started.has_value())
-                window.handleError (started.error());
-            else if (! passWasRunning)
-                recordPage.clearClipIndicators();
-            break;
-        }
-        case Command::playOrStop: window.handleUnlessRefused (openSong.playOrStop()); break;
-        case Command::rewind: openSong.rewind(); break;
-        case Command::undo:
-            commitKeyBursts();
-            if (openSong.package().canUndo())
-                window.handleUnlessRefused (openSong.undo());
-            break;
-        case Command::redo:
-            commitKeyBursts();
-            if (openSong.package().canRedo())
-                window.handleUnlessRefused (openSong.redo());
-            break;
-        case Command::splitClip:
-            if (window.mode() == Mode::edit)
-                splitSelectedClip();
-            break;
-        case Command::deleteSelection:
-            if (window.mode() == Mode::edit)
-                deleteSelection();
-            break;
-        case Command::nudgeBack:
-            if (window.mode() == Mode::edit)
-                nudgePlayhead (-nudgeSeconds);
-            break;
-        case Command::nudgeForward:
-            if (window.mode() == Mode::edit)
-                nudgePlayhead (nudgeSeconds);
-            break;
-        case Command::showRecord:
-        case Command::showEdit:
-        case Command::showExport:
-            break;
-    }
+    using namespace intent;
+    return core::visitExhaustively (
+        songIntent,
+        core::Overloaded {
+            [this] (const Edit& plainEdit) { return edit (plainEdit); },
+            [this] (const Record&) { return record(); },
+            [this] (const PlayOrStop&) { return unlessRefused (openSong.playOrStop()); },
+            [this] (const Rewind&) -> IntentResult { openSong.rewind(); return IntentDone {}; },
+            [this] (const Undo&) { return undo(); },
+            [this] (const Redo&) { return redo(); },
+            [this] (const Seek& i) { return seek (i.sample); },
+            [this] (const JumpToPass& i) { return jumpToPass (i.passId); },
+            [this] (const Nudge& i) { return nudgePlayhead (i.direction); },
+            [this] (const AddTrack&) { return addTrack(); },
+            [this] (const ImportFiles& i) { return importFiles (i.files); },
+            [this] (const DeleteTrack& i) { return deleteTrack (i.trackId); },
+            [this] (const MoveTrack& i) { return moveTrack (i.trackId, i.toIndex); },
+            [this] (const SetArmed& i) { return setArmed (i.trackId, i.armed); },
+            [this] (const SetInputChannels& i) { return setInputChannels (i.trackId, i.channels); },
+            [this] (const SetMonitoring& i) { return setMonitoring (i.trackId, i.on); },
+            [this] (const StartSeparation& i) { return startSeparation (i.trackId); },
+            [this] (const CancelRun&) { return cancelRun(); },
+            [this] (const SetPreRoll& i) { return setPreRoll (i.preRoll); },
+            [this] (const SetCameraArmed& i) { return armCamera (i.armed); },
+            [this] (const SetCameraDevice& i) { return setCameraDevice (i.cameraId); },
+            [this] (const SplitSelectedClip&) { return splitSelectedClip(); },
+            [this] (const DeleteSelection&) { return deleteSelection(); },
+            [this] (const TakeLaneClick& i) { return takeLaneClick (i.takeId, i.at); },
+            [this] (const PreviewMix& i) { return previewMix (i); },
+            [this] (const AddInsert& i) { return addInsert (i); },
+            [this] (const OpenInsertEditor& i) { return openInsertEditor (i.slotId); },
+            [this] (const ClosePluginWindow& i) { return closePluginWindow (i.slotId); },
+            [this] (const SetExportFormat& i) -> IntentResult { exportPage.chooseFormat (i.format); return IntentDone {}; },
+            [this] (const SetExportLength& i) -> IntentResult { exportPage.chooseLength (i.length); return IntentDone {}; },
+            [this] (const SetExportDestination& i) -> IntentResult { exportPage.setDestination (juce::File (i.path.value)); return IntentDone {}; },
+            [this] (const SetExportVideoTake& i) { return setExportVideoTake (i.videoTakeId); },
+            [this] (const Export&) { return startExport (exportPage.request()); },
+            [this] (const RevealExport&) { return revealExport(); },
+            [this] (const SelectClip& i) -> IntentResult { editPage.timeline.selectClip (i.clipId); return IntentDone {}; },
+            [this] (const SelectVideoTake& i) -> IntentResult { editPage.timeline.selectVideoTake (i.videoTakeId); return IntentDone {}; },
+            [this] (const SetTimelineView& i) -> IntentResult { editPage.timeline.setView (i.firstSample, i.samplesPerPixel); return IntentDone {}; },
+            [this] (const SetVerticalScroll& i) -> IntentResult { editPage.timeline.setVerticalScroll (i.pixels); return IntentDone {}; },
+            [this] (const SetTakeLanesUnfolded& i) -> IntentResult { editPage.timeline.setTakeLanesUnfolded (i.trackId, i.unfolded); return IntentDone {}; },
+            [this] (const SetMixerVisible& i) -> IntentResult { editPage.setMixerVisible (i.visible); return IntentDone {}; },
+            [this] (const SetMixerHeight& i) -> IntentResult { editPage.setMixerHeight (i.height); return IntentDone {}; },
+            [this] (const SetPassesPanelOpen& i) -> IntentResult { editPage.setPassesPanelOpen (i.open); return IntentDone {}; },
+            [this] (const ClearClipIndicator& i) { return clearClipIndicator (i.trackId); },
+        });
 }
 
-void SongView::splitSelectedClip()
+IntentResult SongView::unlessRefused (const core::Expected<void>& result)
 {
+    window.handleUnlessRefused (result);
+    if (! result.has_value())
+        return std::unexpected (result.error());
+    return IntentDone {};
+}
+
+IntentResult SongView::presented (const core::Expected<void>& result)
+{
+    if (! result.has_value())
+    {
+        window.handleError (result.error());
+        return std::unexpected (result.error());
+    }
+    return IntentDone {};
+}
+
+IntentResult SongView::record()
+{
+    commitKeyBursts();
+    const auto passWasRunning = openSong.isRecording();
+    auto started = presented (openSong.record());
+    if (started.has_value() && ! passWasRunning)
+        recordPage.clearClipIndicators();
+    return started;
+}
+
+IntentResult SongView::undo()
+{
+    commitKeyBursts();
+    if (! openSong.package().canUndo())
+        return window.quietError (quiet ("ui.nothing_to_undo", "there is no step to undo"));
+    return unlessRefused (openSong.undo());
+}
+
+IntentResult SongView::redo()
+{
+    commitKeyBursts();
+    if (! openSong.package().canRedo())
+        return window.quietError (quiet ("ui.nothing_to_redo", "there is no step to redo"));
+    return unlessRefused (openSong.redo());
+}
+
+IntentResult SongView::seek (song::SampleCount sample)
+{
+    auto sought = unlessRefused (openSong.seek (sample));
+    window.refresh();
+    return sought;
+}
+
+IntentResult SongView::splitSelectedClip()
+{
+    if (window.mode() != Mode::edit)
+        return window.quietError (quiet ("ui.not_in_edit_mode", "the Clip keys act in Edit mode only", { { "op", std::string (intent::SplitSelectedClip::op) } }));
     const auto selected = editPage.timeline.selectedClip();
     if (! selected.has_value())
-        return;
+        return window.quietError (quiet ("ui.no_clip_selected", "no Clip is selected"));
     const auto rightHalf = song::makeId();
-    if (applyEdit (song::splitClip (openSong.song(), *selected, openSong.position(), rightHalf), song::splitClipLabel))
-        editPage.timeline.selectClip (rightHalf);
+    if (auto split = applyEdit (song::splitClip (openSong.song(), *selected, openSong.position(), rightHalf), song::splitClipLabel); ! split.has_value())
+        return split;
+    editPage.timeline.selectClip (rightHalf);
+    return IntentDone { .createdId = rightHalf };
 }
 
-void SongView::deleteSelection()
+IntentResult SongView::deleteSelection()
 {
+    if (window.mode() != Mode::edit)
+        return window.quietError (quiet ("ui.not_in_edit_mode", "the Clip keys act in Edit mode only", { { "op", std::string (intent::DeleteSelection::op) } }));
     if (const auto videoTake = editPage.timeline.selectedVideoTake())
-        applyEdit (song::deleteVideoTake (openSong.song(), *videoTake), song::deleteVideoTakeLabel);
-    else if (const auto clip = editPage.timeline.selectedClip())
-        applyEdit (song::deleteClip (openSong.song(), *clip), song::deleteClipLabel);
+        return applyEdit (song::deleteVideoTake (openSong.song(), *videoTake), song::deleteVideoTakeLabel);
+    if (const auto clip = editPage.timeline.selectedClip())
+        return applyEdit (song::deleteClip (openSong.song(), *clip), song::deleteClipLabel);
+    return window.quietError (quiet ("ui.nothing_selected", "no Clip or Video Take is selected"));
 }
 
 // OpenSong::seek clamps at the Song's start and refuses seeks while a Pass runs.
-void SongView::nudgePlayhead (int seconds)
+IntentResult SongView::nudgePlayhead (Direction direction)
 {
+    if (window.mode() != Mode::edit)
+        return window.quietError (quiet ("ui.not_in_edit_mode", "the arrow keys nudge in Edit mode only", { { "op", std::string (intent::Nudge::op) } }));
+    const auto seconds = direction == Direction::back ? -nudgeSeconds : nudgeSeconds;
     const auto offset = (song::SampleCount) seconds * openSong.song().sampleRate;
-    window.handleUnlessRefused (openSong.seek (openSong.position() + offset));
+    return unlessRefused (openSong.seek (openSong.position() + offset));
 }
 
-bool SongView::applyEdit (core::Expected<song::Song> changed, const std::string& label)
+IntentResult SongView::applyEdit (core::Expected<song::Song> changed, const std::string& label)
 {
     if (! changed.has_value())
-    {
-        handleOperationError (changed.error());
-        return false;
-    }
+        return std::unexpected (handleOperationError (changed.error()));
     for (auto* mix : { &editPage.mixer.mix, &recordPage.mix })
     {
         if (! mix->hasKeyBurst())
@@ -218,73 +268,119 @@ bool SongView::applyEdit (core::Expected<song::Song> changed, const std::string&
         mix->commitKeyBurst();
         changed = std::move (carried);
     }
-    auto edited = openSong.edit (std::move (*changed), label);
-    window.handleUnlessRefused (edited);
+    auto edited = unlessRefused (openSong.edit (std::move (*changed), label));
     window.refresh();
-    return edited.has_value();
+    return edited;
 }
 
-void SongView::handleOperationError (const core::Error& error)
+IntentResult SongView::edit (const intent::Edit& plainEdit)
+{
+    auto edited = editedSong (openSong.song(), plainEdit);
+    if (! edited.has_value())
+        return std::unexpected (handleOperationError (edited.error()));
+    return applyEdit (std::move (edited->song), edited->label);
+}
+
+core::Error SongView::handleOperationError (const core::Error& error)
 {
     // During a Pass, a Separation or a conversion the edit is refused anyway: report the refusal,
     // not the operation's Error.
-    window.handleUnlessRefused (openSong.refusalOf (Gesture::edit).value_or (error));
+    auto handled = openSong.refusalOf (Gesture::edit).value_or (error);
+    window.handleUnlessRefused (handled);
+    return handled;
 }
 
-void SongView::armCamera (bool armed)
+IntentResult SongView::setArmed (const song::Id& trackId, bool armed)
+{
+    auto result = unlessRefused (openSong.setArmed (trackId, armed));
+    window.refresh();
+    return result;
+}
+
+IntentResult SongView::setInputChannels (const song::Id& trackId, std::vector<int> channels)
+{
+    auto result = unlessRefused (openSong.setInputChannels (trackId, std::move (channels)));
+    window.refresh();
+    takeKeyboardFocus();
+    return result;
+}
+
+IntentResult SongView::setMonitoring (const song::Id& trackId, bool on)
+{
+    auto result = unlessRefused (openSong.setMonitoring (trackId, on));
+    window.refresh();
+    return result;
+}
+
+IntentResult SongView::setPreRoll (song::PreRoll preRoll)
+{
+    auto result = unlessRefused (openSong.setPreRoll (preRoll));
+    window.refresh();
+    return result;
+}
+
+IntentResult SongView::setCameraDevice (const std::string& cameraId)
+{
+    auto result = unlessRefused (openSong.setCameraDevice (cameraId));
+    window.refresh();
+    return result;
+}
+
+IntentResult SongView::armCamera (bool armed)
 {
     // No camera access prompt for an arm the running activity would refuse.
-    if (openSong.refusalOf (Gesture::setCameraArmed).has_value())
-        return;
+    if (auto refused = openSong.refusalOf (Gesture::setCameraArmed))
+        return unlessRefused (std::unexpected (std::move (*refused)));
     if (! armed || ! window.askCameraAccess)
         return setCameraArmed (armed);
 
-    window.askCameraAccess ([safeThis = juce::Component::SafePointer<SongView> (this)] (bool granted) {
-        if (safeThis == nullptr)
-            return;
-        if (granted)
-            return safeThis->setCameraArmed (true);
-        safeThis->window.handleError (core::Error { "capture.camera_access_denied", "the app may not use the camera", {} });
-        safeThis->window.refresh();
+    // The answer may come at once (tests) or after the system's prompt.
+    auto answer = std::make_shared<std::optional<IntentResult>>();
+    window.askCameraAccess ([safeThis = juce::Component::SafePointer<SongView> (this), answer] (bool granted) {
+        if (safeThis != nullptr)
+            *answer = safeThis->cameraAccessAnswered (granted);
     });
+    if (answer->has_value())
+        return **answer;
+    return IntentDone { .awaitingAnswer = true };
 }
 
-void SongView::setCameraArmed (bool armed)
+IntentResult SongView::cameraAccessAnswered (bool granted)
 {
-    window.handleUnlessRefused (openSong.setCameraArmed (armed));
+    if (granted)
+        return setCameraArmed (true);
+    auto denied = presented (std::unexpected (core::Error { "capture.camera_access_denied", "the app may not use the camera", {} }));
     window.refresh();
+    return denied;
 }
 
-void SongView::setMute (const song::Id& trackId, bool mute)
+IntentResult SongView::setCameraArmed (bool armed)
 {
-    applyEdit (song::setTrackMute (openSong.song(), trackId, mute), song::muteLabel (openSong.song(), trackId, mute));
+    auto result = unlessRefused (openSong.setCameraArmed (armed));
+    window.refresh();
+    return result;
 }
 
-void SongView::setSolo (const song::Id& trackId, bool solo)
-{
-    applyEdit (song::setTrackSolo (openSong.song(), trackId, solo), song::soloLabel (openSong.song(), trackId, solo));
-}
-
-void SongView::jumpToPass (const song::Id& passId)
+IntentResult SongView::jumpToPass (const song::Id& passId)
 {
     const auto& passes = openSong.song().passes;
     const auto pass = std::ranges::find (passes, passId, &song::Pass::id);
-    if (! OVERDUB_CHECK (pass != passes.end(), "ui.pass_row_unknown", { "pass_id", passId }))
-        return;
-    window.handleUnlessRefused (openSong.seek (pass->startSample));
-    window.refresh();
+    if (pass == passes.end())
+        return window.quietError (quiet ("ui.pass_not_found", "the Song has no such Pass", { { "pass_id", passId } }));
+    return seek (pass->startSample);
 }
 
-void SongView::addTrack()
+IntentResult SongView::addTrack()
 {
     // Ready to record: Armed on the device's first input, or on none when it has no inputs.
     auto inputChannels = openSong.audio().inputChannelNames.empty() ? std::vector<int> {} : std::vector<int> { 0 };
     auto added = song::addTrack (openSong.song(), std::move (inputChannels), song::randomPick());
     const core::Fields fields { { "track_id", added.trackId }, { "input_channels", added.song.tracks.back().inputChannels } };
-    if (! applyEdit (std::move (added.song), added.label))
-        return;
+    if (auto applied = applyEdit (std::move (added.song), added.label); ! applied.has_value())
+        return applied;
     core::logEvent (core::Level::info, "ui.track_added", fields);
     takeKeyboardFocus();
+    return IntentDone { .createdId = added.trackId };
 }
 
 void SongView::askToImport()
@@ -292,21 +388,34 @@ void SongView::askToImport()
     if (! openSong.canChangeTracks() || ! window.chooseFilesToImport)
         return;
     window.chooseFilesToImport ([safeThis = juce::Component::SafePointer<SongView> (this)] (std::vector<juce::File> files) {
-        if (safeThis != nullptr)
-            safeThis->importFiles (files);
+        if (safeThis == nullptr || files.empty())
+            return;
+        intent::ImportFiles import;
+        for (const auto& file : files)
+            import.files.push_back (core::AbsolutePath { file.getFullPathName().toStdString() });
+        safeThis->window.run (SongIntent { std::move (import) });
     });
 }
 
-void SongView::importFiles (const std::vector<juce::File>& files)
+IntentResult SongView::importFiles (const std::vector<core::AbsolutePath>& paths)
 {
-    if (files.empty())
-        return;
+    if (paths.empty())
+        return window.quietError (quiet ("ui.no_files_to_import", "no files to import"));
     commitKeyBursts();
+    std::vector<juce::File> files;
+    for (const auto& path : paths)
+        files.push_back (juce::File (path.value));
+    IntentResult imported = IntentDone {};
     for (const auto& result : openSong.importFiles (files))
         if (! result.has_value())
+        {
             window.handleUnlessRefused (result.error());
+            if (imported.has_value())
+                imported = std::unexpected (result.error());
+        }
     window.refresh();
     takeKeyboardFocus();
+    return imported;
 }
 
 void SongView::askToDeleteTrack (const song::Id& trackId)
@@ -319,39 +428,38 @@ void SongView::askToDeleteTrack (const song::Id& trackId)
     const auto question = juce::String::fromUTF8 (("Delete Track \"" + track->name + "\"? Its Clips and effects will be removed. You can undo this.").c_str());
     window.confirmTrackDelete (question, [safeThis = juce::Component::SafePointer<SongView> (this), trackId] (bool confirmed) {
         if (safeThis != nullptr && confirmed)
-            safeThis->deleteTrack (trackId);
+            safeThis->window.run (SongIntent { intent::DeleteTrack { trackId } });
     });
 }
 
-void SongView::deleteTrack (const song::Id& trackId)
+IntentResult SongView::deleteTrack (const song::Id& trackId)
 {
     // The answer comes later: by then the Song may be locked or the Track gone (undo).
-    if (! openSong.canChangeTracks())
-        return;
+    if (auto refused = openSong.refusalOf (Gesture::changeTracks))
+        return unlessRefused (std::unexpected (std::move (*refused)));
     auto deleted = song::deleteTrack (openSong.song(), trackId);
     if (! deleted.has_value())
-        return;
-    if (! applyEdit (std::move (deleted->song), deleted->label))
-        return;
+        return window.quietError (deleted.error());
+    if (auto applied = applyEdit (std::move (deleted->song), deleted->label); ! applied.has_value())
+        return applied;
     // Monitoring is transient: a deleted Track stops, and undo brings it back not Monitoring.
     window.handleUnlessRefused (openSong.setMonitoring (trackId, false));
     core::logEvent (core::Level::info, "ui.track_deleted", { { "track_id", trackId }, { "label", deleted->label } });
     takeKeyboardFocus();
+    return IntentDone {};
 }
 
-void SongView::moveTrack (const song::Id& trackId, std::size_t toIndex)
+IntentResult SongView::moveTrack (const song::Id& trackId, std::size_t toIndex)
 {
     auto moved = song::moveTrack (openSong.song(), trackId, toIndex);
     if (! moved.has_value())
-    {
-        handleOperationError (moved.error());
-        return;
-    }
+        return std::unexpected (handleOperationError (moved.error()));
     if (! moved->has_value())
-        return; // dropped back in its own slot: no undo step, no save
-    if (! applyEdit (std::move ((*moved)->song), (*moved)->label))
-        return;
+        return window.quietError (quiet ("ui.track_already_there", "the Track is already at that place", { { "track_id", trackId }, { "to_index", toIndex } }));
+    if (auto applied = applyEdit (std::move ((*moved)->song), (*moved)->label); ! applied.has_value())
+        return applied;
     core::logEvent (core::Level::info, "ui.track_moved", { { "track_id", trackId }, { "to", toIndex } });
+    return IntentDone {};
 }
 
 void SongView::showTrackMenu (const song::Id& trackId)
@@ -370,29 +478,30 @@ void SongView::showTrackMenu (const song::Id& trackId)
     });
 }
 
-void SongView::startSeparation (const song::Id& trackId)
+IntentResult SongView::startSeparation (const song::Id& trackId)
 {
     commitKeyBursts();
-    if (auto started = openSong.startSeparation (trackId); ! started.has_value())
-        window.handleError (started.error());
+    auto started = presented (openSong.startSeparation (trackId));
     window.refresh();
+    return started;
 }
 
-void SongView::cancelRun()
+IntentResult SongView::cancelRun()
 {
     openSong.cancelSeparation();
     openSong.cancelSampleRateConversion();
     window.refresh();
     takeKeyboardFocus();
+    return IntentDone {};
 }
 
-void SongView::convertSampleRate (int toRate)
+IntentResult SongView::convertSampleRate (int toRate)
 {
     commitKeyBursts();
     core::logEvent (core::Level::info, "ui.sample_rate_conversion_requested", { { "from_rate", openSong.song().sampleRate }, { "to_rate", toRate } });
-    if (auto started = openSong.startSampleRateConversion (toRate); ! started.has_value())
-        window.handleError (started.error());
+    auto started = presented (openSong.startSampleRateConversion (toRate));
     window.refresh();
+    return started;
 }
 
 void SongView::showRun (RunDialog& dialog) const
@@ -403,11 +512,49 @@ void SongView::showRun (RunDialog& dialog) const
         dialog.show (conversionDialogText (openSong.conversionTargetRate(), openSong.conversionFraction()), openSong.conversionFraction());
 }
 
-void SongView::startExport (const exporting::ExportRequest& request)
+IntentResult SongView::takeLaneClick (const song::Id& takeId, song::SampleCount at)
 {
-    if (auto started = openSong.startExport (request); ! started.has_value())
-        window.handleError (started.error());
+    auto laneEdit = laneEditAt (openSong.song(), takeId, at, song::makeId());
+    if (! laneEdit.has_value())
+        return window.quietError (quiet ("ui.take_lane_click_changes_nothing", "the Take is already heard there", { { "take_id", takeId }, { "at", at } }));
+    if (auto applied = applyEdit (std::move (laneEdit->song), laneEdit->label); ! applied.has_value())
+        return applied;
+    editPage.timeline.selectClip (laneEdit->clipId);
+    return IntentDone { .createdId = laneEdit->clipId };
+}
+
+IntentResult SongView::previewMix (const intent::PreviewMix& preview)
+{
+    if (! preview.edit.has_value())
+        return unlessRefused (openSong.previewMix (openSong.song()));
+    auto edited = editedSong (openSong.song(), asEdit (*preview.edit));
+    if (! edited.has_value())
+        return window.quietError (edited.error());
+    return unlessRefused (openSong.previewMix (edited->song));
+}
+
+IntentResult SongView::startExport (const exporting::ExportRequest& request)
+{
+    auto started = presented (openSong.startExport (request));
     window.refresh();
+    return started;
+}
+
+IntentResult SongView::setExportVideoTake (const song::Id& videoTakeId)
+{
+    openSong.setExportVideoTake (videoTakeId);
+    window.refresh();
+    return IntentDone {};
+}
+
+IntentResult SongView::revealExport()
+{
+    const auto& file = openSong.lastExportedFile();
+    if (! file.has_value())
+        return window.quietError (quiet ("ui.nothing_exported", "no export has written a file yet"));
+    if (window.revealInFinder)
+        window.revealInFinder (*file);
+    return IntentDone {};
 }
 
 void SongView::chooseExportFile (const juce::File& current)
@@ -434,7 +581,17 @@ void SongView::chooseInsert (const song::Id& trackId)
     });
 }
 
-void SongView::addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin)
+IntentResult SongView::addInsert (const intent::AddInsert& insert)
+{
+    const song::AudioUnitComponent component { insert.type, insert.subtype, insert.manufacturer };
+    const auto plugins = window.listInsertPlugins ? window.listInsertPlugins() : std::vector<plugin::AvailableAudioUnit> {};
+    const auto plugin = std::ranges::find (plugins, component, &plugin::AvailableAudioUnit::component);
+    if (plugin == plugins.end())
+        return window.quietError (quiet ("ui.plugin_not_installed", "no installed AU effect has this component", { { "type", insert.type }, { "subtype", insert.subtype }, { "manufacturer", insert.manufacturer } }));
+    return addInsert (insert.trackId, *plugin);
+}
+
+IntentResult SongView::addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin)
 {
     auto added = openSong.addInsert (trackId, plugin);
     if (! added.has_value())
@@ -442,24 +599,42 @@ void SongView::addInsert (const song::Id& trackId, const plugin::AvailableAudioU
     else
         pendingEditorSlot = *added; // its editor opens once it has loaded
     window.refresh();
+    if (! added.has_value())
+        return std::unexpected (added.error());
+    return IntentDone { .createdId = *added };
 }
 
-void SongView::openInsertEditor (const song::Id& slotId)
+IntentResult SongView::openInsertEditor (const song::Id& slotId)
 {
     const auto status = openSong.insertStatus (slotId);
-    if (status == plugin::InsertStatus::failed)
+    if (status == plugin::InsertStatus::failed || status == plugin::InsertStatus::crashed)
     {
-        window.showNotice ("ui.plugin_missing");
-        return;
-    }
-    if (status == plugin::InsertStatus::crashed)
-    {
-        window.showNotice (openSong.insertHost().crashedForGood (slotId) ? "ui.plugin_crashed_repeatedly" : "ui.plugin_crashed");
-        return;
+        const auto code = status == plugin::InsertStatus::failed        ? "ui.plugin_missing"
+                        : openSong.insertHost().crashedForGood (slotId) ? "ui.plugin_crashed_repeatedly"
+                                                                        : "ui.plugin_crashed";
+        window.showNotice (code);
+        return std::unexpected (core::Error { code, "the plugin cannot open its editor", { { "slot_id", slotId } } });
     }
     // Loading: it opens when ready (syncPluginWindows).
     pendingEditorSlot = slotId;
     syncPluginWindows();
+    return IntentDone {};
+}
+
+IntentResult SongView::closePluginWindow (const song::Id& slotId)
+{
+    pluginWindows.close (slotId);
+    openSong.notePluginStateChanged();
+    return IntentDone {};
+}
+
+IntentResult SongView::clearClipIndicator (const song::Id& trackId)
+{
+    const auto row = std::ranges::find (recordPage.rows, trackId, [] (const auto& candidate) { return candidate->trackId(); });
+    if (row == recordPage.rows.end())
+        return window.quietError (quiet ("ui.track_not_found", "the Song has no such Track", { { "track_id", trackId } }));
+    (*row)->clip.clear();
+    return IntentDone {};
 }
 
 void SongView::syncPluginWindows()

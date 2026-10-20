@@ -69,7 +69,6 @@ using Command = std::variant<Tool, Rest, Preview>;
 struct Twin
 {
     static constexpr std::string_view op = "rest";
-    static constexpr auto fields = std::tuple {};
 };
 
 constexpr auto badField = "test.bad_field";

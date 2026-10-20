@@ -75,7 +75,6 @@ target_sources(overdub_tests PRIVATE
     support/RealtimeGuardCatchTest.cpp
     ui/CalibrationPanelTest.cpp
     ui/CalibrationTextTest.cpp
-    ui/CommandsTest.cpp
     ui/DeviceSettingsPanelTest.cpp
     ui/DeleteTrackTest.cpp
     ui/DeleteVideoTakeTest.cpp
@@ -85,6 +84,8 @@ target_sources(overdub_tests PRIVATE
     ui/ExportRunTest.cpp
     ui/FileDropTest.cpp
     ui/InsertChainUiTest.cpp
+    ui/IntentRunTest.cpp
+    ui/IntentTest.cpp
     ui/LayoutTest.cpp
     ui/MainComponentTest.cpp
     ui/MixerGeometryTest.cpp

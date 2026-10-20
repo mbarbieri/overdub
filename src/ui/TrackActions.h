@@ -23,8 +23,6 @@ struct TrackActions
     // A grip drag dropped the Track at this index of the Track order (a different one).
     std::function<void (const song::Id& trackId, std::size_t toIndex)> moveTrack;
     std::function<void (song::SampleCount sample)> seek;
-    // The Song a Mixer gesture in progress would make (OpenSong::previewMix).
-    std::function<void (const song::Song& preview)> previewMix;
     PeaksLookup peaksFor;
 };
 } // namespace overdub::ui

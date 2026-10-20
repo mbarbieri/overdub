@@ -1,7 +1,7 @@
 # overdub_ui: the main window's JUCE Components (Record / Edit / Export, the top bar, Notices and
-# Alerts) and the pure functions they stay thin over: key commands, geometry, transport text,
-# input choices and gesture -> Song operation (ADR 0005 UI amendment, issue #27). Events use the
-# `ui.*` area (ADR 0006).
+# Alerts) and the pure functions they stay thin over: the Intent vocabulary and its keys (ADR 0008),
+# geometry, transport text, input choices and gesture -> Song operation (ADR 0005 UI amendment,
+# issue #27). Events use the `ui.*` area (ADR 0006).
 
 add_library(overdub_ui STATIC)
 
@@ -11,13 +11,13 @@ target_sources(overdub_ui PRIVATE
     CalibrationText.cpp
     CameraStage.mm
     Colours.cpp
-    Commands.cpp
     DeviceSettingsPanel.cpp
     EditPage.cpp
     ExportPage.cpp
     ExportRun.cpp
     FileDrop.cpp
     InsertChain.cpp
+    Intent.cpp
     Layout.cpp
     LookAheadStrip.cpp
     MainComponent.cpp
@@ -31,6 +31,7 @@ target_sources(overdub_ui PRIVATE
     RecordPage.cpp
     RecordView.cpp
     RunDialog.cpp
+    SongEdits.cpp
     SongFiles.cpp
     SongOverview.cpp
     SongView.cpp

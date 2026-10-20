@@ -202,7 +202,7 @@ juce::PopupMenu MainWindow::convertSampleRateMenu()
 void MainWindow::convertSampleRate (int toRate)
 {
     if (workspace->idleOrNotice())
-        content.convertSampleRate (toRate);
+        content.run (ui::AppIntent { ui::intent::ConvertSampleRate { toRate } });
 }
 
 void MainWindow::menuItemSelected (int menuItemID, int)
@@ -215,8 +215,8 @@ void MainWindow::menuItemSelected (int menuItemID, int)
         case openSongItem: chooseSongToOpen(); break;
         case duplicateSongItem: duplicateSong(); break;
         case settingsItem: showSettings(); break;
-        case undoItem: content.perform (ui::Command::undo); break;
-        case redoItem: content.perform (ui::Command::redo); break;
+        case undoItem: content.run (ui::SongIntent { ui::intent::Undo {} }); break;
+        case redoItem: content.run (ui::SongIntent { ui::intent::Redo {} }); break;
         default: break;
     }
 }

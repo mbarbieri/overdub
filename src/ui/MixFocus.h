@@ -2,6 +2,7 @@
 
 #include "core/Error.h"
 #include "song/Song.h"
+#include "ui/Intent.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -11,13 +12,13 @@
 #include <string>
 
 // The mix controls' behaviour apart from how they are drawn (issues #129, #130): the gestures on
-// a Track's fader or pan or the Master fader as Songs and undo labels, keyboard focus, and the
+// a Track's fader or pan or the Master fader as Intents (ui/Intent.h), keyboard focus, and the
 // arrow keys' bursts. The Mixer (ui/Mixer.h) and the Record page's rows (ui/RecordPage.h) each own
 // one, so a Record row's fader behaves exactly like its Mixer fader.
 //
-// A drag is previewed while it moves (onPreview: the Song as the drag would make it) and reported
-// once, on mouse up, as one Song and its undo label (onEdit: "Guitar Volume", "Guitar Pan",
-// "Master Volume"); a drag that ends where it started previews the Song as it was (abandon). A
+// A drag is previewed while it moves (onPreview: the mix edit the drag would make) and reported
+// once, on mouse up, as one edit (onEdit: set_track_volume, set_track_pan, set_master_volume, one
+// undo step each); a drag that ends where it started previews the Song as it is (abandon). A
 // double-click sets 0 dB or C (set), one undo step (none when already there).
 //
 // Keyboard focus: grabbing a control focuses it; the window sends it keys first (handleKey). The
@@ -85,19 +86,19 @@ public:
     // A finished drag or a double-click: the control set to `value` as one undo step (after a
     // pending burst's own step).
     void set (const MixerControl& control, double value);
-    // A drag that ended where it started: the Song as it was is previewed.
+    // A drag that ended where it started: the Song as it is is previewed.
     void abandon();
-    // Reports an edit (a Song made from song()) unless it changes nothing; nothing while not editable.
-    void report (core::Expected<song::Song> changed, const std::string& label);
+    // Reports an edit unless it changes song(); nothing while not editable.
+    void report (const intent::Edit& edit);
 
     // The focused control changed (focus or releaseFocus).
     std::function<void()> onFocusChanged;
     // An arrow press set this control's value, ahead of the Song.
     std::function<void (const MixerControl& control, double value)> onKeyValue;
-    // The Song a gesture in progress would make (the mix only).
-    std::function<void (const song::Song& preview)> onPreview;
-    // A finished gesture: the changed Song and its undo label.
-    std::function<void (song::Song changed, std::string label)> onEdit;
+    // A gesture in progress: the mix it would make, heard and not committed.
+    std::function<void (const intent::PreviewMix& preview)> onPreview;
+    // A finished gesture: one undo step.
+    std::function<void (const intent::Edit& edit)> onEdit;
 
 private:
     struct KeyBurst
@@ -107,7 +108,7 @@ private:
         Clock::time_point deadline;
     };
 
-    void preview (core::Expected<song::Song> candidate);
+    void preview (const intent::MixEdit& edit);
     void notifyFocusChanged();
 
     song::Song current;

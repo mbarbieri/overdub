@@ -58,6 +58,25 @@ void chooseTrackMenuItemFromMenu (const std::vector<TrackMenuItem>& items, std::
     });
 }
 
+bool actsUnderRunDialog (const Intent& running)
+{
+    if (const auto* song = std::get_if<SongIntent> (&running))
+        return std::holds_alternative<intent::CancelRun> (*song);
+    if (const auto* app = std::get_if<AppIntent> (&running))
+        return std::holds_alternative<intent::Quit> (*app);
+    return false;
+}
+
+core::Error noSongOpen (std::string_view op)
+{
+    return core::Error { "ui.no_song_open", "no Song is open", { { "op", std::string (op) } } };
+}
+
+core::Error notRouted (std::string_view op)
+{
+    return core::Error { "ui.intent_not_routed", "this operation does not run through the window yet", { { "op", std::string (op) } } };
+}
+
 // The fields of the ui.* events that name a message.
 core::Fields messageFields (const UserMessage& message)
 {
@@ -97,12 +116,8 @@ MainComponent::MainComponent()
     chooseExportDestination = chooseExportFileWithNativeDialog;
     revealInFinder = [] (const juce::File& file) { file.revealToUser(); };
 
-    topBar.onCommand = [this] (Command command) { perform (command); };
-    // The dialog shows only while a Separation or a conversion runs, so only with a Song open.
-    runDialog.onCancel = [this] {
-        if (songContent != nullptr)
-            songContent->cancelRun();
-    };
+    topBar.onIntent = [this] (const Intent& intent) { run (intent); };
+    runDialog.onCancel = [this] { run (SongIntent { intent::CancelRun {} }); };
     noSongPage.onNewSong = [this] {
         if (onNewSong)
             onNewSong();
@@ -169,7 +184,7 @@ void MainComponent::syncVideoPreview()
     {
         videoPreview = std::make_unique<VideoPreviewWindow> (showVideoPreviewOnDesktop);
         // Closed from its own close button: the toggle goes off.
-        videoPreview->onClose = [this] { setVideoPreviewWanted (false); };
+        videoPreview->onClose = [this] { run (WindowIntent { intent::SetVideoPreviewWanted { false } }); };
     }
     if (videoPreview != nullptr)
         videoPreview->setShown (shown);
@@ -188,20 +203,63 @@ void MainComponent::setOpenSong (OpenSong* song)
     refresh();
 }
 
-void MainComponent::perform (Command command)
+IntentResult MainComponent::run (const Intent& intent, Origin origin)
 {
-    // The run dialog is modal: nothing acts while it shows.
-    if (runShowing())
-        return;
-    if (const auto mode = modeFor (command))
-    {
-        showMode (*mode);
-        return;
-    }
-    if (songContent == nullptr)
-        return;
-    songContent->perform (command);
+    const auto op = std::string (opName (intent));
+    core::logEvent (core::Level::debug, "ui.intent_run", { { "op", op }, { "origin", originName (origin) } });
+    // The run dialog is modal: only its Cancel, and quitting, act while it shows.
+    if (runShowing() && ! actsUnderRunDialog (intent))
+        return quietError (core::Error { "ui.run_dialog_open", "a Separation or a conversion runs", { { "op", op } } });
+    auto result = core::visitExhaustively (
+        intent,
+        core::Overloaded {
+            [this] (const AppIntent& app) { return runApp (app); },
+            [this] (const WindowIntent& windowIntent) { return runWindow (windowIntent); },
+            [this, &op] (const SongIntent& songIntent) { return songContent != nullptr ? songContent->run (songIntent) : quietError (noSongOpen (op)); },
+        });
     refresh();
+    return result;
+}
+
+// The app's Workspace will own the App group (issue #170); until then only the conversion, which
+// needs nothing but the open Song, runs.
+IntentResult MainComponent::runApp (const AppIntent& appIntent)
+{
+    using namespace intent;
+    return core::visitExhaustively (
+        appIntent,
+        core::Overloaded {
+            [this] (const NewSongAt&) { return quietError (notRouted (NewSongAt::op)); },
+            [this] (const OpenSongAt&) { return quietError (notRouted (OpenSongAt::op)); },
+            [this] (const DuplicateSongTo&) { return quietError (notRouted (DuplicateSongTo::op)); },
+            [this] (const ConvertSampleRate& convert) { return songContent != nullptr ? songContent->convertSampleRate (convert.rate) : quietError (noSongOpen (ConvertSampleRate::op)); },
+            [this] (const ShowSettings&) { return quietError (notRouted (ShowSettings::op)); },
+            [this] (const ApplyDeviceSettings&) { return quietError (notRouted (ApplyDeviceSettings::op)); },
+            [this] (const MeasureLatency&) { return quietError (notRouted (MeasureLatency::op)); },
+            [this] (const SaveLatencyCalibration&) { return quietError (notRouted (SaveLatencyCalibration::op)); },
+            [this] (const MeasureClapPass&) { return quietError (notRouted (MeasureClapPass::op)); },
+            [this] (const SaveCameraCalibration&) { return quietError (notRouted (SaveCameraCalibration::op)); },
+            [this] (const Quit&) { return quietError (notRouted (Quit::op)); },
+        });
+}
+
+IntentResult MainComponent::runWindow (const WindowIntent& windowIntent)
+{
+    using namespace intent;
+    return core::visitExhaustively (
+        windowIntent,
+        core::Overloaded {
+            [this] (const ShowMode& show) -> IntentResult { showMode (show.mode); return IntentDone {}; },
+            [this] (const SetVideoPreviewWanted& preview) -> IntentResult { setVideoPreviewWanted (preview.wanted); return IntentDone {}; },
+            // Alerts are native windows the app keeps no handle to yet (issue #171).
+            [this] (const DismissAlerts&) { return quietError (notRouted (DismissAlerts::op)); },
+        });
+}
+
+IntentResult MainComponent::quietError (core::Error error)
+{
+    core::logError (error, core::Level::debug);
+    return std::unexpected (std::move (error));
 }
 
 void MainComponent::showMode (Mode mode)
@@ -214,12 +272,6 @@ void MainComponent::showMode (Mode mode)
     }
     currentMode = mode;
     refresh();
-}
-
-void MainComponent::convertSampleRate (int toRate)
-{
-    if (songContent != nullptr && ! runShowing())
-        songContent->convertSampleRate (toRate);
 }
 
 void MainComponent::handleError (const core::Error& error)
@@ -265,7 +317,7 @@ void MainComponent::presentMessages()
         {
             core::logEvent (core::Level::info, "ui.notice_shown", messageFields (message));
             if (const auto rate = conversionOfferedBy (message))
-                noticeLine.show (sentence, juce::String::fromUTF8 (conversionActionText (*rate).c_str()), [this, toRate = *rate] { convertSampleRate (toRate); });
+                noticeLine.show (sentence, juce::String::fromUTF8 (conversionActionText (*rate).c_str()), [this, toRate = *rate] { run (AppIntent { intent::ConvertSampleRate { toRate } }); });
             else
                 noticeLine.show (sentence);
         }
@@ -310,7 +362,7 @@ void MainComponent::refresh()
 bool MainComponent::keyPressed (const juce::KeyPress& key)
 {
     const auto modifiers = key.getModifiers();
-    const auto command = commandForKey (KeyChord {
+    const auto intent = intentForKey (KeyChord {
         .character = (char32_t) key.getKeyCode(),
         .command = modifiers.isCommandDown(),
         .shift = modifiers.isShiftDown(),
@@ -320,9 +372,9 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
         return true;
     if (songContent != nullptr && songContent->handleKey (key, clock()))
         return true;
-    if (! command.has_value())
+    if (! intent.has_value())
         return false;
-    perform (*command);
+    run (*intent);
     return true;
 }
 

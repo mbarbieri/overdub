@@ -232,8 +232,8 @@ public:
     std::function<void (const song::Id& passId)> onJumpToPass;
     std::function<void (const song::Id& passId)> onBringBack;
 
-    // The faders' focus, arrow keys and undo steps (its onEdit is the window's; it previews through
-    // TrackActions::previewMix); the window sends it keys and commit triggers.
+    // The faders' focus, arrow keys and undo steps (their Intents run through the window); the
+    // window sends it keys and commit triggers.
     MixFocus mix;
     std::vector<std::unique_ptr<TrackRow>> rows;
     juce::TextButton addTrackButton { "Add Track" };

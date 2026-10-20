@@ -300,11 +300,6 @@ EditPage::EditPage (const TrackActions& trackActions)
             onDeleteTrack (trackId);
     };
     timeline.onSelectionChanged = [this] { showToolbar(); };
-    mixer.onEdit = [this] (song::Song changed, std::string label) {
-        if (onEdit)
-            onEdit (std::move (changed), std::move (label));
-    };
-    mixer.onPreview = [&trackActions] (const song::Song& preview) { trackActions.previewMix (preview); };
 
     passesButton.setButtonText (juce::String::fromUTF8 ("Passes \xE2\x96\xBE"));
     passesButton.setWantsKeyboardFocus (false);
@@ -312,10 +307,7 @@ EditPage::EditPage (const TrackActions& trackActions)
     passesButton.onClick = [this] { setPassesPanelOpen (! isPassesPanelOpen()); };
     passesPanel.onBringBack = [this] (const song::Id& passId) { bringBackPass (passId); };
 
-    divider.onDragTo = [this] (int top) {
-        mixerHeightRequested = clampMixerHeight (getHeight() - top - mixerDividerHeight, getHeight());
-        resized();
-    };
+    divider.onDragTo = [this] (int top) { setMixerHeight (getHeight() - top - mixerDividerHeight); };
 
     addAndMakeVisible (toolbar);
     addAndMakeVisible (timeline);
@@ -404,6 +396,12 @@ void EditPage::setMixerVisible (bool visible)
     divider.setVisible (visible);
     mixer.setVisible (visible);
     showToolbar();
+    resized();
+}
+
+void EditPage::setMixerHeight (int height)
+{
+    mixerHeightRequested = clampMixerHeight (height, getHeight());
     resized();
 }
 

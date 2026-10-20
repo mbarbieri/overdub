@@ -327,7 +327,6 @@ RecordPage::RecordPage (const TrackActions& actions)
             onBringBack (passId);
     };
     overview.onSeek = [this] (song::SampleCount sample) { trackActions.seek (sample); };
-    mix.onPreview = [this] (const song::Song& preview) { trackActions.previewMix (preview); };
     mix.onFocusChanged = [this] { showFocus(); };
     mix.onKeyValue = [this] (const MixerControl& control, double value) {
         if (auto* row = rowFor (control.trackId))
