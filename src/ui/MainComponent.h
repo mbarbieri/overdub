@@ -118,7 +118,6 @@ public:
 
     Mode mode() const { return currentMode; }
 
-    // Runs the Intent (see the header comment).
     IntentResult run (const Intent& intent, Origin origin = Origin::user);
     // Logs the Error at debug and returns it, never presenting it: what a gesture that did nothing
     // returns (the UI shows it as unavailable, or it changes nothing).

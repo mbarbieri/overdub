@@ -234,7 +234,7 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
     ScopedLogCapture capture;
     if (running == Running::pass)
     {
-        window.run (SongIntent { intent::Undo {} }); // the run dialog is modal: commands do nothing
+        window.run (SongIntent { intent::Undo {} });
         window.run (SongIntent { intent::Redo {} });
     }
     window.songView()->recordPage.actions().mute (guitarId, true);

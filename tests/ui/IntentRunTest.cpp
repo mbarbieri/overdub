@@ -13,9 +13,6 @@
 #include <string>
 #include <vector>
 
-// MainComponent::run (ADR 0008) through the real window: an Intent run by a socket request
-// (Origin::control) keeps the side effects the UI gesture has, and a gesture that does nothing
-// returns an Error that is logged at debug and never presented.
 using namespace overdub;
 using namespace overdub::ui;
 using namespace overdub::ui::testing;
@@ -66,7 +63,6 @@ MixerStrip& stripNamed (MainWindowFixture& f, const std::string& name)
     return *f.window->songView()->editPage.mixer.strips.front();
 }
 
-// The Error the run returned, which was logged at debug and not presented.
 void checkQuietError (const core::ScopedLogCapture& capture, const IntentResult& result, const std::string& code)
 {
     REQUIRE_FALSE (result.has_value());
@@ -107,7 +103,7 @@ TEST_CASE ("a pending Mixer arrow-key burst followed by a mute keeps both, as tw
     clickAt (fader, fader.thumbCentre());
     REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::downKey, {}, 0)));
     REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::downKey, {}, 0)));
-    REQUIRE_THAT (song::findTrack (f.song(), guitarId)->volumeDb, WithinAbs (0.0, 1.0e-9)); // the burst is pending
+    REQUIRE_THAT (song::findTrack (f.song(), guitarId)->volumeDb, WithinAbs (0.0, 1.0e-9));
 
     SECTION ("the mute from the socket, logged as one control run")
     {

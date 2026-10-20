@@ -54,7 +54,6 @@ public:
 
     OpenSong& currentSong() const { return openSong; }
 
-    // Runs one Song Intent (MainComponent::run routes it here).
     IntentResult run (const SongIntent& intent);
     // Shows the Song on the pages (the window's mode picks the visible one) and fills the top
     // bar's Song fields.

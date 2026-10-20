@@ -11,9 +11,6 @@
 #include <variant>
 #include <vector>
 
-// The Intent vocabulary (ADR 0008): every leaf's JSON form, found by folding over the variant
-// (no list of op names), and the keys the window maps to Intents.
-
 using namespace overdub;
 using namespace overdub::ui;
 
@@ -104,8 +101,6 @@ void fill (std::variant<Alternatives...>& value, std::string_view)
     value = std::move (leaf);
 }
 
-// Calls checkLeaf<Leaf> (wrap) for every leaf of T, where wrap turns a Leaf into the Intent that
-// holds it.
 template <typename T, typename Wrap, typename CheckLeaf>
 void forEachLeaf (Wrap wrap, CheckLeaf& checkLeaf)
 {

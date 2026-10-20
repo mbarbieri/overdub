@@ -206,12 +206,9 @@ void MainComponent::setOpenSong (OpenSong* song)
 IntentResult MainComponent::run (const Intent& intent, Origin origin)
 {
     const auto op = std::string (opName (intent));
-    // A Mixer drag runs preview_mix once per frame and it changes only what is heard: no log line
-    // and no window refresh for it. The drag shows in the log as the edit its release commits.
-    const auto everyFrame = op == intent::PreviewMix::op;
-    if (! everyFrame)
+    const auto dragFrameChangingOnlyWhatIsHeard = op == intent::PreviewMix::op;
+    if (! dragFrameChangingOnlyWhatIsHeard)
         core::logEvent (core::Level::debug, "ui.intent_run", { { "op", op }, { "origin", originName (origin) } });
-    // The run dialog is modal: only its Cancel, and quitting, act while it shows.
     if (runShowing() && ! actsUnderRunDialog (intent))
         return quietError (core::Error { "ui.run_dialog_open", "a Separation or a conversion runs", { { "op", op } } });
     auto result = core::visitExhaustively (
@@ -221,7 +218,7 @@ IntentResult MainComponent::run (const Intent& intent, Origin origin)
             [this] (const WindowIntent& windowIntent) { return runWindow (windowIntent); },
             [this, &op] (const SongIntent& songIntent) { return songContent != nullptr ? songContent->run (songIntent) : quietError (noSongOpen (op)); },
         });
-    if (! everyFrame)
+    if (! dragFrameChangingOnlyWhatIsHeard)
         refresh();
     return result;
 }

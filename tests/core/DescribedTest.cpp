@@ -11,8 +11,6 @@
 #include <variant>
 #include <vector>
 
-// Field tables and vocabularies of operations (core/Described.h) over a small stand-in
-// vocabulary: the JSON form each struct derives, parse failures, op names and exhaustive visits.
 using namespace overdub;
 
 namespace
