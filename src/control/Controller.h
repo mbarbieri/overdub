@@ -30,7 +30,7 @@
 //   event    {"seq": n, "event": <the log line object>}          only after `subscribe`
 //            {"seq": n, "event": {"event": "control.events_dropped", "count": n}}
 // Ops: hello, subscribe {events: [prefix...], level}, wait {event, since, timeout_ms}; any other op
-// goes to the handler given at construction.
+// goes to the handler given at construction (in the app, control/IntentOps.h).
 //
 // Ordering: a reply is held until the next pump has drained the EventTap and delivered the lines
 // to every Connection, and it carries the seq of the last line delivered. So on every Connection

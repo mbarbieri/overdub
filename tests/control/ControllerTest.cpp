@@ -1,5 +1,6 @@
 #include "control/Controller.h"
 
+#include "control/ControllerHarness.h"
 #include "core/BuildInfo.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -12,6 +13,7 @@
 #include <vector>
 
 using namespace overdub::control;
+using namespace overdub::control::testing;
 using nlohmann::json;
 using overdub::core::Level;
 
@@ -21,33 +23,6 @@ std::string logLine (std::string_view event, Level level = Level::info, const ov
 {
     return overdub::core::formatLogLine ({ .level = level, .event = event, .fields = &fields });
 }
-
-std::vector<json> takeLines (Controller& controller, ConnectionId connection)
-{
-    const auto output = std::string (controller.pendingOutput (connection));
-    controller.consumeOutput (connection, output.size());
-    std::vector<json> lines;
-    std::size_t start = 0;
-    for (auto end = output.find ('\n'); end != std::string::npos; end = output.find ('\n', start))
-    {
-        lines.push_back (json::parse (output.substr (start, end - start)));
-        start = end + 1;
-    }
-    CHECK (start == output.size());
-    return lines;
-}
-
-struct ProcessTap
-{
-    explicit ProcessTap (std::shared_ptr<EventTap> installed)
-        : tap (std::move (installed))
-    {
-        overdub::core::processLogger().addTap (tap);
-    }
-    ~ProcessTap() { overdub::core::processLogger().removeTap (tap); }
-
-    std::shared_ptr<EventTap> tap;
-};
 
 const Clock::time_point start {};
 
