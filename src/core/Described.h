@@ -473,7 +473,6 @@ nlohmann::json operationSchemas();
 
 namespace detail
 {
-// The JSON form a member is read from: {"type": <JSON type>} plus, for some kinds, what narrows it.
 template <typename Member>
 nlohmann::json memberSchema()
 {

@@ -13,7 +13,6 @@
 
 namespace overdub::control::testing
 {
-// Everything the Connection should be sent next, consumed and parsed one line at a time.
 inline std::vector<nlohmann::json> takeLines (Controller& controller, ConnectionId connection)
 {
     const auto output = std::string (controller.pendingOutput (connection));
@@ -29,7 +28,6 @@ inline std::vector<nlohmann::json> takeLines (Controller& controller, Connection
     return lines;
 }
 
-// The EventTap installed on the process logger for the test's lifetime.
 struct ProcessTap
 {
     explicit ProcessTap (std::shared_ptr<EventTap> installed)

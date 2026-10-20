@@ -22,13 +22,10 @@ constexpr bool noIntentIsNamed (std::string_view name)
     return true;
 }
 
-// The Controller answers hello, subscribe and wait itself, and this handler answers ops and
-// insert_plugins, so an Intent with one of these names could never run.
 static_assert (noIntentIsNamed ("hello") && noIntentIsNamed ("subscribe") && noIntentIsNamed ("wait") && noIntentIsNamed ("ops")
                    && noIntentIsNamed ("insert_plugins"),
                "an Intent's op name is taken by a control op");
 
-// One name per Intent group; a group without one does not compile.
 constexpr std::string_view groupName (std::type_identity<ui::AppIntent>)
 {
     return "app";

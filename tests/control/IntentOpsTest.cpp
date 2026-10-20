@@ -22,8 +22,6 @@ namespace
 {
 const Clock::time_point start {};
 
-// A Controller answering every op on the fixture's window, as MainWindow wires it, and one
-// Connection to it.
 struct SocketToWindow
 {
     ui::testing::MainWindowFixture f;

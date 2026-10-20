@@ -19,8 +19,6 @@ target_sources(Overdub PRIVATE
     MainWindow.cpp
     MicrophonePermission.mm)
 
-# overdub_control links overdub_ui, which links overdub_capture, overdub_engine, overdub_song and
-# overdub_core publicly.
 target_link_libraries(Overdub PRIVATE
     overdub_control
     "-framework AVFoundation"

@@ -22,6 +22,6 @@ namespace overdub::control
 // the field "refused": whether the running activity refused the Intent (ui::isRefusal).
 Reply replyFor (const ui::IntentResult& result);
 
-// The handler MainWindow gives the Controller. `content` outlives it.
+// `content` outlives the returned handler.
 OpHandler intentOps (ui::MainComponent& content);
 } // namespace overdub::control
