@@ -16,6 +16,9 @@ target_sources(overdub_tests PRIVATE
     capture/PassRecorderTest.cpp
     capture/PassRecorderVideoTest.cpp
     capture/VideoPlacementTest.cpp
+    control/ControllerTest.cpp
+    control/EventTapTest.cpp
+    control/ServerTest.cpp
     core/BuildInfoTest.cpp
     core/DecibelsTest.cpp
     core/ErrorTest.cpp
@@ -124,6 +127,7 @@ set_source_files_properties(export/Mp4Decode.mm plugin/InvalidationWatchTest.mm 
 # makes ld warn about duplicate libraries.
 target_link_libraries(overdub_tests PRIVATE
     overdub_ui
+    overdub_control
     overdub_separation
     overdub_rt_guard
     Catch2::Catch2WithMain

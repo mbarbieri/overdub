@@ -118,6 +118,12 @@ public:
     void setSink (std::shared_ptr<LogSink> newSink);
     std::shared_ptr<LogSink> sink() const;
 
+    // A tap gets every written line after the sink, whatever the sink is (ScopedLogCapture swaps
+    // only the sink). It runs under the logger's mutex on the logging thread, so it must only
+    // enqueue: never log, block or do I/O.
+    void addTap (std::shared_ptr<LogSink> tap);
+    void removeTap (const std::shared_ptr<LogSink>& tap);
+
     void setMinLevel (Level level);
     Level minLevel() const;
     bool isEnabled (Level level) const;
@@ -128,6 +134,7 @@ public:
 private:
     mutable std::mutex mutex;
     std::shared_ptr<LogSink> currentSink;
+    std::vector<std::shared_ptr<LogSink>> taps;
     std::atomic<Level> currentMinLevel { defaultLevelForBuild() };
 };
 
