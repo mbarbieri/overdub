@@ -157,6 +157,8 @@ private:
     // Closes the live audio and opens it again (at the open Song's rate when offered), binds the
     // open Song and shows what the user needs to know.
     void reopenAudio();
+    // Replaces the live audio with one opened for `songRate`; the latency result goes with the old one.
+    void swapAudio (std::optional<int> songRate);
     void watchDevices();
     void answerSongRateChange();
     // ui.device_rate_substituted (a Notice) when a picked rate opened at another one (issue #159).

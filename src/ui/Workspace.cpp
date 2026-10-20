@@ -161,10 +161,7 @@ void Workspace::showSong (std::unique_ptr<song::SongPackage> package, const std:
     const auto rateSwitch = engine::sampleRateForSong (live->sampleRate(), songRate, live->deviceChoices().sampleRates).has_value();
     if (rateSwitch)
     {
-        live.reset();
-        live = openAudio (songRate);
-        watchDevices();
-        calibrationState.latency = {};
+        swapAudio (songRate);
         if (devicePanel != nullptr)
             devicePanel->show (live->deviceChoices());
     }
@@ -309,10 +306,7 @@ void Workspace::reopenAudio()
 {
     // Finishes a Pass (one the device cut short is already ended) before the device goes.
     detachAudio();
-    live.reset();
-    live = openAudio (openSongRate());
-    watchDevices();
-    calibrationState.latency = {};
+    swapAudio (openSongRate());
     if (song != nullptr)
     {
         song->attachAudio (live->audioBinding());
@@ -323,6 +317,14 @@ void Workspace::reopenAudio()
     if (live->engine() == nullptr)
         content.showNotice ("ui.no_audio_device");
     showLatencyNoticeIfUncalibrated();
+}
+
+void Workspace::swapAudio (std::optional<int> songRate)
+{
+    live.reset();
+    live = openAudio (songRate);
+    watchDevices();
+    calibrationState.latency = {};
 }
 
 void Workspace::watchDevices()
