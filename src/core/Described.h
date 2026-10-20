@@ -19,7 +19,7 @@
 #include <vector>
 
 // A plain struct described by a field table next to its members, from which its JSON form is
-// derived (toJson / fromJson), and vocabularies of operations: a std::variant whose leaves are
+// derived (toJson / fromJson / operationSchemas), and vocabularies of operations: a std::variant whose leaves are
 // described structs that each name an `op` (nested variants are walked).
 //
 //     struct MoveClip
@@ -466,6 +466,87 @@ Expected<Variant> parseOperation (const nlohmann::json& object, std::string_view
     if (! parsed.has_value())
         return std::unexpected (Error { std::string (unknownOpCode), "no operation has this name", { { "op", op } } });
     return std::move (*parsed);
+}
+
+template <typename Variant>
+nlohmann::json operationSchemas();
+
+namespace detail
+{
+// The JSON form a member is read from: {"type": <JSON type>} plus, for some kinds, what narrows it.
+template <typename Member>
+nlohmann::json memberSchema()
+{
+    if constexpr (std::is_same_v<Member, bool>)
+        return { { "type", "boolean" } };
+    else if constexpr (std::is_same_v<Member, double>)
+        return { { "type", "number" } };
+    else if constexpr (std::is_same_v<Member, std::size_t>)
+        return { { "type", "integer" }, { "minimum", 0 } };
+    else if constexpr (std::is_integral_v<Member>)
+        return { { "type", "integer" } };
+    else if constexpr (std::is_same_v<Member, std::string>)
+        return { { "type", "string" } };
+    else if constexpr (std::is_same_v<Member, AbsolutePath>)
+        return { { "type", "string" }, { "format", "absolute_path" } };
+    else if constexpr (isOptional<Member>)
+    {
+        auto schema = memberSchema<typename Member::value_type>();
+        schema["optional"] = true;
+        return schema;
+    }
+    else if constexpr (isVector<Member>)
+        return { { "type", "array" }, { "items", memberSchema<typename Member::value_type>() } };
+    else if constexpr (isVariant<Member>)
+        return { { "type", "object" }, { "ops", operationSchemas<Member>() } };
+    else
+        static_assert (sizeof (Member) == 0, "a described member must be one of the kinds core/Described.h lists");
+}
+
+template <typename Owner, typename Member>
+nlohmann::json fieldSchema (const Field<Owner, Member>& described)
+{
+    auto schema = memberSchema<Member>();
+    schema["key"] = std::string (described.key);
+    return schema;
+}
+
+template <typename Owner, typename Enum>
+nlohmann::json fieldSchema (const EnumField<Owner, Enum>& described)
+{
+    auto names = nlohmann::json::array();
+    for (const auto& [value, name] : described.names)
+        names.push_back (std::string (name));
+    return { { "key", std::string (described.key) }, { "type", "string" }, { "enum", std::move (names) } };
+}
+
+template <typename T>
+void appendLeafSchemas (nlohmann::json& schemas)
+{
+    if constexpr (isVariant<T>)
+        [&]<std::size_t... I> (std::index_sequence<I...>) {
+            (appendLeafSchemas<std::variant_alternative_t<I, T>> (schemas), ...);
+        }(std::make_index_sequence<std::variant_size_v<T>> {});
+    else
+    {
+        auto fields = nlohmann::json::array();
+        std::apply ([&] (const auto&... described) { (fields.push_back (fieldSchema (described)), ...); }, T::fields);
+        schemas.push_back ({ { "op", std::string (T::op) }, { "fields", std::move (fields) } });
+    }
+}
+} // namespace detail
+
+// What each leaf of a variant of operations is parsed from, in declaration order:
+// [{"op", "fields": [{"key", "type", ...}]}]. "type" is the JSON type; an enum field lists its
+// names under "enum", an optional one has "optional": true (it may be missing or null), a
+// std::size_t has "minimum": 0, an AbsolutePath "format": "absolute_path", an array its "items"
+// and a nested variant of operations its "ops".
+template <typename Variant>
+nlohmann::json operationSchemas()
+{
+    auto schemas = nlohmann::json::array();
+    detail::appendLeafSchemas<Variant> (schemas);
+    return schemas;
 }
 
 struct NotAnAlternative
