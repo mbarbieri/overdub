@@ -98,7 +98,6 @@ juce::File fileAt (const core::AbsolutePath& path)
     return juce::File (juce::String::fromUTF8 (path.value.c_str()));
 }
 
-// Every App Intent but quit and show_settings (hidden) waits until nothing runs.
 bool waitsForIdle (const AppIntent& intent)
 {
     if (std::holds_alternative<intent::Quit> (intent))
@@ -135,7 +134,6 @@ IntentResult Workspace::run (const AppIntent& appIntent)
 
 IntentResult Workspace::quit()
 {
-    // A running Separation's dialog is modal: the app stays until it ends or is cancelled.
     if (song != nullptr && song->isSeparating())
         return refuseWhileRunning ("ui.separation_running", intent::Quit::op);
     if (onQuit)
@@ -166,7 +164,7 @@ void Workspace::showSong (std::unique_ptr<song::SongPackage> package, const std:
         live.reset();
         live = openAudio (songRate);
         watchDevices();
-        calibrationState.latency = {}; // measured on the device closed
+        calibrationState.latency = {};
         if (devicePanel != nullptr)
             devicePanel->show (live->deviceChoices());
     }
@@ -215,7 +213,6 @@ IntentResult Workspace::duplicateSongTo (const juce::File& chosen)
     auto duplicated = ui::duplicateSongTo (song->package(), chosen);
     if (! duplicated.has_value())
         return presented (duplicated.error());
-    // The duplicate becomes the open Song; the original stays as it was.
     return openSongFrom (*duplicated);
 }
 
@@ -231,7 +228,7 @@ void Workspace::closeSong()
     detachAudio();
     content.setOpenSong (nullptr);
     song.reset();
-    calibrationState.clap = {}; // measured on the Song's Video Take
+    calibrationState.clap = {};
     if (onOpenSongChanged)
         onOpenSongChanged();
 }
@@ -315,7 +312,7 @@ void Workspace::reopenAudio()
     live.reset();
     live = openAudio (openSongRate());
     watchDevices();
-    calibrationState.latency = {}; // measured on the device closed
+    calibrationState.latency = {};
     if (song != nullptr)
     {
         song->attachAudio (live->audioBinding());

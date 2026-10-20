@@ -321,7 +321,6 @@ TEST_CASE ("measure_latency works with the Settings window closed, and the panel
     CHECK (f.calibrationPanel.latencyResultLabel.getText().toStdString() == overdub::ui::latencyResultText (*measured->outcome, f.audio().sampleRate()));
     REQUIRE (isShown (f.calibrationPanel.saveLatencyButton));
 
-    // Use This Calibration runs the offset the Workspace offered.
     const auto offered = measured->toStore->offsetSamples;
     click (f.calibrationPanel.saveLatencyButton);
     CHECK (f.audio().storedCalibrationOffset() == offered);
@@ -436,7 +435,6 @@ TEST_CASE ("quit is refused while a Separation runs, as command-Q is, and allowe
     CHECK (contains (messageCodes (capture), "ui.separation_running"));
     CHECK (f.quits == 0);
     CHECK (f.song().isSeparating());
-    // The Settings window, outside the modal dialog, still closes.
     CHECK (f.run (AppIntent { ShowSettings { false } }).has_value());
     CHECK (f.settingsShown == std::vector<bool> { false });
 

@@ -73,7 +73,6 @@ public:
 
     void systemRequestedQuit() override
     {
-        // The window's quit Intent quits once the Workspace allows it.
         if (mainWindow != nullptr)
             return mainWindow->requestQuit();
         quit();

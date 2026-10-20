@@ -360,7 +360,6 @@ TEST_CASE ("opening another Song, changing the device and quitting are refused w
 
     CHECK_FALSE (f.workspace->isIdle());
     CHECK_FALSE (f.workspace->idleOrNotice());
-    // The Separation dialog is modal: only quit and cancel_run reach their handlers.
     const auto applied = f.run (AppIntent { applyCurrent (f) });
     REQUIRE_FALSE (applied.has_value());
     CHECK (applied.error().code == "ui.run_dialog_open");

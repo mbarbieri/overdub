@@ -54,7 +54,7 @@ public:
     ui::CalibrationPanel calibration;
 };
 
-// The settings window, hidden (not destroyed) when closed: its close button runs `onClose`.
+// The settings window, hidden (not destroyed) when closed.
 class SettingsWindow final : public juce::DocumentWindow
 {
 public:
@@ -218,7 +218,7 @@ void MainWindow::menuItemSelected (int menuItemID, int)
 }
 
 //==============================================================================
-// Songs. A dialog only collects its Intent's path: the Workspace checks again when it runs.
+// Songs
 
 void MainWindow::newSong()
 {
