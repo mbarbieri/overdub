@@ -18,11 +18,17 @@ if pgrep -x Overdub >/dev/null; then
 fi
 
 cmake --build --preset debug --target Overdub >/dev/null
+# The process reports its resolved path, so match against that (build/ may be a symlink).
+APP="$(cd "$APP" && pwd -P)"
 mkdir -p "$RUN_DIR/songs"
+# A Unix socket path must fit in 104 bytes, so the socket lives in a short private folder under /tmp;
+# $RUN_DIR/socket records where.
+SOCKET="/tmp/ovd-$(date +%s)-$$/control.sock"
+echo "$SOCKET" >"$RUN_DIR/socket"
 ln -sfn "$RUN_DIR" "$REPO/build/verify/latest"
 
 # `open` (not the bare binary) so the app is a LaunchServices app that answers the quit Apple Event.
-open -n -g "$APP" --env OVERDUB_LOG=debug --stdout "$RUN_DIR/stdout.txt" --stderr "$RUN_DIR/stderr.txt"
+open -n -g "$APP" --env OVERDUB_LOG=debug --env OVERDUB_CONTROL_SOCKET="$SOCKET" --stdout "$RUN_DIR/stdout.txt" --stderr "$RUN_DIR/stderr.txt"
 
 PID=""
 for _ in {1..20}; do
@@ -36,8 +42,9 @@ if [[ -z "$PID" ]]; then
 fi
 echo "$PID" >"$RUN_DIR/pid"
 
-# Ready = the main window opened an audio device (the saved one or the default fallback),
-# or reported there is none (app.device_unavailable; the window is still usable).
+# Ready = the main window opened an audio device (the saved one or the default fallback), or
+# reported there is none (app.device_unavailable; the window is still usable), and the control
+# socket listens.
 LOG=""
 READY=""
 for _ in {1..60}; do
@@ -45,7 +52,7 @@ for _ in {1..60}; do
     LOG="${logs[-1]:-}"
     if [[ -n "$LOG" ]]; then
         READY=$(grep -oE '"event":"(engine\.device_opened|app\.device_unavailable)"' "$LOG" | head -1 || true)
-        [[ -n "$READY" ]] && break
+        [[ -n "$READY" ]] && grep -q '"event":"control.server_listening"' "$LOG" && break
     fi
     if ! kill -0 "$PID" 2>/dev/null; then
         echo "launch: Overdub (pid $PID) exited during startup; see $RUN_DIR/stderr.txt" >&2
@@ -59,6 +66,7 @@ if [[ -z "$READY" ]]; then
 fi
 echo "$LOG" >"$RUN_DIR/log-path"
 echo "RUN_DIR=$RUN_DIR"
+echo "SOCKET=$SOCKET"
 echo "PID=$PID"
 echo "LOG=$LOG"
 echo "READY=$READY"
