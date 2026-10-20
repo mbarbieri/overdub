@@ -21,6 +21,7 @@ target_sources(overdub_tests PRIVATE
     control/ServerTest.cpp
     core/BuildInfoTest.cpp
     core/DecibelsTest.cpp
+    core/DescribedTest.cpp
     core/ErrorTest.cpp
     core/LogFilesTest.cpp
     core/LogTest.cpp
