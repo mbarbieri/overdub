@@ -362,14 +362,14 @@ TEST_CASE ("opening another Song, changing the device and quitting are refused w
     CHECK_FALSE (f.workspace->idleOrNotice());
     const auto applied = f.run (AppIntent { applyCurrent (f) });
     REQUIRE_FALSE (applied.has_value());
-    CHECK (applied.error().code == "ui.run_dialog_open");
+    CHECK (applied.error().code == "ui.separation_running");
     CHECK_FALSE (f.run (AppIntent { Quit {} }).has_value());
 
     CHECK (f.opened.size() == 1);
     CHECK (f.song().isSeparating());
     CHECK (f.quits == 0);
     const auto codes = messageCodes (capture);
-    CHECK (std::ranges::count (codes, std::string ("ui.separation_running")) == 2);
+    CHECK (std::ranges::count (codes, std::string ("ui.separation_running")) == 3);
 
     f.song().cancelSeparation();
     CHECK (f.workspace->isIdle());

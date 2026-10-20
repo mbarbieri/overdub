@@ -30,8 +30,8 @@
 // preview_mix, which a Mixer drag runs every frame and which refreshes nothing) and routes the
 // Window group here, the Song group to the SongView (ui.no_song_open while none is open) and the
 // App group to runAppIntent, which the ui::Workspace sets (issue #170; unset, as in a window
-// without one: ui.intent_not_routed). While the modal run dialog shows only cancel_run, quit and
-// hiding the Settings window run (ui.run_dialog_open). It returns what the handler did or the
+// without one: ui.intent_not_routed). While the modal run dialog shows only cancel_run and the App
+// group run (ui.run_dialog_open); the Workspace refuses App Intents itself. It returns what the handler did or the
 // Error it handled; Errors are presented exactly as the gestures always presented them.
 //
 // Record mode (issue #32): the pre-roll picker sets the Song's pre-roll (no undo step); a click on a

@@ -8,6 +8,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -416,6 +417,25 @@ TEST_CASE ("quit asks the window to quit; a running Pass does not stop it", "[ui
     REQUIRE (f.song().record().has_value());
     REQUIRE (f.run (AppIntent { Quit {} }).has_value());
     CHECK (f.quits == 2);
+}
+
+TEST_CASE ("the Settings window's Apply and Measure, outside the run dialog, present the Separation running Notice", "[ui][workspace][app_intent][separation]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    REQUIRE (f.run (AppIntent { ShowSettings { true } }).has_value());
+    startSeparation (f);
+    f.content.tick();
+    REQUIRE (isShown (f.content.runDialog));
+    ScopedLogCapture capture;
+
+    click (f.devicePanel.applyButton);
+    click (f.calibrationPanel.measureLatencyButton);
+
+    CHECK (std::ranges::count (messageCodes (capture), std::string ("ui.separation_running")) == 2);
+    CHECK (eventsNamed (capture, "ui.device_choice_changed").empty());
+    CHECK (f.song().isSeparating());
 }
 
 TEST_CASE ("quit is refused while a Separation runs, as command-Q is, and allowed once it is cancelled", "[ui][workspace][app_intent][separation]")

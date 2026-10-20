@@ -58,17 +58,13 @@ void chooseTrackMenuItemFromMenu (const std::vector<TrackMenuItem>& items, std::
     });
 }
 
+// The App group passes: the Settings window is outside the dialog, and the Workspace refuses with a
+// presented Notice what may not run.
 bool actsUnderRunDialog (const Intent& running)
 {
     if (const auto* song = std::get_if<SongIntent> (&running))
         return std::holds_alternative<intent::CancelRun> (*song);
-    // The Settings window is not covered by the dialog: its close button still hides it.
-    if (const auto* app = std::get_if<AppIntent> (&running))
-    {
-        const auto* settings = std::get_if<intent::ShowSettings> (app);
-        return std::holds_alternative<intent::Quit> (*app) || (settings != nullptr && ! settings->shown);
-    }
-    return false;
+    return std::holds_alternative<AppIntent> (running);
 }
 
 core::Error notRouted (std::string_view op)
