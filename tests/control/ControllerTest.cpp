@@ -52,6 +52,12 @@ struct ProcessTap
 };
 
 const Clock::time_point start {};
+
+void checkSeqNeverGoesBackwards (const std::vector<json>& lines)
+{
+    for (std::size_t i = 1; i < lines.size(); ++i)
+        CHECK (lines[i - 1]["seq"].get<std::uint64_t>() <= lines[i]["seq"].get<std::uint64_t>());
+}
 } // namespace
 
 TEST_CASE ("hello answers the protocol version, the app version and the pid", "[control][controller]")
@@ -147,6 +153,20 @@ TEST_CASE ("an op the Controller does not know goes to the handler, which answer
         REQUIRE (lines.size() == 1);
         CHECK (lines[0] == json { { "id", 4 }, { "ok", true }, { "seq", 0 }, { "track_id", "t-1" } });
     }
+}
+
+TEST_CASE ("a handler's result cannot overwrite a reply's id, ok or seq", "[control][controller]")
+{
+    Controller controller { std::make_shared<EventTap>(), [] (const Request&) -> Reply {
+        return json { { "id", 99 }, { "ok", false }, { "seq", 1234 }, { "track_id", "t-1" } };
+    } };
+    const auto client = controller.connect();
+    controller.receive (client, "{\"id\":4,\"op\":\"add_track\"}\n", start);
+    controller.pump (start);
+
+    const auto lines = takeLines (controller, client);
+    REQUIRE (lines.size() == 1);
+    CHECK (lines[0] == json { { "id", 4 }, { "ok", true }, { "seq", 0 }, { "track_id", "t-1" } });
 }
 
 TEST_CASE ("subscribe streams the log lines matching its prefixes and level, and nothing before it", "[control][controller]")
@@ -299,6 +319,27 @@ TEST_CASE ("wait times out with control.wait_timed_out on the injected clock", "
     CHECK (! controller.hasPendingWork (client));
 }
 
+TEST_CASE ("a wait's control.wait_timed_out line reaches a debug subscriber before the reply", "[control][controller][wait]")
+{
+    overdub::core::ScopedLogCapture capture;
+    ProcessTap installed { std::make_shared<EventTap>() };
+    Controller controller { installed.tap };
+    const auto client = controller.connect();
+    controller.receive (client, "{\"id\":1,\"op\":\"subscribe\",\"events\":[\"control.\"],\"level\":\"debug\"}\n", start);
+    controller.pump (start);
+    takeLines (controller, client);
+
+    controller.receive (client, "{\"id\":2,\"op\":\"wait\",\"event\":\"export.finished\",\"timeout_ms\":250}\n", start);
+    controller.pump (start + std::chrono::milliseconds (250));
+
+    const auto lines = takeLines (controller, client);
+    REQUIRE (lines.size() == 2);
+    CHECK (lines[0]["event"]["event"] == "control.wait_timed_out");
+    CHECK (lines[1]["id"] == 2);
+    CHECK (lines[1]["error"]["code"] == "control.wait_timed_out");
+    checkSeqNeverGoesBackwards (lines);
+}
+
 TEST_CASE ("a line over the limit is answered with control.line_too_long and closes the Connection", "[control][controller]")
 {
     Controller controller { std::make_shared<EventTap>() };
@@ -348,6 +389,7 @@ TEST_CASE ("a subscriber that does not read loses events, is told how many, and 
         else if (line["event"]["event"] == "control.events_dropped")
             droppedReported += line["event"]["count"].get<std::uint64_t>();
     }
+    checkSeqNeverGoesBackwards (lines);
     CHECK (replies == 1);
     CHECK (floodsDelivered < linesToOverflow);
     CHECK (droppedReported == linesToOverflow - floodsDelivered);
@@ -370,8 +412,10 @@ TEST_CASE ("lines the event tap dropped are reported to subscribers as control.e
     const auto lines = takeLines (controller, client);
     REQUIRE (lines.size() == 3);
     CHECK (lines[0]["event"] == json { { "event", "control.events_dropped" }, { "count", 3 } });
+    CHECK (lines[0]["seq"] == 3);
     CHECK (lines[1]["seq"] == 4);
     CHECK (lines[2]["seq"] == 5);
+    checkSeqNeverGoesBackwards (lines);
 }
 
 TEST_CASE ("replies a client never reads past the outbox limit close it as too slow", "[control][controller]")

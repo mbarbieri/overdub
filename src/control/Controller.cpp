@@ -234,8 +234,19 @@ std::optional<Reply> Controller::matchWait (const PendingWait& wait, const Deliv
 
 void Controller::pump (Clock::time_point now)
 {
-    auto batch = tap->drain();
+    deliver (tap->drain());
+    expireWaits (now);
+    // A second drain delivers the control.wait_timed_out lines just logged, so they too precede
+    // their replies.
+    deliver (tap->drain());
 
+    for (auto& [id, connection] : connections)
+        for (const auto& held : std::exchange (connection.held, {}))
+            sendReply (connection, held);
+}
+
+void Controller::deliver (TappedBatch batch)
+{
     std::vector<DeliveredLine> delivered;
     delivered.reserve (batch.lines.size());
     for (auto& tapped : batch.lines)
@@ -258,7 +269,7 @@ void Controller::pump (Clock::time_point now)
             for (const auto& line : delivered)
                 if (passesFilter (*connection.subscription, line.event, line.level))
                     deliverEvent (connection, line);
-            sendDroppedNotice (connection);
+            sendDroppedNotice (connection, lastDeliveredSeq);
         }
 
         std::erase_if (connection.waits, [&] (const PendingWait& wait) {
@@ -268,6 +279,20 @@ void Controller::pump (Clock::time_point now)
                     connection.held.push_back ({ wait.requestId, std::move (*reply) });
                     return true;
                 }
+            return false;
+        });
+    }
+
+    for (auto& line : delivered)
+        lookback.push_back (std::move (line));
+    while (lookback.size() > lookbackLines)
+        lookback.pop_front();
+}
+
+void Controller::expireWaits (Clock::time_point now)
+{
+    for (auto& [id, connection] : connections)
+        std::erase_if (connection.waits, [&] (const PendingWait& wait) {
             if (now < wait.deadline)
                 return false;
             const auto& condition = std::get<EventAfter> (wait.until);
@@ -279,15 +304,6 @@ void Controller::pump (Clock::time_point now)
                                                                            { "timeout_ms", wait.timeoutMs } })) });
             return true;
         });
-
-        for (const auto& held : std::exchange (connection.held, {}))
-            sendReply (connection, held);
-    }
-
-    for (auto& line : delivered)
-        lookback.push_back (std::move (line));
-    while (lookback.size() > lookbackLines)
-        lookback.pop_front();
 }
 
 void Controller::deliverEvent (Connection& connection, const DeliveredLine& line)
@@ -298,16 +314,17 @@ void Controller::deliverEvent (Connection& connection, const DeliveredLine& line
         ++connection.droppedEvents;
         return;
     }
-    sendDroppedNotice (connection);
+    // Every line dropped so far came before this one.
+    sendDroppedNotice (connection, line.seq - 1);
     connection.outbox += text;
 }
 
-void Controller::sendDroppedNotice (Connection& connection)
+void Controller::sendDroppedNotice (Connection& connection, std::uint64_t seq)
 {
     if (connection.droppedEvents == 0 || connection.outbox.size() >= eventBudgetBytes)
         return;
     nlohmann::ordered_json notice;
-    notice["seq"] = lastDeliveredSeq;
+    notice["seq"] = seq;
     notice["event"] = { { "event", "control.events_dropped" }, { "count", connection.droppedEvents } };
     connection.outbox += dumpLine (notice);
     connection.droppedEvents = 0;
@@ -326,7 +343,8 @@ void Controller::sendReply (Connection& connection, const HeldReply& held)
     {
         if (held.reply->is_object())
             for (const auto& [key, value] : held.reply->items())
-                reply[key] = value;
+                if (! reply.contains (key))
+                    reply[key] = value;
     }
     else
     {

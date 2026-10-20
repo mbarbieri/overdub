@@ -48,7 +48,8 @@ struct Request
     nlohmann::json fields; // the request object without `id` and `op`
 };
 
-// The result object merged into an ok reply, or the Error an error reply carries.
+// The result object merged into an ok reply (its id, ok and seq keys are ignored), or the Error an
+// error reply carries.
 using Reply = core::Expected<nlohmann::json>;
 using OpHandler = std::function<Reply (const Request&)>;
 
@@ -100,7 +101,8 @@ public:
     // replies are held until the next pump.
     void receive (ConnectionId connection, std::string_view bytes, Clock::time_point now);
 
-    // Drains the EventTap to subscribers and waits, times out waits, then releases held replies.
+    // Drains the EventTap to subscribers and waits, times out waits, drains again, then releases
+    // held replies.
     void pump (Clock::time_point now);
 
     // What the Connection should be sent next; the Server writes what it can and consumes that.
@@ -153,8 +155,12 @@ private:
     std::optional<Reply> startWait (Connection& connection, const Request& request, Clock::time_point now);
     std::optional<Reply> matchWait (const PendingWait& wait, const DeliveredLine& line) const;
 
+    // Sends the batch to subscribers and answers the waits it satisfies.
+    void deliver (TappedBatch batch);
+    void expireWaits (Clock::time_point now);
     void deliverEvent (Connection& connection, const DeliveredLine& line);
-    void sendDroppedNotice (Connection& connection);
+    // The notice carries `seq`: every line it counts had a seq no greater.
+    void sendDroppedNotice (Connection& connection, std::uint64_t seq);
     void sendReply (Connection& connection, const HeldReply& held);
 
     std::shared_ptr<EventTap> tap;
