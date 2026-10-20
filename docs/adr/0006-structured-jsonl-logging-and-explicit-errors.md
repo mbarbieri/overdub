@@ -38,3 +38,8 @@ Overdub logs to its own JSON Lines file, one per app launch, in `~/Library/Logs/
   - Every RT event code has a test for its `sample` and `host_ns`, plus a ring-overflow test.
   - Boundary events are asserted where a test already drives that boundary.
   - Assertions check `event` and fields, never `msg`.
+
+## Amendment: the `control` area (issue #166)
+
+- `src/control/` is the control socket (ADR 0008). Its events and its protocol Error codes use the `control` area. An Error keeps the area of the folder that raises it, so a refusal returned over the socket is still `ui.*`.
+- An Intent that does nothing (no Song open, a Clip key outside Edit mode, nothing to undo) returns an Error that is logged at `debug` and never presented, because the UI already shows the gesture as unavailable.
