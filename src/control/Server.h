@@ -65,7 +65,7 @@ private:
         int fd = -1;
         ConnectionId connection = 0;
         pid_t peerPid = 0;
-        std::string process; // proc_name of peerPid at connect, or "pid <n>"
+        std::string process;
         bool finishedSending = false;
     };
 
