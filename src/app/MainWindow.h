@@ -2,6 +2,8 @@
 
 #include "app/LiveEngine.h"
 #include "capture/Camera.h"
+#include "control/EventTap.h"
+#include "control/Server.h"
 #include "plugin/AudioUnitLoader.h"
 #include "ui/CalibrationPanel.h"
 #include "ui/DeviceSettingsPanel.h"
@@ -24,7 +26,12 @@ namespace overdub::app
 class MainWindow final : public juce::DocumentWindow, private juce::MenuBarModel
 {
 public:
-    MainWindow (const juce::String& appName, std::unique_ptr<LiveEngine> liveEngine);
+    // The control socket starts once the Workspace exists, from `controlConfig`, streaming
+    // `eventTap` (installed on the process logger by the caller).
+    MainWindow (const juce::String& appName,
+                std::unique_ptr<LiveEngine> liveEngine,
+                const control::ServerConfig& controlConfig,
+                std::shared_ptr<control::EventTap> eventTap);
     ~MainWindow() override;
 
     void closeButtonPressed() override;
@@ -57,6 +64,10 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
     std::vector<int> offeredMenuRates; // as the File menu last listed them
     std::unique_ptr<juce::DocumentWindow> settingsWindow;
+    // Last, and reset first in the destructor: a request's handler may reach anything above. Null
+    // when disabled or when it could not start.
+    std::unique_ptr<control::Server> controlServer;
+    juce::TimedCallback controlTick { [this] { controlServer->pump (control::Clock::now()); } };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)
 };

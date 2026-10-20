@@ -3,6 +3,8 @@
 #include "app/MainWindow.h"
 #include "app/MicrophonePermission.h"
 #include "capture/ClapSelftest.h"
+#include "control/EventTap.h"
+#include "control/Server.h"
 #include "core/BuildInfo.h"
 #include "core/Log.h"
 #include "core/LogFiles.h"
@@ -27,6 +29,7 @@ public:
     {
         core::setCurrentThreadRole (core::ThreadRole::ui);
         const auto logPath = startLogging();
+        core::processLogger().addTap (eventTap);
 
         const auto build = core::currentBuildInfo();
         core::logEvent (core::Level::info,
@@ -48,9 +51,12 @@ public:
             return;
         }
 
+        // Read once here; the selftests above never open the socket.
+        const auto controlConfig = control::serverConfigFrom (std::getenv ("OVERDUB_CONTROL"), std::getenv ("OVERDUB_CONTROL_SOCKET"));
+
         // Microphone access first: the audio device opens only once the user has decided (ADR 0002).
-        requestMicrophoneAccess ([this] (bool) {
-            mainWindow = std::make_unique<MainWindow> (getApplicationName(), std::make_unique<LiveEngine>());
+        requestMicrophoneAccess ([this, controlConfig] (bool) {
+            mainWindow = std::make_unique<MainWindow> (getApplicationName(), std::make_unique<LiveEngine>(), controlConfig, eventTap);
         });
     }
 
@@ -61,6 +67,7 @@ public:
         liveEngine.reset();
 
         core::logEvent (core::Level::info, "app.stopped");
+        core::processLogger().removeTap (eventTap);
         juce::Logger::setCurrentLogger (nullptr);
     }
 
@@ -145,6 +152,8 @@ private:
     }
 
     core::JuceLoggerBridge juceLoggerBridge;
+    // Every log line, numbered, for the control socket's subscribers.
+    std::shared_ptr<control::EventTap> eventTap = std::make_shared<control::EventTap>();
     std::unique_ptr<LiveEngine> liveEngine; // only in --selftest; the window owns its own
     std::unique_ptr<MainWindow> mainWindow; // owns the live engine and the open Song
     std::unique_ptr<LoopbackSelftest> selftest; // only in --selftest loopback; destroyed before liveEngine
