@@ -40,8 +40,9 @@ public:
 
     // Binds and listens, logging control.server_listening (path). Returns null, having logged why,
     // when the config disables it (control.server_disabled, info) or it cannot start (warn:
-    // control.socket_path_not_absolute, control.socket_path_too_long, control.socket_in_use, control.socket_path_occupied,
-    // control.socket_folder_failed, control.socket_bind_failed). The app runs on without it.
+    // control.socket_path_not_absolute, control.socket_path_too_long, control.socket_in_use,
+    // control.socket_path_occupied, control.socket_folder_failed, control.socket_bind_failed).
+    // The app runs on without it.
     static std::unique_ptr<Server> start (const ServerConfig& config, Controller controller);
 
     // Closes every client and the listening socket, and removes the socket file if it is still
