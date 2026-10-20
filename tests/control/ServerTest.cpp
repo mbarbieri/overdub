@@ -186,6 +186,17 @@ TEST_CASE ("the environment picks the socket path, defaulting to a private folde
     CHECK (! moved.privateFolder);
 }
 
+TEST_CASE ("a relative OVERDUB_CONTROL_SOCKET is refused and the app goes on", "[control][server]")
+{
+    overdub::core::ScopedLogCapture capture;
+
+    CHECK (Server::start (serverConfigFrom ("1", "ovd-relative/c.sock"), plainController()) == nullptr);
+    const auto error = lastEvent (capture, "control.socket_path_not_absolute");
+    CHECK (error["lvl"] == "warn");
+    CHECK (error["path"] == "ovd-relative/c.sock");
+    CHECK (! juce::File::getCurrentWorkingDirectory().getChildFile ("ovd-relative").exists());
+}
+
 TEST_CASE ("a socket path longer than sun_path is refused and the app goes on", "[control][server]")
 {
     overdub::core::ScopedLogCapture capture;
@@ -301,4 +312,78 @@ TEST_CASE ("the server refuses clients past its limit", "[control][server]")
     server->pump (Clock::now());
 
     CHECK (lastEvent (capture, "control.client_rejected")["reason"] == "too_many_clients");
+}
+
+TEST_CASE ("one pump reads a bounded number of bytes from a client", "[control][server]")
+{
+    overdub::core::ScopedLogCapture capture;
+    TempSocketFolder temp;
+    auto server = Server::start (configFor (temp.socketPath()), plainController());
+    REQUIRE (server != nullptr);
+
+    Client client { temp.socketPath() };
+    REQUIRE (client.connected);
+    const int sendBuffer = 4 << 20;
+    REQUIRE (::setsockopt (client.fd, SOL_SOCKET, SO_SNDBUF, &sendBuffer, sizeof (sendBuffer)) == 0);
+    // Blank lines are skipped without a reply, so only the hello after them answers.
+    client.send (std::string (2u << 20, '\n') + "{\"id\":1,\"op\":\"hello\"}\n");
+
+    server->pump (Clock::now());
+    pollfd polled { .fd = client.fd, .events = POLLIN, .revents = 0 };
+    CHECK (::poll (&polled, 1, 50) == 0);
+
+    const auto reply = client.readLine (*server);
+    REQUIRE (reply.has_value());
+    CHECK ((*reply)["id"] == 1);
+}
+
+TEST_CASE ("a client that hangs up with a wait pending frees its slot at once", "[control][server]")
+{
+    overdub::core::ScopedLogCapture capture;
+    TempSocketFolder temp;
+    auto server = Server::start (configFor (temp.socketPath()), plainController());
+    REQUIRE (server != nullptr);
+
+    {
+        Client leaver { temp.socketPath() };
+        REQUIRE (leaver.connected);
+        leaver.send ("{\"id\":1,\"op\":\"wait\",\"event\":\"export.finished\",\"timeout_ms\":600000}\n");
+        server->pump (Clock::now());
+    }
+    for (int i = 0; i < 3; ++i)
+        server->pump (Clock::now());
+    CHECK (lastEvent (capture, "control.client_disconnected")["reason"] == "peer_closed");
+
+    std::vector<std::unique_ptr<Client>> clients;
+    for (std::size_t i = 0; i < Server::maxClients; ++i)
+        clients.push_back (std::make_unique<Client> (temp.socketPath()));
+    for (auto& client : clients)
+    {
+        client->send ("{\"id\":2,\"op\":\"hello\"}\n");
+        CHECK (client->readLine (*server).has_value());
+    }
+    CHECK (! logged (capture, "control.client_rejected"));
+}
+
+TEST_CASE ("a client that stops sending keeps its pending wait until the event arrives", "[control][server]")
+{
+    overdub::core::ScopedLogCapture capture;
+    TempSocketFolder temp;
+    auto tap = std::make_shared<EventTap>();
+    auto server = Server::start (configFor (temp.socketPath()), Controller { tap });
+    REQUIRE (server != nullptr);
+
+    Client client { temp.socketPath() };
+    REQUIRE (client.connected);
+    client.send ("{\"id\":1,\"op\":\"wait\",\"event\":\"export.finished\",\"timeout_ms\":600000}\n");
+    ::shutdown (client.fd, SHUT_WR);
+    for (int i = 0; i < 3; ++i)
+        server->pump (Clock::now());
+    CHECK (! logged (capture, "control.client_disconnected"));
+
+    tap->writeLine (overdub::core::formatLogLine ({ .level = overdub::core::Level::info, .event = "export.finished" }));
+    const auto reply = client.readLine (*server);
+    REQUIRE (reply.has_value());
+    CHECK ((*reply)["id"] == 1);
+    CHECK ((*reply)["ok"] == true);
 }

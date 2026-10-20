@@ -4,6 +4,7 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/event.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -93,6 +94,8 @@ core::Expected<void> removeStaleSocket (const std::string& path)
 core::Expected<BoundSocket> bindSocket (const ServerConfig& config)
 {
     const auto& path = config.socketPath;
+    if (! path.starts_with ('/'))
+        return std::unexpected (socketError ("control.socket_path_not_absolute", "The socket path must be absolute", path));
     if (path.size() >= sizeof (sockaddr_un::sun_path))
         return std::unexpected (core::Error { "control.socket_path_too_long",
                                               "The socket path does not fit a Unix socket address",
@@ -128,12 +131,14 @@ enum class ReadResult
     failed
 };
 
-ReadResult readAvailable (int fd, std::string& into)
+// Reads until the socket is empty or `limit` bytes are in, so one flooding client cannot hold the
+// message thread; the rest waits for the next pump.
+ReadResult readAvailable (int fd, std::string& into, std::size_t limit)
 {
     char chunk[65536];
-    while (true)
+    while (into.size() < limit)
     {
-        const auto count = ::read (fd, chunk, sizeof (chunk));
+        const auto count = ::read (fd, chunk, std::min (sizeof (chunk), limit - into.size()));
         if (count > 0)
         {
             into.append (chunk, (std::size_t) count);
@@ -145,6 +150,23 @@ ReadResult readAvailable (int fd, std::string& into)
             continue;
         return errno == EAGAIN || errno == EWOULDBLOCK ? ReadResult::open : ReadResult::failed;
     }
+    return ReadResult::open;
+}
+
+// Whether a peer that finished sending has also stopped reading. poll reports POLLHUP for both, so
+// this asks kqueue: EV_EOF on the write filter means nothing written can reach the peer.
+bool peerHungUp (int fd)
+{
+    const auto queue = ::kqueue();
+    if (queue < 0)
+        return false;
+    struct kevent change {};
+    EV_SET (&change, fd, EVFILT_WRITE, EV_ADD, 0, 0, nullptr);
+    struct kevent result {};
+    const timespec noWait {};
+    const auto count = ::kevent (queue, &change, 1, &result, 1, &noWait);
+    ::close (queue);
+    return count == 1 && (result.flags & (EV_EOF | EV_ERROR)) != 0;
 }
 } // namespace
 
@@ -259,9 +281,13 @@ void Server::pump (Clock::time_point now)
 
     acceptClients();
 
+    // A Connection already closing reads nothing more.
     std::vector<pollfd> polled;
     for (const auto& client : clients)
-        polled.push_back (pollfd { .fd = client.finishedSending ? -1 : client.fd, .events = POLLIN, .revents = 0 });
+    {
+        const auto reading = ! client.finishedSending && ! controller.closeReason (client.connection).has_value();
+        polled.push_back (pollfd { .fd = reading ? client.fd : -1, .events = POLLIN, .revents = 0 });
+    }
     if (! polled.empty())
         ::poll (polled.data(), (nfds_t) polled.size(), 0);
 
@@ -271,13 +297,18 @@ void Server::pump (Clock::time_point now)
         if ((polled[i].revents & (POLLIN | POLLHUP | POLLERR)) == 0)
             continue;
         std::string bytes;
-        const auto result = readAvailable (clients[i].fd, bytes);
+        const auto result = readAvailable (clients[i].fd, bytes, maxReadBytesPerPump);
         controller.receive (clients[i].connection, bytes, now);
         if (result == ReadResult::finished)
             clients[i].finishedSending = true;
         else if (result == ReadResult::failed)
             closing[i] = "read_failed";
     }
+
+    // A peer gone for good abandons its waits now rather than holding its slot until they time out.
+    for (std::size_t i = 0; i < clients.size(); ++i)
+        if (! closing[i].has_value() && clients[i].finishedSending && peerHungUp (clients[i].fd))
+            closing[i] = "peer_closed";
 
     controller.pump (now);
 

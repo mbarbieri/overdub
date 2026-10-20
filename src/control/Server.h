@@ -18,7 +18,7 @@ namespace overdub::control
 struct ServerConfig
 {
     bool enabled = true;
-    std::string socketPath; // absolute
+    std::string socketPath; // absolute: start refuses a relative one
     // The folder holding the socket belongs to it alone: created if missing and set to 0700.
     // False for a path the user chose, whose folder is only created if missing.
     bool privateFolder = true;
@@ -35,10 +35,12 @@ class Server
 {
 public:
     static constexpr std::size_t maxClients = 4;
+    // Enough for a longest-allowed line and a chunk more, so an over-long line is seen in one pump.
+    static constexpr std::size_t maxReadBytesPerPump = Controller::maxLineBytes + (64u << 10);
 
     // Binds and listens, logging control.server_listening (path). Returns null, having logged why,
     // when the config disables it (control.server_disabled, info) or it cannot start (warn:
-    // control.socket_path_too_long, control.socket_in_use, control.socket_path_occupied,
+    // control.socket_path_not_absolute, control.socket_path_too_long, control.socket_in_use, control.socket_path_occupied,
     // control.socket_folder_failed, control.socket_bind_failed). The app runs on without it.
     static std::unique_ptr<Server> start (const ServerConfig& config, Controller controller);
 

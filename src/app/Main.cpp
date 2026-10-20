@@ -29,7 +29,13 @@ public:
     {
         core::setCurrentThreadRole (core::ThreadRole::ui);
         const auto logPath = startLogging();
-        core::processLogger().addTap (eventTap);
+        const auto args = juce::StringArray::fromTokens (commandLine, true);
+        const auto selftestIndex = args.indexOf ("--selftest");
+        // Read once here; the selftests never open the socket. The tap goes in before the first
+        // line so a client's lookback holds the whole launch.
+        const auto controlConfig = control::serverConfigFrom (std::getenv ("OVERDUB_CONTROL"), std::getenv ("OVERDUB_CONTROL_SOCKET"));
+        if (selftestIndex < 0 && controlConfig.enabled)
+            core::processLogger().addTap (eventTap);
 
         const auto build = core::currentBuildInfo();
         core::logEvent (core::Level::info,
@@ -43,16 +49,11 @@ public:
                             { "pid", static_cast<int> (getpid()) },
                         });
 
-        const auto args = juce::StringArray::fromTokens (commandLine, true);
-        const auto selftestIndex = args.indexOf ("--selftest");
         if (selftestIndex >= 0)
         {
             runSelftest (args[selftestIndex + 1], args[selftestIndex + 2]);
             return;
         }
-
-        // Read once here; the selftests above never open the socket.
-        const auto controlConfig = control::serverConfigFrom (std::getenv ("OVERDUB_CONTROL"), std::getenv ("OVERDUB_CONTROL_SOCKET"));
 
         // Microphone access first: the audio device opens only once the user has decided (ADR 0002).
         requestMicrophoneAccess ([this, controlConfig] (bool) {
