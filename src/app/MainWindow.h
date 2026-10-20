@@ -68,7 +68,10 @@ private:
     // Invariant: declared last and reset first in the destructor, because a request's handler may
     // reach any member above. Null when disabled or when it could not start.
     std::unique_ptr<control::Server> controlServer;
-    juce::TimedCallback controlTick { [this] { controlServer->pump (control::Clock::now()); } };
+    juce::TimedCallback controlTick { [this] {
+        controlServer->pump (control::Clock::now());
+        content.controllingProcesses = controlServer->clientProcesses();
+    } };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)
 };

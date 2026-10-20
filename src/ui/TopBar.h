@@ -6,9 +6,11 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 // The always-visible top bar (issue #9 resolution): Record · Edit · Export, the transport
-// (⏮ ▶/■ ●) with the clock and its REC · PASS n line, and Undo / Redo naming their steps.
+// (⏮ ▶/■ ●) with the clock and its REC · PASS n line, and Undo / Redo naming their steps. While a
+// control client is connected it names the controlling process (ADR 0008 Security, issue #177).
 // Thin: it shows a TopBarState and turns clicks into Intents.
 namespace overdub::ui
 {
@@ -24,7 +26,12 @@ struct TopBarState
     std::string redoText = "Redo";
     bool canUndo = false;
     bool canRedo = false;
+    // The connected control clients' process names, oldest connection first.
+    std::vector<std::string> controllingProcesses;
 };
+
+// "Controlled by <first>", then " and N more" for N others; empty with none.
+std::string controlIndicatorText (const std::vector<std::string>& processes);
 
 // The transport clock: the time over its status line.
 class ClockDisplay final : public juce::Component
@@ -63,6 +70,7 @@ public:
     ClockDisplay clock;
     juce::TextButton undoButton { "Undo" };
     juce::TextButton redoButton { "Redo" };
+    juce::Label controlIndicator;
 
 private:
     void send (const Intent& intent);

@@ -1,5 +1,6 @@
 #include "ui/MainComponent.h"
 
+#include "ui/Layout.h"
 #include "ui/MainWindowFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -304,4 +305,41 @@ TEST_CASE ("A on a Record row and on an Edit header arms the Track, follows Arme
     REQUIRE (f.openSong->isRecording());
     CHECK_FALSE (f.rowNamed ("Guitar").armButton.isEnabled());
     CHECK_FALSE (f.editHeaderNamed ("Guitar").armButton.isEnabled());
+}
+
+TEST_CASE ("the top bar names the process controlling the app while a control client is connected", "[ui][main][control]")
+{
+    MainWindowFixture f;
+    auto& window = *f.window;
+    const auto& indicator = window.topBar.controlIndicator;
+    window.tick();
+    CHECK (indicator.getText() == "");
+
+    window.controllingProcesses = { "python3" };
+    window.tick();
+    CHECK (indicator.getText() == "Controlled by python3");
+    CHECK (indicator.isVisible());
+    CHECK (indicator.getRight() < window.topBar.rewindButton.getX());
+    CHECK (! indicator.getBounds().intersects (window.topBar.clock.getBounds()));
+
+    window.controllingProcesses = { "python3", "overdub-ctl" };
+    window.tick();
+    CHECK (indicator.getText() == "Controlled by python3 and 1 more");
+    CHECK (writeSnapshot (window, "issue-177", "controlled-by-two").existsAsFile());
+
+    window.controllingProcesses = {};
+    window.tick();
+    CHECK (indicator.getText() == "");
+}
+
+TEST_CASE ("the control indicator shows without a Song open, at the smallest window width", "[ui][main][control]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    overdub::ui::MainComponent window;
+    layOut (window, overdub::ui::minimumWindowWidth, overdub::ui::minimumWindowHeight);
+    window.controllingProcesses = { "Python" };
+    window.tick();
+    CHECK (window.topBar.controlIndicator.getText() == "Controlled by Python");
+    CHECK (window.topBar.controlIndicator.getRight() < window.topBar.rewindButton.getX());
+    CHECK (writeSnapshot (window, "issue-177", "controlled-minimum-width").existsAsFile());
 }
