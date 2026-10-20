@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 using namespace overdub::control;
 using nlohmann::json;
@@ -310,6 +311,35 @@ TEST_CASE ("the server refuses clients past its limit", "[control][server]")
     server->pump (Clock::now());
 
     CHECK (lastEvent (capture, "control.client_rejected")["reason"] == "too_many_clients");
+}
+
+TEST_CASE ("the server names each connected client's process and forgets it on disconnect", "[control][server]")
+{
+    overdub::core::ScopedLogCapture capture;
+    TempSocketFolder temp;
+    auto server = Server::start (configFor (temp.socketPath()), plainController());
+    REQUIRE (server != nullptr);
+    CHECK (server->clientProcesses().empty());
+
+    auto first = std::make_unique<Client> (temp.socketPath());
+    auto second = std::make_unique<Client> (temp.socketPath());
+    REQUIRE (first->connected);
+    REQUIRE (second->connected);
+    server->pump (Clock::now());
+
+    const auto connected = lastEvent (capture, "control.client_connected");
+    CHECK (connected["peer_pid"] == (int) ::getpid());
+    CHECK (connected["process"] == "overdub_tests");
+    CHECK (server->clientProcesses() == std::vector<std::string> { "overdub_tests", "overdub_tests" });
+
+    first.reset();
+    second.reset();
+    for (int attempt = 0; attempt < 200 && ! server->clientProcesses().empty(); ++attempt)
+    {
+        server->pump (Clock::now());
+        ::usleep (1000);
+    }
+    CHECK (server->clientProcesses().empty());
 }
 
 TEST_CASE ("one pump reads a bounded number of bytes from a client", "[control][server]")

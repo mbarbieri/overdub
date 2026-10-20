@@ -56,12 +56,16 @@ public:
     // re-entered from a nested message loop inside a request's handler.
     void pump (Clock::time_point now);
 
+    // The connected clients' process names (ADR 0008 Security), oldest connection first.
+    std::vector<std::string> clientProcesses() const;
+
 private:
     struct Client
     {
         int fd = -1;
         ConnectionId connection = 0;
         pid_t peerPid = 0;
+        std::string process; // proc_name of peerPid at connect, or "pid <n>"
         bool finishedSending = false;
     };
 
