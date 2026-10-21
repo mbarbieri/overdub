@@ -220,7 +220,7 @@ private:
 
     Mode currentMode = Mode::record;
     UserMessageQueue messages;
-    std::optional<std::string> noticeCode; // the last Notice shown
+    std::optional<std::string> noticeCode;
     bool videoPreviewWanted = false;
     std::unique_ptr<VideoPreviewWindow> videoPreview;
     // Null while no Song is open.

@@ -205,12 +205,12 @@ const std::set<std::string> notYetMigrated {
 struct ComponentPath
 {
     std::vector<int> childIndices;
-    std::string id; // "edit/SongView#0/EditPage#0/Timeline#0"
+    std::string id;
 };
 
 struct Probe
 {
-    std::string id; // "<component id>:<gesture>"
+    std::string id;
     ComponentPath path;
     std::function<void (juce::Component&)> fire;
 };
@@ -258,7 +258,6 @@ json::array_t changedPaths (const json& before, const json& after)
     return changed;
 }
 
-// The gestures a Component offers, by what it is.
 std::vector<std::pair<std::string, std::function<void (juce::Component&)>>> gesturesFor (juce::Component& component, const juce::File& dropFile)
 {
     std::vector<std::pair<std::string, std::function<void (juce::Component&)>>> gestures;
@@ -399,8 +398,6 @@ struct CensusWorkspace
         REQUIRE (song::writeFloatWavAtomically (file, audio, engine::testing::testSampleRate, {}).has_value());
     }
 
-    // Puts the window back in `mode` with the transport stopped and no burst pending, outside any
-    // probe.
     void settle (ui::Mode mode)
     {
         if (auto* view = f.content.songView())
@@ -417,14 +414,14 @@ struct CensusWorkspace
 struct CensusResult
 {
     std::set<std::string> bypasses;
-    std::map<std::string, std::string> changedBy; // a bypass's probe id -> the paths it changed
+    std::map<std::string, std::string> changedBy;
     int fired = 0;
 };
 
 void fireProbe (CensusWorkspace& census, const Probe& probe, ui::Mode mode, CensusResult& result)
 {
     census.settle (mode);
-    auto* target = resolve (census.f.content, probe.path); // a key probe's empty path is the window
+    auto* target = resolve (census.f.content, probe.path);
     if (target == nullptr || ! ui::testing::isShown (*target) || ! target->isEnabled())
         return;
     const auto before = control::appState (census.f.content, *census.f.workspace);

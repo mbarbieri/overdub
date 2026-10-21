@@ -38,7 +38,6 @@ json stateOf (WorkspaceFixture& f, std::vector<std::string_view> parts)
     return appState (f.content, *f.workspace, parts);
 }
 
-// Records a Pass on the armed Guitar and lets the window's poll finish it.
 void recordPass (WorkspaceFixture& f)
 {
     REQUIRE (f.content.run (ui::SongIntent { Record {} }).has_value());
@@ -49,7 +48,6 @@ void recordPass (WorkspaceFixture& f)
     REQUIRE (f.song().song().passes.size() == 1);
 }
 
-// A Song with a Backing Track and a recorded Pass, its Band Mix Clip selected, a Notice showing.
 struct RichWorkspace
 {
     WorkspaceFixture f;
@@ -173,7 +171,6 @@ TEST_CASE ("during a Pass the refused section names each refusal and the transpo
     CHECK (state["activity"]["kind"] == "pass");
     CHECK (state["activity"]["counter"] == 1);
     CHECK (state["idle"] == false);
-    // The table agrees with the handler: undo is refused with that code.
     const auto undone = f.content.run (ui::SongIntent { Undo {} }, ui::Origin::control);
     REQUIRE_FALSE (undone.has_value());
     CHECK (undone.error().code == "ui.stop_recording_first");
@@ -193,14 +190,14 @@ TEST_CASE ("reading the app state twice never changes the meters the UI shows", 
     const auto shownBefore = f.content.songView()->shownMeters().master;
     REQUIRE (shownBefore > 0.0f);
 
-    f.audio().run (4); // the engine holds new peaks the window's poll has not taken yet
+    f.audio().run (4);
     const auto first = stateOf (f, { "meters" });
     const auto second = stateOf (f, { "meters" });
 
     CHECK (first == second);
     CHECK (first["meters"]["master"] == shownBefore);
     CHECK (json (f.content.songView()->shownMeters().master) == json (shownBefore));
-    f.content.tick(); // the poll still finds the peaks the reads left
+    f.content.tick();
     CHECK (f.content.songView()->shownMeters().master > 0.0f);
 }
 
@@ -220,7 +217,7 @@ TEST_CASE ("during an export the app is not idle and its activity is the export"
     CHECK (state["activity"]["counter"] == 1);
     CHECK (state["refused"]["record"] == "ui.export_running");
     CHECK (state["refused"]["undo"] == nullptr);
-    CHECK (f.workspace->isIdle()); // the Workspace's own check ignores an export
+    CHECK (f.workspace->isIdle());
 }
 
 TEST_CASE ("the activity counter grows with each start and last_finish records the error code", "[control][app_state]")

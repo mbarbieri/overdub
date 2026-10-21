@@ -429,7 +429,6 @@ TEST_CASE ("replies a client never reads past the outbox limit close it as too s
 
 namespace
 {
-// A state reader over `kind` in the section "activity"; any other part is a bad field.
 StateReader activityReader (const std::string& kind)
 {
     return [&kind] (const json& parts) -> Reply {

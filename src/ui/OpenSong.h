@@ -366,7 +366,7 @@ private:
 
     ActivityLog ownActivityLog;
     ActivityLog& activityLog;
-    std::uint64_t activityCounter = 0; // the running activity's
+    std::uint64_t activityCounter = 0;
     std::unique_ptr<song::SongPackage> package_;
     song::SeparationTools separationTools;
     bool sampleRateChanged = false;

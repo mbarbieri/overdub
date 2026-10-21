@@ -81,7 +81,7 @@ struct EventAfter
 };
 struct PointerEquals
 {
-    nlohmann::json::json_pointer pointer; // its first token is the section read
+    nlohmann::json::json_pointer pointer;
     nlohmann::json equals;
 };
 using WaitCondition = std::variant<EventAfter, PointerEquals>;

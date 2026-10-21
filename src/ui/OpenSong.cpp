@@ -592,7 +592,7 @@ std::vector<core::Error> OpenSong::finishPass (capture::FinishedPass finished)
     endActivity (errors.empty() ? std::nullopt : std::optional<std::string> (errors.front().code));
     if (cameraLost)
         disarmLostCamera();
-    reloadEngine(); // the Pass's Takes and Clips, when it was added
+    reloadEngine();
     return errors;
 }
 
