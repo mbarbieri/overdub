@@ -31,6 +31,10 @@ std::string defaultSocketPath();
 // path that replaces the default), either may be null.
 ServerConfig serverConfigFrom (const char* controlVariable, const char* socketVariable);
 
+// The bytes without a trailing UTF-8 sequence that was cut short, as proc_name leaves a name it
+// truncates mid-character. Everything before the cut is kept as is.
+std::string withoutIncompleteUtf8Tail (std::string bytes);
+
 class Server
 {
 public:

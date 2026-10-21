@@ -175,7 +175,7 @@ std::string processName (pid_t pid)
         return "unknown process";
     char name[2 * MAXCOMLEN + 1] {};
     if (::proc_name (pid, name, sizeof (name)) > 0)
-        return name;
+        return withoutIncompleteUtf8Tail (name);
     return "pid " + std::to_string (pid);
 }
 } // namespace
@@ -206,6 +206,25 @@ ServerConfig serverConfigFrom (const char* controlVariable, const char* socketVa
         config.privateFolder = true;
     }
     return config;
+}
+
+std::string withoutIncompleteUtf8Tail (std::string bytes)
+{
+    // Find the last lead byte (anything but 10xxxxxx) within the longest sequence's 4 bytes.
+    const auto searched = std::min<std::size_t> (bytes.size(), 4);
+    for (std::size_t back = 1; back <= searched; ++back)
+    {
+        const auto lead = (unsigned char) bytes[bytes.size() - back];
+        if ((lead & 0xc0) == 0x80)
+            continue;
+        const std::size_t expected = lead < 0x80 ? 1 : (lead & 0xe0) == 0xc0 ? 2
+                                                 : (lead & 0xf0) == 0xe0     ? 3
+                                                                             : 4;
+        if (back < expected)
+            bytes.resize (bytes.size() - back);
+        break;
+    }
+    return bytes;
 }
 
 std::unique_ptr<Server> Server::start (const ServerConfig& config, Controller controller)

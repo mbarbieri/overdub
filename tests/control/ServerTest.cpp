@@ -405,6 +405,17 @@ TEST_CASE ("a departed client is forgotten once a pump passes its 3 s, while a l
     CHECK (server->clientProcesses (start) == std::vector<std::string> { "overdub_tests" });
 }
 
+TEST_CASE ("a process name cut mid-character loses the partial UTF-8 sequence", "[control][server]")
+{
+    // "ab" then the first two of the three bytes of U+20AC (e2 82 ac).
+    CHECK (withoutIncompleteUtf8Tail ("ab\xe2\x82") == "ab");
+    CHECK (withoutIncompleteUtf8Tail ("ab\xe2") == "ab");
+    CHECK (withoutIncompleteUtf8Tail ("ab\xe2\x82\xac") == "ab\xe2\x82\xac");
+    CHECK (withoutIncompleteUtf8Tail ("ab\xc3\xa9\xf0\x9f\x8e") == "ab\xc3\xa9");
+    CHECK (withoutIncompleteUtf8Tail ("python3") == "python3");
+    CHECK (withoutIncompleteUtf8Tail ("") == "");
+}
+
 TEST_CASE ("one pump reads a bounded number of bytes from a client", "[control][server]")
 {
     overdub::core::ScopedLogCapture capture;
