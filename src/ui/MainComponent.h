@@ -149,6 +149,8 @@ public:
     bool isVideoPreviewShown() const { return videoPreview != nullptr && videoPreview->isShown(); }
     // Shows the open Song's current state.
     void refresh();
+    // The code of the Notice the Notice line shows now; none while it is hidden.
+    std::optional<std::string> noticeShown() const { return noticeLine.isVisible() ? noticeCode : std::nullopt; }
 
     bool keyPressed (const juce::KeyPress& key) override;
     // Every mouse down in the window, children's included: one outside the Mixer's (or the Record
@@ -218,6 +220,7 @@ private:
 
     Mode currentMode = Mode::record;
     UserMessageQueue messages;
+    std::optional<std::string> noticeCode; // the last Notice shown
     bool videoPreviewWanted = false;
     std::unique_ptr<VideoPreviewWindow> videoPreview;
     // Null while no Song is open.

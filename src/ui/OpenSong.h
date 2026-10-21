@@ -133,8 +133,10 @@ class OpenSong
 {
 public:
     // Loads the Song into the engine, with Monitoring on for no Track, at the Song's playhead, and
-    // starts loading its plugins through `instantiate` (none load when it is empty).
-    OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio, plugin::Instantiator instantiate = {});
+    // starts loading its plugins through `instantiate` (none load when it is empty). Its activities
+    // are counted in `sharedActivityLog` (the Workspace's, which must outlive it), or in its own
+    // when null.
+    OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio, plugin::Instantiator instantiate = {}, ActivityLog* sharedActivityLog = nullptr);
     // detachAudio() (errors logged), then the package captures the plugins' state and writes what
     // is pending as it closes.
     ~OpenSong();
@@ -166,6 +168,9 @@ public:
 
     // The Error the running activity would refuse this gesture with (ui/Activity.h); none when allowed.
     std::optional<core::Error> refusalOf (Gesture gesture) const { return refusal (activity, gesture); }
+
+    ActivityKind activityKind() const { return kindOf (activity); }
+    const ActivityLog& activities() const { return activityLog; }
 
     // True from record() until poll() (or detachAudio(), when the movie is complete) has finished the Pass (its movie completed).
     bool isRecording() const { return std::holds_alternative<PassActivity> (activity); }
@@ -281,6 +286,7 @@ public:
     // given the monitored Tracks with the Song. Errors: refusal()'s.
     core::Expected<void> setMonitoring (const song::Id& trackId, bool on);
     bool isMonitoring (const song::Id& trackId) const { return monitored.contains (trackId); }
+    const std::set<song::Id>& monitoredTracks() const { return monitored; }
 
     // Whether Tracks can be added by import or deleted now (Gesture::changeTracks): not while a
     // Pass, a Separation or an export runs.
@@ -339,6 +345,9 @@ private:
     // After a history change: detaches the audio when the rate changed since `before`, else setMix
     // when only the mix changed, else reloadEngine.
     void updateEngine (const song::Song& before);
+    // Every change of `activity` goes through these two, which count it in the ActivityLog.
+    void beginActivity (Activity started);
+    void endActivity (std::optional<std::string> errorCode);
     // Ends the running Pass (one must run) with what its recorder finished.
     std::vector<core::Error> finishPass (capture::FinishedPass finished);
     // The crashes the InsertHost heard since the last poll, as Notice errors (ui.plugin_crashed,
@@ -355,6 +364,9 @@ private:
     capture::SampleCount cameraCalibrationSamples (const std::string& cameraId) const;
     static int blockSizeOf (const AudioBinding& audio);
 
+    ActivityLog ownActivityLog;
+    ActivityLog& activityLog;
+    std::uint64_t activityCounter = 0; // the running activity's
     std::unique_ptr<song::SongPackage> package_;
     song::SeparationTools separationTools;
     bool sampleRateChanged = false;

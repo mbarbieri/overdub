@@ -1,6 +1,7 @@
 add_library(overdub_control STATIC)
 
 target_sources(overdub_control PRIVATE
+    AppState.cpp
     Controller.cpp
     EventTap.cpp
     IntentOps.cpp

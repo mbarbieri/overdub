@@ -6,8 +6,12 @@
 #include "song/SeparationRun.h"
 #include "ui/ExportRun.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
 #include <variant>
 
 // What an OpenSong runs besides playback (issue #145): nothing, a Pass, a Separation, a sample rate
@@ -78,4 +82,55 @@ std::optional<core::Error> refusal (const Activity& activity, Gesture gesture);
 
 // Whether the Error is one refusal() returns (its code, with the field `gesture`).
 bool isRefusal (const core::Error& error);
+
+// What runs in the app (issue #167): an OpenSong's activity, or a Workspace's calibration run.
+enum class ActivityKind
+{
+    idle,
+    pass,
+    separation,
+    conversion,
+    exportSong,
+    calibrationLatency,
+    calibrationClap,
+};
+inline constexpr std::pair<ActivityKind, std::string_view> activityKindNames[] {
+    { ActivityKind::idle, "idle" },
+    { ActivityKind::pass, "pass" },
+    { ActivityKind::separation, "separation" },
+    { ActivityKind::conversion, "conversion" },
+    { ActivityKind::exportSong, "export" },
+    { ActivityKind::calibrationLatency, "calibration_latency" },
+    { ActivityKind::calibrationClap, "calibration_clap" },
+};
+std::string_view activityKindName (ActivityKind kind);
+ActivityKind kindOf (const Activity& activity);
+
+// How the last activity to finish ended: the code of the Error it ended with, none on success.
+struct ActivityFinish
+{
+    ActivityKind kind = ActivityKind::idle;
+    std::uint64_t counter = 0;
+    std::optional<std::string> errorCode;
+};
+
+// The app's activities in order: start() numbers each one from 1 (its counter), finish() records
+// how it ended. A Workspace owns one and shares it with its OpenSong, so the counter never goes
+// back when a Song closes.
+class ActivityLog
+{
+public:
+    std::uint64_t start() { return ++started; }
+    void finish (ActivityKind kind, std::uint64_t counter, std::optional<std::string> errorCode)
+    {
+        last = ActivityFinish { kind, counter, std::move (errorCode) };
+    }
+
+    std::uint64_t counter() const { return started; }
+    const std::optional<ActivityFinish>& lastFinish() const { return last; }
+
+private:
+    std::uint64_t started = 0;
+    std::optional<ActivityFinish> last;
+};
 } // namespace overdub::ui

@@ -121,6 +121,14 @@ public:
     void attachSettingsPanels (DeviceSettingsPanel* devices, CalibrationPanel* calibration);
     const CalibrationState& calibration() const { return calibrationState; }
 
+    // What runs now: the open Song's activity, else a loopback run (calibration_latency), else idle.
+    ActivityKind activityKind() const;
+    // Every activity started and finished in this Workspace, the open Songs' included.
+    const ActivityLog& activities() const { return activityLog; }
+    // The code run would refuse this App Intent with now because something runs; none when it
+    // would run.
+    std::optional<std::string> refusalCodeOf (const AppIntent& intent) const;
+
     // Call regularly (window timer): answers a device change the LiveAudio reported once it may
     // (see the header comment), and advances a loopback run (`now` is its clock).
     void tick (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
@@ -186,6 +194,9 @@ private:
     CalibrationPanel* calibrationPanel = nullptr;
     // The device change reported and not answered yet (the newest wins).
     std::optional<engine::DeviceChange> pendingDeviceChange;
+    // Before `song`, which counts its activities here until it is destroyed.
+    ActivityLog activityLog;
+    std::uint64_t latencyRunCounter = 0;
     // Invariant: declared before `song`, so the device keeps running while a Pass finishes.
     std::unique_ptr<LiveAudio> live;
     std::unique_ptr<OpenSong> song;

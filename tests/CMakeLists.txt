@@ -16,6 +16,7 @@ target_sources(overdub_tests PRIVATE
     capture/PassRecorderTest.cpp
     capture/PassRecorderVideoTest.cpp
     capture/VideoPlacementTest.cpp
+    control/AppStateTest.cpp
     control/ControllerTest.cpp
     control/EventTapTest.cpp
     control/IntentOpsTest.cpp

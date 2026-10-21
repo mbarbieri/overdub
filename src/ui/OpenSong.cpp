@@ -16,8 +16,9 @@ namespace
 constexpr int blockSizeWithoutDevice = 512;
 } // namespace
 
-OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio, plugin::Instantiator instantiate)
-    : package_ (std::move (package)),
+OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding audio, plugin::Instantiator instantiate, ActivityLog* sharedActivityLog)
+    : activityLog (sharedActivityLog != nullptr ? *sharedActivityLog : ownActivityLog),
+      package_ (std::move (package)),
       inserts (std::move (instantiate),
                [this] (const std::string& hash) { return package_->loadPluginState (hash); },
                package_->song().sampleRate,
@@ -92,7 +93,7 @@ std::vector<core::Error> OpenSong::detachAudio()
     if (auto* exporting = std::get_if<ExportActivity> (&activity))
     {
         exporting->run->stop ("audio_detached");
-        activity = Idle {};
+        endActivity ("ui.export_stopped");
     }
     std::vector<core::Error> errors;
     if (auto* pass = std::get_if<PassActivity> (&activity); pass != nullptr && binding.engine != nullptr)
@@ -183,7 +184,7 @@ core::Expected<void> OpenSong::record()
     if (! started.has_value())
         return std::unexpected (started.error());
 
-    activity = PassActivity { .recorder = std::move (*started), .number = passNumber, .preRollPoint = options.recordPoint };
+    beginActivity (PassActivity { .recorder = std::move (*started), .number = passNumber, .preRollPoint = options.recordPoint });
     // A Mixer preview still applied (a drag the Pass interrupts) gives way to the Song's mix.
     binding.engine->setMix (song());
     if (usePreRoll)
@@ -400,7 +401,7 @@ core::Expected<void> OpenSong::startSeparation (const song::Id& trackId, song::S
     auto started = song::SeparationRun::start (*package_, trackId, separationTools, now);
     if (! started.has_value())
         return std::unexpected (started.error());
-    activity = SeparationActivity { std::move (*started) };
+    beginActivity (SeparationActivity { std::move (*started) });
     if (binding.engine != nullptr)
         binding.engine->stop();
     return {};
@@ -412,7 +413,7 @@ void OpenSong::cancelSeparation (song::SongPackage::Clock::time_point now)
     if (separation == nullptr)
         return;
     separation->run->cancel (now);
-    activity = Idle {};
+    endActivity ("song.separation_cancelled");
     reloadEngine();
 }
 
@@ -436,7 +437,7 @@ std::optional<core::Error> OpenSong::advanceSeparation (song::SongPackage::Clock
     auto ended = separation->run->advance (now);
     if (! ended.has_value())
         return std::nullopt;
-    activity = Idle {};
+    endActivity (ended->has_value() ? std::nullopt : std::optional<std::string> (ended->error().code));
     reloadEngine();
     if (! ended->has_value())
         return ended->error();
@@ -452,7 +453,7 @@ core::Expected<void> OpenSong::startSampleRateConversion (int toRate, song::Song
     auto started = song::SampleRateConversionRun::start (*package_, toRate, now);
     if (! started.has_value())
         return std::unexpected (started.error());
-    activity = ConversionActivity { std::move (*started) };
+    beginActivity (ConversionActivity { std::move (*started) });
     if (binding.engine != nullptr)
         binding.engine->stop();
     return {};
@@ -464,7 +465,7 @@ void OpenSong::cancelSampleRateConversion (song::SongPackage::Clock::time_point 
     if (conversion == nullptr)
         return;
     conversion->run->cancel (now);
-    activity = Idle {};
+    endActivity ("song.conversion_cancelled");
 }
 
 double OpenSong::conversionFraction() const
@@ -488,7 +489,7 @@ std::optional<core::Error> OpenSong::advanceConversion (song::SongPackage::Clock
     auto ended = conversion->run->advance (now);
     if (! ended.has_value())
         return std::nullopt;
-    activity = Idle {};
+    endActivity (ended->has_value() ? std::nullopt : std::optional<std::string> (ended->error().code));
     updateEngine (before);
     if (! ended->has_value())
         return ended->error();
@@ -569,10 +570,6 @@ std::vector<core::Error> OpenSong::finishPass (capture::FinishedPass finished)
     const auto& pass = std::get<PassActivity> (activity);
     const auto passNumber = pass.number;
     const auto cameraLost = pass.cameraLost;
-    activity = Idle {};
-    if (cameraLost)
-        disarmLostCamera();
-    reloadEngine(); // the Pass's Takes and Clips, when it was added
 
     std::vector<core::Error> errors;
     // The rest of the performance was not recorded: an Alert, shown once the Pass has ended.
@@ -585,11 +582,31 @@ std::vector<core::Error> OpenSong::finishPass (capture::FinishedPass finished)
         // A Pass the device stopped before it began captured nothing: the Alert above says why.
         if (! (deviceLost && finished.pass.error().code == "capture.pass_empty"))
             errors.push_back (finished.pass.error());
-        return errors;
     }
-    for (auto& notice : finished.pass->notices) // the Pass stands; its Video Take may not
-        errors.push_back (std::move (notice));
+    else
+    {
+        for (auto& notice : finished.pass->notices) // the Pass stands; its Video Take may not
+            errors.push_back (std::move (notice));
+    }
+
+    endActivity (errors.empty() ? std::nullopt : std::optional<std::string> (errors.front().code));
+    if (cameraLost)
+        disarmLostCamera();
+    reloadEngine(); // the Pass's Takes and Clips, when it was added
     return errors;
+}
+
+void OpenSong::beginActivity (Activity started)
+{
+    activity = std::move (started);
+    activityCounter = activityLog.start();
+}
+
+void OpenSong::endActivity (std::optional<std::string> errorCode)
+{
+    const auto kind = kindOf (activity);
+    activity = Idle {};
+    activityLog.finish (kind, activityCounter, std::move (errorCode));
 }
 
 //==============================================================================
@@ -772,7 +789,7 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, so
     core::logEvent (core::Level::info, "ui.export_requested", fields);
     auto run = std::make_unique<ExportRun> (std::move (request), std::move (movie), *package_, inserts, blockSizeOf (binding), now);
     auto& started = *run;
-    activity = ExportActivity { std::move (run) };
+    beginActivity (ExportActivity { std::move (run) });
     // Without audio nothing else renders the plugins: the export starts now.
     if (auto error = endExportIfEnded (started.advance (now, audioLetGoOfPlugins())))
         return std::unexpected (std::move (*error));
@@ -800,7 +817,7 @@ std::optional<core::Error> OpenSong::endExportIfEnded (std::optional<ExportEnd> 
 {
     if (! end.has_value())
         return std::nullopt;
-    activity = Idle {};
+    endActivity (end->error.has_value() ? std::optional<std::string> (end->error->code) : std::nullopt);
     reloadEngine();
     lastExport = std::move (end->file);
     return std::move (end->error);
