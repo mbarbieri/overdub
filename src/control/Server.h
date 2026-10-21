@@ -64,8 +64,8 @@ public:
     // is still seen on the top bar (ADR 0008 Security).
     static constexpr auto departedClientLinger = std::chrono::seconds (3);
 
-    // The connected clients' process names (ADR 0008 Security), oldest connection first, then
-    // the clients that disconnected less than departedClientLinger before now, oldest first.
+    // The connected clients' process names (ADR 0008 Security), each once, oldest connection
+    // first, then those of clients that disconnected less than departedClientLinger before now.
     std::vector<std::string> clientProcesses (Clock::time_point now) const;
 
 private:

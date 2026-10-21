@@ -30,7 +30,7 @@ struct TopBarState
     std::vector<std::string> controllingProcesses;
 };
 
-// The indicator's name line: "<first>", or "<first> +N" with N others; empty with none.
+// The indicator's name line: "<first>", or "<first> +N" with N other processes; empty with none.
 std::string controlIndicatorName (const std::vector<std::string>& processes);
 
 // The transport clock: the time over its status line.

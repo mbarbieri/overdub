@@ -340,7 +340,7 @@ TEST_CASE ("the server names each connected client's process and forgets it 3 s 
     const auto connected = lastEvent (capture, "control.client_connected");
     CHECK (connected["peer_pid"] == (int) ::getpid());
     CHECK (connected["process"] == "overdub_tests");
-    CHECK (server->clientProcesses (start) == std::vector<std::string> { "overdub_tests", "overdub_tests" });
+    CHECK (server->clientProcesses (start) == std::vector<std::string> { "overdub_tests" });
 
     first.reset();
     second.reset();
@@ -399,9 +399,37 @@ TEST_CASE ("a departed client is forgotten once a pump passes its 3 s, while a l
     Client staying (temp.socketPath());
     REQUIRE (staying.connected);
     server->pump (start + std::chrono::seconds (1));
-    CHECK (server->clientProcesses (start + std::chrono::seconds (1)).size() == 2);
+    CHECK (server->clientProcesses (start + std::chrono::seconds (1)) == std::vector<std::string> { "overdub_tests" });
 
     server->pump (start + std::chrono::milliseconds (3100));
+    CHECK (server->clientProcesses (start) == std::vector<std::string> { "overdub_tests" });
+}
+
+TEST_CASE ("one process that keeps reconnecting is listed once, beside itself connected", "[control][server]")
+{
+    overdub::core::ScopedLogCapture capture;
+    TempSocketFolder temp;
+    auto server = Server::start (configFor (temp.socketPath()), plainController());
+    REQUIRE (server != nullptr);
+
+    const auto start = Clock::now();
+    Client staying (temp.socketPath());
+    REQUIRE (staying.connected);
+    server->pump (start);
+    for (int call = 1; call <= 3; ++call)
+    {
+        auto oneShot = std::make_unique<Client> (temp.socketPath());
+        REQUIRE (oneShot->connected);
+        server->pump (start);
+        oneShot.reset();
+        for (int attempt = 0; attempt < 200 && countEvents (capture, "control.client_disconnected") < call; ++attempt)
+        {
+            server->pump (start);
+            ::usleep (1000);
+        }
+        REQUIRE (countEvents (capture, "control.client_disconnected") == call);
+    }
+
     CHECK (server->clientProcesses (start) == std::vector<std::string> { "overdub_tests" });
 }
 

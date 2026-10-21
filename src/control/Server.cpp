@@ -370,6 +370,7 @@ void Server::pump (Clock::time_point now)
         if (closing[i].has_value())
         {
             close (clients[i], *closing[i]);
+            std::erase_if (departedClients, [&] (const DepartedClient& departed) { return departed.process == clients[i].process; });
             departedClients.push_back (DepartedClient { .process = clients[i].process, .leftAt = now });
         }
     for (std::size_t i = clients.size(); i-- > 0;)
@@ -382,11 +383,15 @@ void Server::pump (Clock::time_point now)
 std::vector<std::string> Server::clientProcesses (Clock::time_point now) const
 {
     std::vector<std::string> processes;
+    const auto addOnce = [&processes] (const std::string& process) {
+        if (! std::ranges::contains (processes, process))
+            processes.push_back (process);
+    };
     for (const auto& client : clients)
-        processes.push_back (client.process);
+        addOnce (client.process);
     for (const auto& departed : departedClients)
         if (now - departed.leftAt < departedClientLinger)
-            processes.push_back (departed.process);
+            addOnce (departed.process);
     return processes;
 }
 
