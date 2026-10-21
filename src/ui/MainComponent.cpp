@@ -298,6 +298,7 @@ void MainComponent::presentMessages()
         if (message.tier == Tier::notice)
         {
             core::logEvent (core::Level::info, "ui.notice_shown", messageFields (message));
+            noticeCode = message.code;
             if (const auto rate = conversionOfferedBy (message))
                 noticeLine.show (sentence, juce::String::fromUTF8 (conversionActionText (*rate).c_str()), [this, toRate = *rate] { run (AppIntent { intent::ConvertSampleRate { toRate } }); });
             else

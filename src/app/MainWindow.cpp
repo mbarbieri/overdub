@@ -1,6 +1,7 @@
 #include "app/MainWindow.h"
 
 #include "capture/AvCamera.h"
+#include "control/AppState.h"
 #include "control/IntentOps.h"
 #include "ui/Layout.h"
 #include "ui/SongFiles.h"
@@ -126,7 +127,7 @@ MainWindow::MainWindow (const juce::String& name,
     content.grabKeyboardFocus();
     workspaceTick.startTimer (workspaceTickIntervalMs);
 
-    controlServer = control::Server::start (controlConfig, control::Controller { std::move (eventTap), control::intentOps (content) });
+    controlServer = control::Server::start (controlConfig, control::Controller { std::move (eventTap), control::intentOps (content), control::appStateReader (content, *workspace) });
     if (controlServer != nullptr)
         controlTick.startTimer (controlPollIntervalMs);
 }
@@ -159,7 +160,7 @@ juce::StringArray MainWindow::getMenuBarNames()
 juce::PopupMenu MainWindow::getMenuForIndex (int topLevelMenuIndex, const juce::String&)
 {
     juce::PopupMenu menu;
-    const auto idle = workspace->isIdle();
+    const auto idle = workspace->nothingRunsButAnExport();
     auto* openSong = workspace->openSong();
     if (topLevelMenuIndex == 0)
     {
@@ -222,7 +223,7 @@ void MainWindow::menuItemSelected (int menuItemID, int)
 
 void MainWindow::newSong()
 {
-    if (! workspace->idleOrNotice())
+    if (! workspace->nothingRunsButAnExportOrNotice())
         return;
     chooser = std::make_unique<juce::FileChooser> ("New Song", defaultSongFolder().getChildFile ("Untitled.overdub"), "*.overdub");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& finished) {
@@ -233,7 +234,7 @@ void MainWindow::newSong()
 
 void MainWindow::chooseSongToOpen()
 {
-    if (! workspace->idleOrNotice())
+    if (! workspace->nothingRunsButAnExportOrNotice())
         return;
     chooser = std::make_unique<juce::FileChooser> ("Open Song", defaultSongFolder(), "*.overdub");
     const auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories | juce::FileBrowserComponent::canSelectFiles;
@@ -245,7 +246,7 @@ void MainWindow::chooseSongToOpen()
 
 void MainWindow::duplicateSong()
 {
-    if (workspace->openSong() == nullptr || ! workspace->idleOrNotice())
+    if (workspace->openSong() == nullptr || ! workspace->nothingRunsButAnExportOrNotice())
         return;
     const auto current = workspace->openSong()->package().location();
     chooser = std::make_unique<juce::FileChooser> ("Duplicate Song", current.getSiblingFile (current.getFileNameWithoutExtension() + " copy.overdub"), "*.overdub");

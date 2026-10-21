@@ -730,9 +730,9 @@ void SongView::poll (song::SongPackage::Clock::time_point now)
 
 void SongView::showMeters()
 {
-    const auto peaks = openSong.meterPeaks();
-    editPage.mixer.showMeters (peaks);
-    recordPage.showMeters (peaks);
+    shownPeaks = openSong.meterPeaks();
+    editPage.mixer.showMeters (shownPeaks);
+    recordPage.showMeters (shownPeaks);
 }
 
 void SongView::refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs, VideoScreen* preview)

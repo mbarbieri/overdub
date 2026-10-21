@@ -62,6 +62,8 @@ public:
     void poll (song::SongPackage::Clock::time_point now);
     // One poll of the engine's peaks for the Mixer's and the Record rows' meters.
     void showMeters();
+    // The peaks the meters show, as the last showMeters took them. Reading them takes no peak.
+    const engine::MeterPeaks& shownMeters() const { return shownPeaks; }
     // Shows the frame heard `refreshNs` after `nowHostNs` on `preview` (when not null) and on the
     // Record stage when it shows playback.
     void refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs, VideoScreen* preview);
@@ -152,6 +154,7 @@ private:
 
     // A slot whose editor opens once its plugin is ready (just added, or clicked while loading).
     std::optional<song::Id> pendingEditorSlot;
+    engine::MeterPeaks shownPeaks;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SongView)
 };

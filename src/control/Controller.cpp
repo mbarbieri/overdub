@@ -42,6 +42,15 @@ bool passesFilter (const EventFilter& filter, std::string_view event, core::Leve
     return std::ranges::any_of (filter.prefixes, [event] (const std::string& prefix) { return event.starts_with (prefix); });
 }
 
+// The pointer's first reference token: the app state section it reads. The pointer is not empty.
+std::string sectionOf (const nlohmann::json::json_pointer& pointer)
+{
+    auto top = pointer;
+    while (! top.parent_pointer().empty())
+        top = top.parent_pointer();
+    return top.back();
+}
+
 nlohmann::json parsedLine (const std::string& line)
 {
     auto parsed = nlohmann::json::parse (line, nullptr, false);
@@ -59,9 +68,10 @@ std::string_view closeReasonName (CloseReason reason)
     return "client_too_slow";
 }
 
-Controller::Controller (std::shared_ptr<EventTap> eventTap, OpHandler handler)
+Controller::Controller (std::shared_ptr<EventTap> eventTap, OpHandler handler, StateReader stateReader)
     : tap (std::move (eventTap)),
-      otherOps (handler ? std::move (handler) : OpHandler (unknownOp))
+      otherOps (handler ? std::move (handler) : OpHandler (unknownOp)),
+      readState (std::move (stateReader))
 {
 }
 
@@ -159,6 +169,15 @@ std::optional<Reply> Controller::runOp (Connection& connection, const Request& r
         return subscribe (connection, request.fields);
     if (request.op == waitOp)
         return startWait (connection, request, now);
+    if (request.op == stateOp)
+    {
+        if (! readState)
+            return unknownOp (request);
+        auto state = readState (request.fields.contains ("parts") ? request.fields["parts"] : nlohmann::json());
+        if (! state.has_value())
+            core::logError (state.error(), core::Level::debug);
+        return state;
+    }
     return otherOps (request);
 }
 
@@ -188,6 +207,16 @@ Reply Controller::subscribe (Connection& connection, const nlohmann::json& field
 std::optional<Reply> Controller::startWait (Connection& connection, const Request& request, Clock::time_point now)
 {
     const auto& fields = request.fields;
+    auto timeoutMs = defaultWaitMs;
+    if (fields.contains ("timeout_ms"))
+    {
+        const auto& timeout = fields["timeout_ms"];
+        if (! timeout.is_number_integer() || timeout.get<std::int64_t>() < 0 || timeout.get<std::int64_t>() > maxWaitMs)
+            return badField ("timeout_ms", "timeout_ms is a whole number of milliseconds up to ten minutes");
+        timeoutMs = timeout.get<std::int64_t>();
+    }
+    if (fields.contains ("pointer"))
+        return startPointerWait (connection, request, timeoutMs, now);
     if (! fields.contains ("event") || ! fields["event"].is_string() || fields["event"].get<std::string>().empty())
         return badField ("event", "event is the event name to wait for");
 
@@ -197,15 +226,6 @@ std::optional<Reply> Controller::startWait (Connection& connection, const Reques
         if (! fields["since"].is_number_unsigned())
             return badField ("since", "since is a seq number");
         since = fields["since"].get<std::uint64_t>();
-    }
-
-    auto timeoutMs = defaultWaitMs;
-    if (fields.contains ("timeout_ms"))
-    {
-        const auto& timeout = fields["timeout_ms"];
-        if (! timeout.is_number_integer() || timeout.get<std::int64_t>() < 0 || timeout.get<std::int64_t>() > maxWaitMs)
-            return badField ("timeout_ms", "timeout_ms is a whole number of milliseconds up to ten minutes");
-        timeoutMs = timeout.get<std::int64_t>();
     }
 
     PendingWait wait {
@@ -222,20 +242,84 @@ std::optional<Reply> Controller::startWait (Connection& connection, const Reques
     return std::nullopt;
 }
 
+std::optional<Reply> Controller::startPointerWait (Connection& connection, const Request& request, std::int64_t timeoutMs, Clock::time_point now)
+{
+    const auto& fields = request.fields;
+    if (! readState)
+        return unknownOp (request);
+    if (! fields["pointer"].is_string())
+        return badField ("pointer", "pointer is a JSON pointer into the app state, such as /activity/kind");
+    std::optional<nlohmann::json::json_pointer> pointer;
+    try
+    {
+        pointer.emplace (fields["pointer"].get<std::string>());
+    }
+    catch (const nlohmann::json::exception&)
+    {
+        return badField ("pointer", "pointer is a JSON pointer into the app state, such as /activity/kind");
+    }
+    if (pointer->empty())
+        return badField ("pointer", "pointer names a section of the app state, such as /activity/kind");
+    if (! fields.contains ("equals"))
+        return badField ("equals", "equals is the value to wait for at the pointer");
+    if (auto section = readState (nlohmann::json::array ({ sectionOf (*pointer) })); ! section.has_value())
+        return badField ("pointer", "pointer names a section of the app state, such as /activity/kind");
+
+    PendingWait wait {
+        .requestId = request.id,
+        .until = PointerEquals { .pointer = std::move (*pointer), .equals = fields["equals"] },
+        .deadline = now + std::chrono::milliseconds (timeoutMs),
+        .timeoutMs = timeoutMs,
+    };
+    if (auto reached = pointerReached (std::get<PointerEquals> (wait.until)))
+        return std::move (*reached);
+    connection.waits.push_back (std::move (wait));
+    return std::nullopt;
+}
+
+std::optional<nlohmann::json> Controller::valueAt (const nlohmann::json::json_pointer& pointer) const
+{
+    const auto section = readState (nlohmann::json::array ({ sectionOf (pointer) }));
+    if (! section.has_value() || ! section->contains (pointer))
+        return std::nullopt;
+    return section->at (pointer);
+}
+
+std::optional<nlohmann::json> Controller::pointerReached (const PointerEquals& condition) const
+{
+    auto value = valueAt (condition.pointer);
+    if (! value.has_value() || *value != condition.equals)
+        return std::nullopt;
+    return nlohmann::json { { "pointer", condition.pointer.to_string() }, { "value", std::move (*value) } };
+}
+
+void Controller::answerPointerWaits()
+{
+    for (auto& [id, connection] : connections)
+        std::erase_if (connection.waits, [&] (const PendingWait& wait) {
+            const auto* condition = std::get_if<PointerEquals> (&wait.until);
+            if (condition == nullptr)
+                return false;
+            auto reached = pointerReached (*condition);
+            if (! reached.has_value())
+                return false;
+            connection.held.push_back ({ wait.requestId, std::move (*reached) });
+            return true;
+        });
+}
+
 std::optional<Reply> Controller::matchWait (const PendingWait& wait, const DeliveredLine& line) const
 {
-    return std::visit (
-        [&line] (const EventAfter& condition) -> std::optional<Reply> {
-        if (line.seq <= condition.since || line.event != condition.event)
-            return std::nullopt;
-        return nlohmann::json { { "event", parsedLine (line.line) }, { "event_seq", line.seq } };
-    },
-        wait.until);
+    const auto* condition = std::get_if<EventAfter> (&wait.until);
+    if (condition == nullptr || line.seq <= condition->since || line.event != condition->event)
+        return std::nullopt;
+    return nlohmann::json { { "event", parsedLine (line.line) }, { "event_seq", line.seq } };
 }
 
 void Controller::pump (Clock::time_point now)
 {
     deliver (tap->drain());
+    answerPointerWaits();
     expireWaitsAndDeliverTheirTimeouts (now);
 
     for (auto& [id, connection] : connections)
@@ -293,16 +377,25 @@ void Controller::expireWaitsAndDeliverTheirTimeouts (Clock::time_point now)
         std::erase_if (connection.waits, [&] (const PendingWait& wait) {
             if (now < wait.deadline)
                 return false;
-            const auto& condition = std::get<EventAfter> (wait.until);
-            connection.held.push_back ({ wait.requestId,
-                                         std::unexpected (protocolError ("control.wait_timed_out",
-                                                                         "The event did not arrive in time",
-                                                                         { { "event", condition.event },
-                                                                           { "since", condition.since },
-                                                                           { "timeout_ms", wait.timeoutMs } })) });
+            connection.held.push_back ({ wait.requestId, std::unexpected (timedOut (wait)) });
             return true;
         });
     deliver (tap->drain());
+}
+
+core::Error Controller::timedOut (const PendingWait& wait) const
+{
+    if (const auto* condition = std::get_if<PointerEquals> (&wait.until))
+    {
+        core::Fields fields { { "pointer", condition->pointer.to_string() }, { "equals", condition->equals }, { "timeout_ms", wait.timeoutMs } };
+        if (auto value = valueAt (condition->pointer))
+            fields["value"] = std::move (*value);
+        else
+            fields["missing"] = true;
+        return protocolError ("control.wait_timed_out", "The app state did not reach the value in time", std::move (fields));
+    }
+    const auto& condition = std::get<EventAfter> (wait.until);
+    return protocolError ("control.wait_timed_out", "The event did not arrive in time", { { "event", condition.event }, { "since", condition.since }, { "timeout_ms", wait.timeoutMs } });
 }
 
 void Controller::deliverEvent (Connection& connection, const DeliveredLine& line)

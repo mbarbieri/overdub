@@ -30,8 +30,8 @@
 //            {"id": .., "ok": false, "seq": n, "error": {"code", "message", "fields"}}
 //   event    {"seq": n, "event": <the log line object>}          only after `subscribe`
 //            {"seq": n, "event": {"event": "control.events_dropped", "count": n}}
-// Ops: hello, subscribe {events: [prefix...], level}, wait {event, since, timeout_ms}; any other op
-// goes to the handler given at construction.
+// Ops: hello, subscribe {events: [prefix...], level}, state {parts}, wait {event, since, timeout_ms}
+// or wait {pointer, equals, timeout_ms}; any other op goes to the handler given at construction.
 //
 // Ordering: a reply is held until the next pump has drained the EventTap and delivered the lines
 // to every Connection, and it carries the seq of the last line delivered. So on every Connection
@@ -53,6 +53,9 @@ struct Request
 // error reply carries.
 using Reply = core::Expected<nlohmann::json>;
 using OpHandler = std::function<Reply (const Request&)>;
+// Reads the app state's sections named in `parts` (null: every section), or the Error that names
+// a bad `parts` (control/AppState.h), not logged: the Controller logs what it answers.
+using StateReader = std::function<Reply (const nlohmann::json& parts)>;
 
 enum class CloseReason
 {
@@ -69,13 +72,20 @@ struct EventFilter
     core::Level minLevel = core::Level::info;
 };
 
-// `wait`'s conditions. #167 adds a JSON pointer into the app state equal to a value.
+// `wait`'s conditions: an event logged after `since`, or the app state's value at a JSON pointer
+// equal to `equals`, sampled once per pump while the wait is pending (a change and back within one
+// pump is missed). A pointer that does not resolve has no value: it never equals, not even null.
 struct EventAfter
 {
     std::string event; // exact event name
     std::uint64_t since = 0;
 };
-using WaitCondition = std::variant<EventAfter>;
+struct PointerEquals
+{
+    nlohmann::json::json_pointer pointer;
+    nlohmann::json equals;
+};
+using WaitCondition = std::variant<EventAfter, PointerEquals>;
 
 class Controller
 {
@@ -96,11 +106,13 @@ public:
     static constexpr std::string_view helloOp = "hello";
     static constexpr std::string_view subscribeOp = "subscribe";
     static constexpr std::string_view waitOp = "wait";
-    static constexpr std::array ownOps { helloOp, subscribeOp, waitOp };
+    static constexpr std::string_view stateOp = "state";
+    static constexpr std::array ownOps { helloOp, subscribeOp, waitOp, stateOp };
 
-    // `otherOps` answers every op not in ownOps; the default answers
+    // `otherOps` answers every op not in ownOps; the default answers control.unknown_op.
+    // `readState` answers `state` and the pointer form of `wait`; without it both answer
     // control.unknown_op.
-    explicit Controller (std::shared_ptr<EventTap> tap, OpHandler otherOps = {});
+    explicit Controller (std::shared_ptr<EventTap> tap, OpHandler otherOps = {}, StateReader readState = {});
 
     ConnectionId connect();
     void disconnect (ConnectionId connection);
@@ -162,6 +174,13 @@ private:
     Reply subscribe (Connection& connection, const nlohmann::json& fields);
     std::optional<Reply> startWait (Connection& connection, const Request& request, Clock::time_point now);
     std::optional<Reply> matchWait (const PendingWait& wait, const DeliveredLine& line) const;
+    std::optional<Reply> startPointerWait (Connection& connection, const Request& request, std::int64_t timeoutMs, Clock::time_point now);
+    // The value at the pointer now; none when the pointer does not resolve, which is not null.
+    std::optional<nlohmann::json> valueAt (const nlohmann::json::json_pointer& pointer) const;
+    // The reply once the pointer resolves to a value equal to `equals`; none before.
+    std::optional<nlohmann::json> pointerReached (const PointerEquals& condition) const;
+    void answerPointerWaits();
+    core::Error timedOut (const PendingWait& wait) const;
 
     void deliver (TappedBatch batch);
     void expireWaitsAndDeliverTheirTimeouts (Clock::time_point now);
@@ -171,6 +190,7 @@ private:
 
     std::shared_ptr<EventTap> tap;
     OpHandler otherOps;
+    StateReader readState;
     std::map<ConnectionId, Connection> connections;
     ConnectionId nextConnection = 1;
     std::deque<DeliveredLine> lookback;

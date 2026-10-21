@@ -146,7 +146,7 @@ TEST_CASE ("every op in Controller::ownOps is answered by the Controller and nev
         CHECK (takeLines (controller, client).size() == 1);
     }
 
-    CHECK (Controller::ownOps == std::array<std::string_view, 3> { "hello", "subscribe", "wait" });
+    CHECK (Controller::ownOps == std::array<std::string_view, 4> { "hello", "subscribe", "wait", "state" });
     CHECK (handled.empty());
 }
 
@@ -425,4 +425,137 @@ TEST_CASE ("replies a client never reads past the outbox limit close it as too s
 
     CHECK (controller.closeReason (client) == CloseReason::tooSlow);
     CHECK (controller.pendingOutput (client).empty());
+}
+
+namespace
+{
+StateReader activityReader (const std::string& kind)
+{
+    return [&kind] (const json& parts) -> Reply {
+        if (! parts.is_null() && parts != json::array ({ "activity" }))
+            return std::unexpected (overdub::core::Error { "control.bad_field", "no such part", { { "key", "parts" } } });
+        return json { { "activity", { { "kind", kind } } } };
+    };
+}
+} // namespace
+
+TEST_CASE ("state answers what the reader reads, and unknown_op without a reader", "[control][controller][state]")
+{
+    overdub::core::ScopedLogCapture capture;
+    std::string kind = "idle";
+    Controller controller { std::make_shared<EventTap>(), {}, activityReader (kind) };
+    Controller withoutState { std::make_shared<EventTap>() };
+    const auto client = controller.connect();
+    const auto other = withoutState.connect();
+
+    controller.receive (client, "{\"id\":1,\"op\":\"state\",\"parts\":[\"activity\"]}\n{\"id\":2,\"op\":\"state\",\"parts\":[\"view\"]}\n", start);
+    controller.pump (start);
+    withoutState.receive (other, "{\"id\":3,\"op\":\"state\"}\n", start);
+    withoutState.pump (start);
+
+    const auto lines = takeLines (controller, client);
+    REQUIRE (lines.size() == 2);
+    CHECK (lines[0] == json { { "id", 1 }, { "ok", true }, { "seq", 0 }, { "activity", { { "kind", "idle" } } } });
+    CHECK (lines[1]["error"]["code"] == "control.bad_field");
+    CHECK (lines[1]["error"]["fields"]["key"] == "parts");
+    const auto refused = takeLines (withoutState, other);
+    REQUIRE (refused.size() == 1);
+    CHECK (refused[0]["error"]["code"] == "control.unknown_op");
+}
+
+TEST_CASE ("a pointer wait answers on the first pump that reads the value, and at once when it already holds", "[control][controller][wait]")
+{
+    std::string kind = "export";
+    Controller controller { std::make_shared<EventTap>(), {}, activityReader (kind) };
+    const auto client = controller.connect();
+
+    controller.receive (client, "{\"id\":1,\"op\":\"wait\",\"pointer\":\"/activity/kind\",\"equals\":\"idle\",\"timeout_ms\":1000}\n", start);
+    controller.pump (start);
+    CHECK (controller.pendingOutput (client).empty());
+    CHECK (controller.hasPendingWork (client));
+
+    kind = "idle";
+    controller.pump (start + std::chrono::milliseconds (30));
+    auto lines = takeLines (controller, client);
+    REQUIRE (lines.size() == 1);
+    CHECK (lines[0] == json { { "id", 1 }, { "ok", true }, { "seq", 0 }, { "pointer", "/activity/kind" }, { "value", "idle" } });
+    CHECK (! controller.hasPendingWork (client));
+
+    controller.receive (client, "{\"id\":2,\"op\":\"wait\",\"pointer\":\"/activity/kind\",\"equals\":\"idle\"}\n", start);
+    controller.pump (start);
+    lines = takeLines (controller, client);
+    REQUIRE (lines.size() == 1);
+    CHECK (lines[0] == json { { "id", 2 }, { "ok", true }, { "seq", 0 }, { "pointer", "/activity/kind" }, { "value", "idle" } });
+}
+
+TEST_CASE ("a pointer wait times out with the value it last read", "[control][controller][wait]")
+{
+    overdub::core::ScopedLogCapture capture;
+    std::string kind = "export";
+    Controller controller { std::make_shared<EventTap>(), {}, activityReader (kind) };
+    const auto client = controller.connect();
+
+    controller.receive (client, "{\"id\":1,\"op\":\"wait\",\"pointer\":\"/activity/kind\",\"equals\":\"idle\",\"timeout_ms\":250}\n", start);
+    controller.pump (start + std::chrono::milliseconds (249));
+    CHECK (controller.pendingOutput (client).empty());
+
+    controller.pump (start + std::chrono::milliseconds (250));
+    const auto lines = takeLines (controller, client);
+    REQUIRE (lines.size() == 1);
+    CHECK (lines[0]["error"]["code"] == "control.wait_timed_out");
+    CHECK (lines[0]["error"]["fields"] == json { { "pointer", "/activity/kind" }, { "equals", "idle" }, { "value", "export" }, { "timeout_ms", 250 } });
+    CHECK (! controller.hasPendingWork (client));
+}
+
+TEST_CASE ("a pointer wait with a malformed pointer, an unknown section or no equals is a bad field", "[control][controller][wait]")
+{
+    overdub::core::ScopedLogCapture capture;
+    std::string kind = "idle";
+    Controller controller { std::make_shared<EventTap>(), {}, activityReader (kind) };
+    const auto client = controller.connect();
+
+    controller.receive (client,
+                        "{\"id\":1,\"op\":\"wait\",\"pointer\":\"activity\",\"equals\":\"idle\"}\n"
+                        "{\"id\":2,\"op\":\"wait\",\"pointer\":\"/view/mode\",\"equals\":\"edit\"}\n"
+                        "{\"id\":3,\"op\":\"wait\",\"pointer\":\"/activity/kind\"}\n"
+                        "{\"id\":4,\"op\":\"wait\",\"pointer\":\"\",\"equals\":1}\n",
+                        start);
+    controller.pump (start);
+
+    const auto lines = takeLines (controller, client);
+    REQUIRE (lines.size() == 4);
+    CHECK (lines[0]["error"]["fields"]["key"] == "pointer");
+    CHECK (lines[1]["error"]["fields"]["key"] == "pointer");
+    CHECK (lines[2]["error"]["fields"]["key"] == "equals");
+    CHECK (lines[3]["error"]["fields"]["key"] == "pointer");
+    for (const auto& line : lines)
+        CHECK (line["error"]["code"] == "control.bad_field");
+}
+
+TEST_CASE ("a pointer that does not resolve is missing, not null: equals null waits until it resolves, and a timeout says missing", "[control][controller][wait]")
+{
+    overdub::core::ScopedLogCapture capture;
+    json activity = { { "kind", "idle" } };
+    const StateReader reader = [&activity] (const json&) -> Reply { return json { { "activity", activity } }; };
+    Controller controller { std::make_shared<EventTap>(), {}, reader };
+    const auto client = controller.connect();
+
+    controller.receive (client,
+                        "{\"id\":1,\"op\":\"wait\",\"pointer\":\"/activity/error\",\"equals\":null,\"timeout_ms\":1000}\n"
+                        "{\"id\":2,\"op\":\"wait\",\"pointer\":\"/activity/other\",\"equals\":null,\"timeout_ms\":100}\n",
+                        start);
+    controller.pump (start);
+    CHECK (controller.pendingOutput (client).empty());
+
+    activity["error"] = nullptr;
+    controller.pump (start + std::chrono::milliseconds (30));
+    auto lines = takeLines (controller, client);
+    REQUIRE (lines.size() == 1);
+    CHECK (lines[0] == json { { "id", 1 }, { "ok", true }, { "seq", 0 }, { "pointer", "/activity/error" }, { "value", nullptr } });
+
+    controller.pump (start + std::chrono::milliseconds (100));
+    lines = takeLines (controller, client);
+    REQUIRE (lines.size() == 1);
+    CHECK (lines[0]["error"]["code"] == "control.wait_timed_out");
+    CHECK (lines[0]["error"]["fields"] == json { { "pointer", "/activity/other" }, { "equals", nullptr }, { "missing", true }, { "timeout_ms", 100 } });
 }

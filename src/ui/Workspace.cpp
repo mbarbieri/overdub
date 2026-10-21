@@ -49,7 +49,7 @@ Workspace::~Workspace()
     closeSong();
 }
 
-bool Workspace::isIdle() const
+bool Workspace::nothingRunsButAnExport() const
 {
     return ! runningCode().has_value();
 }
@@ -69,7 +69,7 @@ std::optional<std::string> Workspace::runningCode() const
     return std::nullopt;
 }
 
-bool Workspace::idleOrNotice()
+bool Workspace::nothingRunsButAnExportOrNotice()
 {
     const auto running = runningCode();
     if (running.has_value())
@@ -108,11 +108,34 @@ bool waitsForIdle (const AppIntent& intent)
 }
 } // namespace
 
+std::optional<std::string> Workspace::refusalCodeOf (const AppIntent& appIntent) const
+{
+    // quit closes the Song, finishing a Pass as on close; only the modal Separation holds it.
+    if (std::holds_alternative<intent::Quit> (appIntent))
+        return song != nullptr && song->isSeparating() ? std::optional<std::string> ("ui.separation_running") : std::nullopt;
+    if (! waitsForIdle (appIntent))
+        return std::nullopt;
+    if (auto running = runningCode())
+        return running;
+    // runningCode() ignores an export, which the open Song's activity refuses a conversion under.
+    if (std::holds_alternative<intent::ConvertSampleRate> (appIntent) && song != nullptr)
+        if (const auto refused = song->refusalOf (Gesture::startSampleRateConversion))
+            return refused->code;
+    return std::nullopt;
+}
+
+ActivityKind Workspace::activityKind() const
+{
+    if (song != nullptr && song->activityKind() != ActivityKind::idle)
+        return song->activityKind();
+    return latencyMeasuring() ? ActivityKind::calibrationLatency : ActivityKind::idle;
+}
+
 IntentResult Workspace::run (const AppIntent& appIntent)
 {
     using namespace intent;
-    if (const auto running = runningCode(); running.has_value() && waitsForIdle (appIntent))
-        return refuseWhileRunning (*running, core::operationName (appIntent));
+    if (const auto refused = refusalCodeOf (appIntent))
+        return refuseWhileRunning (*refused, core::operationName (appIntent));
     return core::visitExhaustively (
         appIntent,
         core::Overloaded {
@@ -134,8 +157,6 @@ IntentResult Workspace::run (const AppIntent& appIntent)
 
 IntentResult Workspace::quit()
 {
-    if (song != nullptr && song->isSeparating())
-        return refuseWhileRunning ("ui.separation_running", intent::Quit::op);
     if (onQuit)
         onQuit();
     return IntentDone {};
@@ -165,7 +186,7 @@ void Workspace::showSong (std::unique_ptr<song::SongPackage> package, const std:
         if (devicePanel != nullptr)
             devicePanel->show (live->deviceChoices());
     }
-    song = std::make_unique<OpenSong> (std::move (package), live->audioBinding(), instantiate);
+    song = std::make_unique<OpenSong> (std::move (package), live->audioBinding(), instantiate, &activityLog);
     if (files.separationHelper != juce::File())
         song->setSeparationTools (song::SeparationTools { .model = files.separationModel, .startHelper = song::separationHelperProcess (files.separationHelper) });
     showRateMismatch();
@@ -344,7 +365,7 @@ void Workspace::answerSongRateChange()
 {
     // The Song detached its audio when its rate changed (issue #160): the device is opened again
     // at the new rate when it offers it, as when a Song opens.
-    if (song == nullptr || ! isIdle() || ! song->takeSampleRateChanged())
+    if (song == nullptr || ! nothingRunsButAnExport() || ! song->takeSampleRateChanged())
         return;
     core::logEvent (core::Level::info, "ui.audio_reopened", { { "change", "song_rate_changed" } });
     reopenAudio();
@@ -360,7 +381,7 @@ void Workspace::answerDeviceChange()
     const auto change = *pendingDeviceChange;
     const auto urgent = change == engine::DeviceChange::lost || change == engine::DeviceChange::reconfigured;
     const auto exporting = song != nullptr && song->isExporting();
-    if (! isIdle() || (! urgent && exporting))
+    if (! nothingRunsButAnExport() || (! urgent && exporting))
         return;
 
     pendingDeviceChange.reset();
@@ -424,6 +445,7 @@ IntentResult Workspace::measureLatency()
 
     // The run plays its own Song on the engine; the open Song is bound again when it ends.
     detachAudio();
+    latencyRunCounter = activityLog.start();
     const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getNonexistentChildFile ("overdub-calibration-loopback", "", false);
     auto started = capture::LoopbackRun::start (*engine, live->recordLatency(), live->sampleRate(), folder);
     if (started.has_value())
@@ -458,6 +480,7 @@ void Workspace::pollLatencyRun (song::SongPackage::Clock::time_point now)
         return;
     auto outcome = std::move (*latencyOutcome);
     latencyOutcome.reset();
+    activityLog.finish (ActivityKind::calibrationLatency, latencyRunCounter, outcome.has_value() ? std::nullopt : std::optional<std::string> (outcome.error().code));
     if (song != nullptr)
         song->attachAudio (live->audioBinding());
     content.refresh();
@@ -490,7 +513,9 @@ IntentResult Workspace::measureClapPass()
 {
     if (song == nullptr)
         return content.quietError (noSongOpen (intent::MeasureClapPass::op));
+    const auto counter = activityLog.start();
     auto measured = capture::measureNewestVideoTake (song->song(), song->package().location());
+    activityLog.finish (ActivityKind::calibrationClap, counter, measured.has_value() ? std::nullopt : std::optional<std::string> (measured.error().code));
     if (! measured.has_value())
         core::logError (measured.error(), core::Level::warn);
     else
