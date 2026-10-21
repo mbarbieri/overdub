@@ -387,6 +387,8 @@ struct CensusWorkspace
             f.content.run (ui::SongIntent { Undo {} });
         while (! songAsBuilt() && f.song().package().canRedo())
             f.content.run (ui::SongIntent { Redo {} });
+        // A gesture that edited outside history leaves no undo step to reach the built Song by.
+        REQUIRE (songAsBuilt());
         const auto view = control::appState (f.content, *f.workspace, std::array<std::string_view, 1> { "view" })["view"];
         const auto differs = [&view, this] (const json::json_pointer& pointer) { return view.value (pointer, json()) != builtView.value (pointer, json()); };
         if (differs ("/selected_clip"_json_pointer) || differs ("/selected_video_take"_json_pointer))
