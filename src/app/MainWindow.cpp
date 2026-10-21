@@ -1,6 +1,7 @@
 #include "app/MainWindow.h"
 
 #include "capture/AvCamera.h"
+#include "control/AppState.h"
 #include "control/IntentOps.h"
 #include "ui/Layout.h"
 #include "ui/SongFiles.h"
@@ -126,7 +127,7 @@ MainWindow::MainWindow (const juce::String& name,
     content.grabKeyboardFocus();
     workspaceTick.startTimer (workspaceTickIntervalMs);
 
-    controlServer = control::Server::start (controlConfig, control::Controller { std::move (eventTap), control::intentOps (content) });
+    controlServer = control::Server::start (controlConfig, control::Controller { std::move (eventTap), control::intentOps (content), control::appStateReader (content, *workspace) });
     if (controlServer != nullptr)
         controlTick.startTimer (controlPollIntervalMs);
 }

@@ -1,5 +1,7 @@
 #include "control/AppState.h"
 
+#include "control/ControllerHarness.h"
+#include "control/IntentOps.h"
 #include "core/Described.h"
 #include "core/Log.h"
 #include "song/SongJson.h"
@@ -8,6 +10,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
 
+#include <chrono>
+#include <memory>
 #include <set>
 #include <string>
 #include <string_view>
@@ -230,4 +234,88 @@ TEST_CASE ("the activity counter grows with each start and last_finish records t
     REQUIRE (f.run (ui::AppIntent { MeasureClapPass {} }).has_value());
 
     CHECK (stateOf (f, { "activity" })["activity"] == json { { "kind", "idle" }, { "progress", 0.0 }, { "counter", 2 }, { "last_finish", { { "kind", "calibration_clap" }, { "counter", 2 }, { "error_code", "capture.clap_no_video_take" } } } });
+}
+
+namespace
+{
+struct SocketToWorkspace
+{
+    WorkspaceFixture f;
+    control::Clock::time_point now {};
+    std::shared_ptr<control::EventTap> tap = std::make_shared<control::EventTap>();
+    std::unique_ptr<control::Controller> controller;
+    control::ConnectionId client = 0;
+
+    SocketToWorkspace()
+    {
+        f.launch();
+        f.openSong();
+        controller = std::make_unique<control::Controller> (tap, control::intentOps (f.content), control::appStateReader (f.content, *f.workspace));
+        client = controller->connect();
+    }
+
+    std::vector<json> send (const std::string& request, std::chrono::milliseconds later = {})
+    {
+        now += later;
+        controller->receive (client, request + "\n", now);
+        controller->pump (now);
+        return control::testing::takeLines (*controller, client);
+    }
+
+    std::vector<json> pump (std::chrono::milliseconds later)
+    {
+        now += later;
+        controller->pump (now);
+        return control::testing::takeLines (*controller, client);
+    }
+};
+} // namespace
+
+TEST_CASE ("state over the socket answers the sections asked for, and refuses an unknown one", "[control][app_state][socket]")
+{
+    overdub::core::ScopedLogCapture capture;
+    SocketToWorkspace socket;
+    const auto trackId = socket.send (R"({"id":1,"op":"add_track"})").at (0).at ("created_id").get<std::string>();
+
+    const auto lines = socket.send (R"({"id":2,"op":"state","parts":["history","view"]})");
+
+    REQUIRE (lines.size() == 1);
+    CHECK (lines[0]["ok"] == true);
+    CHECK (lines[0]["history"] == json { { "can_undo", true }, { "undo_label", "Add Track 1" }, { "can_redo", false }, { "redo_label", "" } });
+    CHECK (lines[0]["view"]["mode"] == "record");
+    CHECK_FALSE (lines[0].contains ("song"));
+    CHECK (song::findTrack (socket.f.song().song(), trackId) != nullptr);
+
+    const auto all = socket.send (R"({"id":3,"op":"state"})");
+    REQUIRE (all.size() == 1);
+    for (const auto part : control::appStateParts)
+        CHECK (all[0].contains (std::string (part)));
+
+    const auto refused = socket.send (R"({"id":4,"op":"state","parts":["song","nope"]})");
+    REQUIRE (refused.size() == 1);
+    CHECK (refused[0]["error"]["code"] == "control.bad_field");
+    CHECK (refused[0]["error"]["fields"]["key"] == "parts");
+}
+
+TEST_CASE ("a pointer wait over the socket answers once an Intent changes the app state, and times out otherwise", "[control][app_state][socket][wait]")
+{
+    overdub::core::ScopedLogCapture capture;
+    SocketToWorkspace socket;
+
+    CHECK (socket.send (R"({"id":1,"op":"wait","pointer":"/view/mode","equals":"edit","timeout_ms":2000})").empty());
+    CHECK (socket.pump (std::chrono::milliseconds (30)).empty());
+
+    const auto lines = socket.send (R"({"id":2,"op":"show_mode","mode":"edit"})", std::chrono::milliseconds (30));
+    REQUIRE (lines.size() == 2);
+    CHECK (lines[0]["id"] == 2);
+    CHECK (lines[0]["ok"] == true);
+    CHECK (lines[1]["id"] == 1);
+    CHECK (lines[1]["pointer"] == "/view/mode");
+    CHECK (lines[1]["value"] == "edit");
+
+    CHECK (socket.send (R"({"id":3,"op":"wait","pointer":"/activity/kind","equals":"export","timeout_ms":100})").empty());
+    const auto timedOut = socket.pump (std::chrono::milliseconds (100));
+    REQUIRE (timedOut.size() == 1);
+    CHECK (timedOut[0]["error"]["code"] == "control.wait_timed_out");
+    CHECK (timedOut[0]["error"]["fields"] == json { { "pointer", "/activity/kind" }, { "equals", "export" }, { "value", "idle" }, { "timeout_ms", 100 } });
 }

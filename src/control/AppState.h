@@ -1,5 +1,7 @@
 #pragma once
 
+#include "control/Controller.h"
+
 #include <nlohmann/json.hpp>
 
 #include <array>
@@ -67,4 +69,8 @@ inline constexpr std::array<std::string_view, 15> appStateParts {
 
 // The sections named in `parts` (each one of appStateParts).
 nlohmann::json appState (const ui::MainComponent& window, const ui::Workspace& workspace, std::span<const std::string_view> parts = appStateParts);
+
+// The Controller's `state` reader: `parts` null reads every section, else it is a list of section
+// names (control.bad_field with key "parts" for anything else). Both must outlive it.
+StateReader appStateReader (const ui::MainComponent& window, const ui::Workspace& workspace);
 } // namespace overdub::control

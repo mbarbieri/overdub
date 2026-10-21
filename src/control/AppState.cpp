@@ -3,6 +3,7 @@
 #include "capture/ClapMeasurement.h"
 #include "capture/LoopbackMeasurement.h"
 #include "core/Described.h"
+#include "core/Log.h"
 #include "song/SongJson.h"
 #include "ui/MainComponent.h"
 #include "ui/Workspace.h"
@@ -12,6 +13,7 @@
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace overdub::control
 {
@@ -411,5 +413,29 @@ json appState (const ui::MainComponent& window, const ui::Workspace& workspace, 
     for (const auto part : parts)
         state[std::string (part)] = section (part, window, workspace);
     return state;
+}
+
+StateReader appStateReader (const ui::MainComponent& window, const ui::Workspace& workspace)
+{
+    return [&window, &workspace] (const json& parts) -> Reply {
+        if (parts.is_null())
+            return appState (window, workspace);
+        const auto badParts = [] {
+            core::Error error { "control.bad_field", "parts is a list of app state sections", { { "key", "parts" }, { "expected", appStateParts } } };
+            core::logError (error, core::Level::debug);
+            return std::unexpected (std::move (error));
+        };
+        if (! parts.is_array())
+            return badParts();
+        std::vector<std::string_view> named;
+        for (const auto& part : parts)
+        {
+            const auto found = part.is_string() ? std::ranges::find (appStateParts, part.get_ref<const std::string&>()) : appStateParts.end();
+            if (found == appStateParts.end())
+                return badParts();
+            named.push_back (*found);
+        }
+        return appState (window, workspace, named);
+    };
 }
 } // namespace overdub::control
