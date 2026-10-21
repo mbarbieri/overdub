@@ -102,10 +102,11 @@ public:
     // Null while no Song is open.
     OpenSong* openSong() const { return song.get(); }
     LiveAudio& liveAudio() const { return *live; }
-    // True when no Pass, Separation, conversion or loopback run is running.
-    bool isIdle() const;
-    // isIdle(), or false after showing the Notice that says what runs (before opening a dialog).
-    bool idleOrNotice();
+    // True when no Pass, Separation, conversion or loopback run is running; an export may be.
+    bool nothingRunsButAnExport() const;
+    // nothingRunsButAnExport(), or false after showing the Notice that says what runs (before
+    // opening a dialog).
+    bool nothingRunsButAnExportOrNotice();
 
     // Runs one App Intent (see the header comment). An Error is presented by its tier, except
     // ui.no_song_open, which is logged at debug.
@@ -141,7 +142,7 @@ public:
     std::function<void()> onQuit;
 
 private:
-    // The Notice code of what runs, none when idle.
+    // The Notice code of what runs, none when nothing runs but an export.
     std::optional<std::string> runningCode() const;
     // `op` refused because something runs: the Error, presented as its Notice.
     IntentResult refuseWhileRunning (const std::string& code, std::string_view op);

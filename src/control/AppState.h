@@ -45,8 +45,9 @@ class Workspace;
 //   monitoring   [track ids]
 //   meters       {"tracks": {track id: peak}, "inputs": {track id: peak}, "master"}
 //   refused      {op: the code that op is refused with now, or null}: the run dialog's
-//                (ui.run_dialog_open), the Workspace's (App Intents while something runs) and the
-//                running activity's (ui/Activity.h refusal())
+//                (ui.run_dialog_open), the Workspace's (App Intents while something runs, and
+//                convert_sample_rate under the open Song's activity) and the running activity's
+//                (ui/Activity.h refusal())
 namespace overdub::control
 {
 inline constexpr std::array<std::string_view, 15> appStateParts {

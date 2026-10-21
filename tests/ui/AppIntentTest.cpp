@@ -68,12 +68,12 @@ void startSeparation (WorkspaceFixture& f)
 void finishLatencyRun (WorkspaceFixture& f)
 {
     const auto deadline = std::chrono::steady_clock::now() + 30s;
-    while (! f.workspace->isIdle() && std::chrono::steady_clock::now() < deadline)
+    while (! f.workspace->nothingRunsButAnExport() && std::chrono::steady_clock::now() < deadline)
     {
         f.audio().run (8);
         f.workspace->tick();
     }
-    REQUIRE (f.workspace->isIdle());
+    REQUIRE (f.workspace->nothingRunsButAnExport());
 }
 } // namespace
 
@@ -308,7 +308,7 @@ TEST_CASE ("measure_latency works with the Settings window closed, and the panel
 
     REQUIRE (f.run (AppIntent { MeasureLatency {} }).has_value());
     CHECK (std::holds_alternative<LatencyMeasuring> (f.workspace->calibration().latency));
-    CHECK_FALSE (f.workspace->isIdle());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExport());
     finishLatencyRun (f);
 
     const auto* measured = std::get_if<LatencyMeasured> (&f.workspace->calibration().latency);
@@ -340,7 +340,7 @@ TEST_CASE ("measure_latency without an audio device says so and runs nothing", "
     CHECK (result.error().code == "ui.no_audio_device");
     CHECK (contains (messageCodes (capture), "ui.no_audio_device"));
     CHECK (std::holds_alternative<std::monostate> (f.workspace->calibration().latency));
-    CHECK (f.workspace->isIdle());
+    CHECK (f.workspace->nothingRunsButAnExport());
 }
 
 TEST_CASE ("save_latency_calibration stores the offset, and the panel shows the device calibrated", "[ui][workspace][app_intent][calibration]")

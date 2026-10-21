@@ -34,16 +34,32 @@ std::string nameOf (core::EnumNames<Enum> names, Enum value)
     return found != names.end() ? std::string (found->second) : std::string();
 }
 
-// The Song ops some running activity may refuse, and with which ui::Gesture; every other Song op
-// is never refused by an activity. The plain edits (intent::Edit) are all Gesture::edit.
+// Every Song op and the ui::Gesture a running activity may refuse it as; nullopt: no activity ever
+// refuses it. Exhaustive, so a new Song op does not compile until it is decided here.
 struct SongOpGesture
 {
     std::string_view op;
-    ui::Gesture gesture;
+    std::optional<ui::Gesture> gesture;
 };
 constexpr SongOpGesture songOpGestures[] {
+    { "move_clip", ui::Gesture::edit },
+    { "trim_clip_start", ui::Gesture::edit },
+    { "trim_clip_end", ui::Gesture::edit },
+    { "set_clip_fade_in", ui::Gesture::edit },
+    { "set_clip_fade_out", ui::Gesture::edit },
+    { "set_clip_gain", ui::Gesture::edit },
+    { "bring_back_pass", ui::Gesture::edit },
+    { "set_track_volume", ui::Gesture::edit },
+    { "set_track_pan", ui::Gesture::edit },
+    { "set_master_volume", ui::Gesture::edit },
+    { "set_track_mute", ui::Gesture::edit },
+    { "set_track_solo", ui::Gesture::edit },
+    { "remove_insert", ui::Gesture::edit },
+    { "move_insert", ui::Gesture::edit },
+    { "set_insert_bypassed", ui::Gesture::edit },
     { "record", ui::Gesture::record },
     { "play_or_stop", ui::Gesture::playOrStop },
+    { "rewind", std::nullopt },
     { "undo", ui::Gesture::undo },
     { "redo", ui::Gesture::redo },
     { "seek", ui::Gesture::seek },
@@ -57,6 +73,7 @@ constexpr SongOpGesture songOpGestures[] {
     { "set_input_channels", ui::Gesture::setInputChannels },
     { "set_monitoring", ui::Gesture::setMonitoring },
     { "start_separation", ui::Gesture::startSeparation },
+    { "cancel_run", std::nullopt },
     { "set_pre_roll", ui::Gesture::setPreRoll },
     { "set_camera_armed", ui::Gesture::setCameraArmed },
     { "set_camera_device", ui::Gesture::setCameraDevice },
@@ -65,22 +82,39 @@ constexpr SongOpGesture songOpGestures[] {
     { "take_lane_click", ui::Gesture::edit },
     { "preview_mix", ui::Gesture::previewMix },
     { "add_insert", ui::Gesture::addInsert },
+    { "open_insert_editor", std::nullopt },
+    { "close_plugin_window", std::nullopt },
+    { "set_export_format", std::nullopt },
+    { "set_export_length", std::nullopt },
+    { "set_export_destination", std::nullopt },
+    { "set_export_video_take", std::nullopt },
     { "export", ui::Gesture::startExport },
+    { "reveal_export", std::nullopt },
+    { "select_clip", std::nullopt },
+    { "select_video_take", std::nullopt },
+    { "set_timeline_view", std::nullopt },
+    { "set_vertical_scroll", std::nullopt },
+    { "set_take_lanes_unfolded", std::nullopt },
+    { "set_mixer_visible", std::nullopt },
+    { "set_mixer_height", std::nullopt },
+    { "set_passes_panel_open", std::nullopt },
+    { "clear_clip_indicator", std::nullopt },
 };
 
-constexpr bool everySongOpGestureNamesASongOp()
+constexpr bool songOpGesturesNameEverySongOpOnce()
 {
     const auto names = core::operationNames<ui::SongIntent>();
-    return std::ranges::all_of (songOpGestures, [&names] (const SongOpGesture& entry) { return std::ranges::contains (names, entry.op); });
+    if (std::size (songOpGestures) != names.size())
+        return false;
+    return std::ranges::all_of (names, [] (std::string_view op) { return std::ranges::count (songOpGestures, op, &SongOpGesture::op) == 1; });
 }
-static_assert (everySongOpGestureNamesASongOp(), "songOpGestures names an op that is not a Song Intent");
+static_assert (std::size (songOpGestures) == core::operationNames<ui::SongIntent>().size(), "songOpGestures must list every Song op");
+static_assert (songOpGesturesNameEverySongOpOnce(), "songOpGestures must name each Song op exactly once");
 
 std::optional<ui::Gesture> gestureOf (std::string_view op)
 {
-    if (std::ranges::contains (core::operationNames<ui::intent::Edit>(), op))
-        return ui::Gesture::edit;
     const auto found = std::ranges::find (songOpGestures, op, &SongOpGesture::op);
-    return found != std::end (songOpGestures) ? std::optional (found->gesture) : std::nullopt;
+    return found != std::end (songOpGestures) ? found->gesture : std::nullopt;
 }
 
 json songSection (const ui::OpenSong* song)
@@ -421,9 +455,7 @@ StateReader appStateReader (const ui::MainComponent& window, const ui::Workspace
         if (parts.is_null())
             return appState (window, workspace);
         const auto badParts = [] {
-            core::Error error { "control.bad_field", "parts is a list of app state sections", { { "key", "parts" }, { "expected", appStateParts } } };
-            core::logError (error, core::Level::debug);
-            return std::unexpected (std::move (error));
+            return std::unexpected (core::Error { "control.bad_field", "parts is a list of app state sections", { { "key", "parts" }, { "expected", appStateParts } } });
         };
         if (! parts.is_array())
             return badParts();

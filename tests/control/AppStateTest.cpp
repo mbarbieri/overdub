@@ -4,6 +4,7 @@
 #include "control/IntentOps.h"
 #include "core/Described.h"
 #include "core/Log.h"
+#include "song/FakeSeparationHelper.h"
 #include "song/SongJson.h"
 #include "ui/WorkspaceFixture.h"
 
@@ -11,16 +12,19 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 using namespace overdub;
 using namespace overdub::ui::intent;
 using nlohmann::json;
 using overdub::control::appState;
+using overdub::ui::testing::eventsNamed;
 using overdub::ui::testing::WorkspaceFixture;
 
 namespace
@@ -38,30 +42,56 @@ json stateOf (WorkspaceFixture& f, std::vector<std::string_view> parts)
     return appState (f.content, *f.workspace, parts);
 }
 
+json activityOf (WorkspaceFixture& f)
+{
+    return stateOf (f, { "activity" })["activity"];
+}
+
+json finishedActivity (std::string_view kind, int counter, json errorCode)
+{
+    return { { "kind", "idle" }, { "progress", 0.0 }, { "counter", counter }, { "last_finish", { { "kind", kind }, { "counter", counter }, { "error_code", std::move (errorCode) } } } };
+}
+
+void run (WorkspaceFixture& f, const ui::Intent& intent)
+{
+    REQUIRE (f.content.run (intent, ui::Origin::control).has_value());
+}
+
+// A Pass from the playhead, stopped after 20 blocks; it must be added to the Song.
 void recordPass (WorkspaceFixture& f)
 {
-    REQUIRE (f.content.run (ui::SongIntent { Record {} }).has_value());
+    const auto passesBefore = f.song().song().passes.size();
+    run (f, ui::SongIntent { Record {} });
     f.runBlocks (20);
+    run (f, ui::SongIntent { PlayOrStop {} });
+    f.runBlocks (2);
+    REQUIRE_FALSE (f.song().isRecording());
+    REQUIRE (f.song().song().passes.size() == passesBefore + 1);
+}
+
+// Ends a running Pass the way the user does, so no Pass is left for teardown to abandon.
+void stopPass (WorkspaceFixture& f)
+{
+    if (! f.song().isRecording())
+        return;
     f.content.run (ui::SongIntent { PlayOrStop {} });
     f.runBlocks (2);
     REQUIRE_FALSE (f.song().isRecording());
-    REQUIRE (f.song().song().passes.size() == 1);
 }
 
-struct RichWorkspace
+// A Song with one recorded Pass, the Band Mix Clip selected and a Notice shown.
+struct SongWithPassSelectionAndNotice
 {
     WorkspaceFixture f;
     song::Id bandClip;
-    song::Id guitarId;
 
-    RichWorkspace()
+    SongWithPassSelectionAndNotice()
     {
         f.launch();
         f.openSong();
         recordPass (f);
         bandClip = f.song().song().tracks.front().clips.front().id;
-        guitarId = f.song().song().tracks.at (1).id;
-        REQUIRE (f.content.run (ui::SongIntent { SelectClip { bandClip } }).has_value());
+        run (f, ui::SongIntent { SelectClip { bandClip } });
         f.content.showNotice ("ui.no_audio_device");
     }
 };
@@ -69,8 +99,8 @@ struct RichWorkspace
 
 TEST_CASE ("the app state has every section, each with its keys, over a Song with a Pass, a selection and a Notice", "[control][app_state]")
 {
-    RichWorkspace rich;
-    auto& f = rich.f;
+    SongWithPassSelectionAndNotice fixture;
+    auto& f = fixture.f;
     const auto state = appState (f.content, *f.workspace);
 
     CHECK (keysOf (state) == std::set<std::string> { "song", "history", "transport", "activity", "idle", "view", "window", "messages", "audio", "calibration", "camera", "inserts", "monitoring", "meters", "refused" });
@@ -86,12 +116,12 @@ TEST_CASE ("the app state has every section, each with its keys, over a Song wit
     CHECK (state["transport"]["running_pass_number"] == 0);
     CHECK (state["transport"]["pre_roll_record_point"] == nullptr);
 
-    CHECK (state["activity"] == json { { "kind", "idle" }, { "progress", 0.0 }, { "counter", 1 }, { "last_finish", { { "kind", "pass" }, { "counter", 1 }, { "error_code", nullptr } } } });
+    CHECK (state["activity"] == finishedActivity ("pass", 1, nullptr));
     CHECK (state["idle"] == true);
 
     const auto& view = state["view"];
     CHECK (view["mode"] == "record");
-    CHECK (view["selected_clip"] == rich.bandClip);
+    CHECK (view["selected_clip"] == fixture.bandClip);
     CHECK (view["selected_video_take"] == nullptr);
     CHECK (keysOf (view["timeline"]) == std::set<std::string> { "first_sample", "samples_per_pixel", "vertical_scroll", "take_lanes_unfolded" });
     CHECK (view["timeline"]["take_lanes_unfolded"] == json::array());
@@ -154,7 +184,7 @@ TEST_CASE ("during a Pass the refused section names each refusal and the transpo
     WorkspaceFixture f;
     f.launch();
     f.openSong();
-    REQUIRE (f.content.run (ui::SongIntent { Record {} }).has_value());
+    run (f, ui::SongIntent { Record {} });
     f.runBlocks (4);
 
     const auto state = stateOf (f, { "refused", "transport", "activity", "idle" });
@@ -175,9 +205,7 @@ TEST_CASE ("during a Pass the refused section names each refusal and the transpo
     REQUIRE_FALSE (undone.has_value());
     CHECK (undone.error().code == "ui.stop_recording_first");
 
-    f.content.run (ui::SongIntent { PlayOrStop {} });
-    f.runBlocks (2);
-    REQUIRE_FALSE (f.song().isRecording());
+    stopPass (f);
 }
 
 TEST_CASE ("reading the app state twice never changes the meters the UI shows", "[control][app_state]")
@@ -185,7 +213,7 @@ TEST_CASE ("reading the app state twice never changes the meters the UI shows", 
     WorkspaceFixture f;
     f.launch();
     f.openSong();
-    REQUIRE (f.content.run (ui::SongIntent { PlayOrStop {} }).has_value());
+    run (f, ui::SongIntent { PlayOrStop {} });
     f.runBlocks (4);
     const auto shownBefore = f.content.songView()->shownMeters().master;
     REQUIRE (shownBefore > 0.0f);
@@ -201,14 +229,14 @@ TEST_CASE ("reading the app state twice never changes the meters the UI shows", 
     CHECK (f.content.songView()->shownMeters().master > 0.0f);
 }
 
-TEST_CASE ("during an export the app is not idle and its activity is the export", "[control][app_state]")
+TEST_CASE ("during an export the app is not idle, its activity is the export, and convert_sample_rate is refused as it runs", "[control][app_state]")
 {
     WorkspaceFixture f;
     f.launch();
     f.openSong();
-    REQUIRE (f.content.run (ui::SongIntent { SetExportDestination { core::AbsolutePath { f.folder.getChildFile ("Mix.wav").getFullPathName().toStdString() } } }).has_value());
+    run (f, ui::SongIntent { SetExportDestination { core::AbsolutePath { f.folder.getChildFile ("Mix.wav").getFullPathName().toStdString() } } });
 
-    REQUIRE (f.content.run (ui::SongIntent { Export {} }).has_value());
+    run (f, ui::SongIntent { Export {} });
 
     REQUIRE (f.song().isExporting());
     const auto state = stateOf (f, { "activity", "idle", "refused" });
@@ -217,21 +245,314 @@ TEST_CASE ("during an export the app is not idle and its activity is the export"
     CHECK (state["activity"]["counter"] == 1);
     CHECK (state["refused"]["record"] == "ui.export_running");
     CHECK (state["refused"]["undo"] == nullptr);
-    CHECK (f.workspace->isIdle());
+    CHECK (state["refused"]["convert_sample_rate"] == "ui.export_running");
+    CHECK (f.workspace->nothingRunsButAnExport());
+
+    const auto converted = f.run (ui::AppIntent { ConvertSampleRate { 44100 } });
+    REQUIRE_FALSE (converted.has_value());
+    CHECK (converted.error().code == "ui.export_running");
+    CHECK_FALSE (f.song().isConverting());
 }
 
-TEST_CASE ("the activity counter grows with each start and last_finish records the error code", "[control][app_state]")
+//==============================================================================
+// The refused section and the handlers (issue #167): every op the section names as refused,
+// run through MainComponent::run, answers that very code.
+
+namespace
+{
+// A Song where every op has something to act on: two Passes over the Guitar, an Insert on it, a
+// step to redo, the Band Mix Clip selected, Edit mode and an export destination.
+struct SongForEveryOp
+{
+    WorkspaceFixture f;
+    song::Id bandTrack;
+    song::Id bandClip;
+    song::Id guitarId;
+    song::Id firstPassId;
+    song::Id firstTakeId;
+    song::SampleCount firstTakeOrigin = 0;
+    song::Id slotId;
+
+    SongForEveryOp()
+    {
+        f.launch();
+        f.openSong();
+        const plugin::AvailableAudioUnit delay { { "aufx", "dely", "appl" }, "AUDelay", "Apple", "1.0" };
+        f.content.listInsertPlugins = [delay] { return std::vector<plugin::AvailableAudioUnit> { delay }; };
+        recordPass (f);
+        run (f, ui::SongIntent { Seek { 0 } });
+        recordPass (f);
+        const auto& song = f.song().song();
+        bandTrack = song.tracks.at (0).id;
+        bandClip = song.tracks.at (0).clips.front().id;
+        guitarId = song.tracks.at (1).id;
+        firstPassId = song.passes.front().id;
+        const auto& firstTake = *std::ranges::find (song.takes, firstPassId, &song::Take::passId);
+        firstTakeId = firstTake.id;
+        firstTakeOrigin = firstTake.origin;
+        slotId = *f.content.run (ui::SongIntent { AddInsert { guitarId, "aufx", "dely", "appl" } }, ui::Origin::control)->createdId;
+        run (f, ui::SongIntent { AddTrack {} });
+        run (f, ui::SongIntent { Undo {} });
+        run (f, ui::SongIntent { SetExportDestination { pathIn ("Mix.wav") } });
+        run (f, ui::SongIntent { SelectClip { bandClip } });
+        run (f, ui::WindowIntent { ShowMode { ui::Mode::edit } });
+    }
+
+    core::AbsolutePath pathIn (const std::string& name) const { return core::AbsolutePath { f.folder.getChildFile (name).getFullPathName().toStdString() }; }
+
+    // Each op's request fields, valid for this Song.
+    std::map<std::string, json> requests() const
+    {
+        const auto path = [this] (const std::string& name) { return pathIn (name).value; };
+        return {
+            { "new_song_at", { { "path", path ("New.overdub") } } },
+            { "open_song_at", { { "path", path ("Other.overdub") } } },
+            { "duplicate_song_to", { { "path", path ("Copy.overdub") } } },
+            { "convert_sample_rate", { { "rate", 44100 } } },
+            { "show_settings", { { "shown", true } } },
+            { "apply_device_settings", { { "device_type", "Fake" }, { "input_device", "Scarlett 2i2 USB" }, { "output_device", "Scarlett 2i2 USB" }, { "sample_rate", engine::testing::testSampleRate }, { "buffer_size", ui::testing::liveBlockSize } } },
+            { "measure_latency", json::object() },
+            { "save_latency_calibration", { { "offset_samples", 10 } } },
+            { "measure_clap_pass", json::object() },
+            { "save_camera_calibration", { { "camera_id", "camera" }, { "output_device", "Scarlett 2i2 USB" }, { "offset_ms", 1.0 } } },
+            { "move_clip", { { "clip_id", bandClip }, { "start", 100 } } },
+            { "trim_clip_start", { { "clip_id", bandClip }, { "start", 100 } } },
+            { "trim_clip_end", { { "clip_id", bandClip }, { "end", 1000 } } },
+            { "set_clip_fade_in", { { "clip_id", bandClip }, { "length", 100 } } },
+            { "set_clip_fade_out", { { "clip_id", bandClip }, { "length", 100 } } },
+            { "set_clip_gain", { { "clip_id", bandClip }, { "gain_db", -3.0 } } },
+            { "bring_back_pass", { { "pass_id", firstPassId } } },
+            { "set_track_volume", { { "track_id", guitarId }, { "volume_db", -3.0 } } },
+            { "set_track_pan", { { "track_id", guitarId }, { "pan", 0.5 } } },
+            { "set_master_volume", { { "volume_db", -3.0 } } },
+            { "set_track_mute", { { "track_id", guitarId }, { "mute", true } } },
+            { "set_track_solo", { { "track_id", guitarId }, { "solo", true } } },
+            { "remove_insert", { { "slot_id", slotId } } },
+            { "move_insert", { { "slot_id", slotId }, { "to_index", 0 } } },
+            { "set_insert_bypassed", { { "slot_id", slotId }, { "bypassed", true } } },
+            { "record", json::object() },
+            { "play_or_stop", json::object() },
+            { "undo", json::object() },
+            { "redo", json::object() },
+            { "seek", { { "sample", 0 } } },
+            { "jump_to_pass", { { "pass_id", firstPassId } } },
+            { "nudge", { { "direction", "forward" } } },
+            { "add_track", json::object() },
+            { "import_files", { { "files", { path ("Drop.wav") } } } },
+            { "delete_track", { { "track_id", guitarId } } },
+            { "move_track", { { "track_id", guitarId }, { "to_index", 0 } } },
+            { "set_armed", { { "track_id", guitarId }, { "armed", false } } },
+            { "set_input_channels", { { "track_id", guitarId }, { "channels", { 0 } } } },
+            { "set_monitoring", { { "track_id", guitarId }, { "on", true } } },
+            { "start_separation", { { "track_id", bandTrack } } },
+            { "set_pre_roll", { { "pre_roll", "one_second" } } },
+            { "set_camera_armed", { { "armed", true } } },
+            { "set_camera_device", { { "camera_id", "camera" } } },
+            { "split_selected_clip", json::object() },
+            { "delete_selection", json::object() },
+            { "take_lane_click", { { "take_id", firstTakeId }, { "at", firstTakeOrigin + 10 } } },
+            { "preview_mix", { { "edit", { { "op", "set_master_volume" }, { "volume_db", -3.0 } } } } },
+            { "add_insert", { { "track_id", guitarId }, { "type", "aufx" }, { "subtype", "dely" }, { "manufacturer", "appl" } } },
+            { "export", json::object() },
+        };
+    }
+
+    // Runs every op the refused section names as refused now, each answering with that code.
+    // Returns how many ran.
+    int runEveryRefusedOp()
+    {
+        const auto refused = stateOf (f, { "refused" })["refused"];
+        const auto requestFor = requests();
+        int ran = 0;
+        for (const auto& [op, code] : refused.items())
+        {
+            if (code.is_null())
+                continue;
+            INFO (op << " is refused with " << code << " in the app state");
+            const auto request = requestFor.find (op);
+            REQUIRE (request != requestFor.end());
+            auto object = request->second;
+            object["op"] = op;
+            const auto intent = core::parseOperation<ui::Intent> (object, "control.unknown_op", "control.bad_field");
+            REQUIRE (intent.has_value());
+
+            const auto result = f.content.run (*intent, ui::Origin::control);
+
+            REQUIRE_FALSE (result.has_value());
+            CHECK (result.error().code == code.get<std::string>());
+            ++ran;
+        }
+        return ran;
+    }
+};
+} // namespace
+
+TEST_CASE ("during a Pass every op the refused section names answers that code when run", "[control][app_state][refused]")
+{
+    SongForEveryOp every;
+    auto& f = every.f;
+    run (f, ui::SongIntent { Record {} });
+    f.runBlocks (4);
+    const auto songBefore = f.song().song();
+
+    const auto ran = every.runEveryRefusedOp();
+
+    CHECK (ran > 40);
+    CHECK (f.song().isRecording());
+    CHECK (f.opened.size() == 1);
+    CHECK (f.song().song() == songBefore);
+    stopPass (f);
+}
+
+TEST_CASE ("during an export every op the refused section names answers that code when run", "[control][app_state][refused]")
+{
+    SongForEveryOp every;
+    auto& f = every.f;
+    run (f, ui::SongIntent { Export {} });
+    REQUIRE (f.song().isExporting());
+    const auto songBefore = f.song().song();
+
+    const auto ran = every.runEveryRefusedOp();
+
+    CHECK (ran >= 6);
+    CHECK (f.song().isExporting());
+    CHECK (f.song().song() == songBefore);
+}
+
+//==============================================================================
+// The activity log: counter and last_finish
+
+TEST_CASE ("the activity counter grows with each start and last_finish records the error code", "[control][app_state][activity]")
 {
     WorkspaceFixture f;
     f.launch();
     f.openSong();
     recordPass (f);
-    CHECK (stateOf (f, { "activity" })["activity"]["counter"] == 1);
+    CHECK (activityOf (f)["counter"] == 1);
 
     REQUIRE (f.run (ui::AppIntent { MeasureClapPass {} }).has_value());
 
-    CHECK (stateOf (f, { "activity" })["activity"] == json { { "kind", "idle" }, { "progress", 0.0 }, { "counter", 2 }, { "last_finish", { { "kind", "calibration_clap" }, { "counter", 2 }, { "error_code", "capture.clap_no_video_take" } } } });
+    CHECK (activityOf (f) == finishedActivity ("calibration_clap", 2, "capture.clap_no_video_take"));
 }
+
+TEST_CASE ("a Pass that stood but raised a Notice finishes without an error code", "[control][app_state][activity]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    run (f, ui::SongIntent { SetCameraArmed { true } });
+    f.camera.beginError = core::Error { "capture.movie_write_failed", "the movie could not be written", {} };
+    core::ScopedLogCapture capture;
+
+    recordPass (f);
+
+    CHECK (f.song().song().videoTakes.empty());
+    CHECK (ui::testing::contains (ui::testing::messageCodes (capture), "capture.movie_write_failed"));
+    CHECK (activityOf (f) == finishedActivity ("pass", 1, nullptr));
+}
+
+TEST_CASE ("a Pass that was not added finishes with its Error's code", "[control][app_state][activity]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    run (f, ui::SongIntent { SetPreRoll { song::PreRoll::oneSecond } });
+    run (f, ui::SongIntent { Seek { 2 * engine::testing::testSampleRate } });
+
+    run (f, ui::SongIntent { Record {} });
+    f.runBlocks (2); // stopped long before the record point: nothing was captured
+    stopPass (f);
+
+    CHECK (f.song().song().passes.empty());
+    CHECK (activityOf (f) == finishedActivity ("pass", 1, "capture.pass_empty"));
+}
+
+TEST_CASE ("an export that ends is the last finish, without an error code", "[control][app_state][activity][export]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    run (f, ui::SongIntent { SetExportDestination { core::AbsolutePath { f.folder.getChildFile ("Mix.wav").getFullPathName().toStdString() } } });
+    run (f, ui::SongIntent { Export {} });
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (20);
+    while (f.song().isExporting() && std::chrono::steady_clock::now() < deadline)
+    {
+        f.runBlocks (1);
+        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+    }
+
+    REQUIRE_FALSE (f.song().isExporting());
+    REQUIRE (f.song().lastExportedFile().has_value());
+    CHECK (activityOf (f) == finishedActivity ("export", 1, nullptr));
+}
+
+TEST_CASE ("a cancelled Separation is the last finish with song.separation_cancelled", "[control][app_state][activity][separation]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    auto log = std::make_shared<song::testing::FakeHelperLog>();
+    f.song().setSeparationTools (song::SeparationTools {
+        .model = song::testing::writeStandInModel (f.folder),
+        .startHelper = song::testing::fakeSeparationHelper ({}, log),
+        .workFolder = f.folder.getChildFile ("work"),
+    });
+    run (f, ui::SongIntent { StartSeparation { f.song().song().tracks.front().id } });
+    CHECK (activityOf (f)["kind"] == "separation");
+    CHECK (stateOf (f, { "idle" })["idle"] == false);
+
+    run (f, ui::SongIntent { CancelRun {} });
+
+    CHECK (activityOf (f) == finishedActivity ("separation", 1, "song.separation_cancelled"));
+}
+
+TEST_CASE ("a sample rate conversion that ends is the last finish, without an error code", "[control][app_state][activity][conversion]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong (44100); // the device runs at 48 kHz only
+    run (f, ui::AppIntent { ConvertSampleRate { 48000 } });
+    CHECK (activityOf (f)["kind"] == "conversion");
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (30);
+    while (f.song().isConverting() && std::chrono::steady_clock::now() < deadline)
+    {
+        f.tick();
+        std::this_thread::sleep_for (std::chrono::milliseconds (5));
+    }
+
+    REQUIRE_FALSE (f.song().isConverting());
+    CHECK (f.song().song().sampleRate == 48000);
+    CHECK (activityOf (f) == finishedActivity ("conversion", 1, nullptr));
+}
+
+TEST_CASE ("a latency run is the calibration_latency activity while it runs, then the last finish", "[control][app_state][activity][calibration]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    f.runBlocks (1);
+
+    run (f, ui::AppIntent { MeasureLatency {} });
+
+    const auto running = stateOf (f, { "activity", "idle" });
+    CHECK (running["activity"]["kind"] == "calibration_latency");
+    CHECK (running["activity"]["counter"] == 1);
+    CHECK (running["idle"] == false);
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (30);
+    while (! f.workspace->nothingRunsButAnExport() && std::chrono::steady_clock::now() < deadline)
+    {
+        f.audio().run (8);
+        f.workspace->tick();
+    }
+    REQUIRE (f.workspace->nothingRunsButAnExport());
+    CHECK (activityOf (f) == finishedActivity ("calibration_latency", 1, nullptr));
+}
+
+//==============================================================================
+// Over the socket
 
 namespace
 {
@@ -270,7 +591,7 @@ struct SocketToWorkspace
 
 TEST_CASE ("state over the socket answers the sections asked for, and refuses an unknown one", "[control][app_state][socket]")
 {
-    overdub::core::ScopedLogCapture capture;
+    core::ScopedLogCapture capture;
     SocketToWorkspace socket;
     const auto trackId = socket.send (R"({"id":1,"op":"add_track"})").at (0).at ("created_id").get<std::string>();
 
@@ -292,11 +613,14 @@ TEST_CASE ("state over the socket answers the sections asked for, and refuses an
     REQUIRE (refused.size() == 1);
     CHECK (refused[0]["error"]["code"] == "control.bad_field");
     CHECK (refused[0]["error"]["fields"]["key"] == "parts");
+    const auto logged = eventsNamed (capture, "control.bad_field");
+    REQUIRE (logged.size() == 1);
+    CHECK (logged[0]["key"] == "parts");
 }
 
 TEST_CASE ("a pointer wait over the socket answers once an Intent changes the app state, and times out otherwise", "[control][app_state][socket][wait]")
 {
-    overdub::core::ScopedLogCapture capture;
+    core::ScopedLogCapture capture;
     SocketToWorkspace socket;
 
     CHECK (socket.send (R"({"id":1,"op":"wait","pointer":"/view/mode","equals":"edit","timeout_ms":2000})").empty());
@@ -315,4 +639,19 @@ TEST_CASE ("a pointer wait over the socket answers once an Intent changes the ap
     REQUIRE (timedOut.size() == 1);
     CHECK (timedOut[0]["error"]["code"] == "control.wait_timed_out");
     CHECK (timedOut[0]["error"]["fields"] == json { { "pointer", "/activity/kind" }, { "equals", "export" }, { "value", "idle" }, { "timeout_ms", 100 } });
+}
+
+TEST_CASE ("a pointer wait into an unknown section is a bad pointer, logged once under that key", "[control][app_state][socket][wait]")
+{
+    core::ScopedLogCapture capture;
+    SocketToWorkspace socket;
+
+    const auto lines = socket.send (R"({"id":1,"op":"wait","pointer":"/nope/kind","equals":"idle"})");
+
+    REQUIRE (lines.size() == 1);
+    CHECK (lines[0]["error"]["code"] == "control.bad_field");
+    CHECK (lines[0]["error"]["fields"]["key"] == "pointer");
+    const auto logged = eventsNamed (capture, "control.bad_field");
+    REQUIRE (logged.size() == 1);
+    CHECK (logged[0]["key"] == "pointer");
 }

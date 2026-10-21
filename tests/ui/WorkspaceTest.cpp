@@ -239,7 +239,7 @@ TEST_CASE ("a latency calibration binds the Song again only once the audio threa
 
     f.run (AppIntent { MeasureLatency {} });
     CHECK (f.song().audio().engine == nullptr); // the run plays its own Song
-    CHECK_FALSE (f.workspace->isIdle());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExport());
 
     // The device never called back since: the run gives up, but its plan is still pending.
     f.workspace->tick (overdub::song::SongPackage::Clock::now() + 1h);
@@ -250,7 +250,7 @@ TEST_CASE ("a latency calibration binds the Song again only once the audio threa
     f.workspace->tick();
 
     CHECK (f.song().audio().engine == f.audio().engine());
-    CHECK (f.workspace->isIdle());
+    CHECK (f.workspace->nothingRunsButAnExport());
 }
 
 TEST_CASE ("a latency calibration measured on the loopback device is offered in the panel once the Song is bound again", "[ui][workspace][calibration]")
@@ -262,13 +262,13 @@ TEST_CASE ("a latency calibration measured on the loopback device is offered in 
 
     f.run (AppIntent { MeasureLatency {} });
     const auto deadline = std::chrono::steady_clock::now() + 30s;
-    while (! f.workspace->isIdle() && std::chrono::steady_clock::now() < deadline)
+    while (! f.workspace->nothingRunsButAnExport() && std::chrono::steady_clock::now() < deadline)
     {
         f.audio().run (8);
         f.workspace->tick();
     }
 
-    REQUIRE (f.workspace->isIdle());
+    REQUIRE (f.workspace->nothingRunsButAnExport());
     CHECK (f.song().audio().engine == f.audio().engine());
     CHECK (overdub::ui::testing::isShown (f.calibrationPanel.saveLatencyButton));
 }
@@ -335,7 +335,7 @@ TEST_CASE ("opening a Song, changing the device and calibrating are refused whil
     REQUIRE (f.song().record().has_value());
     overdub::core::ScopedLogCapture capture;
 
-    CHECK_FALSE (f.workspace->idleOrNotice());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExportOrNotice());
     f.run (AppIntent { applyCurrent (f) });
     f.run (AppIntent { MeasureLatency {} });
 
@@ -358,8 +358,8 @@ TEST_CASE ("opening another Song, changing the device and quitting are refused w
     REQUIRE (f.song().startSeparation (f.song().song().tracks.front().id).has_value());
     overdub::core::ScopedLogCapture capture;
 
-    CHECK_FALSE (f.workspace->isIdle());
-    CHECK_FALSE (f.workspace->idleOrNotice());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExport());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExportOrNotice());
     const auto applied = f.run (AppIntent { applyCurrent (f) });
     REQUIRE_FALSE (applied.has_value());
     CHECK (applied.error().code == "ui.separation_running");
@@ -372,7 +372,7 @@ TEST_CASE ("opening another Song, changing the device and quitting are refused w
     CHECK (std::ranges::count (codes, std::string ("ui.separation_running")) == 3);
 
     f.song().cancelSeparation();
-    CHECK (f.workspace->isIdle());
+    CHECK (f.workspace->nothingRunsButAnExport());
     CHECK (f.run (AppIntent { Quit {} }).has_value());
     CHECK (f.quits == 1);
 }
@@ -472,8 +472,8 @@ TEST_CASE ("while a conversion runs, recording, other Songs and device changes w
     const auto recorded = f.song().record();
     REQUIRE_FALSE (recorded.has_value());
     CHECK (recorded.error().code == "ui.conversion_running");
-    CHECK_FALSE (f.workspace->isIdle());
-    CHECK_FALSE (f.workspace->idleOrNotice());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExport());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExportOrNotice());
     CHECK (contains (messageCodes (capture), "ui.conversion_running"));
 
     click (f.content.runDialog.cancelButton);

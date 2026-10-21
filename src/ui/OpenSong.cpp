@@ -589,7 +589,8 @@ std::vector<core::Error> OpenSong::finishPass (capture::FinishedPass finished)
             errors.push_back (std::move (notice));
     }
 
-    endActivity (errors.empty() ? std::nullopt : std::optional<std::string> (errors.front().code));
+    // A Pass that stood ended without an Error, whatever Notices it raised.
+    endActivity (finished.pass.has_value() ? std::nullopt : std::optional<std::string> (errors.front().code));
     if (cameraLost)
         disarmLostCamera();
     reloadEngine();
