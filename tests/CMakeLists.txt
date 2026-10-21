@@ -18,6 +18,7 @@ target_sources(overdub_tests PRIVATE
     capture/VideoPlacementTest.cpp
     control/AppStateTest.cpp
     control/ControllerTest.cpp
+    control/GestureCensusTest.cpp
     control/EventTapTest.cpp
     control/IntentOpsTest.cpp
     control/ServerTest.cpp
