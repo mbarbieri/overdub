@@ -313,33 +313,34 @@ TEST_CASE ("the top bar names the process controlling the app while a control cl
     auto& window = *f.window;
     const auto& indicator = window.topBar.controlIndicator;
     window.tick();
-    CHECK (indicator.getText() == "");
+    CHECK (indicator.nameText() == "");
 
     window.controllingProcesses = { "python3" };
     window.tick();
-    CHECK (indicator.getText() == "Controlled by python3");
+    CHECK (std::string (overdub::ui::ControlIndicator::caption) == "CONTROLLED BY");
+    CHECK (indicator.nameText() == "python3");
     CHECK (indicator.isVisible());
     CHECK (indicator.getRight() < window.topBar.rewindButton.getX());
     CHECK (! indicator.getBounds().intersects (window.topBar.clock.getBounds()));
 
-    window.controllingProcesses = { "python3", "overdub-ctl" };
+    window.controllingProcesses = { "python3", "overdub-ctl", "Terminal" };
     window.tick();
-    CHECK (indicator.getText() == "Controlled by python3 and 1 more");
-    CHECK (writeSnapshot (window, "issue-177", "controlled-by-two").existsAsFile());
+    CHECK (indicator.nameText() == "python3 +2");
+    CHECK (writeSnapshot (window, "issue-177", "controlled-by-three").existsAsFile());
 
     window.controllingProcesses = {};
     window.tick();
-    CHECK (indicator.getText() == "");
+    CHECK (indicator.nameText() == "");
 }
 
-TEST_CASE ("the control indicator shows without a Song open, at the smallest window width", "[ui][main][control]")
+TEST_CASE ("the control indicator shows without a Song open, at the smallest window width, with a long name ellipsized", "[ui][main][control]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
     overdub::ui::MainComponent window;
     layOut (window, overdub::ui::minimumWindowWidth, overdub::ui::minimumWindowHeight);
-    window.controllingProcesses = { "Python" };
+    window.controllingProcesses = { "overdub-ctl-agent-1234567" };
     window.tick();
-    CHECK (window.topBar.controlIndicator.getText() == "Controlled by Python");
+    CHECK (window.topBar.controlIndicator.nameText() == "overdub-ctl-agent-1234567");
     CHECK (window.topBar.controlIndicator.getRight() < window.topBar.rewindButton.getX());
-    CHECK (writeSnapshot (window, "issue-177", "controlled-minimum-width").existsAsFile());
+    CHECK (writeSnapshot (window, "issue-177", "controlled-long-name-minimum-width").existsAsFile());
 }

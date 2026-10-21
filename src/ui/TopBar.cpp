@@ -13,14 +13,37 @@ const juce::String stopGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x96\x
 const juce::String recordGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x8f"));
 } // namespace
 
-std::string controlIndicatorText (const std::vector<std::string>& processes)
+std::string controlIndicatorName (const std::vector<std::string>& processes)
 {
     if (processes.empty())
         return {};
-    auto text = "Controlled by " + processes.front();
+    auto text = processes.front();
     if (processes.size() > 1)
-        text += " and " + std::to_string (processes.size() - 1) + " more";
+        text += " +" + std::to_string (processes.size() - 1);
     return text;
+}
+
+void ControlIndicator::show (const std::string& newName)
+{
+    const auto nameString = juce::String::fromUTF8 (newName.c_str());
+    if (nameString == name)
+        return;
+    name = nameString;
+    repaint();
+}
+
+void ControlIndicator::paint (juce::Graphics& g)
+{
+    if (name.isEmpty())
+        return;
+    auto area = getLocalBounds();
+    auto captionArea = area.removeFromTop (14);
+    g.setColour (colours::mute);
+    g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+    g.drawText (caption, captionArea, juce::Justification::bottomLeft, true);
+    g.setColour (colours::text);
+    g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    g.drawText (name, area, juce::Justification::centredLeft, true);
 }
 
 void ClockDisplay::show (const std::string& newTime, const std::string& newStatus, bool recording)
@@ -81,10 +104,6 @@ TopBar::TopBar()
     }
     addAndMakeVisible (clock);
 
-    controlIndicator.setFont (juce::FontOptions (11.5f, juce::Font::bold));
-    controlIndicator.setColour (juce::Label::textColourId, colours::mute);
-    controlIndicator.setJustificationType (juce::Justification::centredLeft);
-    controlIndicator.setBorderSize ({});
     controlIndicator.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (controlIndicator);
 }
@@ -111,7 +130,7 @@ void TopBar::show (const TopBarState& state)
     redoButton.setButtonText (juce::String::fromUTF8 (state.redoText.c_str()));
     undoButton.setEnabled (state.canUndo);
     redoButton.setEnabled (state.canRedo);
-    controlIndicator.setText (juce::String::fromUTF8 (controlIndicatorText (state.controllingProcesses).c_str()), juce::dontSendNotification);
+    controlIndicator.show (controlIndicatorName (state.controllingProcesses));
 }
 
 void TopBar::resized()

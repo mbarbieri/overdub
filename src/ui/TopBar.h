@@ -30,8 +30,8 @@ struct TopBarState
     std::vector<std::string> controllingProcesses;
 };
 
-// "Controlled by <first>", then " and N more" for N others; empty with none.
-std::string controlIndicatorText (const std::vector<std::string>& processes);
+// The indicator's name line: "<first>", or "<first> +N" with N others; empty with none.
+std::string controlIndicatorName (const std::vector<std::string>& processes);
 
 // The transport clock: the time over its status line.
 class ClockDisplay final : public juce::Component
@@ -47,6 +47,22 @@ private:
     juce::String time;
     juce::String status;
     bool isRecording = false;
+};
+
+// "CONTROLLED BY" over the controlling process's name, drawn only while there is a name. The name
+// is never scaled down: one too wide for the slot ends in an ellipsis.
+class ControlIndicator final : public juce::Component
+{
+public:
+    static constexpr const char* caption = "CONTROLLED BY";
+
+    void show (const std::string& name);
+    void paint (juce::Graphics& g) override;
+
+    const juce::String& nameText() const { return name; }
+
+private:
+    juce::String name;
 };
 
 class TopBar final : public juce::Component
@@ -70,7 +86,7 @@ public:
     ClockDisplay clock;
     juce::TextButton undoButton { "Undo" };
     juce::TextButton redoButton { "Redo" };
-    juce::Label controlIndicator;
+    ControlIndicator controlIndicator;
 
 private:
     void send (const Intent& intent);
