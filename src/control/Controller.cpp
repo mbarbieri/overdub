@@ -173,7 +173,10 @@ std::optional<Reply> Controller::runOp (Connection& connection, const Request& r
     {
         if (! readState)
             return unknownOp (request);
-        return readState (request.fields.contains ("parts") ? request.fields["parts"] : nlohmann::json());
+        auto state = readState (request.fields.contains ("parts") ? request.fields["parts"] : nlohmann::json());
+        if (! state.has_value())
+            core::logError (state.error(), core::Level::debug);
+        return state;
     }
     return otherOps (request);
 }
@@ -268,19 +271,26 @@ std::optional<Reply> Controller::startPointerWait (Connection& connection, const
         .deadline = now + std::chrono::milliseconds (timeoutMs),
         .timeoutMs = timeoutMs,
     };
-    const auto& condition = std::get<PointerEquals> (wait.until);
-    if (auto value = valueAt (condition.pointer); value == condition.equals)
-        return nlohmann::json { { "pointer", condition.pointer.to_string() }, { "value", std::move (value) } };
+    if (auto reached = pointerReached (std::get<PointerEquals> (wait.until)))
+        return std::move (*reached);
     connection.waits.push_back (std::move (wait));
     return std::nullopt;
 }
 
-nlohmann::json Controller::valueAt (const nlohmann::json::json_pointer& pointer) const
+std::optional<nlohmann::json> Controller::valueAt (const nlohmann::json::json_pointer& pointer) const
 {
     const auto section = readState (nlohmann::json::array ({ sectionOf (pointer) }));
     if (! section.has_value() || ! section->contains (pointer))
-        return nullptr;
+        return std::nullopt;
     return section->at (pointer);
+}
+
+std::optional<nlohmann::json> Controller::pointerReached (const PointerEquals& condition) const
+{
+    auto value = valueAt (condition.pointer);
+    if (! value.has_value() || *value != condition.equals)
+        return std::nullopt;
+    return nlohmann::json { { "pointer", condition.pointer.to_string() }, { "value", std::move (*value) } };
 }
 
 void Controller::answerPointerWaits()
@@ -290,10 +300,10 @@ void Controller::answerPointerWaits()
             const auto* condition = std::get_if<PointerEquals> (&wait.until);
             if (condition == nullptr)
                 return false;
-            auto value = valueAt (condition->pointer);
-            if (value != condition->equals)
+            auto reached = pointerReached (*condition);
+            if (! reached.has_value())
                 return false;
-            connection.held.push_back ({ wait.requestId, nlohmann::json { { "pointer", condition->pointer.to_string() }, { "value", std::move (value) } } });
+            connection.held.push_back ({ wait.requestId, std::move (*reached) });
             return true;
         });
 }
@@ -376,9 +386,14 @@ void Controller::expireWaitsAndDeliverTheirTimeouts (Clock::time_point now)
 core::Error Controller::timedOut (const PendingWait& wait) const
 {
     if (const auto* condition = std::get_if<PointerEquals> (&wait.until))
-        return protocolError ("control.wait_timed_out",
-                              "The app state did not reach the value in time",
-                              { { "pointer", condition->pointer.to_string() }, { "equals", condition->equals }, { "value", valueAt (condition->pointer) }, { "timeout_ms", wait.timeoutMs } });
+    {
+        core::Fields fields { { "pointer", condition->pointer.to_string() }, { "equals", condition->equals }, { "timeout_ms", wait.timeoutMs } };
+        if (auto value = valueAt (condition->pointer))
+            fields["value"] = std::move (*value);
+        else
+            fields["missing"] = true;
+        return protocolError ("control.wait_timed_out", "The app state did not reach the value in time", std::move (fields));
+    }
     const auto& condition = std::get<EventAfter> (wait.until);
     return protocolError ("control.wait_timed_out", "The event did not arrive in time", { { "event", condition.event }, { "since", condition.since }, { "timeout_ms", wait.timeoutMs } });
 }

@@ -54,7 +54,7 @@ struct Request
 using Reply = core::Expected<nlohmann::json>;
 using OpHandler = std::function<Reply (const Request&)>;
 // Reads the app state's sections named in `parts` (null: every section), or the Error that names
-// a bad `parts` (control/AppState.h).
+// a bad `parts` (control/AppState.h), not logged: the Controller logs what it answers.
 using StateReader = std::function<Reply (const nlohmann::json& parts)>;
 
 enum class CloseReason
@@ -73,7 +73,8 @@ struct EventFilter
 };
 
 // `wait`'s conditions: an event logged after `since`, or the app state's value at a JSON pointer
-// equal to `equals`, checked on each pump while the wait is pending.
+// equal to `equals`, sampled once per pump while the wait is pending (a change and back within one
+// pump is missed). A pointer that does not resolve has no value: it never equals, not even null.
 struct EventAfter
 {
     std::string event; // exact event name
@@ -174,8 +175,10 @@ private:
     std::optional<Reply> startWait (Connection& connection, const Request& request, Clock::time_point now);
     std::optional<Reply> matchWait (const PendingWait& wait, const DeliveredLine& line) const;
     std::optional<Reply> startPointerWait (Connection& connection, const Request& request, std::int64_t timeoutMs, Clock::time_point now);
-    // The value at the pointer now, or null when the state has none there.
-    nlohmann::json valueAt (const nlohmann::json::json_pointer& pointer) const;
+    // The value at the pointer now; none when the pointer does not resolve, which is not null.
+    std::optional<nlohmann::json> valueAt (const nlohmann::json::json_pointer& pointer) const;
+    // The reply once the pointer resolves to a value equal to `equals`; none before.
+    std::optional<nlohmann::json> pointerReached (const PointerEquals& condition) const;
     void answerPointerWaits();
     core::Error timedOut (const PendingWait& wait) const;
 

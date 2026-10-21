@@ -531,3 +531,31 @@ TEST_CASE ("a pointer wait with a malformed pointer, an unknown section or no eq
     for (const auto& line : lines)
         CHECK (line["error"]["code"] == "control.bad_field");
 }
+
+TEST_CASE ("a pointer that does not resolve is missing, not null: equals null waits until it resolves, and a timeout says missing", "[control][controller][wait]")
+{
+    overdub::core::ScopedLogCapture capture;
+    json activity = { { "kind", "idle" } };
+    const StateReader reader = [&activity] (const json&) -> Reply { return json { { "activity", activity } }; };
+    Controller controller { std::make_shared<EventTap>(), {}, reader };
+    const auto client = controller.connect();
+
+    controller.receive (client,
+                        "{\"id\":1,\"op\":\"wait\",\"pointer\":\"/activity/error\",\"equals\":null,\"timeout_ms\":1000}\n"
+                        "{\"id\":2,\"op\":\"wait\",\"pointer\":\"/activity/other\",\"equals\":null,\"timeout_ms\":100}\n",
+                        start);
+    controller.pump (start);
+    CHECK (controller.pendingOutput (client).empty());
+
+    activity["error"] = nullptr;
+    controller.pump (start + std::chrono::milliseconds (30));
+    auto lines = takeLines (controller, client);
+    REQUIRE (lines.size() == 1);
+    CHECK (lines[0] == json { { "id", 1 }, { "ok", true }, { "seq", 0 }, { "pointer", "/activity/error" }, { "value", nullptr } });
+
+    controller.pump (start + std::chrono::milliseconds (100));
+    lines = takeLines (controller, client);
+    REQUIRE (lines.size() == 1);
+    CHECK (lines[0]["error"]["code"] == "control.wait_timed_out");
+    CHECK (lines[0]["error"]["fields"] == json { { "pointer", "/activity/other" }, { "equals", nullptr }, { "missing", true }, { "timeout_ms", 100 } });
+}
