@@ -11,7 +11,9 @@
 #include <cxxabi.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <functional>
 #include <map>
@@ -29,6 +31,17 @@
 // mode, and a gesture that changes the app state without a ui.intent_run log line in between is a
 // bypass. notYetMigrated names the bypasses the pages still have (issue #168 moves them); it may
 // only shrink: an entry that no longer bypasses fails too.
+//
+// Each mode gets a fresh CensusWorkspace, and before each probe its Song, selection and timeline
+// view are put back as they were built, so no gesture changes what a later one is fired at.
+//
+// What it cannot see: a handler that runs some Intent and also edits the app state directly (the
+// ui.intent_run line hides the bypass); text typed into an editor (Labels and TextEditors get
+// clicks and keys, never typed text); and a change that lands after the gesture returns (an
+// asynchronous callback, a timer, a dialog answered later).
+//
+// To regenerate notYetMigrated after a page migrates: run this test case with
+// OVERDUB_CENSUS_PRINT_BYPASSES=1, which prints every bypass as an entry of the list.
 using namespace overdub;
 using namespace overdub::ui::intent;
 using nlohmann::json;
@@ -52,117 +65,57 @@ const std::set<std::string> notYetMigrated {
     "edit/SongView#0/EditPage#0/ClipToolbar#0/TextButton#5:right_click",
     "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#0/InsertChainView#0/TextButton#0:click",
     "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#0/InsertChainView#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/InsertChip#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/InsertChip#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/InsertChip#0/TextButton#1:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/InsertChip#0/TextButton#1:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/InsertChip#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/InsertChip#1/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/InsertChip#1/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/InsertChip#1/TextButton#1:click",
     "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/TextButton#0:click",
     "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/TextButton#0:right_click",
+    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#0:click",
+    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#0:right_click",
+    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#1:click",
+    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#1:right_click",
+    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0:click",
     "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/TextButton#0:click",
     "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#3/InsertChainView#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#3/InsertChainView#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#4/InsertChainView#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#4/InsertChainView#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#5/InsertChainView#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#5/InsertChainView#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#6/InsertChainView#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#6/InsertChainView#0/TextButton#0:right_click",
     "edit/SongView#0/EditPage#0/MixerDivider#0:drag",
     "edit/SongView#0/EditPage#0/TextButton#0:click",
     "edit/SongView#0/EditPage#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/Label#0:wheel_sideways",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#0:click",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#0:pinch",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#0:wheel_sideways",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#2:click",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#2:pinch",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#2:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#2:wheel_sideways",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#3:click",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#3:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#3:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#4:wheel_sideways",
+    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TextButton#4:pinch",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TrackGrip#0:pinch",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0/TrackGrip#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0:wheel",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/Label#0:wheel_sideways",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#0:click",
+    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#0:pinch",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#0:wheel_sideways",
+    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#1:click",
+    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#1:pinch",
+    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#1:right_click",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#2:click",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#2:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#2:wheel_sideways",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#3:click",
+    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#3:pinch",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#3:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#3:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#4:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TrackGrip#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/Label#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/TextButton#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/TextButton#2:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/TextButton#2:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/TextButton#2:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/TextButton#3:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/TextButton#3:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/TextButton#3:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/TextButton#4:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2/TrackGrip#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#2:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/Label#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/TextButton#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/TextButton#2:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/TextButton#2:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/TextButton#2:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/TextButton#3:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/TextButton#3:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/TextButton#3:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/TextButton#4:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3/TrackGrip#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#3:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/Label#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/TextButton#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/TextButton#2:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/TextButton#2:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/TextButton#2:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/TextButton#3:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/TextButton#3:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/TextButton#3:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/TextButton#4:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4/TrackGrip#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#4:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#5/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#5/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#5/TextButton#2:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#5/TextButton#2:right_click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#5/TextButton#3:click",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#5/TextButton#3:right_click",
+    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TextButton#4:pinch",
+    "edit/SongView#0/EditPage#0/Timeline#0/Component#0/TrackHeader#1/TrackGrip#0:pinch",
     "edit/SongView#0/EditPage#0/Timeline#0/Component#0:pinch",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0:wheel",
-    "edit/SongView#0/EditPage#0/Timeline#0/Component#0:wheel_sideways",
-    "edit/SongView#0/EditPage#0/Timeline#0/Label#0:wheel",
-    "edit/SongView#0/EditPage#0/Timeline#0/Label#0:wheel_sideways",
+    "edit/SongView#0/EditPage#0/Timeline#0:click",
+    "edit/SongView#0/EditPage#0/Timeline#0:double_click",
+    "edit/SongView#0/EditPage#0/Timeline#0:drag",
     "edit/SongView#0/EditPage#0/Timeline#0:pinch",
+    "edit/SongView#0/EditPage#0/Timeline#0:right_click",
     "export/SongView#0/ExportPage#0/TextButton#0:click",
+    "export/SongView#0/ExportPage#0/TextButton#1:click",
     "export/SongView#0/ExportPage#0/ToggleButton#1:click",
     "export/SongView#0/ExportPage#0/ToggleButton#2:click",
     "record/SongView#0/RecordPage#0/ComboBox#0:choose:1",
     "record/SongView#0/RecordPage#0/ComboBox#0:choose:2",
     "record/SongView#0/RecordPage#0/ComboBox#0:choose:3",
     "record/SongView#0/RecordPage#0/ComboBox#1:choose:1",
+    "record/SongView#0/RecordPage#0/PassesPanel#0/Row#0/TextButton#0:click",
+    "record/SongView#0/RecordPage#0/PassesPanel#0/Row#0/TextButton#0:right_click",
     "record/SongView#0/RecordPage#0/SongOverview#0:click",
     "record/SongView#0/RecordPage#0/TextButton#0:click",
     "record/SongView#0/RecordPage#0/TextButton#0:right_click",
@@ -206,6 +159,9 @@ struct ComponentPath
 {
     std::vector<int> childIndices;
     std::string id;
+
+    // The window's content itself (the MainComponent), which key presses go to.
+    static ComponentPath windowContent (std::string id = {}) { return { {}, std::move (id) }; }
 };
 
 struct Probe
@@ -326,7 +282,7 @@ std::vector<Probe> keyProbes()
 {
     std::vector<Probe> probes;
     const auto addKey = [&probes] (const std::string& name, juce::KeyPress key) {
-        probes.push_back ({ "key:" + name, {}, [key] (juce::Component& window) { window.keyPressed (key); } });
+        probes.push_back ({ "key:" + name, ComponentPath::windowContent(), [key] (juce::Component& window) { window.keyPressed (key); } });
     };
     for (const auto character : std::string ("abcdefghijklmnopqrstuvwxyz0123456789 ,.-=[]"))
         for (const auto command : { false, true })
@@ -352,11 +308,14 @@ std::vector<Probe> keyProbes()
 // Take and Video Take, an Insert on the Guitar and the Band Mix Clip selected. Every dialog is
 // answered at once: an import picks a generated WAV, a Track delete is cancelled, "+ Insert" picks
 // the one AU on offer, a Track menu is dismissed, an export goes to a temp file, camera access is
-// granted.
+// granted. restore() puts back the Song (through its history), the selection and the view as built.
 struct CensusWorkspace
 {
     WorkspaceFixture f;
     juce::File dropFile;
+    song::Id selectedClip;
+    song::Song builtSong;
+    json builtView;
 
     CensusWorkspace()
     {
@@ -384,9 +343,15 @@ struct CensusWorkspace
         const auto guitarId = song.tracks.at (1).id;
         run (ui::SongIntent { AddInsert { guitarId, "aufx", "dely", "appl" } });
         run (ui::SongIntent { SetTakeLanesUnfolded { guitarId, true } });
-        run (ui::SongIntent { SelectClip { f.song().song().tracks.front().clips.front().id } });
+        selectedClip = f.song().song().tracks.front().clips.front().id;
+        run (ui::SongIntent { SelectClip { selectedClip } });
         run (ui::SongIntent { Seek { 0 } });
+        builtSong = f.song().song();
+        builtView = control::appState (f.content, *f.workspace, std::array<std::string_view, 1> { "view" })["view"];
     }
+
+    // A Pass a gesture started is stopped, so teardown never abandons one.
+    ~CensusWorkspace() { stopTransport(); }
 
     void run (const ui::Intent& intent) { REQUIRE (f.content.run (intent, ui::Origin::control).has_value()); }
 
@@ -398,15 +363,59 @@ struct CensusWorkspace
         REQUIRE (song::writeFloatWavAtomically (file, audio, engine::testing::testSampleRate, {}).has_value());
     }
 
-    void settle (ui::Mode mode)
+    void stopTransport()
     {
-        if (auto* view = f.content.songView())
-            view->commitKeyBursts();
         if (f.song().isRecording() || f.song().isPlaying())
         {
             f.content.run (ui::SongIntent { PlayOrStop {} });
             f.runBlocks (2);
         }
+    }
+
+    // The undoable content as built; the playhead, pre-roll and the rest outside history may differ.
+    bool songAsBuilt()
+    {
+        const auto& current = f.song().song();
+        return song::keepStateOutsideHistory (builtSong, current) == current;
+    }
+
+    // Undoes what gestures added to the history, or redoes what they undid, until the Song is as
+    // built; then puts back each part of the view that differs.
+    void restore()
+    {
+        while (! songAsBuilt() && f.song().package().canUndo())
+            f.content.run (ui::SongIntent { Undo {} });
+        while (! songAsBuilt() && f.song().package().canRedo())
+            f.content.run (ui::SongIntent { Redo {} });
+        const auto view = control::appState (f.content, *f.workspace, std::array<std::string_view, 1> { "view" })["view"];
+        const auto differs = [&view, this] (const json::json_pointer& pointer) { return view.value (pointer, json()) != builtView.value (pointer, json()); };
+        if (differs ("/selected_clip"_json_pointer) || differs ("/selected_video_take"_json_pointer))
+        {
+            f.content.run (ui::SongIntent { SelectVideoTake { std::nullopt } });
+            f.content.run (ui::SongIntent { SelectClip { selectedClip } });
+        }
+        const auto& timeline = builtView["timeline"];
+        if (differs ("/timeline/first_sample"_json_pointer) || differs ("/timeline/samples_per_pixel"_json_pointer))
+            f.content.run (ui::SongIntent { SetTimelineView { timeline["first_sample"].get<song::SampleCount>(), timeline["samples_per_pixel"].get<song::SampleCount>() } });
+        if (differs ("/timeline/take_lanes_unfolded"_json_pointer))
+            for (const auto& track : f.song().song().tracks)
+                f.content.run (ui::SongIntent { SetTakeLanesUnfolded { track.id, std::ranges::contains (timeline["take_lanes_unfolded"], json (track.id)) } });
+        if (differs ("/timeline/vertical_scroll"_json_pointer))
+            f.content.run (ui::SongIntent { SetVerticalScroll { timeline["vertical_scroll"].get<int>() } });
+        if (differs ("/mixer_visible"_json_pointer))
+            f.content.run (ui::SongIntent { SetMixerVisible { builtView["mixer_visible"].get<bool>() } });
+        if (differs ("/mixer_height"_json_pointer))
+            f.content.run (ui::SongIntent { SetMixerHeight { builtView["mixer_height"].get<int>() } });
+        if (differs ("/passes_panel_open"_json_pointer))
+            f.content.run (ui::SongIntent { SetPassesPanelOpen { builtView["passes_panel_open"].get<bool>() } });
+    }
+
+    void settle (ui::Mode mode)
+    {
+        if (auto* view = f.content.songView())
+            view->commitKeyBursts();
+        stopTransport();
+        restore();
         f.content.run (ui::WindowIntent { ShowMode { mode } });
     }
 };
@@ -438,17 +447,16 @@ void fireProbe (CensusWorkspace& census, const Probe& probe, ui::Mode mode, Cens
     }
 }
 
-CensusResult runCensus (CensusWorkspace& census, const std::function<void (CensusWorkspace&)>& prepare = {})
+CensusResult runCensus()
 {
     CensusResult result;
     for (const auto mode : { ui::Mode::record, ui::Mode::edit, ui::Mode::exportSong })
     {
+        CensusWorkspace census;
         census.settle (mode);
-        if (prepare)
-            prepare (census);
         const auto modeName = std::string (ui::modeName (mode));
         std::vector<Probe> probes;
-        collectProbes (census.f.content, ComponentPath { {}, modeName }, census.dropFile, probes);
+        collectProbes (census.f.content, ComponentPath::windowContent (modeName), census.dropFile, probes);
         for (auto key : keyProbes())
         {
             key.id = modeName + "/" + key.id;
@@ -463,8 +471,10 @@ CensusResult runCensus (CensusWorkspace& census, const std::function<void (Censu
 
 TEST_CASE ("no gesture changes the app state without running an Intent except the pages not migrated yet", "[control][census]")
 {
-    CensusWorkspace census;
-    const auto result = runCensus (census);
+    const auto result = runCensus();
+    if (std::getenv ("OVERDUB_CENSUS_PRINT_BYPASSES") != nullptr)
+        for (const auto& bypass : result.bypasses)
+            std::printf ("    \"%s\",\n", bypass.c_str());
 
     for (const auto& [probe, changed] : result.changedBy)
     {
@@ -492,7 +502,7 @@ TEST_CASE ("the census fails on a button that edits the Song without an Intent",
     planted.setBounds (0, 0, 40, 20);
 
     std::vector<Probe> probes;
-    collectProbes (census.f.content, ComponentPath { {}, "record" }, census.dropFile, probes);
+    collectProbes (census.f.content, ComponentPath::windowContent ("record"), census.dropFile, probes);
     const auto plantedProbe = std::ranges::find_if (probes, [] (const Probe& probe) { return probe.id == "record/TextButton#0:click"; });
     REQUIRE (plantedProbe != probes.end());
     CensusResult result;
