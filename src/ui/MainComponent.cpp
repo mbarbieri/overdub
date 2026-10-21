@@ -329,6 +329,7 @@ void MainComponent::refresh()
     state.mode = currentMode;
     if (songContent != nullptr)
         songContent->refresh (state);
+    state.controllingProcesses = controllingProcesses;
     topBar.show (state);
 
     noSongPage.setVisible (songContent == nullptr);

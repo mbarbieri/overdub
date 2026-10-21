@@ -188,6 +188,9 @@ public:
     // The File menu's New Song and Open, offered on the no-Song page.
     std::function<void()> onNewSong;
     std::function<void()> onOpenSong;
+    // The connected control clients' process names (control::Server::clientProcesses), which the
+    // top bar shows from the next poll.
+    std::vector<std::string> controllingProcesses;
 
     // Children are public so tests can click them and check what shows.
     TopBar topBar;

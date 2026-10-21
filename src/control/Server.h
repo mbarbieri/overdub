@@ -31,6 +31,10 @@ std::string defaultSocketPath();
 // path that replaces the default), either may be null.
 ServerConfig serverConfigFrom (const char* controlVariable, const char* socketVariable);
 
+// The bytes without a trailing UTF-8 sequence that was cut short, as proc_name leaves a name it
+// truncates mid-character. Everything before the cut is kept as is.
+std::string withoutIncompleteUtf8Tail (std::string bytes);
+
 class Server
 {
 public:
@@ -56,13 +60,28 @@ public:
     // re-entered from a nested message loop inside a request's handler.
     void pump (Clock::time_point now);
 
+    // How long a client stays in clientProcesses after it disconnects, so a one-shot request
+    // is still seen on the top bar (ADR 0008 Security).
+    static constexpr auto departedClientLinger = std::chrono::seconds (3);
+
+    // The connected clients' process names (ADR 0008 Security), each once, oldest connection
+    // first, then those of clients that disconnected less than departedClientLinger before now.
+    std::vector<std::string> clientProcesses (Clock::time_point now) const;
+
 private:
     struct Client
     {
         int fd = -1;
         ConnectionId connection = 0;
         pid_t peerPid = 0;
+        std::string process;
         bool finishedSending = false;
+    };
+
+    struct DepartedClient
+    {
+        std::string process;
+        Clock::time_point leftAt;
     };
 
     Server (int listeningFd, std::string socketPath, dev_t socketDevice, ino_t socketInode, Controller controller);
@@ -75,6 +94,7 @@ private:
     ino_t boundInode = 0;
     Controller controller;
     std::vector<Client> clients;
+    std::vector<DepartedClient> departedClients; // oldest departure first
     bool pumping = false;
 };
 } // namespace overdub::control

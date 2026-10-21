@@ -3,8 +3,10 @@
 #include <juce_core/juce_core.h>
 
 #include <fcntl.h>
+#include <libproc.h>
 #include <poll.h>
 #include <sys/event.h>
+#include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -165,6 +167,17 @@ bool peerHungUp (int fd)
     ::close (queue);
     return count == 1 && (result.flags & (EV_EOF | EV_ERROR)) != 0;
 }
+
+// pid 0 is a peer that hung up before accept, whose pid the kernel no longer gives.
+std::string processName (pid_t pid)
+{
+    if (pid <= 0)
+        return "unknown process";
+    char name[2 * MAXCOMLEN + 1] {};
+    if (::proc_name (pid, name, sizeof (name)) > 0)
+        return withoutIncompleteUtf8Tail (name);
+    return "pid " + std::to_string (pid);
+}
 } // namespace
 
 std::string defaultSocketPath()
@@ -193,6 +206,25 @@ ServerConfig serverConfigFrom (const char* controlVariable, const char* socketVa
         config.privateFolder = true;
     }
     return config;
+}
+
+std::string withoutIncompleteUtf8Tail (std::string bytes)
+{
+    // Find the last lead byte (anything but 10xxxxxx) within the longest sequence's 4 bytes.
+    const auto searched = std::min<std::size_t> (bytes.size(), 4);
+    for (std::size_t back = 1; back <= searched; ++back)
+    {
+        const auto lead = (unsigned char) bytes[bytes.size() - back];
+        if ((lead & 0xc0) == 0x80)
+            continue;
+        const std::size_t expected = lead < 0x80 ? 1 : (lead & 0xe0) == 0xc0 ? 2
+                                                 : (lead & 0xf0) == 0xe0     ? 3
+                                                                             : 4;
+        if (back < expected)
+            bytes.resize (bytes.size() - back);
+        break;
+    }
+    return bytes;
 }
 
 std::unique_ptr<Server> Server::start (const ServerConfig& config, Controller controller)
@@ -265,8 +297,9 @@ void Server::acceptClients()
         ::getsockopt (fd, SOL_LOCAL, LOCAL_PEERPID, &peerPid, &length);
 
         const auto connection = controller.connect();
-        clients.push_back (Client { .fd = fd, .connection = connection, .peerPid = peerPid });
-        core::logEvent (core::Level::info, "control.client_connected", { { "client", connection }, { "peer_pid", peerPid } });
+        auto process = processName (peerPid);
+        core::logEvent (core::Level::info, "control.client_connected", { { "client", connection }, { "peer_pid", peerPid }, { "process", process } });
+        clients.push_back (Client { .fd = fd, .connection = connection, .peerPid = peerPid, .process = std::move (process) });
     }
 }
 
@@ -332,14 +365,34 @@ void Server::pump (Clock::time_point now)
             closing[i] = "eof";
     }
 
-    for (std::size_t i = clients.size(); i-- > 0;)
+    std::erase_if (departedClients, [now] (const DepartedClient& departed) { return now - departed.leftAt >= departedClientLinger; });
+    for (std::size_t i = 0; i < clients.size(); ++i)
         if (closing[i].has_value())
         {
             close (clients[i], *closing[i]);
-            clients.erase (clients.begin() + (std::ptrdiff_t) i);
+            std::erase_if (departedClients, [&] (const DepartedClient& departed) { return departed.process == clients[i].process; });
+            departedClients.push_back (DepartedClient { .process = clients[i].process, .leftAt = now });
         }
+    for (std::size_t i = clients.size(); i-- > 0;)
+        if (closing[i].has_value())
+            clients.erase (clients.begin() + (std::ptrdiff_t) i);
 
     pumping = false;
+}
+
+std::vector<std::string> Server::clientProcesses (Clock::time_point now) const
+{
+    std::vector<std::string> processes;
+    const auto addOnce = [&processes] (const std::string& process) {
+        if (! std::ranges::contains (processes, process))
+            processes.push_back (process);
+    };
+    for (const auto& client : clients)
+        addOnce (client.process);
+    for (const auto& departed : departedClients)
+        if (now - departed.leftAt < departedClientLinger)
+            addOnce (departed.process);
+    return processes;
 }
 
 void Server::close (Client& client, std::string_view reason)

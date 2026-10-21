@@ -13,6 +13,7 @@ constexpr int modeButtonWidth = 76;
 constexpr int transportButtonWidth = 40;
 constexpr int clockWidth = 130;
 constexpr int undoButtonWidth = 190;
+constexpr int controlIndicatorWidth = 130;
 constexpr int importButtonHeight = 30;
 } // namespace
 
@@ -35,13 +36,17 @@ TopBarLayout topBarLayout (juce::Rectangle<int> bar)
         button = area.removeFromLeft (modeButtonWidth);
         area.removeFromLeft (2);
     }
+    area.removeFromLeft (gap);
+    layout.controlIndicator = area.removeFromLeft (controlIndicatorWidth);
+    area.removeFromLeft (gap);
 
-    layout.redo = area.removeFromRight (undoButtonWidth);
+    const auto groupWidth = 3 * transportButtonWidth + 3 * gap + clockWidth;
+    const auto undoWidth = std::min (undoButtonWidth, (area.getWidth() - groupWidth - 2 * gap) / 2);
+    layout.redo = area.removeFromRight (undoWidth);
     area.removeFromRight (gap);
-    layout.undo = area.removeFromRight (undoButtonWidth);
+    layout.undo = area.removeFromRight (undoWidth);
 
     // The transport group sits in the middle of what is left.
-    const auto groupWidth = 3 * transportButtonWidth + 3 * gap + clockWidth;
     auto group = area.withSizeKeepingCentre (groupWidth, area.getHeight());
     layout.rewind = group.removeFromLeft (transportButtonWidth);
     group.removeFromLeft (gap);

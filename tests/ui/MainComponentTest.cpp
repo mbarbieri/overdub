@@ -1,5 +1,6 @@
 #include "ui/MainComponent.h"
 
+#include "ui/Layout.h"
 #include "ui/MainWindowFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -304,4 +305,42 @@ TEST_CASE ("A on a Record row and on an Edit header arms the Track, follows Arme
     REQUIRE (f.openSong->isRecording());
     CHECK_FALSE (f.rowNamed ("Guitar").armButton.isEnabled());
     CHECK_FALSE (f.editHeaderNamed ("Guitar").armButton.isEnabled());
+}
+
+TEST_CASE ("the top bar names the process controlling the app while a control client is connected", "[ui][main][control]")
+{
+    MainWindowFixture f;
+    auto& window = *f.window;
+    const auto& indicator = window.topBar.controlIndicator;
+    window.tick();
+    CHECK (indicator.nameText() == "");
+
+    window.controllingProcesses = { "python3" };
+    window.tick();
+    CHECK (std::string (overdub::ui::ControlIndicator::caption) == "CONTROLLED BY");
+    CHECK (indicator.nameText() == "python3");
+    CHECK (indicator.isVisible());
+    CHECK (indicator.getRight() < window.topBar.rewindButton.getX());
+    CHECK (! indicator.getBounds().intersects (window.topBar.clock.getBounds()));
+
+    window.controllingProcesses = { "python3", "overdub-ctl", "Terminal" };
+    window.tick();
+    CHECK (indicator.nameText() == "python3 +2");
+    CHECK (writeSnapshot (window, "issue-177", "controlled-by-three").existsAsFile());
+
+    window.controllingProcesses = {};
+    window.tick();
+    CHECK (indicator.nameText() == "");
+}
+
+TEST_CASE ("the control indicator shows without a Song open, at the smallest window width, with a long name ellipsized", "[ui][main][control]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    overdub::ui::MainComponent window;
+    layOut (window, overdub::ui::minimumWindowWidth, overdub::ui::minimumWindowHeight);
+    window.controllingProcesses = { "overdub-ctl-agent-1234567" };
+    window.tick();
+    CHECK (window.topBar.controlIndicator.nameText() == "overdub-ctl-agent-1234567");
+    CHECK (window.topBar.controlIndicator.getRight() < window.topBar.rewindButton.getX());
+    CHECK (writeSnapshot (window, "issue-177", "controlled-long-name-minimum-width").existsAsFile());
 }
