@@ -116,6 +116,15 @@ bool logged (const overdub::core::ScopedLogCapture& capture, std::string_view ev
     return false;
 }
 
+int countEvents (const overdub::core::ScopedLogCapture& capture, std::string_view event)
+{
+    int count = 0;
+    for (const auto& line : capture.events())
+        if (line["event"] == event)
+            ++count;
+    return count;
+}
+
 json lastEvent (const overdub::core::ScopedLogCapture& capture, std::string_view event)
 {
     json found;
@@ -313,33 +322,87 @@ TEST_CASE ("the server refuses clients past its limit", "[control][server]")
     CHECK (lastEvent (capture, "control.client_rejected")["reason"] == "too_many_clients");
 }
 
-TEST_CASE ("the server names each connected client's process and forgets it on disconnect", "[control][server]")
+TEST_CASE ("the server names each connected client's process and forgets it 3 s after disconnect", "[control][server]")
 {
     overdub::core::ScopedLogCapture capture;
     TempSocketFolder temp;
     auto server = Server::start (configFor (temp.socketPath()), plainController());
     REQUIRE (server != nullptr);
-    CHECK (server->clientProcesses().empty());
+    const auto start = Clock::now();
+    CHECK (server->clientProcesses (start).empty());
 
     auto first = std::make_unique<Client> (temp.socketPath());
     auto second = std::make_unique<Client> (temp.socketPath());
     REQUIRE (first->connected);
     REQUIRE (second->connected);
-    server->pump (Clock::now());
+    server->pump (start);
 
     const auto connected = lastEvent (capture, "control.client_connected");
     CHECK (connected["peer_pid"] == (int) ::getpid());
     CHECK (connected["process"] == "overdub_tests");
-    CHECK (server->clientProcesses() == std::vector<std::string> { "overdub_tests", "overdub_tests" });
+    CHECK (server->clientProcesses (start) == std::vector<std::string> { "overdub_tests", "overdub_tests" });
 
     first.reset();
     second.reset();
-    for (int attempt = 0; attempt < 200 && ! server->clientProcesses().empty(); ++attempt)
+    for (int attempt = 0; attempt < 200 && countEvents (capture, "control.client_disconnected") < 2; ++attempt)
     {
-        server->pump (Clock::now());
+        server->pump (start);
         ::usleep (1000);
     }
-    CHECK (server->clientProcesses().empty());
+    REQUIRE (countEvents (capture, "control.client_disconnected") == 2);
+    CHECK (server->clientProcesses (start + std::chrono::milliseconds (3100)).empty());
+}
+
+TEST_CASE ("a client that connects, runs a request and hangs up within one pump stays listed for 3 s", "[control][server]")
+{
+    overdub::core::ScopedLogCapture capture;
+    TempSocketFolder temp;
+    auto server = Server::start (configFor (temp.socketPath()), plainController());
+    REQUIRE (server != nullptr);
+
+    {
+        Client client (temp.socketPath());
+        REQUIRE (client.connected);
+        client.send ("{\"id\":1,\"op\":\"hello\"}\n");
+    }
+    const auto start = Clock::now();
+    server->pump (start);
+    REQUIRE (countEvents (capture, "control.client_connected") == 1);
+    REQUIRE (countEvents (capture, "control.client_disconnected") == 1);
+
+    // A peer that hung up before accept has no readable pid (LOCAL_PEERPID fails with ENOTCONN).
+    CHECK (lastEvent (capture, "control.client_connected")["process"] == "unknown process");
+    CHECK (server->clientProcesses (start) == std::vector<std::string> { "unknown process" });
+    CHECK (server->clientProcesses (start + std::chrono::milliseconds (2900)) == std::vector<std::string> { "unknown process" });
+    CHECK (server->clientProcesses (start + std::chrono::milliseconds (3100)).empty());
+}
+
+TEST_CASE ("a departed client is forgotten once a pump passes its 3 s, while a live one stays listed", "[control][server]")
+{
+    overdub::core::ScopedLogCapture capture;
+    TempSocketFolder temp;
+    auto server = Server::start (configFor (temp.socketPath()), plainController());
+    REQUIRE (server != nullptr);
+
+    const auto start = Clock::now();
+    auto departing = std::make_unique<Client> (temp.socketPath());
+    REQUIRE (departing->connected);
+    server->pump (start);
+    departing.reset();
+    for (int attempt = 0; attempt < 200 && countEvents (capture, "control.client_disconnected") < 1; ++attempt)
+    {
+        server->pump (start);
+        ::usleep (1000);
+    }
+    REQUIRE (countEvents (capture, "control.client_disconnected") == 1);
+
+    Client staying (temp.socketPath());
+    REQUIRE (staying.connected);
+    server->pump (start + std::chrono::seconds (1));
+    CHECK (server->clientProcesses (start + std::chrono::seconds (1)).size() == 2);
+
+    server->pump (start + std::chrono::milliseconds (3100));
+    CHECK (server->clientProcesses (start) == std::vector<std::string> { "overdub_tests" });
 }
 
 TEST_CASE ("one pump reads a bounded number of bytes from a client", "[control][server]")

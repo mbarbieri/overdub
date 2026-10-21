@@ -69,8 +69,9 @@ private:
     // reach any member above. Null when disabled or when it could not start.
     std::unique_ptr<control::Server> controlServer;
     juce::TimedCallback controlTick { [this] {
-        controlServer->pump (control::Clock::now());
-        content.controllingProcesses = controlServer->clientProcesses();
+        const auto now = control::Clock::now();
+        controlServer->pump (now);
+        content.controllingProcesses = controlServer->clientProcesses (now);
     } };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)

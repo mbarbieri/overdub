@@ -168,10 +168,13 @@ bool peerHungUp (int fd)
     return count == 1 && (result.flags & (EV_EOF | EV_ERROR)) != 0;
 }
 
+// pid 0 is a peer that hung up before accept, whose pid the kernel no longer gives.
 std::string processName (pid_t pid)
 {
+    if (pid <= 0)
+        return "unknown process";
     char name[2 * MAXCOMLEN + 1] {};
-    if (pid > 0 && ::proc_name (pid, name, sizeof (name)) > 0)
+    if (::proc_name (pid, name, sizeof (name)) > 0)
         return name;
     return "pid " + std::to_string (pid);
 }
@@ -343,21 +346,28 @@ void Server::pump (Clock::time_point now)
             closing[i] = "eof";
     }
 
-    for (std::size_t i = clients.size(); i-- > 0;)
+    std::erase_if (departedClients, [now] (const DepartedClient& departed) { return now - departed.leftAt >= departedClientLinger; });
+    for (std::size_t i = 0; i < clients.size(); ++i)
         if (closing[i].has_value())
         {
             close (clients[i], *closing[i]);
-            clients.erase (clients.begin() + (std::ptrdiff_t) i);
+            departedClients.push_back (DepartedClient { .process = clients[i].process, .leftAt = now });
         }
+    for (std::size_t i = clients.size(); i-- > 0;)
+        if (closing[i].has_value())
+            clients.erase (clients.begin() + (std::ptrdiff_t) i);
 
     pumping = false;
 }
 
-std::vector<std::string> Server::clientProcesses() const
+std::vector<std::string> Server::clientProcesses (Clock::time_point now) const
 {
     std::vector<std::string> processes;
     for (const auto& client : clients)
         processes.push_back (client.process);
+    for (const auto& departed : departedClients)
+        if (now - departed.leftAt < departedClientLinger)
+            processes.push_back (departed.process);
     return processes;
 }
 
