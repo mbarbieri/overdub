@@ -1,14 +1,22 @@
 # Sourced by the journey-*.sh scripts. Not run on its own.
 # Every request, reply and check of a journey is written under $EVIDENCE ($RUN_DIR/journeys/<name>/):
 #   requests.jsonl  one {"request": [...], "reply": {...}} line per overdub-ctl call
-#   checks.txt      one "ok"/"FAIL" line per check, then "RESULT pass|fail"
+#   checks.txt      one "ok"/"FAIL" line per check, then "RESULT pass|fail" (fail when any line is FAIL)
 #   state-*.json    app state snapshots taken by snapshot
 # A journey exits 1 on the first failed check (after recording it) and 0 when every check passed.
+# A check that fails inside $(...) or a pipe exits only that subshell, so journey_end fails the
+# journey when checks.txt has any FAIL line.
+# Pass a path to jq with --arg (check takes jq args), never inside a filter or a JSON literal.
 set -uo pipefail
 setopt null_glob
 SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$SCRIPTS/../../../.." && pwd)"
-RUN_DIR="$(cd "${RUN_DIR:-$REPO/build/verify/latest}" && pwd -P)"
+RUN_DIR="${RUN_DIR:-$REPO/build/verify/latest}"
+if [[ ! -d "$RUN_DIR" || ! -s "$RUN_DIR/socket" || ! -S "$(cat "$RUN_DIR/socket" 2>/dev/null)" ]]; then
+    echo "journey: no run dir or socket at $RUN_DIR: run launch.sh first" >&2
+    exit 2
+fi
+RUN_DIR="$(cd "$RUN_DIR" && pwd -P)"
 SOCKET="$(cat "$RUN_DIR/socket")"
 CTL="$SCRIPTS/overdub-ctl"
 # song::minVolumeDb, the Master fader's bottom (a gain, not silence).
@@ -24,13 +32,18 @@ journey_begin() {
 }
 
 journey_fail() {
-    echo "FAIL $1" | tee -a "$EVIDENCE/checks.txt"
+    echo "FAIL $1" | tee -a "$EVIDENCE/checks.txt" >&2
     echo "RESULT fail" >>"$EVIDENCE/checks.txt"
     echo "journey: FAILED, see $EVIDENCE" >&2
     exit 1
 }
 
 journey_end() {
+    if grep -q '^FAIL' "$EVIDENCE/checks.txt"; then
+        echo "RESULT fail" >>"$EVIDENCE/checks.txt"
+        echo "journey: FAILED in a subshell, see $EVIDENCE" >&2
+        exit 1
+    fi
     echo "RESULT pass" >>"$EVIDENCE/checks.txt"
     echo "journey: passed, see $EVIDENCE/checks.txt"
 }
@@ -47,25 +60,32 @@ ctl() {
 
 # state SECTION [SECTION ...]: prints the named app state sections as one JSON object.
 state() {
-    local parts
+    local parts out
     parts="$(jq -cn --args '$ARGS.positional' "$@")"
-    ctl state "parts=$parts" | jq -c 'del(.id, .ok, .seq)'
+    out="$(ctl state "parts=$parts" | jq -c 'del(.id, .ok, .seq)')"
+    [[ -n "$out" ]] || journey_fail "state $* printed nothing"
+    echo "$out"
 }
 
 # snapshot NAME SECTION ...: saves the sections to state-NAME.json.
 snapshot() {
-    local name="$1"
+    local name="$1" out
     shift
-    state "$@" | jq . >"$EVIDENCE/state-$name.json"
+    out="$(state "$@")"
+    [[ -n "$out" ]] || journey_fail "snapshot $name of $* is empty"
+    jq . <<<"$out" >"$EVIDENCE/state-$name.json"
 }
 
-# check DESCRIPTION JSON JQ_FILTER: passes when the filter prints true for the JSON.
+# check DESCRIPTION JSON JQ_FILTER [JQ_ARG ...]: passes when the filter prints true for the JSON.
+# JQ_ARGs such as --arg song "$SONG" bind strings the filter compares with ($song).
 check() {
-    if [[ "$(jq -r "$3" <<<"$2" 2>/dev/null)" == "true" ]]; then
-        echo "ok   $1" | tee -a "$EVIDENCE/checks.txt"
+    local description="$1" json="$2" filter="$3"
+    shift 3
+    if [[ "$(jq -r "$@" "$filter" <<<"$json" 2>/dev/null)" == "true" ]]; then
+        echo "ok   $description" | tee -a "$EVIDENCE/checks.txt"
     else
-        echo "     got: $(jq -c "$3" <<<"$2" 2>&1 | head -c 400)" >>"$EVIDENCE/checks.txt"
-        journey_fail "$1"
+        echo "     got: $(jq -c "$@" "$filter" <<<"$json" 2>&1 | head -c 400)" >>"$EVIDENCE/checks.txt"
+        journey_fail "$description"
     fi
 }
 
@@ -100,7 +120,8 @@ wait_finish() {
     local s
     s="$(state activity)"
     echo "$s" | jq . >"$EVIDENCE/state-finish-$1.json"
-    check "activity $ACTIVITY_COUNTER finished as $1 with no error" "$s" ".activity.last_finish.kind == \"$1\" and .activity.last_finish.error_code == null"
+    check "activity $ACTIVITY_COUNTER finished as $1 with no error" "$s" \
+        '.activity.last_finish.kind == $kind and .activity.last_finish.error_code == null' --arg kind "$1"
 }
 
 # write_test_wav PATH SECONDS: a 16-bit stereo 44.1 kHz 110 Hz sine with a click every 0.5 s.

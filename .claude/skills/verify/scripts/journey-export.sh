@@ -30,7 +30,7 @@ export_as() {
     ctl set_export_format "format=$1" >/dev/null
     ctl set_export_destination "path=$file" >/dev/null
     check "the export form says $1 to $file" "$(state view)" \
-        ".view.export_form.format == \"$1\" and .view.export_form.destination == \"$file\""
+        '.view.export_form.format == $format and .view.export_form.destination == $file' --arg format "$1" --arg file "$file"
     silence_master
     ctl export >/dev/null
     activity_started
@@ -41,9 +41,9 @@ export_as() {
     cat "$EVIDENCE/afinfo-$2.txt" | grep -E 'File type ID|Data format|estimated duration'
 }
 
-# duration_close FILE TOLERANCE_S: afinfo's duration is the Song span within the tolerance.
+# duration_close FILE TOLERANCE_S: afinfo printed a duration and it is the Song span within the tolerance.
 duration_close() {
-    awk -v span="$SPAN" -v tol="$2" '/estimated duration/ { d = $3 - span; exit !(d <= tol && -d <= tol) }' "$EVIDENCE/afinfo-$1.txt"
+    awk -v span="$SPAN" -v tol="$2" '/estimated duration/ { f = 1; d = $3 - span; ok = (d <= tol && -d <= tol) } END { exit !(f && ok) }' "$EVIDENCE/afinfo-$1.txt"
 }
 
 export_as wav song.wav

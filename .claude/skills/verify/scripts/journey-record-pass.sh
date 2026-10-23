@@ -16,11 +16,11 @@ rm -rf "$SONG"
 check "no Song is open at the start" "$(state song)" '.song == null'
 ctl new_song_at "path=$SONG" >/dev/null
 s="$(state song)"
-check "new_song_at opened the Song at $SONG" "$s" ".song.path == \"$SONG\""
+check "new_song_at opened the Song at $SONG" "$s" '.song.path == $song' --arg song "$SONG"
 check_cmd "the Song package exists on disk" '[[ -f "$SONG/song.json" ]]'
 
 ctl show_mode mode=record >/dev/null
-ctl import_files "files=[\"$BACKING\"]" >/dev/null
+ctl import_files "files=$(jq -cn --arg file "$BACKING" '[$file]')" >/dev/null
 s="$(state song)"
 check "the import added one Backing Track on one Track with one Clip" "$s" \
     '(.song.song.backingTracks | length) == 1 and (.song.song.tracks | length) == 1 and (.song.song.tracks[0].clips | length) == 1'
@@ -77,7 +77,24 @@ check_cmd "the Take's audio/$TAKE.wav exists with nonzero length" '[[ -s "$WAV" 
 check_cmd "no .wav.tmp is left in audio/" '[[ -z "$(ls "$SONG/audio" | grep -F .tmp)" ]]'
 afinfo "$WAV" >"$EVIDENCE/afinfo-take.txt" 2>&1
 check_cmd "afinfo reads the Take as audio at least 1.5 s long" \
-    'awk "/estimated duration/ { exit !(\$3 >= 1.5) }" "$EVIDENCE/afinfo-take.txt"'
+    'awk "/estimated duration/ { f = 1; ok = (\$3 >= 1.5) } END { exit !(f && ok) }" "$EVIDENCE/afinfo-take.txt"'
+
+# take_peak WAV: the largest absolute sample of the file converted to 16-bit PCM.
+take_peak() {
+    local pcm16
+    pcm16="$(mktemp -t overdub-take)"
+    afconvert -f WAVE -d LEI16 "$1" "$pcm16" && python3 -I - "$pcm16" <<'PY'
+import struct, sys, wave
+with wave.open(sys.argv[1], "rb") as w:
+    frames = w.readframes(w.getnframes())
+samples = struct.unpack("<%dh" % (len(frames) // 2), frames)
+print(max((abs(v) for v in samples), default=0))
+PY
+    rm -f "$pcm16"
+}
+PEAK="$(take_peak "$WAV")"
+echo "$PEAK" >"$EVIDENCE/take-peak.txt"
+check_cmd "the Take is not all zeros (16-bit peak $PEAK)" '[[ "$PEAK" == <-> ]] && ((PEAK > 0))'
 
 jq -n --arg song "$SONG" --arg track "$TRACK" --arg take "$TAKE" --arg backing_track "$BACKING_TRACK" \
     '{song: $song, track: $track, take: $take, backing_track: $backing_track}' >"$EVIDENCE/ids.json"

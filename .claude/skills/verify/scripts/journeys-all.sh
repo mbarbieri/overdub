@@ -7,7 +7,8 @@
 set -uo pipefail
 SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 failed=0
-for journey in ${@:-record-pass edit export separation}; do
+(( $# )) || set -- record-pass edit export separation
+for journey in "$@"; do
     for _ in {1..180}; do pgrep -x Overdub >/dev/null || break; sleep 5; done
     if ! launched="$("$SCRIPTS/launch.sh" "journey-$journey" 2>&1)"; then
         echo "$journey LAUNCH-FAILED: $launched"

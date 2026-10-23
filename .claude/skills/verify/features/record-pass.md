@@ -21,7 +21,7 @@ Preconditions:
 - `launch.sh` and `doctor.sh` passed, and no Song is open (a fresh launch).
 - The device offers at least one input (`state` `/audio/inputs`). The built-in microphone is fine; it records room sound.
 
-Run `.claude/skills/verify/scripts/journey-record-pass.sh`. It exits 0 when every check passed and writes `journeys/record-pass/` in the run dir (`checks.txt`, `requests.jsonl`, `state-*.json`, `afinfo-take.txt`, `ids.json`). It leaves the Song open for `journey-edit.sh` and `journey-export.sh`. The recipe, all through `overdub-ctl`:
+Run `.claude/skills/verify/scripts/journey-record-pass.sh`. It exits 0 when every check passed and writes `journeys/record-pass/` in the run dir (`checks.txt`, `requests.jsonl`, `state-*.json`, `afinfo-take.txt`, `take-peak.txt`, `ids.json`). It leaves the Song open for `journey-edit.sh` and `journey-export.sh`. The recipe, all through `overdub-ctl`:
 
 1. `new_song_at path=$RUN_DIR/songs/record-pass.overdub`. `state song` has that `path`, and `song.json` exists.
 2. `show_mode mode=record`, then `import_files files=["<3 s WAV>"]`. The Song has one Backing Track on one Track with one Clip.
@@ -30,7 +30,7 @@ Run `.claude/skills/verify/scripts/journey-record-pass.sh`. It exits 0 when ever
 5. `set_input_channels track_id=<id> channels=[0]` and `set_armed track_id=<id> armed=true`. `state camera` has `armed: false`.
 6. `record`, then read `/activity/counter` (this Pass's number). `wait pointer=/transport/running_pass_number equals=1`, then poll `state transport` until `position` passes 2 s.
 7. `play_or_stop` stops the Pass. `wait pointer=/activity/last_finish/counter equals=<counter>`, and `/activity/last_finish` is `{"kind": "pass", "error_code": null}`.
-8. `state` shows one Pass, one Take on the Armed Track with `passId` of that Pass, one Clip on that Track playing it (`source: {kind: take, id}`), `history.undo_label` `Record Pass 1`, and the transport stopped. `audio/<take id>.wav` exists with nonzero length, no `.wav.tmp` remains, and `afinfo` reads at least 1.5 s.
+8. `state` shows one Pass, one Take on the Armed Track with `passId` of that Pass, one Clip on that Track playing it (`source: {kind: take, id}`), `history.undo_label` `Record Pass 1`, and the transport stopped. `audio/<take id>.wav` exists with nonzero length, no `.wav.tmp` remains, `afinfo` reads at least 1.5 s, and the Take is not all zeros (its 16-bit peak, converted with `afconvert`, is above 0).
 
 `record-video` is not driven: the camera stays unarmed under the audio rules in `../SKILL.md`.
 

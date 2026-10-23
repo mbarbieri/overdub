@@ -16,10 +16,11 @@ SONG="$RUN_DIR/songs/separation.overdub"
 INPUT="$EVIDENCE/backing-6s.wav"
 write_test_wav "$INPUT" 6
 rm -rf "$SONG"
+check "no Song is open at the start" "$(state song)" '.song == null'
 ctl new_song_at "path=$SONG" >/dev/null
-check "new_song_at opened the Song at $SONG" "$(state song)" ".song.path == \"$SONG\""
+check "new_song_at opened the Song at $SONG" "$(state song)" '.song.path == $song' --arg song "$SONG"
 silence_master
-ctl import_files "files=[\"$INPUT\"]" >/dev/null
+ctl import_files "files=$(jq -cn --arg file "$INPUT" '[$file]')" >/dev/null
 s="$(state song)"
 check "the import added one Backing Track on one Track" "$s" \
     '(.song.song.backingTracks | length) == 1 and (.song.song.tracks | length) == 1'
