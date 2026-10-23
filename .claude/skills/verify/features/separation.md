@@ -14,7 +14,7 @@ Separation splits one Backing Track into six new Backing Tracks: vocals, drums, 
 - Right-click a Record row whose Clips all play one Backing Track, then choose **Separate...**. The modal progress dialog shows until it finishes.
 - Developers can also run `overdub-separate <model> <input> <out dir>` on its own (`docs/building.md`, "Separation helper").
 
-## Driving it with separation-proof.sh
+## Driving it with separation-proof.sh and journey-separation.sh
 
 Preconditions:
 
@@ -25,7 +25,8 @@ Preconditions:
 - **Run the helper.** Run `.claude/skills/verify/scripts/separation-proof.sh`. It exits 0 after about 55 s. `separation/stdout.jsonl` has `separation.started` with `"chunks":1` and `"samples":264600`, then `separation.chunk_done`, six `separation.part_written` lines and `separation.finished` (about 4.6 GB `peak_memory_mb`).
 - **Parts are real.** Read `separation/parts-rms.txt`. There are six files, each `frames=264600`. `bass.wav` is around −13 dBFS and every other part is below −90 dBFS, because the input is a 110 Hz sine.
 - **Error path.** Run the helper with a missing model: `build/debug/src/app/Overdub_artefacts/Debug/Overdub.app/Contents/MacOS/overdub-separate /nonexistent.onnx "$RUN_DIR/separation/input.wav" "$RUN_DIR/sep-err"; echo $?`. It exits `1`, and stderr has one line with `"error":"separation.model_missing"`.
-- **In the Song (unverified).** `separation-in-song` and `separation-cancel` need the right-click menu and the modal dialog. Report them as unverified (no GUI driver). Once the UI has run, the proof is `song.separation_started` and `song.separation_finished` in the log, six new Backing Tracks with `separatedFrom` in `song.json`, and the source Track muted.
+- **In the Song.** Run `.claude/skills/verify/scripts/journey-separation.sh` on a fresh launch. It exits 0 after about 30-60 s when every check passed and writes `journeys/separation/` in the run dir. The recipe, all through `overdub-ctl`: `new_song_at path=$RUN_DIR/songs/separation.overdub`, `set_master_volume volume_db=-60`, `import_files` a 6 s 110 Hz sine with clicks, check `/refused/start_separation` is `null`, then `start_separation track_id=<its Track>`. Read `/activity/counter`, `wait pointer=/activity/last_finish/counter equals=<counter> timeout_ms=300000`, and `/activity/last_finish` is `{"kind": "separation", "error_code": null}`. `state` then shows seven Tracks: the source first and muted, then Bass, Drums, Other, Vocals, Guitar and Piano, each with one Clip playing a new Backing Track whose `separatedFrom.backingTrackId` is the source Backing Track and whose `lengthSamples` is the source's. The undo label is `Separate backing-6s.wav`, the run dialog is closed, and `backing/` has a file per part.
+- **Cancel (unverified).** `separation-cancel` (`cancel_run` while it runs) is not in a journey yet.
 
 ## Gotchas
 

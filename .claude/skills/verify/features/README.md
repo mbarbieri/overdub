@@ -11,7 +11,8 @@ This directory is the maintained source for verifying the user-facing behavior o
 
 ## Driving conventions
 
-- Headless paths only: the helper process, the selftest CLI, the JSONL log and Song package files. No window driver works on this machine (see `../SKILL.md`).
+- Drive the app through the control socket (`../scripts/overdub-ctl`) and the journey scripts, plus the helper process, the selftest CLI, the JSONL log and Song package files. Nothing clicks or screenshots the window (see `../SKILL.md`).
+- Nothing may be heard: before any play, record or export, set the Master volume to its minimum with `set_master_volume volume_db=-60`, and never turn Monitoring on. Never run `measure_latency` or the loopback selftest without asking the user.
 - Assert log `event` names and fields, never `msg`.
 - Work on copies (`ditto`) of any user Song. Never write under `~/Music` or edit per-machine settings files.
 - Use GLOSSARY.md terms (Song, Track, Pass, Take, Clip, Backing Track, Separation) in reports.
@@ -20,7 +21,8 @@ This directory is the maintained source for verifying the user-facing behavior o
 
 - A CLI proof keeps the command, stdout, stderr and exit code in the run dir.
 - A side effect is proven by reading the result: part files and their levels, `song.json` contents, log events.
-- A UI entry point that was not driven is reported as **unverified (no GUI driver)**, with the feature ID. Never report it as verified through a headless neighbour.
+- A journey script proves itself: `journeys/<name>/checks.txt` ends `RESULT pass` or `RESULT fail`, next to every request and reply (`requests.jsonl`) and the state snapshots it checked.
+- A sub-feature no journey drives is reported as **unverified**, with the feature ID and the missing piece. Never report it as verified through a neighbour.
 
 ## Feature entry contract
 
@@ -31,7 +33,8 @@ Each feature file starts with an H1 title and one paragraph that describes the u
 | Feature | Drivable today |
 | --- | --- |
 | [App startup and audio device](./app-startup.md) | yes: launch, doctor, log |
-| [Separation](./separation.md) | helper: yes (proven 2026-10-20); the Separate... menu: no |
+| [Separation](./separation.md) | yes: `separation-proof.sh` (helper) and `journey-separation.sh` (in a Song, proven 2026-10-23); cancel: no |
 | [Selftests](./selftests.md) | yes, with conditions (loopback plays sound; clap needs a clap Pass) |
-| [Record a Pass](./record-pass.md) | no (GUI only) |
-| [Export](./export.md) | no (GUI only) |
+| [Record a Pass](./record-pass.md) | yes: `journey-record-pass.sh` (proven 2026-10-23); the camera: no |
+| [Edit Clips](./edit.md) | yes: `journey-edit.sh` (split, move, trim, fade, undo, redo; proven 2026-10-23) |
+| [Export](./export.md) | yes: `journey-export.sh` (WAV and M4A, proven 2026-10-23); MP4: no |

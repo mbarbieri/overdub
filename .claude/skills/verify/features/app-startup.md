@@ -29,6 +29,6 @@ Preconditions:
 
 ## Gotchas
 
-- The window itself (its layout, the Notice banner) cannot be seen without a GUI driver. Only the log proves that a Notice was raised.
+- The window itself (its layout, the Notice banner) cannot be seen. `overdub-ctl state parts='["messages"]'` shows the Notice the window shows (`/messages/notice/code`), and the log shows that it was raised.
 - On this Mac, `audio-device.json` names a NUX NGA-3BT interface that is usually unplugged, so the fallback path runs on most launches.
 - Launching the bare binary instead of using `open` makes the quit Apple Event fail with error -600, and cleanup has to SIGKILL. Use `launch.sh`.
