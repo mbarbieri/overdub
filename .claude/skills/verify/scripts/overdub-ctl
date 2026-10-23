@@ -107,14 +107,17 @@ def resolve_socket(socket_path):
         fail(f"no --socket and no {DEFAULT_SOCKET_FILE}; run launch.sh first")
 
 
-def read_lines(conn, buffer):
+def read_line(conn, buffer):
+    # `buffer` is a bytearray kept by the caller, so bytes read before a timeout are not lost.
     while b"\n" not in buffer:
         chunk = conn.recv(65536)
         if not chunk:
-            return None, buffer
+            return None
         buffer += chunk
-    line, _, buffer = buffer.partition(b"\n")
-    return json.loads(line), buffer
+    end = buffer.index(b"\n")
+    line = bytes(buffer[:end])
+    del buffer[: end + 1]
+    return json.loads(line)
 
 
 def request_timeout(op, request, timeout, seconds):
@@ -152,7 +155,7 @@ def main():
     except OSError as error:
         fail(f"cannot connect to {path}: {error}")
 
-    buffer = b""
+    buffer = bytearray()
     reply = None
     seen = 0
     while True:
@@ -164,7 +167,7 @@ def main():
             fail(f"timed out after {timeout:g} s waiting for the {op} reply" + (f" and {count} events" if count else ""))
         conn.settimeout(deadline - now)
         try:
-            line, buffer = read_lines(conn, buffer)
+            line = read_line(conn, buffer)
         except socket.timeout:
             continue
         if line is None:
