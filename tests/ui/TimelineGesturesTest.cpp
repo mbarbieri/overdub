@@ -2,6 +2,7 @@
 
 #include "core/LogEvents.h"
 #include "ui/MainWindowFixture.h"
+#include "ui/SongEdits.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -81,7 +82,14 @@ TEST_CASE ("a Clip drag's preview shows only while it runs; after mouse up the T
     GestureFixture f;
     const auto before = f.bandMixBounds();
     std::vector<std::string> editLabels;
-    f.timeline().onEdit = [&editLabels] (song::Song, std::string label) { editLabels.push_back (std::move (label)); };
+    const auto runIntent = f.timeline().onIntent;
+    f.timeline().onIntent = [&editLabels, &f, runIntent] (const Intent& reported) {
+        const auto* songIntent = std::get_if<SongIntent> (&reported);
+        const auto* edit = songIntent != nullptr ? std::get_if<intent::Edit> (songIntent) : nullptr;
+        if (edit == nullptr)
+            return runIntent (reported);
+        editLabels.push_back (editedSong (f.song(), *edit)->label);
+    };
 
     const auto from = before.getCentre();
     const auto to = from.translated (50, 0);
@@ -144,7 +152,10 @@ TEST_CASE ("Esc during a file drag leaves it hovering, and its drop is still acc
     GestureFixture f;
     const auto paths = f.audioFilePaths();
     std::vector<juce::File> dropped;
-    f.timeline().onFilesDropped = [&dropped] (std::vector<juce::File> files) { dropped = std::move (files); };
+    f.timeline().onIntent = [&dropped] (const Intent& reported) {
+        for (const auto& path : std::get<intent::ImportFiles> (std::get<SongIntent> (reported)).files)
+            dropped.push_back (juce::File (path.value));
+    };
     f.timeline().fileDragEnter (paths, 10, 10);
     REQUIRE (f.timeline().isDropHighlighted());
     CHECK_FALSE (f.timeline().cancelGesture ("escape"));

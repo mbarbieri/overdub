@@ -169,8 +169,8 @@ void TrackHeader::paint (juce::Graphics& g)
 
 //==============================================================================
 
-Timeline::Timeline (const TrackActions& actions)
-    : trackActions (actions)
+Timeline::Timeline (PeaksLookup peaks)
+    : peaksFor (std::move (peaks))
 {
     cameraHeader.setText ("Camera", juce::dontSendNotification);
     cameraHeader.setColour (juce::Label::textColourId, colours::dimText);
@@ -315,10 +315,10 @@ void Timeline::connectHeader (TrackHeader& header, const song::Id& trackId)
     header.grip.onPress = [this, &header] (juce::Point<int> inGrip) { beginTrackDrag (header, inGrip); };
     header.grip.onDrag = [this, &header] (juce::Point<int> inGrip) { dragTrack (header, inGrip); };
     header.grip.onRelease = [this, &header] (juce::Point<int> inGrip) { dropTrack (header, inGrip); };
-    header.onArm = [this, trackId] (bool armed) { trackActions.arm (trackId, armed); };
-    header.onToggleTakes = [this, trackId] { setTakeLanesUnfolded (trackId, ! areTakeLanesUnfolded (trackId)); };
-    header.onMute = [this, trackId] (bool mute) { trackActions.mute (trackId, mute); };
-    header.onSolo = [this, trackId] (bool solo) { trackActions.solo (trackId, solo); };
+    header.onArm = [this, trackId] (bool armed) { emit (SongIntent { intent::SetArmed { trackId, armed } }); };
+    header.onToggleTakes = [this, trackId] { emit (SongIntent { intent::SetTakeLanesUnfolded { trackId, ! areTakeLanesUnfolded (trackId) } }); };
+    header.onMute = [this, trackId] (bool mute) { emit (SongIntent { intent::Edit { intent::SetTrackMute { trackId, mute } } }); };
+    header.onSolo = [this, trackId] (bool solo) { emit (SongIntent { intent::Edit { intent::SetTrackSolo { trackId, solo } } }); };
     header.onDelete = [this, trackId] {
         if (onDeleteTrack)
             onDeleteTrack (trackId);
@@ -368,18 +368,9 @@ void Timeline::setView (song::SampleCount firstSample, song::SampleCount samples
 {
     timelineView.firstSample = std::max<song::SampleCount> (0, firstSample);
     timelineView.samplesPerPixel = std::clamp (samplesPerPixel, minSamplesPerPixel, maxSamplesPerPixel);
-    updateScrollBar();
+    if (! scrollBarReporting)
+        updateScrollBar();
     repaint();
-}
-
-void Timeline::zoomIn()
-{
-    setView (timelineView.firstSample, zoomedIn (timelineView).samplesPerPixel);
-}
-
-void Timeline::zoomOut()
-{
-    setView (timelineView.firstSample, zoomedOut (timelineView).samplesPerPixel);
 }
 
 std::optional<song::Id> Timeline::selectedClip() const
@@ -504,27 +495,33 @@ void Timeline::mouseWheelMove (const juce::MouseEvent& event, const juce::MouseW
 {
     const auto scroll = wheelScroll (wheel.deltaX, wheel.deltaY, event.mods.isShiftDown());
     if (scroll.timePixels != 0)
-        setView (timelineView.firstSample + (song::SampleCount) scroll.timePixels * timelineView.samplesPerPixel, timelineView.samplesPerPixel);
+        emit (SongIntent { intent::SetTimelineView { timelineView.firstSample + (song::SampleCount) scroll.timePixels * timelineView.samplesPerPixel, timelineView.samplesPerPixel } });
     if (scroll.verticalPixels != 0)
-        setVerticalScroll (verticalScrollPixels + scroll.verticalPixels);
+        emit (SongIntent { intent::SetVerticalScroll { verticalScrollPixels + scroll.verticalPixels } });
 }
 
 void Timeline::mouseMagnify (const juce::MouseEvent& event, float scaleFactor)
 {
     const auto pinch = pinchZoomed (timelineView, pinchPendingLevels, scaleFactor, event.x);
     pinchPendingLevels = pinch.pendingLevels;
-    setView (pinch.view.firstSample, pinch.view.samplesPerPixel);
+    emit (SongIntent { intent::SetTimelineView { pinch.view.firstSample, pinch.view.samplesPerPixel } });
 }
 
 void Timeline::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
 {
     if (bar == &verticalScrollBar)
     {
-        setVerticalScroll ((int) std::lround (newRangeStart));
+        emit (SongIntent { intent::SetVerticalScroll { (int) std::lround (newRangeStart) } });
         return;
     }
-    timelineView.firstSample = std::max<song::SampleCount> (0, (song::SampleCount) newRangeStart);
-    repaint();
+    const juce::ScopedValueSetter<bool> reporting (scrollBarReporting, true);
+    emit (SongIntent { intent::SetTimelineView { std::max<song::SampleCount> (0, (song::SampleCount) newRangeStart), timelineView.samplesPerPixel } });
+}
+
+void Timeline::emit (Intent intent) const
+{
+    if (onIntent)
+        onIntent (intent);
 }
 
 void Timeline::updateScrollBar()
@@ -705,7 +702,7 @@ void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Colou
     const auto waveArea = clipArea.withTrimmedTop (14).reduced (0, 2);
     if (waveArea.getHeight() > 2)
     {
-        const auto& peaks = trackActions.peaksFor (clip.source);
+        const auto& peaks = peaksFor (clip.source);
         const auto firstX = std::max (clipArea.getX(), layout.ruler.getX());
         const auto lastX = std::min (clipArea.getRight(), layout.ruler.getRight());
         if (! peaks.channels.empty() && lastX > firstX)

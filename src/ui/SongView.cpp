@@ -34,7 +34,7 @@ SongView::SongView (OpenSong& song, MainComponent& mainWindow)
       window (mainWindow),
       trackActions (makeTrackActions()),
       recordPage (trackActions),
-      editPage (trackActions),
+      editPage ([this] (const song::ClipSource& source) -> const song::Peaks& { return openSong.peaks (source); }),
       pluginWindows (mainWindow.showPluginWindowsOnDesktop)
 {
     wirePages();
@@ -96,18 +96,9 @@ void SongView::wirePages()
     pluginWindows.onBypass = chainActions.bypass;
     pluginWindows.onClosed = [this] (const song::Id&) { openSong.notePluginStateChanged(); };
 
-    editPage.onEdit = [this] (song::Song changed, std::string label) { applyEdit (std::move (changed), label); };
-    editPage.onToggleVideo = [this] { window.setVideoPreviewWanted (! window.isVideoPreviewWanted()); };
+    editPage.onIntent = [this] (const Intent& intent) { window.run (intent); };
     editPage.onDeleteTrack = [this] (const song::Id& trackId) { askToDeleteTrack (trackId); };
-    editPage.onSplit = [this] { window.run (SongIntent { intent::SplitSelectedClip {} }); };
-    editPage.onDelete = [this] { window.run (SongIntent { intent::DeleteSelection {} }); };
     editPage.timeline.canImportFiles = [this] { return openSong.canChangeTracks(); };
-    editPage.timeline.onFilesDropped = [this] (std::vector<juce::File> files) {
-        intent::ImportFiles import;
-        for (const auto& file : files)
-            import.files.push_back (core::AbsolutePath { file.getFullPathName().toStdString() });
-        window.run (SongIntent { std::move (import) });
-    };
 
     exportPage.onExport = [this] (exporting::ExportRequest request) { startExport (request); };
     exportPage.onChooseDestination = [this] (juce::File current) { chooseExportFile (current); };

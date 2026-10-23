@@ -67,7 +67,7 @@ void Timeline::dropTrack (TrackHeader& header, juce::Point<int> inGrip)
         return;
     core::logEvent (core::Level::debug, "ui.track_dropped", { { "page", "edit" }, { "track_id", drop->trackId }, { "from", drop->from }, { "to", drop->to } });
     if (drop->to != drop->from)
-        trackActions.moveTrack (drop->trackId, drop->to);
+        emit (SongIntent { intent::MoveTrack { drop->trackId, drop->to } });
 }
 
 bool Timeline::isInterestedInFileDrag (const juce::StringArray& files)
@@ -95,11 +95,15 @@ void Timeline::filesDropped (const juce::StringArray& files, int, int)
     if (std::holds_alternative<FileDragHover> (gesture))
         gesture = std::monostate {};
     repaint();
-    auto importable = importableAudioFiles (files);
-    const auto accepted = isInterestedInFileDrag (files) && onFilesDropped != nullptr;
+    const auto importable = importableAudioFiles (files);
+    const auto accepted = isInterestedInFileDrag (files) && onIntent != nullptr;
     core::logEvent (core::Level::debug, "ui.files_dropped", { { "dropped", files.size() }, { "importable", importable.size() }, { "accepted", accepted } });
-    if (accepted)
-        onFilesDropped (std::move (importable));
+    if (! accepted)
+        return;
+    intent::ImportFiles import;
+    for (const auto& file : importable)
+        import.files.push_back (core::AbsolutePath { file.getFullPathName().toStdString() });
+    emit (SongIntent { std::move (import) });
 }
 
 std::optional<song::Id> Timeline::videoTakeAt (juce::Point<int> position) const
@@ -129,16 +133,12 @@ bool Timeline::clickTakeLane (juce::Point<int> position)
         {
             if (! layout.takeLanes[i][j].contains (position))
                 continue;
+            const auto& takeId = takeLanes[i][j].takeId;
             const auto at = sampleForX (timelineView, position.x);
-            auto edit = laneEditAt (current.song, takeLanes[i][j].takeId, at, song::makeId());
-            core::logEvent (core::Level::debug, "ui.take_lane_clicked", { { "take_id", takeLanes[i][j].takeId }, { "at", at }, { "changes_song", edit.has_value() } });
-            if (! edit.has_value())
-                return true;
-            const auto clipId = edit->clipId;
-            if (onEdit)
-                onEdit (std::move (edit->song), std::move (edit->label));
-            if (song::findClip (current.song, clipId) != nullptr)
-                selectClip (clipId);
+            const auto changesSong = laneEditAt (current.song, takeId, at, song::makeId()).has_value();
+            core::logEvent (core::Level::debug, "ui.take_lane_clicked", { { "take_id", takeId }, { "at", at }, { "changes_song", changesSong } });
+            if (changesSong)
+                emit (SongIntent { intent::TakeLaneClick { takeId, at } });
             return true;
         }
     }
@@ -154,7 +154,7 @@ void Timeline::mouseDown (const juce::MouseEvent& event)
     if (layout.ruler.contains (position))
     {
         gesture = SeekGesture {};
-        trackActions.seek (std::max<song::SampleCount> (0, sampleForX (timelineView, position.x)));
+        emit (SongIntent { intent::Seek { std::max<song::SampleCount> (0, sampleForX (timelineView, position.x)) } });
         return;
     }
 
@@ -165,7 +165,7 @@ void Timeline::mouseDown (const juce::MouseEvent& event)
         if (videoTakeId.has_value())
             fields["video_take_id"] = *videoTakeId;
         core::logEvent (core::Level::debug, "ui.camera_lane_clicked", fields);
-        selectVideoTake (videoTakeId);
+        emit (SongIntent { intent::SelectVideoTake { videoTakeId } });
         return;
     }
 
@@ -179,7 +179,7 @@ void Timeline::mouseDown (const juce::MouseEvent& event)
     auto hit = hitTestClips (current.song.tracks[*lane].clips, timelineView, position.x);
     if (! hit.has_value())
     {
-        selectClip (std::nullopt);
+        emit (SongIntent { intent::SelectClip { std::nullopt } });
         return;
     }
     // The Clip's fade handles and dB tag win over its body and edges.
@@ -190,7 +190,7 @@ void Timeline::mouseDown (const juce::MouseEvent& event)
     if (const auto handle = hitTestClipHandles (timelineView, *clip, clipTop, position.x, position.y))
         hit->part = *handle;
 
-    selectClip (hit->clipId);
+    emit (SongIntent { intent::SelectClip { hit->clipId } });
     gesture = ClipDragGesture { ClipDrag { hit->clipId, hit->part, position.x, position.y }, current.song, std::nullopt };
 }
 
@@ -199,7 +199,7 @@ void Timeline::mouseDrag (const juce::MouseEvent& event)
     const auto position = event.getPosition();
     if (std::holds_alternative<SeekGesture> (gesture))
     {
-        trackActions.seek (std::max<song::SampleCount> (0, sampleForX (timelineView, position.x)));
+        emit (SongIntent { intent::Seek { std::max<song::SampleCount> (0, sampleForX (timelineView, position.x)) } });
         return;
     }
     auto* clipDrag = std::get_if<ClipDragGesture> (&gesture);
@@ -230,10 +230,8 @@ void Timeline::mouseUp (const juce::MouseEvent& event)
     const auto edit = intentForDrag (finished.songAtDown, finished.drag, timelineView, event.getPosition().x, event.getPosition().y);
     if (! edit.has_value())
         return;
-    auto dragged = editedSong (finished.songAtDown, *edit);
-    if (! dragged.has_value() || dragged->song == finished.songAtDown)
-        return;
-    if (onEdit)
-        onEdit (std::move (dragged->song), std::move (dragged->label));
+    const auto dragged = editedSong (finished.songAtDown, *edit);
+    if (dragged.has_value() && dragged->song != finished.songAtDown)
+        emit (SongIntent { *edit });
 }
 } // namespace overdub::ui
