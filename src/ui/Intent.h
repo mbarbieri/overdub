@@ -390,6 +390,7 @@ struct Redo
 struct Seek // a click on the Edit ruler or the Record overview
 {
     static constexpr std::string_view op = "seek";
+    static constexpr bool runsPerFrame = true;
     song::SampleCount sample = 0;
     bool operator== (const Seek&) const = default;
     static constexpr auto fields = std::tuple { field ("sample", &Seek::sample) };
@@ -545,6 +546,7 @@ struct TakeLaneClick // uses the Take over the Clip there, or brings the Take ba
 struct PreviewMix
 {
     static constexpr std::string_view op = "preview_mix";
+    static constexpr bool runsPerFrame = true;
     std::optional<MixEdit> edit;
     bool operator== (const PreviewMix&) const = default;
     static constexpr auto fields = std::tuple { field ("edit", &PreviewMix::edit) };
@@ -654,6 +656,7 @@ struct SelectVideoTake // a click on a Camera lane block
 struct SetTimelineView // zoom, pinch and horizontal scroll; clamped as Timeline::setView clamps
 {
     static constexpr std::string_view op = "set_timeline_view";
+    static constexpr bool runsPerFrame = true;
     song::SampleCount firstSample = 0;
     song::SampleCount samplesPerPixel = 0;
     bool operator== (const SetTimelineView&) const = default;
@@ -664,6 +667,7 @@ struct SetTimelineView // zoom, pinch and horizontal scroll; clamped as Timeline
 struct SetVerticalScroll
 {
     static constexpr std::string_view op = "set_vertical_scroll";
+    static constexpr bool runsPerFrame = true;
     int pixels = 0;
     bool operator== (const SetVerticalScroll&) const = default;
     static constexpr auto fields = std::tuple { field ("pixels", &SetVerticalScroll::pixels) };
@@ -689,6 +693,7 @@ struct SetMixerVisible
 struct SetMixerHeight // the divider drag
 {
     static constexpr std::string_view op = "set_mixer_height";
+    static constexpr bool runsPerFrame = true;
     int height = 0;
     bool operator== (const SetMixerHeight&) const = default;
     static constexpr auto fields = std::tuple { field ("height", &SetMixerHeight::height) };
@@ -765,6 +770,11 @@ using IntentSink = std::function<void (const Intent&)>;
 
 // "show_mode", "move_clip", ...: the op name of the leaf.
 std::string_view opName (const Intent& intent);
+
+// A gesture runs it once per frame (a ruler drag, a wheel or pinch, a scroll bar or divider drag, a
+// Mixer drag's preview_mix): its struct says `runsPerFrame = true`. MainComponent::run neither logs
+// ui.intent_run nor refreshes the window for it; its handler refreshes only what it changes.
+bool runsPerFrame (const Intent& intent);
 
 // ui.no_song_open for `op`: what an Intent that needs the open Song answers while none is.
 core::Error noSongOpen (std::string_view op);

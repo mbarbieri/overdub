@@ -1,5 +1,8 @@
 #include "ui/Intent.h"
 
+#include <type_traits>
+#include <variant>
+
 namespace overdub::ui
 {
 namespace
@@ -10,6 +13,9 @@ char32_t lowerCase (char32_t character)
         return character - U'A' + U'a';
     return character;
 }
+
+template <typename Leaf>
+concept LeafRunsPerFrame = Leaf::runsPerFrame;
 } // namespace
 
 const char* modeName (Mode mode)
@@ -36,6 +42,12 @@ const char* originName (Origin origin)
 std::string_view opName (const Intent& intent)
 {
     return core::operationName (intent);
+}
+
+bool runsPerFrame (const Intent& intent)
+{
+    const auto leafRunsPerFrame = [] (const auto& leaf) { return LeafRunsPerFrame<std::decay_t<decltype (leaf)>>; };
+    return std::visit ([&] (const auto& group) { return std::visit (leafRunsPerFrame, group); }, intent);
 }
 
 core::Error noSongOpen (std::string_view op)

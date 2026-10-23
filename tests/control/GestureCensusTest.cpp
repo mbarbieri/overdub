@@ -28,15 +28,16 @@
 
 // The UI → Intent proof (ADR 0008, issue #167): every gesture the window's Components offer is
 // fired at a Song with Tracks, Clips, a Pass, a Video Take, an Insert and a selection, in each
-// mode, and a gesture that changes the app state without a ui.intent_run log line in between is a
-// bypass. notYetMigrated names the bypasses the pages still have (issue #168 moves them); it may
+// mode, and a gesture that changes the app state without running an Intent through
+// MainComponent::run (its intentsRun count, which includes the per-frame Intents that log no
+// ui.intent_run) is a bypass. notYetMigrated names the bypasses the pages still have (issue #168 moves them); it may
 // only shrink: an entry that no longer bypasses fails too.
 //
 // Each mode gets a fresh CensusWorkspace, and before each probe its Song, selection and timeline
 // view are put back as they were built, so no gesture changes what a later one is fired at.
 //
 // What it cannot see: a handler that runs some Intent and also edits the app state directly (the
-// ui.intent_run line hides the bypass); text typed into an editor (Labels and TextEditors get
+// Intent run hides the bypass); text typed into an editor (Labels and TextEditors get
 // clicks and keys, never typed text); and a change that lands after the gesture returns (an
 // asynchronous callback, a timer, a dialog answered later).
 //
@@ -400,11 +401,12 @@ void fireProbe (CensusWorkspace& census, const Probe& probe, ui::Mode mode, Cens
     if (target == nullptr || ! ui::testing::isShown (*target) || ! target->isEnabled())
         return;
     const auto before = control::appState (census.f.content, *census.f.workspace);
-    core::ScopedLogCapture capture;
+    const auto intentsBefore = census.f.content.intentsRun();
+    const core::ScopedLogCapture quiet;
     probe.fire (*target);
     const auto after = control::appState (census.f.content, *census.f.workspace);
     ++result.fired;
-    const auto ranIntent = std::ranges::any_of (capture.events(), [] (const json& event) { return event.at ("event") == "ui.intent_run"; });
+    const auto ranIntent = census.f.content.intentsRun() != intentsBefore;
     const auto changed = changedPaths (before, after);
     if (! changed.empty() && ! ranIntent)
     {
@@ -444,7 +446,7 @@ TEST_CASE ("no gesture changes the app state without running an Intent except th
 
     for (const auto& [probe, changed] : result.changedBy)
     {
-        INFO (probe << " changed " << changed << " without ui.intent_run");
+        INFO (probe << " changed " << changed << " without running an Intent");
         CHECK (notYetMigrated.contains (probe));
     }
     for (const auto& allowed : notYetMigrated)

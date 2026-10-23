@@ -210,8 +210,9 @@ void MainComponent::setOpenSong (OpenSong* song)
 IntentResult MainComponent::run (const Intent& intent, Origin origin)
 {
     const auto op = std::string (opName (intent));
-    const auto dragFrameChangingOnlyWhatIsHeard = op == intent::PreviewMix::op;
-    if (! dragFrameChangingOnlyWhatIsHeard)
+    ++intentRunCount;
+    const auto perFrame = runsPerFrame (intent);
+    if (! perFrame)
         core::logEvent (core::Level::debug, "ui.intent_run", { { "op", op }, { "origin", originName (origin) } });
     if (runShowing() && ! actsUnderRunDialog (intent))
         return quietError (core::Error { "ui.run_dialog_open", "a Separation or a conversion runs", { { "op", op } } });
@@ -222,7 +223,7 @@ IntentResult MainComponent::run (const Intent& intent, Origin origin)
             [this] (const WindowIntent& windowIntent) { return runWindow (windowIntent); },
             [this, &op] (const SongIntent& songIntent) { return songContent != nullptr ? songContent->run (songIntent) : quietError (noSongOpen (op)); },
         });
-    if (! dragFrameChangingOnlyWhatIsHeard)
+    if (! perFrame)
         refresh();
     return result;
 }
