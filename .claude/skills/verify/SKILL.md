@@ -1,13 +1,13 @@
 ---
 name: verify
-description: Launch the real Overdub.app (macOS JUCE desktop app) from this checkout and prove a change works the way a user meets it — startup and audio device, the Separation helper, the loopback and clap selftests — with logs, exit codes, files and the app's control socket (overdub-ctl) as evidence. Use after changing src/ to confirm behavior in the running app, not just in ctest; the feature map in features/ lists each user journey and which ones are drivable today.
+description: Launch the real Overdub.app (macOS JUCE desktop app) from this checkout and prove a change works the way a user meets it — startup and audio device, recording a Pass, editing Clips, export, Separation, the selftests — through the app's control socket (overdub-ctl) and journey scripts, with app state, logs and files as evidence. Use after changing src/ to confirm behavior in the running app, not just in ctest; the feature map in features/ lists each user journey and which ones are drivable today.
 ---
 
 # Verify Overdub in the real app
 
 Overdub is a single-window macOS app (JUCE). Users touch its window (Record · Edit · Export modes, the File/Edit menus, Settings) and, for diagnostics, two command-line selftests. The app runs the `overdub-separate` helper process for every Separation.
 
-**The control socket is the driver.** The running app listens on a local socket (ADR 0008): one JSON request per line in, one reply per line out, plus a live stream of its log events. `scripts/overdub-ctl` is the client. Every user operation is becoming a request there (issues #169, #170, #168, #171); until a journey's operations answer over the socket, report that journey as unverified and name the missing piece. There is still no way to click or screenshot the window itself. Never claim that a unit test or a log line proves a journey you did not drive. `features/README.md` lists what is drivable today.
+**The control socket is the driver.** The running app listens on a local socket (ADR 0008): one JSON request per line in, one reply per line out, plus a live stream of its log events. Every user operation is an Intent there, and `state` reads the app state. `scripts/overdub-ctl` is the client, and the `journey-*.sh` scripts drive whole user journeys through it. There is still no way to click or screenshot the window itself, so a gesture's pixels and layout are unverified. Never claim that a unit test or a log line proves a journey you did not drive. `features/README.md` lists what is drivable today.
 
 All helpers live in `.claude/skills/verify/scripts/`. Run them from the repo root.
 
@@ -36,9 +36,19 @@ This is read-only. It checks that the recorded pid is alive and runs this checko
 
 ## Drive
 
+**Audio rules: nothing may be heard.** Before any play, record or export, set the Master volume to its minimum (`overdub-ctl set_master_volume volume_db=-60`, the fader's bottom) and leave Monitoring off (`state monitoring` is `[]`). Do not arm the camera unless the task needs it. Never run `measure_latency`, `--selftest loopback` or anything else that plays test signals without asking the user. `overdub-ctl` refuses `measure_latency` (exit 2) unless you pass `--allow-sound`, so pass it only after the user agreed. Recording a few seconds from the built-in microphone is fine; the Take stays in the run dir.
+
 The drivable surfaces are:
 
-- **Control socket:** `.claude/skills/verify/scripts/overdub-ctl <op> [key=value ...]` sends one request to `$RUN_DIR/socket` (or `--socket PATH`) and prints the reply; it exits 0 when the reply is ok and 1 when it is an error. Values parse as JSON when they can: `overdub-ctl set_track_armed track_id=t-1 armed=true`. `overdub-ctl wait event=song.saved since=0 timeout_ms=5000` waits for a log event. `overdub-ctl subscribe events=ui.,song. level=info --seconds 10` prints events as they happen. `overdub-ctl ops` lists every operation and its fields once #169 lands.
+- **Journeys:** each script runs one user journey on the launched app through `overdub-ctl`, checks app state, files and `afinfo` at every step, and exits 0 only when every check passed. It writes `journeys/<name>/` in the run dir: `checks.txt` (one `ok`/`FAIL` line per check, then `RESULT pass|fail`; any `FAIL` line fails the journey), `requests.jsonl` (every request and its reply) and `state-*.json` snapshots. Run them on a fresh launch, and run `cleanup.sh` after each, also after a failure.
+  - `journey-record-pass.sh`: a new Song, a 3 s synthetic Backing Track, one Armed Track on input 0, a ~2 s Pass. See `features/record-pass.md`.
+  - `journey-edit.sh`: split, move, trim, fade, undo twice and redo once on that Take's Clip. See `features/edit.md`.
+  - `journey-export.sh`: WAV and M4A into `$RUN_DIR/exports/`, read with `afinfo`. See `features/export.md`.
+  - `journey-separation.sh`: Separation of a 6 s Backing Track in a Song, about 1 minute. See `features/separation.md`.
+  - `journeys-all.sh [journey ...]` runs each journey once from a fresh launch, with doctor before and cleanup after, prints one result line per journey and exits 1 when any failed. Use it after a change that touches several journeys.
+  - The edit and export journeys run `journey-record-pass.sh` first when no Song is open. All of them source `journey-lib.sh` (`ctl`, `state`, `check`, `silence_master`, `wait_finish`).
+
+- **Control socket:** `.claude/skills/verify/scripts/overdub-ctl <op> [key=value ...]` sends one request to `$RUN_DIR/socket` (or `--socket PATH`) and prints the reply; it exits 0 when the reply is ok, 1 when it is an error, and 2 on a usage or connection problem or when no reply came in time (30 s by default, `timeout_ms` plus 10 s for `wait`, `--timeout S` to change). Values parse as JSON when they can: `overdub-ctl set_armed track_id=<id> armed=true`. `overdub-ctl ops` lists every operation and its fields. `overdub-ctl state parts='["song","history"]'` reads app state sections (all 15 without `parts`). `overdub-ctl wait event=song.saved since=0 timeout_ms=5000` waits for a log event, and `overdub-ctl wait pointer=/activity/last_finish/counter equals=3 timeout_ms=60000` waits until the app state has that value. To wait for work an Intent started (a Pass, an export, a Separation), read `/activity/counter` right after starting it and wait for `/activity/last_finish/counter` to equal it; then `/activity/last_finish` has its `kind` and `error_code`. A pointer wait compares for equality only, so poll `state` for a threshold such as a transport position. `overdub-ctl subscribe events=ui.,song. level=info --seconds 10` prints events as they happen.
 
 - **Separation helper:** `.claude/skills/verify/scripts/separation-proof.sh`. It runs the bundled `Contents/MacOS/overdub-separate` on a synthetic 6 s input (a 110 Hz sine plus clicks) with the installed model. It writes `separation/` in the run dir. It takes about 1 minute and about 4.6 GB of memory. See `features/separation.md`.
 - **Selftests:** `Overdub.app/Contents/MacOS/Overdub --selftest loopback` and `--selftest clap <package>`. Each prints one JSON line on stdout and exits 0 on pass, 1 on fail. Neither opens a window, but each is still the single app instance, so quit the launched app first. See `features/selftests.md`.
@@ -70,4 +80,5 @@ Every artifact goes in the run dir, `build/verify/<stamp>-<run-name>/`. Cleanup 
 - The saved device in `audio-device.json` may be an interface that is unplugged (`app.device_open_failed` with "No such device"). The app then falls back to the built-in device, which is normal. Do not edit that file: it is the user's per-machine setting.
 - `ui.latency_not_calibrated` shows on every launch until calibration has run. It is expected, not a failure.
 - `--selftest loopback` plays seven noise bursts out of the real speakers. Ask the user before you run it.
+- `record` while a Pass runs does nothing. `play_or_stop` stops the Pass.
 - The Separation model is never in the repo. It is installed per Mac by `make separation-model`, which needs Docker. Without it, the Separation proof reports `no model` and fails. Do not fake the model.
