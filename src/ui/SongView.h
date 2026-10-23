@@ -37,15 +37,16 @@ class VideoScreen;
 // carried, the right half selected after a split, Monitoring off after a Track delete, clip
 // indicators out when a Pass starts, refusals presented only for record, export, Separation and
 // conversion). A gesture that does nothing returns an Error logged at debug and never presented.
-// The Mixer, the Track delete, split and delete, and import reach it through MainComponent::run;
-// the other pages' callbacks still call the same methods directly (issue #168 moves them).
+// The Edit page (ui/EditPage.h), the Mixer, the Track delete, split and delete, and import reach it
+// through MainComponent::run; the other pages' callbacks still call the same methods directly
+// (issue #168 moves them).
 //
 // `song` and `window` must outlive this object. Message thread only.
 class SongView final : public juce::Component
 {
     OpenSong& openSong;
     MainComponent& window;
-    // Before the pages, which keep a reference to it.
+    // Before the Record page, which keeps a reference to it.
     TrackActions trackActions;
 
 public:

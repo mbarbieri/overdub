@@ -2,6 +2,7 @@
 
 #include "core/LogEvents.h"
 #include "ui/MainWindowFixture.h"
+#include "ui/SongEdits.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -81,7 +82,14 @@ TEST_CASE ("a Clip drag's preview shows only while it runs; after mouse up the T
     GestureFixture f;
     const auto before = f.bandMixBounds();
     std::vector<std::string> editLabels;
-    f.timeline().onEdit = [&editLabels] (song::Song, std::string label) { editLabels.push_back (std::move (label)); };
+    const auto runIntent = f.timeline().onIntent;
+    f.timeline().onIntent = [&editLabels, &f, runIntent] (const Intent& reported) {
+        const auto* songIntent = std::get_if<SongIntent> (&reported);
+        const auto* edit = songIntent != nullptr ? std::get_if<intent::Edit> (songIntent) : nullptr;
+        if (edit == nullptr)
+            return runIntent (reported);
+        editLabels.push_back (editedSong (f.song(), *edit)->label);
+    };
 
     const auto from = before.getCentre();
     const auto to = from.translated (50, 0);
@@ -144,7 +152,10 @@ TEST_CASE ("Esc during a file drag leaves it hovering, and its drop is still acc
     GestureFixture f;
     const auto paths = f.audioFilePaths();
     std::vector<juce::File> dropped;
-    f.timeline().onFilesDropped = [&dropped] (std::vector<juce::File> files) { dropped = std::move (files); };
+    f.timeline().onIntent = [&dropped] (const Intent& reported) {
+        for (const auto& path : std::get<intent::ImportFiles> (std::get<SongIntent> (reported)).files)
+            dropped.push_back (juce::File (path.value));
+    };
     f.timeline().fileDragEnter (paths, 10, 10);
     REQUIRE (f.timeline().isDropHighlighted());
     CHECK_FALSE (f.timeline().cancelGesture ("escape"));
@@ -268,4 +279,93 @@ TEST_CASE ("a Pass starting during a Clip drag leaves the drag running, and its 
     f.mouseUp (from, to);
     CHECK (f.timeline().clipBounds (f.bandMixClipId()) == before);
     CHECK (f.openSong->package().undoLabel() == labelBefore);
+}
+
+TEST_CASE ("a Song change during a Clip drag survives the drag's release", "[ui][timeline][gesture]")
+{
+    GestureFixture f;
+    const auto bandMixId = f.trackNamed ("Band Mix").id;
+    const auto startBefore = f.trackNamed ("Band Mix").clips.front().timelineStart;
+    const auto samplesPerPixel = f.timeline().view().samplesPerPixel;
+    const auto before = f.bandMixBounds();
+    const auto from = before.getCentre();
+    const auto to = from.translated (50, 0);
+
+    f.mouseDown (from);
+    f.mouseDrag (from, to);
+    REQUIRE (f.window->run (SongIntent { intent::SetTrackMute { bandMixId, true } }, Origin::control).has_value());
+    f.mouseUp (from, to);
+
+    CHECK (f.trackNamed ("Band Mix").mute);
+    CHECK (f.trackNamed ("Band Mix").clips.front().timelineStart == startBefore + 50 * samplesPerPixel);
+    CHECK (f.openSong->package().undoLabel() == "Move Clip");
+    REQUIRE (pressKey (*f.window, 'z', juce::ModifierKeys::commandModifier));
+    CHECK (f.trackNamed ("Band Mix").mute);
+    CHECK (f.trackNamed ("Band Mix").clips.front().timelineStart == startBefore);
+}
+
+TEST_CASE ("a Clip drag's preview shows a Song change made while it runs", "[ui][timeline][gesture]")
+{
+    GestureFixture f;
+    const auto bandMixId = f.trackNamed ("Band Mix").id;
+    const auto startBefore = f.trackNamed ("Band Mix").clips.front().timelineStart;
+    const auto samplesPerPixel = f.timeline().view().samplesPerPixel;
+    const auto before = f.bandMixBounds();
+    const auto from = before.getCentre();
+    const auto to = from.translated (50, 0);
+
+    f.mouseDown (from);
+    f.mouseDrag (from, to);
+    REQUIRE (f.window->run (SongIntent { intent::SetTrackMute { bandMixId, true } }, Origin::control).has_value());
+
+    const auto* shown = song::findTrack (f.timeline().shownSong(), bandMixId);
+    REQUIRE (shown != nullptr);
+    CHECK (shown->mute);
+    CHECK (shown->clips.front().timelineStart == startBefore + 50 * samplesPerPixel);
+    CHECK (f.timeline().clipBounds (f.bandMixClipId()) == before.translated (50, 0));
+}
+
+TEST_CASE ("a Clip drag whose Clip is deleted while it runs ends quietly and changes nothing on release", "[ui][timeline][gesture]")
+{
+    GestureFixture f;
+    const auto before = f.bandMixBounds();
+    const auto from = before.getCentre();
+    const auto to = from.translated (50, 0);
+    f.mouseDown (from);
+    f.mouseDrag (from, to);
+
+    core::ScopedLogCapture capture;
+    REQUIRE (f.window->run (SongIntent { intent::DeleteSelection {} }, Origin::control).has_value());
+    REQUIRE (f.trackNamed ("Band Mix").clips.empty());
+    const auto songAfterDelete = f.song();
+    const auto labelAfterDelete = f.openSong->package().undoLabel();
+    f.mouseDrag (from, to.translated (20, 0));
+    f.mouseUp (from, to);
+
+    CHECK (f.song() == songAfterDelete);
+    CHECK (f.openSong->package().undoLabel() == labelAfterDelete);
+    CHECK_FALSE (f.window->noticeShown().has_value());
+    for (const auto& event : capture.events())
+        CHECK ((event.at ("lvl") == "debug" || event.at ("lvl") == "info"));
+    const auto cancelled = core::testing::firstEvent (capture, "ui.timeline_gesture_cancelled");
+    CHECK (cancelled.at ("gesture") == "clip_drag");
+    CHECK (cancelled.at ("reason") == "clip_removed");
+}
+
+TEST_CASE ("a ruler drag runs no ui.intent_run per frame and leaves the playhead where its last frame put it", "[ui][timeline][gesture]")
+{
+    GestureFixture f;
+    const auto ruler = f.timeline().rulerBounds();
+    const auto samplesPerPixel = f.timeline().view().samplesPerPixel;
+    const juce::Point<int> from { ruler.getX() + 100, ruler.getCentreY() };
+
+    core::ScopedLogCapture capture;
+    f.mouseDown (from);
+    for (int frame = 1; frame <= 10; ++frame)
+        f.mouseDrag (from, from.translated (frame * 10, 0));
+    f.mouseUp (from, from.translated (100, 0));
+
+    CHECK (f.openSong->position() == 200 * samplesPerPixel);
+    for (const auto& event : capture.events())
+        CHECK (event.at ("event") != "ui.intent_run");
 }

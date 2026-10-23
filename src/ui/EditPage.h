@@ -2,6 +2,7 @@
 
 #include "core/Error.h"
 #include "song/Song.h"
+#include "ui/Intent.h"
 #include "ui/Mixer.h"
 #include "ui/PassesPanel.h"
 #include "ui/TakeLanes.h"
@@ -22,13 +23,16 @@
 // selected Clip's name, Track, start and length, or the selected Video Take's (issue #128); its fade-in, fade-out and gain fields; Split,
 // Delete; zoom; the Video toggle (issue #36: the floating Video Preview, which the window owns);
 // the Mixer toggle) over the Timeline, and under a draggable divider the Mixer
-// (ui/Mixer.h, issue #31), which the toggle hides and shows. Thin: Split and Delete are reported to the
-// window, which runs them like the S and backspace keys; drags arrive from the Timeline, and field
-// entries are made here, as a changed Song and its undo label ("Fade In", "Fade Out", "Clip Gain").
+// (ui/Mixer.h, issue #31), which the toggle hides and shows. Thin: every gesture that changes state
+// is an Intent reported through onIntent (ADR 0008), the Timeline's included. Split and Delete are
+// split_selected_clip and delete_selection, like the S and backspace keys; a field entry that
+// changes the selected Clip is set_clip_fade_in, set_clip_fade_out or set_clip_gain; the zoom
+// buttons, the Mixer and Video toggles, the divider and "Passes ▾" are view Intents. The page
+// changes what it shows only when an Intent's handler calls back (setMixerVisible, ...).
 //
 // "Passes ▾" (issue #30) in the timeline's ruler corner opens the Passes panel: one row per Pass,
-// newest first, with its heard status and a "↺ Bring back" button that puts every surviving Take
-// of the Pass back on top as one undo step ("Bring back Pass N"), then closes the panel.
+// newest first, with its heard status and a "↺ Bring back" button that closes the panel and puts
+// every surviving Take of the Pass back on top as one undo step ("Bring back Pass N").
 namespace overdub::ui
 {
 struct ClipToolbarState
@@ -117,8 +121,7 @@ private:
 class EditPage final : public juce::Component
 {
 public:
-    // `trackActions` must outlive the page; its Timeline shares it.
-    explicit EditPage (const TrackActions& trackActions);
+    explicit EditPage (PeaksLookup peaksFor);
 
     // The Song and transport the timeline and the Clip toolbar show.
     void show (const TimelineState& state);
@@ -135,13 +138,9 @@ public:
     // The Video toggle's state: whether the window shows the Video Preview.
     void setVideoPreviewShown (bool shown);
 
-    std::function<void (song::Song changed, std::string label)> onEdit;
+    IntentSink onIntent;
     // The × in a Track's header (Timeline::onDeleteTrack).
     std::function<void (const song::Id& trackId)> onDeleteTrack;
-    std::function<void()> onSplit;
-    std::function<void()> onDelete;
-    // The Video toggle was clicked.
-    std::function<void()> onToggleVideo;
 
     ClipToolbar toolbar;
     Timeline timeline;
@@ -154,9 +153,10 @@ private:
     void showToolbar();
     void showPasses();
     void bringBackPass (const song::Id& passId);
-    // Applies `change` to the selected Clip as one undo step with this label, if it changes the
+    // Runs a field's edit of the selected Clip (none: the entry did not parse) if it changes the
     // Song; then the toolbar shows the Clip's values again (a rejected or clamped entry included).
-    void editSelectedClip (const std::function<core::Expected<song::Song> (const song::Song&, const song::Id&)>& change, const char* label);
+    void editSelectedClip (const std::function<std::optional<intent::Edit> (const song::Id& clipId)>& editFor);
+    void emit (Intent intent) const;
 
     TimelineState current;
     bool mixerVisible = true;

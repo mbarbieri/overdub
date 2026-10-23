@@ -12,9 +12,9 @@ namespace overdub::ui
 // while the caller paints.
 using PeaksLookup = std::function<const song::Peaks&(const song::ClipSource&)>;
 
-// What the Track gestures shared by the Record page and the Edit page (and its Timeline) do.
-// The window's Song-bound content (ui/SongView.h) builds one and gives the same instance to both
-// pages, which keep a reference to it: every member is set, and it outlives them.
+// What the Record page's Track gestures do (the Edit page reports its own as Intents). The
+// window's Song-bound content (ui/SongView.h) builds one and gives it to the Record page, which
+// keeps a reference to it: every member is set, and it outlives the page.
 struct TrackActions
 {
     std::function<void (const song::Id& trackId, bool armed)> arm;

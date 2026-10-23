@@ -26,8 +26,8 @@
 // keys do nothing.
 //
 // run (ADR 0008) is the one entry for an Intent (ui/Intent.h), from a key, the top bar, the Edit
-// menu, a page or the control socket: it logs ui.intent_run (debug: op, origin; not for
-// preview_mix, which a Mixer drag runs every frame and which refreshes nothing) and routes the
+// menu, a page or the control socket: it logs ui.intent_run (debug: op, origin) and refreshes the
+// window, except for an Intent a gesture runs every frame (ui::runsPerFrame), and routes the
 // Window group here, the Song group to the SongView (ui.no_song_open while none is open) and the
 // App group to runAppIntent, which the ui::Workspace sets (issue #170; unset, as in a window
 // without one: ui.intent_not_routed). While the modal run dialog shows only cancel_run and the App
@@ -122,6 +122,8 @@ public:
     Mode mode() const { return currentMode; }
 
     IntentResult run (const Intent& intent, Origin origin = Origin::user);
+    // How many Intents run has run, every one counted, per-frame ones too (GestureCensusTest).
+    std::uint64_t intentsRun() const { return intentRunCount; }
     // Logs the Error at debug and returns it, never presenting it: what a gesture that did nothing
     // returns (the UI shows it as unavailable, or it changes nothing).
     IntentResult quietError (core::Error error);
@@ -252,6 +254,7 @@ private:
     std::vector<OpenAlert> openAlerts;
     std::uint64_t alertsEverShown = 0;
     std::uint64_t noticesEverShown = 0;
+    std::uint64_t intentRunCount = 0;
     bool videoPreviewWanted = false;
     std::unique_ptr<VideoPreviewWindow> videoPreview;
     // Null while no Song is open.

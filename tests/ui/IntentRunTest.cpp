@@ -91,6 +91,30 @@ TEST_CASE ("every run logs ui.intent_run with its op and where it came from", "[
     CHECK (runs[1].at ("origin") == "control");
 }
 
+TEST_CASE ("the view Intents a gesture runs every frame log no ui.intent_run and still change the view", "[ui][intent]")
+{
+    MainWindowFixture f;
+    REQUIRE (pressKey (*f.window, '2'));
+    auto& editPage = f.window->songView()->editPage;
+    const auto samplesPerPixel = editPage.timeline.view().samplesPerPixel;
+    core::ScopedLogCapture capture;
+
+    CHECK (runFromSocket (f, intent::SetTimelineView { 4800, samplesPerPixel * 2 }).has_value());
+    CHECK (runFromSocket (f, intent::SetVerticalScroll { 0 }).has_value());
+    CHECK (runFromSocket (f, intent::SetMixerHeight { 260 }).has_value());
+    CHECK (runFromSocket (f, intent::Seek { 9600 }).has_value());
+
+    CHECK (editPage.timeline.view().firstSample == 4800);
+    CHECK (editPage.timeline.view().samplesPerPixel == samplesPerPixel * 2);
+    CHECK (editPage.mixer.getHeight() == 260);
+    CHECK (f.openSong->position() == 9600);
+    CHECK (eventsNamed (capture, "ui.intent_run").empty());
+
+    CHECK (runFromSocket (f, intent::SetMixerVisible { false }).has_value());
+    REQUIRE (eventsNamed (capture, "ui.intent_run").size() == 1);
+    CHECK (eventsNamed (capture, "ui.intent_run")[0].at ("op") == "set_mixer_visible");
+}
+
 TEST_CASE ("a pending Mixer arrow-key burst followed by a mute keeps both, as two undo steps", "[ui][intent][mixer]")
 {
     MainWindowFixture f;

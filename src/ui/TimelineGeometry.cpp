@@ -1,6 +1,7 @@
 #include "ui/TimelineGeometry.h"
 
 #include "song/ClipEdits.h"
+#include "ui/SongEdits.h"
 
 #include <algorithm>
 #include <cmath>
@@ -126,7 +127,7 @@ std::optional<ClipPart> hitTestClipHandles (const TimelineView& view, const song
     return std::nullopt;
 }
 
-core::Expected<song::Song> songForDrag (const song::Song& songAtDown, const ClipDrag& drag, const TimelineView& view, int x, int y)
+core::Expected<intent::Edit> intentForDrag (const song::Song& songAtDown, const ClipDrag& drag, const TimelineView& view, int x, int y)
 {
     const auto* clip = song::findClip (songAtDown, drag.clipId);
     if (clip == nullptr)
@@ -136,22 +137,32 @@ core::Expected<song::Song> songForDrag (const song::Song& songAtDown, const Clip
     switch (drag.part)
     {
         case ClipPart::body:
-            return song::moveClip (songAtDown, drag.clipId, clip->timelineStart + delta);
+            return intent::MoveClip { drag.clipId, clip->timelineStart + delta };
         case ClipPart::startEdge:
-            return song::trimClipStart (songAtDown, drag.clipId, clip->timelineStart + delta);
+            return intent::TrimClipStart { drag.clipId, clip->timelineStart + delta };
         case ClipPart::endEdge:
-            return song::trimClipEnd (songAtDown, drag.clipId, clip->timelineStart + clip->length + delta);
+            return intent::TrimClipEnd { drag.clipId, clip->timelineStart + clip->length + delta };
         case ClipPart::fadeInHandle:
-            return song::setClipFadeIn (songAtDown, drag.clipId, clip->fadeInLength + delta);
+            return intent::SetClipFadeIn { drag.clipId, clip->fadeInLength + delta };
         case ClipPart::fadeOutHandle:
-            return song::setClipFadeOut (songAtDown, drag.clipId, clip->fadeOutLength - delta);
+            return intent::SetClipFadeOut { drag.clipId, clip->fadeOutLength - delta };
         case ClipPart::gainTag:
         {
             const auto gainDb = clip->gainDb - (double) (y - drag.downY) * gainDbPerPixel;
-            return song::setClipGain (songAtDown, drag.clipId, std::round (gainDb * 10.0) / 10.0);
+            return intent::SetClipGain { drag.clipId, std::round (gainDb * 10.0) / 10.0 };
         }
     }
-    return songAtDown;
+}
+
+core::Expected<song::Song> songForDrag (const song::Song& songAtDown, const ClipDrag& drag, const TimelineView& view, int x, int y)
+{
+    const auto edit = intentForDrag (songAtDown, drag, view, x, y);
+    if (! edit.has_value())
+        return std::unexpected (edit.error());
+    auto edited = editedSong (songAtDown, *edit);
+    if (! edited.has_value())
+        return std::unexpected (edited.error());
+    return std::move (edited->song);
 }
 
 std::string decibelsText (double gainDb)
@@ -160,25 +171,6 @@ std::string decibelsText (double gainDb)
     if (std::abs (rounded) < 0.05)
         return "0.0 dB";
     return std::format ("{:+.1f} dB", rounded);
-}
-
-const char* labelForDrag (ClipPart part)
-{
-    switch (part)
-    {
-        case ClipPart::body:
-            return song::moveClipLabel;
-        case ClipPart::startEdge:
-        case ClipPart::endEdge:
-            return song::trimClipLabel;
-        case ClipPart::fadeInHandle:
-            return song::fadeInLabel;
-        case ClipPart::fadeOutHandle:
-            return song::fadeOutLabel;
-        case ClipPart::gainTag:
-            return song::clipGainLabel;
-    }
-    return song::moveClipLabel;
 }
 
 std::vector<song::PeakRange> waveformColumns (const song::Peaks& peaks, SampleCount sourceStart, SampleCount samplesPerPixel, int numColumns)
