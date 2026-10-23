@@ -182,7 +182,6 @@ public:
     juce::Rectangle<int> videoTakeBounds (const song::Id& videoTakeId) const;
     static constexpr int unreadableVideoTakeWidth = 6;
 
-    // Where the gestures' Intents go (the Edit page's onIntent).
     IntentSink onIntent;
     // The × in a Track's header was clicked (the window asks before deleting).
     std::function<void (const song::Id& trackId)> onDeleteTrack;

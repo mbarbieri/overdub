@@ -138,9 +138,8 @@ public:
     // The Video toggle's state: whether the window shows the Video Preview.
     void setVideoPreviewShown (bool shown);
 
-    // Where the page's Intents go (MainComponent::run).
     IntentSink onIntent;
-    // The × in a Track's header (Timeline::onDeleteTrack): the window asks, then runs delete_track.
+    // The × in a Track's header (Timeline::onDeleteTrack).
     std::function<void (const song::Id& trackId)> onDeleteTrack;
 
     ClipToolbar toolbar;

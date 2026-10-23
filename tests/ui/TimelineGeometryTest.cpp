@@ -17,7 +17,6 @@ using overdub::song::Song;
 
 namespace
 {
-// The undo step label of the drag's edit, as its release commits it.
 std::string dragLabel (const Song& song, const ClipDrag& drag, const TimelineView& view)
 {
     const auto edit = intentForDrag (song, drag, view, drag.downX, drag.downY);
