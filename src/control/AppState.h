@@ -34,8 +34,13 @@ class Workspace;
 //                "video_take"}
 //   window       {"video_preview_wanted", "video_preview_shown", "run_dialog": {"showing",
 //                "title", "status", "progress"}}
-//   messages     {"notice": null | {"code", "text"}, "alerts_shown": [], "alerts_deferred": []}
-//                (Alerts are kept from issue #171)
+//   messages     {"notice", "alerts_shown", "alerts_deferred"}; each message is {"code", "tier",
+//                "text"}. notice is null while none shows, else also "counter" (the Notices shown
+//                up to it, so the same one shown again is seen), "action": null | {"label",
+//                "intent": the Intent its button runs, as the socket takes it} and "hides_at_ms":
+//                when it hides on its own (Unix epoch ms, fixed when shown), null while it has
+//                an action (it shows until clicked or replaced). alerts_shown:
+//                the open Alerts; alerts_deferred: those a running Pass holds back; oldest first
 //   audio        {"device_type", "input_device", "output_device", "sample_rate", "buffer_size",
 //                "inputs": [active input channel names], "outputs": output channels,
 //                "audio_problem": null | code}

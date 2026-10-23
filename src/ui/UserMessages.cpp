@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <iterator>
 #include <optional>
 #include <utility>
 
@@ -179,5 +180,12 @@ std::vector<UserMessage> UserMessageQueue::takeReady (bool passRunning)
     }
     queued = std::move (kept);
     return ready;
+}
+
+std::vector<UserMessage> UserMessageQueue::deferredAlerts() const
+{
+    std::vector<UserMessage> alerts;
+    std::ranges::copy_if (queued, std::back_inserter (alerts), [] (const UserMessage& message) { return message.tier == Tier::alert; });
+    return alerts;
 }
 } // namespace overdub::ui

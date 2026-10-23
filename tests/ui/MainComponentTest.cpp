@@ -28,6 +28,19 @@ std::string text (const juce::Button& button)
 {
     return button.getButtonText().toStdString();
 }
+
+std::vector<std::string> codesOf (const std::vector<overdub::ui::UserMessage>& messages)
+{
+    std::vector<std::string> codes;
+    for (const auto& message : messages)
+        codes.push_back (message.code);
+    return codes;
+}
+
+overdub::ui::IntentResult dismissAlerts (MainWindowFixture& f)
+{
+    return f.window->run (overdub::ui::WindowIntent { overdub::ui::intent::DismissAlerts {} }, overdub::ui::Origin::control);
+}
 } // namespace
 
 TEST_CASE ("keys 1 to 3 show the Record, Edit and Export pages", "[ui][main]")
@@ -206,6 +219,75 @@ TEST_CASE ("an Alert raised during a Pass waits until the Pass stops; a Notice s
     REQUIRE (alerts.size() == 1);
     CHECK (alerts[0].at ("code") == "capture.take_write_failed");
     CHECK (alerts[0].at ("tier") == "alert");
+}
+
+TEST_CASE ("an Alert raised during a Pass is deferred, not open, until the Pass stops", "[ui][main][messages][alerts]")
+{
+    MainWindowFixture f;
+    REQUIRE (pressKey (*f.window, 'r'));
+    f.runBlocks (4);
+    f.window->handleError (overdub::core::Error { "capture.take_write_failed", "test", {} });
+
+    CHECK (codesOf (f.window->alertsDeferred()) == std::vector<std::string> { "capture.take_write_failed" });
+    CHECK (f.window->alertsShown().empty());
+
+    ScopedLogCapture capture;
+    REQUIRE (dismissAlerts (f).has_value());
+    CHECK (eventsNamed (capture, "ui.alert_dismissed").empty());
+    CHECK (codesOf (f.window->alertsDeferred()) == std::vector<std::string> { "capture.take_write_failed" });
+
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+
+    CHECK (f.window->alertsDeferred().empty());
+    CHECK (codesOf (f.window->alertsShown()) == std::vector<std::string> { "capture.take_write_failed" });
+}
+
+TEST_CASE ("dismiss_alerts closes every open Alert once, logs each, and a second one does nothing", "[ui][main][messages][alerts]")
+{
+    MainWindowFixture f;
+    f.window->handleError (overdub::core::Error { "song.import_unreadable", "test", {} });
+    f.window->handleError (overdub::core::Error { "song.write_failed", "test", {} });
+    REQUIRE (codesOf (f.window->alertsShown()) == std::vector<std::string> { "song.import_unreadable", "song.write_failed" });
+
+    ScopedLogCapture capture;
+    const auto result = dismissAlerts (f);
+
+    REQUIRE (result.has_value());
+    CHECK (result->createdId == std::nullopt);
+    CHECK (f.alertClosesByWindow == std::vector<int> { 1, 1 });
+    CHECK (f.window->alertsShown().empty());
+    const auto dismissed = eventsNamed (capture, "ui.alert_dismissed");
+    REQUIRE (dismissed.size() == 2);
+    CHECK (dismissed[0].at ("code") == "song.import_unreadable");
+    CHECK (dismissed[0].at ("tier") == "alert");
+    CHECK (dismissed[1].at ("code") == "song.write_failed");
+
+    REQUIRE (dismissAlerts (f).has_value());
+    CHECK (f.alertClosesByWindow == std::vector<int> { 1, 1 });
+    CHECK (eventsNamed (capture, "ui.alert_dismissed").size() == 2);
+}
+
+TEST_CASE ("an Alert the user closes leaves the open Alerts; dismiss_alerts closes only the others, and a late OK does nothing", "[ui][main][messages][alerts]")
+{
+    MainWindowFixture f;
+    f.window->handleError (overdub::core::Error { "song.import_unreadable", "test", {} });
+    f.window->handleError (overdub::core::Error { "song.write_failed", "test", {} });
+
+    f.closeAlertAsUser[0]();
+    CHECK (codesOf (f.window->alertsShown()) == std::vector<std::string> { "song.write_failed" });
+
+    ScopedLogCapture capture;
+    REQUIRE (dismissAlerts (f).has_value());
+    CHECK (f.alertClosesByWindow == std::vector<int> { 0, 1 });
+    const auto dismissed = eventsNamed (capture, "ui.alert_dismissed");
+    REQUIRE (dismissed.size() == 1);
+    CHECK (dismissed[0].at ("code") == "song.write_failed");
+
+    f.closeAlertAsUser[1](); // the user's OK on the same Alert, arriving after dismiss_alerts
+    f.closeAlertAsUser[0]();
+    CHECK (f.window->alertsShown().empty());
+    CHECK (eventsNamed (capture, "ui.alert_dismissed").size() == 1);
 }
 
 TEST_CASE ("R with nothing Armed shows a Notice and starts no Pass", "[ui][main][messages]")

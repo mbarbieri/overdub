@@ -36,6 +36,10 @@ struct MainWindowFixture
     std::unique_ptr<OpenSong> openSong;
     std::unique_ptr<MainComponent> window;
     std::vector<juce::String> alertsShown;
+    // Per Alert shown, in order: the user's OK (its `closed`), and how many times the window
+    // closed it (dismiss_alerts).
+    std::vector<std::function<void()>> closeAlertAsUser;
+    std::vector<int> alertClosesByWindow;
     std::vector<juce::String> deleteQuestionsAsked;
     // The open delete confirmation. Like the native dialog it is answered later, never inside the
     // click that asked (which would delete the clicked header under its own button).
@@ -49,7 +53,13 @@ struct MainWindowFixture
         openSong = std::make_unique<OpenSong> (std::move (fixture->package), AudioBinding { &engine, {}, std::move (inputChannelNames) }, std::move (instantiate));
         window = std::make_unique<MainComponent>();
         REQUIRE (openSong->attachCamera (&camera, juce::File {}).has_value()); // no calibration file: 0 ms
-        window->showAlert = [this] (const juce::String& sentence) { alertsShown.push_back (sentence); };
+        window->showAlert = [this] (const juce::String& sentence, std::function<void()> closed) {
+            const auto index = alertsShown.size();
+            alertsShown.push_back (sentence);
+            closeAlertAsUser.push_back (std::move (closed));
+            alertClosesByWindow.push_back (0);
+            return [this, index] { ++alertClosesByWindow[index]; };
+        };
         window->confirmTrackDelete = [this] (const juce::String& question, std::function<void (bool)> done) {
             deleteQuestionsAsked.push_back (question);
             pendingDeleteAnswer = std::move (done);

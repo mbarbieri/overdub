@@ -227,13 +227,36 @@ json windowSection (const ui::MainComponent& window)
     };
 }
 
+json messageJson (const ui::UserMessage& message)
+{
+    return { { "code", message.code }, { "tier", ui::tierName (message.tier) }, { "text", ui::sentenceFor (message.code, message.fields) } };
+}
+
+json messageListJson (const std::vector<ui::UserMessage>& messages)
+{
+    auto list = json::array();
+    for (const auto& message : messages)
+        list.push_back (messageJson (message));
+    return list;
+}
+
 json messagesSection (const ui::MainComponent& window)
 {
     json notice = nullptr;
-    if (const auto code = window.noticeShown())
-        notice = { { "code", *code }, { "text", window.noticeLine.text().toStdString() } };
-    // Alerts are native windows the app keeps no handle to until issue #171.
-    return { { "notice", std::move (notice) }, { "alerts_shown", json::array() }, { "alerts_deferred", json::array() } };
+    if (const auto shown = window.noticeShown())
+    {
+        notice = messageJson (shown->message);
+        notice["counter"] = shown->counter;
+        notice["action"] = shown->action.has_value()
+                             ? json { { "label", window.noticeLine.actionButton.getButtonText().toStdString() }, { "intent", core::operationToJson (*shown->action) } }
+                             : json (nullptr);
+        notice["hides_at_ms"] = orNull (window.noticeLine.hidesAtMs());
+    }
+    return {
+        { "notice", std::move (notice) },
+        { "alerts_shown", messageListJson (window.alertsShown()) },
+        { "alerts_deferred", messageListJson (window.alertsDeferred()) },
+    };
 }
 
 json audioSection (const ui::Workspace& workspace)

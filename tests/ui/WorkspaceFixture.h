@@ -69,7 +69,7 @@ struct WorkspaceFixture
     {
         REQUIRE (folder.createDirectory());
         machine.latencyCalibrationFile = files.latencyCalibration;
-        content.showAlert = [] (const juce::String&) {};
+        content.showAlert = [] (const juce::String&, std::function<void()>) { return MainComponent::CloseAlert {}; };
         content.askCameraAccess = [] (std::function<void (bool)> done) { done (true); };
         content.showPluginWindowsOnDesktop = false;
         content.showVideoPreviewOnDesktop = false;
