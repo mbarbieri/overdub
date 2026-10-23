@@ -3,6 +3,7 @@
 #include "core/Error.h"
 #include "core/Log.h"
 #include "ui/FileDrop.h"
+#include "ui/SongEdits.h"
 
 #include <algorithm>
 #include <string>
@@ -226,10 +227,13 @@ void Timeline::mouseUp (const juce::MouseEvent& event)
     gesture = std::monostate {};
     repaint();
 
-    auto dragged = songForDrag (finished.songAtDown, finished.drag, timelineView, event.getPosition().x, event.getPosition().y);
-    if (! dragged.has_value() || *dragged == finished.songAtDown)
+    const auto edit = intentForDrag (finished.songAtDown, finished.drag, timelineView, event.getPosition().x, event.getPosition().y);
+    if (! edit.has_value())
+        return;
+    auto dragged = editedSong (finished.songAtDown, *edit);
+    if (! dragged.has_value() || dragged->song == finished.songAtDown)
         return;
     if (onEdit)
-        onEdit (std::move (*dragged), labelForDrag (finished.drag.part));
+        onEdit (std::move (dragged->song), std::move (dragged->label));
 }
 } // namespace overdub::ui

@@ -3,6 +3,7 @@
 #include "core/Error.h"
 #include "song/Peaks.h"
 #include "song/Song.h"
+#include "ui/Intent.h"
 
 #include <optional>
 #include <string>
@@ -10,7 +11,7 @@
 
 // The Edit timeline's geometry and gestures (issues #28, #29, ADR 0005 UI amendment), pure and
 // without JUCE: Song sample <-> x, hit-testing a lane's Clips and their fade handles and gain tag,
-// a drag -> its Clip operation, and the waveform columns drawn from the peaks cache. The Timeline
+// a drag -> its plain edit (intent::Edit), and the waveform columns drawn from the peaks cache. The Timeline
 // Component only calls these.
 //
 // Zoom is a whole number of samples per pixel (a power of two between the limits), so sample <-> x
@@ -146,20 +147,20 @@ struct ClipDrag
     int downY = 0;
 };
 
-// The Song the drag makes when the pointer is at (x, y), from the Song as it was at mouse down,
-// clamped as the song/ClipEdits.h operations clamp. With dx = (x - downX) * samplesPerPixel:
-// body -> moveClip by dx, start edge -> trimClipStart by dx, end edge -> trimClipEnd by dx,
-// fade-in handle -> setClipFadeIn (fade-in + dx), fade-out handle -> setClipFadeOut
-// (fade-out - dx), gain tag -> setClipGain (gain - (y - downY) * gainDbPerPixel, rounded to
-// 0.1 dB). Only the gain tag reads y. Errors: song.clip_not_found.
+// The plain edit the drag makes when the pointer is at (x, y), from the Song as it was at mouse
+// down. With dx = (x - downX) * samplesPerPixel: body -> move_clip to start + dx, start edge ->
+// trim_clip_start to start + dx, end edge -> trim_clip_end to end + dx, fade-in handle ->
+// set_clip_fade_in to fade-in + dx, fade-out handle -> set_clip_fade_out to fade-out - dx, gain
+// tag -> set_clip_gain to gain - (y - downY) * gainDbPerPixel, rounded to 0.1 dB. Only the gain
+// tag reads y. Errors: song.clip_not_found.
+core::Expected<intent::Edit> intentForDrag (const song::Song& songAtDown, const ClipDrag& drag, const TimelineView& view, int x, int y);
+
+// The Song intentForDrag's edit makes (ui/SongEdits.h editedSong), clamped as the song/ClipEdits.h
+// operations clamp: what the drag previews is what its release commits.
 core::Expected<song::Song> songForDrag (const song::Song& songAtDown, const ClipDrag& drag, const TimelineView& view, int x, int y);
 
 // "+2.5 dB", "0.0 dB", "-12.0 dB": a Clip gain rounded to 0.1 dB, signed unless zero.
 std::string decibelsText (double gainDb);
-
-// The undo step label of a drag on this part: "Move Clip", "Trim Clip", "Fade In", "Fade Out" or
-// "Clip Gain".
-const char* labelForDrag (ClipPart part);
 
 // One waveform column per pixel: the min and max over every channel of the peak blocks holding
 // source samples [sourceStart + i * samplesPerPixel, + samplesPerPixel). Columns past the peaks

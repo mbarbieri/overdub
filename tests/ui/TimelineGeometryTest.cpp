@@ -1,5 +1,7 @@
 #include "ui/TimelineGeometry.h"
 
+#include "ui/SongEdits.h"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
@@ -15,6 +17,16 @@ using overdub::song::Song;
 
 namespace
 {
+// The undo step label of the drag's edit, as its release commits it.
+std::string dragLabel (const Song& song, const ClipDrag& drag, const TimelineView& view)
+{
+    const auto edit = intentForDrag (song, drag, view, drag.downX, drag.downY);
+    REQUIRE (edit.has_value());
+    const auto edited = editedSong (song, *edit);
+    REQUIRE (edited.has_value());
+    return edited->label;
+}
+
 Song songWithClips (std::vector<Clip> clips, SampleCount takeLength = 100000)
 {
     Song song = overdub::song::makeEmptySong (48000);
@@ -150,7 +162,7 @@ TEST_CASE ("dragging a Clip's body moves it by the dragged pixels in samples, no
     CHECK (farLeft->tracks[0].clips[0].timelineStart == 0);
 
     CHECK (songForDrag (song, drag, view, 300, 0) == song);
-    CHECK (std::string (labelForDrag (ClipPart::body)) == "Move Clip");
+    CHECK (dragLabel (song, drag, view) == "Move Clip");
 }
 
 TEST_CASE ("dragging a Clip's start edge trims its start, clamped to the source's first sample", "[ui][timeline]")
@@ -172,7 +184,7 @@ TEST_CASE ("dragging a Clip's start edge trims its start, clamped to the source'
     const auto past = songForDrag (song, drag, view, 400, 0);
     REQUIRE (past.has_value());
     CHECK (past->tracks[0].clips[0] == clip ("c", 14999, 1, 6999));
-    CHECK (std::string (labelForDrag (ClipPart::startEdge)) == "Trim Clip");
+    CHECK (dragLabel (song, drag, view) == "Trim Clip");
 }
 
 TEST_CASE ("dragging a Clip's end edge trims its end, clamped to the source's last sample", "[ui][timeline]")
@@ -193,7 +205,7 @@ TEST_CASE ("dragging a Clip's end edge trims its end, clamped to the source's la
     const auto collapsed = songForDrag (song, drag, view, 0, 0);
     REQUIRE (collapsed.has_value());
     CHECK (collapsed->tracks[0].clips[0].length == 1);
-    CHECK (std::string (labelForDrag (ClipPart::endEdge)) == "Trim Clip");
+    CHECK (dragLabel (song, drag, view) == "Trim Clip");
 }
 
 TEST_CASE ("a Clip's fade handles sit at its fade ends and its gain tag in its top-right corner, under them", "[ui][timeline][clip_gain]")
@@ -263,14 +275,14 @@ TEST_CASE ("dragging a fade handle sets that fade by the dragged pixels, clamped
     // Fade-in + fade-out never exceed the length: at most 5000 - 1500.
     CHECK (songForDrag (song, fadeIn, view, 400, 40)->tracks[0].clips[0].fadeInLength == 3500);
     CHECK (songForDrag (song, fadeIn, view, 400, 40)->tracks[0].clips[0].fadeOutLength == 1500);
-    CHECK (std::string (labelForDrag (ClipPart::fadeInHandle)) == "Fade In");
+    CHECK (dragLabel (song, fadeIn, view) == "Fade In");
 
     // Dragging the fade-out handle left lengthens the fade-out.
     const ClipDrag fadeOut { .clipId = "c", .part = ClipPart::fadeOutHandle, .downX = 135, .downY = 40 };
     CHECK (songForDrag (song, fadeOut, view, 125, 40)->tracks[0].clips[0].fadeOutLength == 2500);
     CHECK (songForDrag (song, fadeOut, view, 200, 40)->tracks[0].clips[0].fadeOutLength == 0);
     CHECK (songForDrag (song, fadeOut, view, 0, 40)->tracks[0].clips[0].fadeOutLength == 4000);
-    CHECK (std::string (labelForDrag (ClipPart::fadeOutHandle)) == "Fade Out");
+    CHECK (dragLabel (song, fadeOut, view) == "Fade Out");
 
     CHECK (songForDrag (song, fadeOut, view, 135, 90) == song);
 }
@@ -289,7 +301,7 @@ TEST_CASE ("dragging the gain tag up raises the gain by 0.1 dB per pixel, within
     CHECK (std::abs (gainAt (120, -500) - 12.0) < 1e-9);
     CHECK (std::abs (gainAt (120, 900) + 24.0) < 1e-9);
     CHECK (songForDrag (song, drag, view, 160, 50) == song);
-    CHECK (std::string (labelForDrag (ClipPart::gainTag)) == "Clip Gain");
+    CHECK (dragLabel (song, drag, view) == "Clip Gain");
 }
 
 TEST_CASE ("a waveform column is the min and max of the peaks it covers, over every channel", "[ui][timeline]")
