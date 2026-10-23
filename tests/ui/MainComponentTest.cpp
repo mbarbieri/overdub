@@ -284,7 +284,7 @@ TEST_CASE ("an Alert the user closes leaves the open Alerts; dismiss_alerts clos
     REQUIRE (dismissed.size() == 1);
     CHECK (dismissed[0].at ("code") == "song.write_failed");
 
-    f.closeAlertAsUser[1](); // the user's OK on the same Alert, arriving after dismiss_alerts
+    f.closeAlertAsUser[1]();
     f.closeAlertAsUser[0]();
     CHECK (f.window->alertsShown().empty());
     CHECK (eventsNamed (capture, "ui.alert_dismissed").size() == 1);
