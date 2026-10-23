@@ -6,12 +6,14 @@
 #include "core/Log.h"
 #include "song/FakeSeparationHelper.h"
 #include "song/SongJson.h"
+#include "ui/UserMessages.h"
 #include "ui/WorkspaceFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -551,6 +553,49 @@ TEST_CASE ("a latency run is the calibration_latency activity while it runs, the
     CHECK (activityOf (f) == finishedActivity ("calibration_latency", 1, nullptr));
 }
 
+TEST_CASE ("the messages section lists the Notice with its action and hide time, each open Alert, and the Alerts a Pass defers", "[control][app_state][messages]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    const auto messagesOf = [&f] { return stateOf (f, { "messages" })["messages"]; };
+
+    const auto shownAt = juce::Time::currentTimeMillis();
+    f.content.showNotice ("ui.no_audio_device");
+    auto notice = messagesOf()["notice"];
+    CHECK (notice["code"] == "ui.no_audio_device");
+    CHECK (notice["tier"] == "notice");
+    CHECK (notice["text"] == ui::sentenceFor ("ui.no_audio_device"));
+    CHECK (notice["action"] == nullptr);
+    const auto firstCounter = notice["counter"].get<int>();
+    CHECK (notice["hides_at_ms"].get<juce::int64>() >= shownAt + ui::NoticeLine::visibleForMs);
+    CHECK (notice["hides_at_ms"].get<juce::int64>() <= juce::Time::currentTimeMillis() + ui::NoticeLine::visibleForMs);
+    CHECK (messagesOf()["notice"]["hides_at_ms"] == notice["hides_at_ms"]);
+
+    f.content.handleError (core::Error { "ui.sample_rate_mismatch", "test", { { "song_rate", 44100 }, { "device_rate", 48000 }, { "rate_offered", false } } });
+    notice = messagesOf()["notice"];
+    CHECK (notice["code"] == "ui.sample_rate_mismatch");
+    CHECK (notice["counter"] == firstCounter + 1);
+    CHECK (notice["action"] == json { { "label", "Convert to 48000 Hz" }, { "intent", { { "op", "convert_sample_rate" }, { "rate", 48000 } } } });
+    CHECK (notice["hides_at_ms"] == nullptr);
+
+    f.content.handleError (core::Error { "song.import_unreadable", "test", {} });
+    const json importAlert { { "code", "song.import_unreadable" }, { "tier", "alert" }, { "text", ui::sentenceFor ("song.import_unreadable") } };
+    CHECK (messagesOf()["alerts_shown"] == json::array ({ importAlert }));
+    CHECK (messagesOf()["alerts_deferred"] == json::array());
+
+    run (f, ui::SongIntent { Record {} });
+    f.runBlocks (4);
+    f.content.handleError (core::Error { "capture.take_write_failed", "test", {} });
+    const json writeAlert { { "code", "capture.take_write_failed" }, { "tier", "alert" }, { "text", ui::sentenceFor ("capture.take_write_failed") } };
+    CHECK (messagesOf()["alerts_shown"] == json::array ({ importAlert }));
+    CHECK (messagesOf()["alerts_deferred"] == json::array ({ writeAlert }));
+
+    stopPass (f);
+    CHECK (messagesOf()["alerts_shown"] == json::array ({ importAlert, writeAlert }));
+    CHECK (messagesOf()["alerts_deferred"] == json::array());
+}
+
 //==============================================================================
 // Over the socket
 
@@ -616,6 +661,42 @@ TEST_CASE ("state over the socket answers the sections asked for, and refuses an
     const auto logged = eventsNamed (capture, "control.bad_field");
     REQUIRE (logged.size() == 1);
     CHECK (logged[0]["key"] == "parts");
+}
+
+TEST_CASE ("an Alert an Intent raised shows in state over the socket until dismiss_alerts closes it; a second dismiss_alerts does nothing", "[control][app_state][socket][messages]")
+{
+    core::ScopedLogCapture capture;
+    SocketToWorkspace socket;
+    int closesByWindow = 0;
+    socket.f.content.showAlert = [&closesByWindow] (const juce::String&, std::function<void()>) { return [&closesByWindow] { ++closesByWindow; }; };
+    const auto notASong = json { { "id", 1 }, { "op", "open_song_at" }, { "path", socket.f.folder.getFullPathName().toStdString() } };
+
+    const auto opened = socket.send (notASong.dump());
+    REQUIRE (opened.size() == 1);
+    CHECK (opened[0]["error"]["code"] == "song.package_not_found");
+
+    const auto before = socket.send (R"({"id":2,"op":"state","parts":["messages"]})");
+    REQUIRE (before.size() == 1);
+    CHECK (before[0]["messages"]["alerts_shown"] == json::array ({ { { "code", "song.package_not_found" }, { "tier", "alert" }, { "text", ui::sentenceFor ("song.package_not_found") } } }));
+
+    const auto dismissed = socket.send (R"({"id":3,"op":"dismiss_alerts"})");
+    REQUIRE (dismissed.size() == 1);
+    CHECK (dismissed[0]["ok"] == true);
+    CHECK (closesByWindow == 1);
+    const auto logged = eventsNamed (capture, "ui.alert_dismissed");
+    REQUIRE (logged.size() == 1);
+    CHECK (logged[0]["code"] == "song.package_not_found");
+    CHECK (logged[0]["tier"] == "alert");
+
+    const auto after = socket.send (R"({"id":4,"op":"state","parts":["messages"]})");
+    REQUIRE (after.size() == 1);
+    CHECK (after[0]["messages"]["alerts_shown"] == json::array());
+
+    const auto again = socket.send (R"({"id":5,"op":"dismiss_alerts"})");
+    REQUIRE (again.size() == 1);
+    CHECK (again[0]["ok"] == true);
+    CHECK (closesByWindow == 1);
+    CHECK (eventsNamed (capture, "ui.alert_dismissed").size() == 1);
 }
 
 TEST_CASE ("a pointer wait over the socket answers once an Intent changes the app state, and times out otherwise", "[control][app_state][socket][wait]")

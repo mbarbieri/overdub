@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <optional>
 
 // The simple pages and the notice line (issue #27): the page shown when no Song is open and the
 // Notice one-liner. (Export mode's page is ui/ExportPage.h.)
@@ -40,6 +41,9 @@ public:
 
     const juce::String& text() const { return sentence; }
     bool hasAction() const { return action != nullptr; }
+    // When it hides on its own, in juce::Time::currentTimeMillis (Unix epoch ms), fixed when shown;
+    // none while hidden or while it has an action, which it shows until clicked or replaced.
+    std::optional<juce::int64> hidesAtMs() const { return isVisible() ? hidesAt : std::nullopt; }
 
     void resized() override;
     void paint (juce::Graphics& g) override;
@@ -51,5 +55,6 @@ private:
 
     juce::String sentence;
     std::function<void()> action;
+    std::optional<juce::int64> hidesAt;
 };
 } // namespace overdub::ui

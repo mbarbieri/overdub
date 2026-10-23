@@ -7,8 +7,11 @@
 #include "ui/FileDrop.h"
 #include "ui/Layout.h"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
+#include <utility>
+#include <vector>
 
 namespace overdub::ui
 {
@@ -88,9 +91,13 @@ void chooseExportFileWithNativeDialog (juce::File current, std::function<void (s
     });
 }
 
-void showAlertWithNativeDialog (const juce::String& sentence)
+MainComponent::CloseAlert showAlertWithNativeDialog (const juce::String& sentence, std::function<void()> closed)
 {
-    juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOk (juce::MessageBoxIconType::WarningIcon, "Overdub", sentence), nullptr);
+    const auto options = juce::MessageBoxOptions::makeOptionsOk (juce::MessageBoxIconType::WarningIcon, "Overdub", sentence);
+    // Closing the ScopedMessageBox closes its window without calling back; closing it again, or
+    // after the user did, does nothing.
+    auto box = std::make_shared<juce::ScopedMessageBox> (juce::AlertWindow::showScopedAsync (options, [done = std::move (closed)] (int) { done(); }));
+    return [box] { box->close(); };
 }
 
 void confirmDeleteWithNativeDialog (const juce::String& question, std::function<void (bool)> whenAnswered)
@@ -139,6 +146,8 @@ MainComponent::~MainComponent()
 {
     vblank = {};
     stopTimer();
+    // Out of the member first: closing one must not call back into a vector being destroyed.
+    auto closing = std::exchange (openAlerts, {});
 }
 
 void MainComponent::onVBlank (double timestampSeconds)
@@ -233,8 +242,7 @@ IntentResult MainComponent::runWindow (const WindowIntent& windowIntent)
         core::Overloaded {
             [this] (const ShowMode& show) -> IntentResult { showMode (show.mode); return IntentDone {}; },
             [this] (const SetVideoPreviewWanted& preview) -> IntentResult { setVideoPreviewWanted (preview.wanted); return IntentDone {}; },
-            // Alerts are native windows the app keeps no handle to yet (issue #171).
-            [this] (const DismissAlerts&) { return quietError (notRouted (DismissAlerts::op)); },
+            [this] (const DismissAlerts&) { return dismissAlerts(); },
         });
 }
 
@@ -298,19 +306,64 @@ void MainComponent::presentMessages()
         if (message.tier == Tier::notice)
         {
             core::logEvent (core::Level::info, "ui.notice_shown", messageFields (message));
-            noticeCode = message.code;
+            notice = ShownNotice { message, ++noticesEverShown, std::nullopt };
             if (const auto rate = conversionOfferedBy (message))
-                noticeLine.show (sentence, juce::String::fromUTF8 (conversionActionText (*rate).c_str()), [this, toRate = *rate] { run (AppIntent { intent::ConvertSampleRate { toRate } }); });
+            {
+                notice->action = AppIntent { intent::ConvertSampleRate { *rate } };
+                noticeLine.show (sentence, juce::String::fromUTF8 (conversionActionText (*rate).c_str()), [this, action = *notice->action] { run (action); });
+            }
             else
                 noticeLine.show (sentence);
         }
         else
-        {
-            core::logEvent (core::Level::info, "ui.alert_shown", messageFields (message));
-            if (showAlert)
-                showAlert (sentence);
-        }
+            showAlertNow (message, sentence);
     }
+}
+
+void MainComponent::showAlertNow (const UserMessage& message, const juce::String& sentence)
+{
+    core::logEvent (core::Level::info, "ui.alert_shown", messageFields (message));
+    const auto alertId = ++alertsEverShown;
+    openAlerts.push_back (OpenAlert { alertId, message, nullptr });
+    if (! showAlert)
+        return;
+    auto close = showAlert (sentence, [window = juce::Component::SafePointer<MainComponent> (this), alertId] {
+        if (window != nullptr)
+            window->alertClosedByUser (alertId);
+    });
+    // Looked up again: an injected showAlert may have called `closed` already.
+    const auto open = std::ranges::find (openAlerts, alertId, &OpenAlert::id);
+    if (open != openAlerts.end())
+        open->close = std::move (close);
+}
+
+void MainComponent::alertClosedByUser (std::uint64_t alertId)
+{
+    const auto open = std::ranges::find (openAlerts, alertId, &OpenAlert::id);
+    if (open == openAlerts.end())
+        return; // dismiss_alerts closed it first
+    // Out of the list before its handle goes, which may call back into this.
+    auto closed = std::move (*open);
+    openAlerts.erase (open);
+}
+
+IntentResult MainComponent::dismissAlerts()
+{
+    for (auto& alert : std::exchange (openAlerts, {}))
+    {
+        core::logEvent (core::Level::info, "ui.alert_dismissed", messageFields (alert.message));
+        if (alert.close)
+            alert.close();
+    }
+    return IntentDone {};
+}
+
+std::vector<UserMessage> MainComponent::alertsShown() const
+{
+    std::vector<UserMessage> shown;
+    for (const auto& alert : openAlerts)
+        shown.push_back (alert.message);
+    return shown;
 }
 
 void MainComponent::tick (song::SongPackage::Clock::time_point now)

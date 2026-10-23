@@ -97,8 +97,11 @@
 // Every 30 ms (and from tick() in tests) it polls the open Song, which finishes a stopped Pass,
 // refreshes the top bar and the page, feeds the Mixer's and the Record rows' meters from one
 // poll of the engine's peaks, and presents queued messages: Notices at once, Alerts only
-// when no Pass runs (ADR 0006). Logs ui.mode_changed (debug), ui.notice_shown, ui.alert_shown and
-// ui.alert_deferred (info), each with `code` and `tier` where it names a message.
+// when no Pass runs (ADR 0006). It keeps each Alert shown until the user closes it, and
+// dismiss_alerts (issue #171) closes every one still open as its OK button does; a deferred Alert
+// is not open yet and stays queued. Logs ui.mode_changed (debug), ui.notice_shown, ui.alert_shown,
+// ui.alert_deferred and ui.alert_dismissed (info, one per Alert dismiss_alerts closed), each with
+// `code` and `tier` where it names a message.
 namespace overdub::ui
 {
 class MainComponent final : public juce::Component, private juce::Timer
@@ -149,8 +152,20 @@ public:
     bool isVideoPreviewShown() const { return videoPreview != nullptr && videoPreview->isShown(); }
     // Shows the open Song's current state.
     void refresh();
-    // The code of the Notice the Notice line shows now; none while it is hidden.
-    std::optional<std::string> noticeShown() const { return noticeLine.isVisible() ? noticeCode : std::nullopt; }
+    // The Notice the Notice line shows now (none while it is hidden), how many Notices were shown
+    // up to it (so showing the same one again is seen), and the Intent its action button runs
+    // (none: it hides on its own, NoticeLine::hidesAtMs).
+    struct ShownNotice
+    {
+        UserMessage message;
+        std::uint64_t counter = 0;
+        std::optional<Intent> action;
+    };
+    std::optional<ShownNotice> noticeShown() const { return noticeLine.isVisible() ? notice : std::nullopt; }
+    // The Alerts shown and not closed yet, by the user or by dismiss_alerts, oldest first.
+    std::vector<UserMessage> alertsShown() const;
+    // The Alerts the running Pass holds back until it stops, oldest first.
+    std::vector<UserMessage> alertsDeferred() const { return messages.deferredAlerts(); }
 
     bool keyPressed (const juce::KeyPress& key) override;
     // Every mouse down in the window, children's included: one outside the Mixer's (or the Record
@@ -164,8 +179,12 @@ public:
     std::function<void (std::function<void (std::vector<juce::File>)>)> chooseFilesToImport;
     // Asks the question with Delete and Cancel and calls back with whether Delete was chosen.
     std::function<void (const juce::String& question, std::function<void (bool confirmed)>)> confirmTrackDelete;
-    // Shows an Alert: a modal dialog with this sentence.
-    std::function<void (const juce::String& sentence)> showAlert;
+    // Shows an Alert, a modal dialog with this sentence and an OK button, and calls `closed` once
+    // the user closes it. Returns what closes it as OK does, which is harmless after the user
+    // closed it. The window owns what it returns until the Alert closes (default:
+    // juce::AlertWindow::showScopedAsync, whose ScopedMessageBox it keeps).
+    using CloseAlert = std::function<void()>;
+    std::function<CloseAlert (const juce::String& sentence, std::function<void()> closed)> showAlert;
     // "+ Insert" (issue #33): the AU effects to offer (AudioUnitLoader::findEffects
     // in the app; none by default), and how the user picks one: calls back with the index picked,
     // or none when dismissed (default: a pop-up menu by name).
@@ -212,6 +231,9 @@ private:
     void showMode (Mode mode);
     void post (UserMessage message);
     void presentMessages();
+    void showAlertNow (const UserMessage& message, const juce::String& sentence);
+    void alertClosedByUser (std::uint64_t alertId);
+    IntentResult dismissAlerts();
     void syncVideoPreview();
     void onVBlank (double timestampSeconds);
     bool passRunning() const { return songContent != nullptr && songContent->currentSong().isRecording(); }
@@ -220,7 +242,16 @@ private:
 
     Mode currentMode = Mode::record;
     UserMessageQueue messages;
-    std::optional<std::string> noticeCode;
+    std::optional<ShownNotice> notice;
+    struct OpenAlert
+    {
+        std::uint64_t id = 0;
+        UserMessage message;
+        CloseAlert close;
+    };
+    std::vector<OpenAlert> openAlerts;
+    std::uint64_t alertsEverShown = 0;
+    std::uint64_t noticesEverShown = 0;
     bool videoPreviewWanted = false;
     std::unique_ptr<VideoPreviewWindow> videoPreview;
     // Null while no Song is open.
