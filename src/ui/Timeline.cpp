@@ -216,6 +216,14 @@ void Timeline::show (const TimelineState& state)
         const auto videoTakeId = selectedVideoTake();
         if ((clipId.has_value() && song::findClip (current.song, *clipId) == nullptr) || (videoTakeId.has_value() && song::findVideoTake (current.song, *videoTakeId) == nullptr))
             setSelection (std::monostate {});
+        // A Clip drag carries on over a Song changed by anything else, unless its Clip is gone.
+        if (auto* clipDrag = std::get_if<ClipDragGesture> (&gesture))
+        {
+            if (song::findClip (current.song, clipDrag->drag.clipId) == nullptr)
+                cancelGesture ("clip_removed");
+            else
+                previewClipDrag (*clipDrag);
+        }
         // The dragged Track's header, whose grip would end the drag, is about to go.
         if (const auto* drag = std::get_if<TrackDrag> (&gesture); drag != nullptr && song::findTrack (current.song, drag->trackId().value_or ("")) == nullptr)
             cancelGesture ("track_removed");

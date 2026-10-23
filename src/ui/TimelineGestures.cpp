@@ -191,7 +191,7 @@ void Timeline::mouseDown (const juce::MouseEvent& event)
         hit->part = *handle;
 
     emit (SongIntent { intent::SelectClip { hit->clipId } });
-    gesture = ClipDragGesture { ClipDrag { hit->clipId, hit->part, position.x, position.y }, current.song, std::nullopt };
+    gesture = ClipDragGesture { ClipDrag { hit->clipId, hit->part, position.x, position.y }, current.song, std::nullopt, std::nullopt };
 }
 
 void Timeline::mouseDrag (const juce::MouseEvent& event)
@@ -206,10 +206,25 @@ void Timeline::mouseDrag (const juce::MouseEvent& event)
     if (clipDrag == nullptr)
         return;
 
-    auto dragged = songForDrag (clipDrag->songAtDown, clipDrag->drag, timelineView, position.x, position.y);
-    if (dragged.has_value())
-        clipDrag->preview = std::move (*dragged);
+    // Measured from the Clip at mouse down, applied to the current Song, which may have changed
+    // since; a frame the current Song cannot take keeps the last preview.
+    auto edit = intentForDrag (clipDrag->songAtDown, clipDrag->drag, timelineView, position.x, position.y);
+    auto edited = edit.has_value() ? editedSong (current.song, *edit) : std::unexpected (edit.error());
+    if (edited.has_value())
+    {
+        clipDrag->edit = std::move (*edit);
+        clipDrag->preview = std::move (edited->song);
+    }
     repaint();
+}
+
+void Timeline::previewClipDrag (ClipDragGesture& clipDrag) const
+{
+    clipDrag.preview.reset();
+    if (! clipDrag.edit.has_value())
+        return;
+    if (auto edited = editedSong (current.song, *clipDrag.edit); edited.has_value())
+        clipDrag.preview = std::move (edited->song);
 }
 
 void Timeline::mouseUp (const juce::MouseEvent& event)
@@ -230,8 +245,8 @@ void Timeline::mouseUp (const juce::MouseEvent& event)
     const auto edit = intentForDrag (finished.songAtDown, finished.drag, timelineView, event.getPosition().x, event.getPosition().y);
     if (! edit.has_value())
         return;
-    const auto dragged = editedSong (finished.songAtDown, *edit);
-    if (dragged.has_value() && dragged->song != finished.songAtDown)
+    const auto dragged = editedSong (current.song, *edit);
+    if (dragged.has_value() && dragged->song != current.song)
         emit (SongIntent { *edit });
 }
 } // namespace overdub::ui

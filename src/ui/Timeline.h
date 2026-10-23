@@ -74,7 +74,10 @@
 // hovering. While one is in progress the others do not start. Esc (cancelGesture) ends a Clip drag
 // (its preview dropped, no edit reported), a ruler drag (the playhead stays where it was sought)
 // or a grip drag (no drop); a file drag is the system's and carries on. A Pass starting ends a grip
-// drag, and so does its Track leaving the Song. The gesture handling is in ui/TimelineGestures.cpp.
+// drag, and so does its Track leaving the Song. A Clip drag carries on over a Song changed by
+// anything else (issue #157): its edit, measured from the Clip at mouse down, previews on and
+// commits to the current Song; its Clip leaving the Song ends it. The gesture handling is in
+// ui/TimelineGestures.cpp.
 namespace overdub::ui
 {
 struct TimelineState
@@ -160,6 +163,8 @@ public:
     // is not on screen, or for another part.
     juce::Rectangle<int> handleBounds (const song::Id& clipId, ClipPart part) const;
     juce::Rectangle<int> rulerBounds() const { return layout.ruler; }
+    // The Song drawn: a Clip drag's preview while one has moved, else the current Song.
+    const song::Song& shownSong() const;
     // Where Track rows show (header column and lanes), under the Camera lane.
     juce::Rectangle<int> tracksViewportBounds() const { return layout.tracksViewport; }
 
@@ -236,7 +241,8 @@ private:
     {
         ClipDrag drag;
         song::Song songAtDown;
-        std::optional<song::Song> preview; // the Song the drag would make, once it has moved
+        std::optional<intent::Edit> edit; // what its release commits, once it has moved
+        std::optional<song::Song> preview; // editedSong (the current Song, edit)
     };
     struct SeekGesture
     {
@@ -264,9 +270,9 @@ private:
     void refreshTakeLanes();
     bool clickTakeLane (juce::Point<int> position);
     void updateScrollBar();
+    void previewClipDrag (ClipDragGesture& clipDrag) const;
     void layOutRows();
     void revealNewTracks (const std::vector<song::Id>& previousTrackIds);
-    const song::Song& shownSong() const;
     std::optional<std::size_t> laneAt (juce::Point<int> position) const;
     juce::Rectangle<int> lanesArea() const;
 
@@ -287,7 +293,8 @@ private:
     int verticalScrollPixels = 0;
     double pinchPendingLevels = 0.0; // PinchZoom::pendingLevels between pinch events
     // True while the horizontal scroll bar reports a move: it already shows that range, and its
-    // limits stay as they are while its thumb is dragged.
+    // limits stay as they are while its thumb is dragged. The periodic refresh (show) can still
+    // update the scroll bar while playing, as it could before set_timeline_view was an Intent.
     bool scrollBarReporting = false;
     TimelineLayout layout;
     juce::Component trackHeaderColumn; // the tracks viewport's header column: cuts off scrolled headers

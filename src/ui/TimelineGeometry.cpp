@@ -152,7 +152,6 @@ core::Expected<intent::Edit> intentForDrag (const song::Song& songAtDown, const 
             return intent::SetClipGain { drag.clipId, std::round (gainDb * 10.0) / 10.0 };
         }
     }
-    return intent::MoveClip { drag.clipId, clip->timelineStart };
 }
 
 core::Expected<song::Song> songForDrag (const song::Song& songAtDown, const ClipDrag& drag, const TimelineView& view, int x, int y)
