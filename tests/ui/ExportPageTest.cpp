@@ -2,6 +2,7 @@
 
 #include "export/MixRender.h"
 #include "song/AudioFileDecode.h"
+#include "ui/ExportPageSink.h"
 #include "ui/MainWindowFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -82,8 +83,9 @@ TEST_CASE ("the format choice and the destination flow into the export request",
     ExportPage page;
     layOut (page, windowWidth, 600);
     page.setDestination (juce::File ("/Users/someone/Music/Overdub/My Song.wav"));
-    std::vector<ExportRequest> requests;
-    page.onExport = [&requests] (ExportRequest request) { requests.push_back (request); };
+    ExportPageSink sink;
+    sink.connect (page);
+    const auto& requests = sink.requests;
     std::vector<juce::File> askedFrom;
     page.onChooseDestination = [&askedFrom] (juce::File current) { askedFrom.push_back (current); };
 
@@ -108,6 +110,22 @@ TEST_CASE ("the format choice and the destination flow into the export request",
     CHECK (requests[1] == ExportRequest { ExportFormat::m4a, juce::File ("/Volumes/Share/Mixes/take two.m4a") });
 }
 
+TEST_CASE ("a format toggle the handler does not call back leaves the form as it was", "[ui][export]")
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    ExportPage page;
+    layOut (page, windowWidth, 600);
+    page.setDestination (juce::File ("/Users/someone/Music/Overdub/My Song.wav"));
+    std::vector<overdub::ui::Intent> refused;
+    page.onIntent = [&refused] (const overdub::ui::Intent& intent) { refused.push_back (intent); };
+
+    click (page.mp4Button);
+    CHECK (refused.size() == 1);
+    CHECK (page.wavButton.getToggleState());
+    CHECK_FALSE (page.mp4Button.getToggleState());
+    CHECK (page.request() == ExportRequest { ExportFormat::wav, juce::File ("/Users/someone/Music/Overdub/My Song.wav") });
+}
+
 TEST_CASE ("the Export button is disabled while an export runs, and progress advances", "[ui][export]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -130,14 +148,14 @@ TEST_CASE ("the Export button is disabled while an export runs, and progress adv
     CHECK (near (page.progress(), 0.75));
     CHECK (page.statusLabel.getText() == juce::String::fromUTF8 ("Exporting\xe2\x80\xa6 75%"));
 
-    std::vector<juce::File> revealed;
-    page.onReveal = [&revealed] (juce::File file) { revealed.push_back (file); };
+    ExportPageSink sink;
+    sink.connect (page);
     page.show ({ .clipsEnd = 48000, .finishedFile = juce::File ("/tmp/Song.wav") });
     CHECK (page.exportButton.isEnabled());
     CHECK (near (page.progress(), 1.0));
     REQUIRE (isShown (page.revealButton));
     click (page.revealButton);
-    CHECK (revealed == std::vector<juce::File> { juce::File ("/tmp/Song.wav") });
+    CHECK (sink.reveals == 1);
 }
 
 TEST_CASE ("Export mode exports the open Song's mix to the chosen file and reveals it", "[ui][export]")

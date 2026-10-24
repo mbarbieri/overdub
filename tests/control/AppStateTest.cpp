@@ -509,6 +509,26 @@ TEST_CASE ("a cancelled Separation is the last finish with song.separation_cance
     CHECK (activityOf (f) == finishedActivity ("separation", 1, "song.separation_cancelled"));
 }
 
+TEST_CASE ("during a Separation the refused section lets through only what the run dialog lets through", "[control][app_state][refused][separation]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    f.song().setSeparationTools (song::SeparationTools {
+        .model = song::testing::writeStandInModel (f.folder),
+        .startHelper = song::testing::fakeSeparationHelper ({}, std::make_shared<song::testing::FakeHelperLog>()),
+        .workFolder = f.folder.getChildFile ("work"),
+    });
+    run (f, ui::SongIntent { StartSeparation { f.song().song().tracks.front().id } });
+
+    const auto refused = stateOf (f, { "refused" })["refused"];
+    CHECK (refused["cancel_run"] == nullptr);
+    CHECK (refused["close_plugin_window"] == nullptr);
+    CHECK (refused["undo"] == "ui.run_dialog_open");
+    CHECK (refused["seek"] == "ui.run_dialog_open");
+    CHECK (refused["show_mode"] == "ui.run_dialog_open");
+}
+
 TEST_CASE ("a sample rate conversion that ends is the last finish, without an error code", "[control][app_state][activity][conversion]")
 {
     WorkspaceFixture f;

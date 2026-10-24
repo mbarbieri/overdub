@@ -283,6 +283,11 @@ EditPage::EditPage (PeaksLookup peaksFor)
     };
 
     timeline.onIntent = [this] (const Intent& intent) { emit (intent); };
+    mixer.onIntent = [this] (const Intent& intent) { emit (intent); };
+    mixer.onAddInsert = [this] (const song::Id& trackId) {
+        if (onAddInsert)
+            onAddInsert (trackId);
+    };
     timeline.onDeleteTrack = [this] (const song::Id& trackId) {
         if (onDeleteTrack)
             onDeleteTrack (trackId);

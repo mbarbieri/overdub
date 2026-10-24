@@ -3,6 +3,7 @@
 #include "export/ExportFormat.h"
 #include "export/MovieSpan.h"
 #include "song/Song.h"
+#include "ui/Intent.h"
 #include "ui/ThinProgressBar.h"
 #include "video/FrameSelection.h"
 
@@ -17,11 +18,15 @@
 // M4A, MP4), for an MP4 the Video Take and the length (trimmed to the Video Take, or the full song
 // with black where there is no video), the span bar previewing what is exported, where the file
 // goes, the Export button, progress, and Reveal in Finder once a file is written. It stays thin:
-// the request it builds is handed to onExport, and what it shows comes from show().
+// every gesture is an Intent reported through onIntent (ADR 0008): set_export_format,
+// set_export_length, set_export_video_take, export (which runs the page's request()) and
+// reveal_export. Choose... is the one hook, onChooseDestination: the window asks for a file, then
+// runs set_export_destination. The form changes only when a handler calls back (chooseFormat,
+// chooseLength, chooseVideoTake, setDestination), and the rest of what it shows comes from show().
 //
 // The destination keeps its folder and name when the format changes; only its extension follows.
 // The Video Take shown is the page's choice once the user picked one, else the Song's stored
-// choice (defaultExportVideoTake); a pick is handed to onVideoTakeChosen so the Song stores it.
+// choice (defaultExportVideoTake); set_export_video_take sets both.
 namespace overdub::ui
 {
 struct ExportPageState
@@ -94,21 +99,18 @@ public:
     exporting::ExportRequest request() const;
     // The progress bar's value, 0..1.
     double progress() const { return progressBar.fraction(); }
-    // The form's choices, as its toggles set them.
+    // The form's choices; the toggles and the picker show them.
     void chooseFormat (exporting::ExportFormat format);
     void chooseLength (exporting::VideoLength length);
+    void chooseVideoTake (const song::Id& videoTakeId);
 
     void resized() override;
     void paint (juce::Graphics& g) override;
 
-    // Export pressed, with the request.
-    std::function<void (exporting::ExportRequest)> onExport;
+    // Where the page's Intents go (MainComponent::run).
+    IntentSink onIntent;
     // Choose… pressed: asks for a destination, starting from the current one.
     std::function<void (juce::File current)> onChooseDestination;
-    // Reveal in Finder pressed, with the file the last export wrote.
-    std::function<void (juce::File)> onReveal;
-    // A Video Take picked for the MP4.
-    std::function<void (const song::Id&)> onVideoTakeChosen;
 
     // Children are public so tests can click them and check what shows.
     juce::Label title;
@@ -139,6 +141,7 @@ private:
     void updatePicker();
     void updateSpan();
     void updateControls();
+    void emit (Intent intent) const;
 
     exporting::ExportFormat chosenFormat = exporting::ExportFormat::wav;
     exporting::VideoLength chosenLength = exporting::VideoLength::trimToVideoTake;

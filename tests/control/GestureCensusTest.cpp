@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdio>
 #include <cstdlib>
 #include <functional>
 #include <map>
@@ -30,8 +29,7 @@
 // fired at a Song with Tracks, Clips, a Pass, a Video Take, an Insert and a selection, in each
 // mode, and a gesture that changes the app state without running an Intent through
 // MainComponent::run (its intentsRun count, which includes the per-frame Intents that log no
-// ui.intent_run) is a bypass. notYetMigrated names the bypasses the pages still have (issue #168 moves them); it may
-// only shrink: an entry that no longer bypasses fails too.
+// ui.intent_run) is a bypass, and the census fails on any bypass.
 //
 // Each mode gets a fresh CensusWorkspace, and before each probe its Song, selection and timeline
 // view are put back as they were built, so no gesture changes what a later one is fired at.
@@ -40,9 +38,7 @@
 // Intent run hides the bypass); text typed into an editor (Labels and TextEditors get
 // clicks and keys, never typed text); and a change that lands after the gesture returns (an
 // asynchronous callback, a timer, a dialog answered later).
-//
-// To regenerate notYetMigrated after a page migrates: run this test case with
-// OVERDUB_CENSUS_PRINT_BYPASSES=1, which prints every bypass as an entry of the list.
+
 using namespace overdub;
 using namespace overdub::ui::intent;
 using nlohmann::json;
@@ -52,73 +48,6 @@ namespace
 {
 // Paths of the app state that change without any gesture: the meters follow the engine.
 const std::vector<std::string> movesOnItsOwn { "/meters" };
-
-// "<mode>/<Component path>:<gesture>", each Component named by its class and its index among
-// siblings of that class. Issue #168 migrates these pages and deletes their entries.
-const std::set<std::string> notYetMigrated {
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#0/InsertChainView#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#0/InsertChainView#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#1:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#1:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0:double_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/TextButton#0:right_click",
-    "export/SongView#0/ExportPage#0/TextButton#0:click",
-    "export/SongView#0/ExportPage#0/TextButton#1:click",
-    "export/SongView#0/ExportPage#0/ToggleButton#1:click",
-    "export/SongView#0/ExportPage#0/ToggleButton#2:click",
-    "record/SongView#0/RecordPage#0/ComboBox#0:choose:1",
-    "record/SongView#0/RecordPage#0/ComboBox#0:choose:2",
-    "record/SongView#0/RecordPage#0/ComboBox#0:choose:3",
-    "record/SongView#0/RecordPage#0/ComboBox#1:choose:1",
-    "record/SongView#0/RecordPage#0/PassesPanel#0/Row#0/TextButton#0:click",
-    "record/SongView#0/RecordPage#0/PassesPanel#0/Row#0/TextButton#0:right_click",
-    "record/SongView#0/RecordPage#0/SongOverview#0:click",
-    "record/SongView#0/RecordPage#0/TextButton#0:click",
-    "record/SongView#0/RecordPage#0/TextButton#0:right_click",
-    "record/SongView#0/RecordPage#0/TextButton#2:click",
-    "record/SongView#0/RecordPage#0/TextButton#2:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/ComboBox#0:choose:1",
-    "record/SongView#0/RecordPage#0/TrackRow#0/ComboBox#0:choose:2",
-    "record/SongView#0/RecordPage#0/TrackRow#0/ComboBox#0:choose:3",
-    "record/SongView#0/RecordPage#0/TrackRow#0/InsertChainView#0/TextButton#0:click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/InsertChainView#0/TextButton#0:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/TextButton#0:click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/TextButton#0:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/TextButton#1:click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/TextButton#1:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/TextButton#2:click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/TextButton#2:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/TextButton#3:click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/TextButton#3:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/ComboBox#0:choose:0",
-    "record/SongView#0/RecordPage#0/TrackRow#1/ComboBox#0:choose:1",
-    "record/SongView#0/RecordPage#0/TrackRow#1/ComboBox#0:choose:2",
-    "record/SongView#0/RecordPage#0/TrackRow#1/ComboBox#0:choose:3",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0/TextButton#0:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0/TextButton#0:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0/TextButton#1:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0/TextButton#1:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0:double_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/TextButton#0:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/TextButton#0:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/TextButton#0:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/TextButton#0:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/TextButton#1:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/TextButton#1:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/TextButton#2:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/TextButton#2:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/TextButton#3:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/TextButton#3:right_click",
-};
 
 struct ComponentPath
 {
@@ -131,6 +60,8 @@ struct ComponentPath
 
 struct Probe
 {
+    // "<mode>/<Component path>:<gesture>", each Component named by its class and its index among
+    // siblings of that class.
     std::string id;
     ComponentPath path;
     std::function<void (juce::Component&)> fire;
@@ -437,23 +368,12 @@ CensusResult runCensus()
 }
 } // namespace
 
-TEST_CASE ("no gesture changes the app state without running an Intent except the pages not migrated yet", "[control][census]")
+TEST_CASE ("no gesture changes the app state without running an Intent", "[control][census]")
 {
     const auto result = runCensus();
-    if (std::getenv ("OVERDUB_CENSUS_PRINT_BYPASSES") != nullptr)
-        for (const auto& bypass : result.bypasses)
-            std::printf ("    \"%s\",\n", bypass.c_str());
-
     for (const auto& [probe, changed] : result.changedBy)
-    {
-        INFO (probe << " changed " << changed << " without running an Intent");
-        CHECK (notYetMigrated.contains (probe));
-    }
-    for (const auto& allowed : notYetMigrated)
-    {
-        INFO (allowed << " runs an Intent now, or no longer exists: remove it from the allow-list");
-        CHECK (result.bypasses.contains (allowed));
-    }
+        FAIL_CHECK (probe << " changed " << changed << " without running an Intent");
+    CHECK (result.bypasses.empty());
     CHECK (result.fired > 1000);
 }
 

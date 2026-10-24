@@ -399,7 +399,8 @@ Mixer::Mixer()
         if (auto* strip = stripFor (control.trackId))
             strip->showControlValue (control.kind, value);
     };
-    masterStrip.insertChain.actions = &insertActions;
+    mix.onIntent = [this] (const Intent& intent) { emit (intent); };
+    connectChain (masterStrip.insertChain);
     connectStrip (masterStrip, {});
     addAndMakeVisible (masterStrip);
 }
@@ -483,7 +484,7 @@ void Mixer::rebuildStrips()
     for (const auto& track : mix.song().tracks)
     {
         auto strip = std::make_unique<MixerStrip> (false);
-        strip->insertChain.actions = &insertActions;
+        connectChain (strip->insertChain);
         connectStrip (*strip, track.id);
         addAndMakeVisible (*strip);
         strips.push_back (std::move (strip));
@@ -507,6 +508,21 @@ void Mixer::connectStrip (MixerStrip& strip, const song::Id& trackId)
         mix.commitKeyBurst();
         mix.report (intent::SetTrackSolo { trackId, solo });
     };
+}
+
+void Mixer::connectChain (InsertChainView& chain)
+{
+    chain.onIntent = [this] (const Intent& intent) { emit (intent); };
+    chain.onAddInsert = [this] (const song::Id& trackId) {
+        if (onAddInsert)
+            onAddInsert (trackId);
+    };
+}
+
+void Mixer::emit (Intent intent) const
+{
+    if (onIntent)
+        onIntent (intent);
 }
 
 void Mixer::resized()

@@ -2,7 +2,7 @@
 
 #include "song/Peaks.h"
 #include "song/Song.h"
-#include "ui/TrackActions.h"
+#include "ui/PeaksLookup.h"
 
 #include <functional>
 #include <optional>

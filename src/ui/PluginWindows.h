@@ -1,6 +1,7 @@
 #pragma once
 
 #include "song/Song.h"
+#include "ui/Intent.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -122,10 +123,10 @@ public:
     PluginWindow* find (const song::Id& slotId) const;
     std::size_t size() const { return windows.size(); }
 
-    // The bypass toggle in a window.
-    std::function<void (const song::Id& slotId, bool bypassed)> onBypass;
-    // A window was closed by its close button.
-    std::function<void (const song::Id& slotId)> onClosed;
+    // Where the windows' Intents go: a bypass toggle's set_insert_bypassed, and a close button's
+    // close_plugin_window, run after the button's callback has returned (its handler closes the
+    // window). Unset, a close button closes nothing.
+    IntentSink onIntent;
 
     // False in tests: windows are built but never put on the desktop.
     bool showOnDesktop = true;

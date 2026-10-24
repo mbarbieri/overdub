@@ -5,9 +5,9 @@
 #include "ui/Intent.h"
 #include "ui/Mixer.h"
 #include "ui/PassesPanel.h"
+#include "ui/PeaksLookup.h"
 #include "ui/TakeLanes.h"
 #include "ui/Timeline.h"
-#include "ui/TrackActions.h"
 #include "ui/TransportText.h"
 #include "video/FrameSelection.h"
 
@@ -141,6 +141,8 @@ public:
     IntentSink onIntent;
     // The × in a Track's header (Timeline::onDeleteTrack).
     std::function<void (const song::Id& trackId)> onDeleteTrack;
+    // "+ Insert" on a Mixer strip (Mixer::onAddInsert): the window asks, then runs add_insert.
+    std::function<void (const song::Id& trackId)> onAddInsert;
 
     ClipToolbar toolbar;
     Timeline timeline;

@@ -61,15 +61,6 @@ void chooseTrackMenuItemFromMenu (const std::vector<TrackMenuItem>& items, std::
     });
 }
 
-// The App group passes: the Settings window is outside the dialog, and the Workspace refuses with a
-// presented Notice what may not run.
-bool actsUnderRunDialog (const Intent& running)
-{
-    if (const auto* song = std::get_if<SongIntent> (&running))
-        return std::holds_alternative<intent::CancelRun> (*song);
-    return std::holds_alternative<AppIntent> (running);
-}
-
 core::Error notRouted (std::string_view op)
 {
     return core::Error { "ui.intent_not_routed", "this operation does not run through the window yet", { { "op", std::string (op) } } };
@@ -106,6 +97,13 @@ void confirmDeleteWithNativeDialog (const juce::String& question, std::function<
     juce::AlertWindow::showAsync (options, [done = std::move (whenAnswered)] (int result) { done (result == 1); });
 }
 } // namespace
+
+bool actsUnderRunDialog (std::string_view op)
+{
+    if (op == intent::CancelRun::op || op == intent::ClosePluginWindow::op)
+        return true;
+    return std::ranges::contains (core::operationNames<AppIntent>(), op);
+}
 
 MainComponent::MainComponent()
 {
@@ -214,7 +212,7 @@ IntentResult MainComponent::run (const Intent& intent, Origin origin)
     const auto perFrame = runsPerFrame (intent);
     if (! perFrame)
         core::logEvent (core::Level::debug, "ui.intent_run", { { "op", op }, { "origin", originName (origin) } });
-    if (runShowing() && ! actsUnderRunDialog (intent))
+    if (runShowing() && ! actsUnderRunDialog (op))
         return quietError (core::Error { "ui.run_dialog_open", "a Separation or a conversion runs", { { "op", op } } });
     auto result = core::visitExhaustively (
         intent,

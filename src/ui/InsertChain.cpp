@@ -143,8 +143,8 @@ InsertChainView::InsertChainView (bool isVertical) : vertical (isVertical)
 {
     addButton.setWantsKeyboardFocus (false);
     addButton.onClick = [this] {
-        if (actions != nullptr && actions->add)
-            actions->add (trackId);
+        if (onAddInsert)
+            onAddInsert (trackId);
     };
     addAndMakeVisible (addButton);
 }
@@ -162,18 +162,9 @@ void InsertChainView::show (const song::Id& chainTrackId, const std::vector<Inse
         auto chip = std::make_unique<InsertChip>();
         auto* raw = chip.get();
         const auto index = chips.size();
-        chip->onOpen = [this, raw] {
-            if (actions != nullptr && actions->open)
-                actions->open (raw->slotId());
-        };
-        chip->onBypass = [this, raw] (bool bypassed) {
-            if (actions != nullptr && actions->bypass)
-                actions->bypass (raw->slotId(), bypassed);
-        };
-        chip->onRemove = [this, raw] {
-            if (actions != nullptr && actions->remove)
-                actions->remove (raw->slotId());
-        };
+        chip->onOpen = [this, raw] { emit (SongIntent { intent::OpenInsertEditor { raw->slotId() } }); };
+        chip->onBypass = [this, raw] (bool bypassed) { emit (SongIntent { intent::Edit { intent::SetInsertBypassed { raw->slotId(), bypassed } } }); };
+        chip->onRemove = [this, raw] { emit (SongIntent { intent::Edit { intent::RemoveInsert { raw->slotId() } } }); };
         chip->onDragEnd = [this, raw, index] (juce::Point<int> end) { dropped (index, end + raw->getPosition()); };
         addChildComponent (*chip);
         chips.push_back (std::move (chip));
@@ -194,9 +185,14 @@ void InsertChainView::dropped (std::size_t index, juce::Point<int> pointInChain)
     for (std::size_t i = 0; i < shown; ++i)
         bounds.push_back (chips[i]->isVisible() ? chips[i]->getBounds() : juce::Rectangle<int>());
     const auto toIndex = insertDropIndex (bounds, index, pointInChain, vertical);
-    if (toIndex == index || actions == nullptr || ! actions->move)
-        return;
-    actions->move (chips[index]->slotId(), toIndex);
+    if (toIndex != index)
+        emit (SongIntent { intent::Edit { intent::MoveInsert { chips[index]->slotId(), toIndex } } });
+}
+
+void InsertChainView::emit (Intent intent) const
+{
+    if (onIntent)
+        onIntent (intent);
 }
 
 void InsertChainView::resized()

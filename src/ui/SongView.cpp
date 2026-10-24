@@ -32,8 +32,7 @@ core::Error quiet (std::string code, std::string message, core::Fields fields = 
 SongView::SongView (OpenSong& song, MainComponent& mainWindow)
     : openSong (song),
       window (mainWindow),
-      trackActions (makeTrackActions()),
-      recordPage (trackActions),
+      recordPage ([this] (const song::ClipSource& source) -> const song::Peaks& { return openSong.peaks (source); }),
       editPage ([this] (const song::ClipSource& source) -> const song::Peaks& { return openSong.peaks (source); }),
       pluginWindows (mainWindow.showPluginWindowsOnDesktop)
 {
@@ -47,66 +46,23 @@ SongView::SongView (OpenSong& song, MainComponent& mainWindow)
 
 SongView::~SongView() = default;
 
-TrackActions SongView::makeTrackActions()
-{
-    TrackActions actions;
-    actions.arm = [this] (const song::Id& trackId, bool armed) { setArmed (trackId, armed); };
-    actions.mute = [this] (const song::Id& trackId, bool mute) { edit (intent::SetTrackMute { trackId, mute }); };
-    actions.solo = [this] (const song::Id& trackId, bool solo) { edit (intent::SetTrackSolo { trackId, solo }); };
-    actions.moveTrack = [this] (const song::Id& trackId, std::size_t toIndex) { moveTrack (trackId, toIndex); };
-    actions.seek = [this] (song::SampleCount sample) { seek (sample); };
-    actions.peaksFor = [this] (const song::ClipSource& source) -> const song::Peaks& { return openSong.peaks (source); };
-    return actions;
-}
-
-InsertChainActions SongView::makeInsertChainActions()
-{
-    InsertChainActions actions;
-    actions.add = [this] (const song::Id& trackId) { chooseInsert (trackId); };
-    actions.open = [this] (const song::Id& slotId) { openInsertEditor (slotId); };
-    actions.bypass = [this] (const song::Id& slotId, bool bypassed) { edit (intent::SetInsertBypassed { slotId, bypassed }); };
-    actions.remove = [this] (const song::Id& slotId) { edit (intent::RemoveInsert { slotId }); };
-    actions.move = [this] (const song::Id& slotId, std::size_t toIndex) { edit (intent::MoveInsert { slotId, toIndex }); };
-    return actions;
-}
-
 void SongView::wirePages()
 {
-    for (auto* mix : { &editPage.mixer.mix, &recordPage.mix })
-    {
-        mix->onEdit = [this] (const intent::Edit& mixEdit) { window.run (SongIntent { mixEdit }); };
-        mix->onPreview = [this] (const intent::PreviewMix& preview) { window.run (SongIntent { preview }); };
-    }
-
-    recordPage.onInput = [this] (const song::Id& trackId, std::vector<int> channels) { setInputChannels (trackId, std::move (channels)); };
-    recordPage.onMonitoring = [this] (const song::Id& trackId, bool on) { setMonitoring (trackId, on); };
-    recordPage.onPreRoll = [this] (song::PreRoll preRoll) { setPreRoll (preRoll); };
-    recordPage.onCameraArm = [this] (bool armed) { armCamera (armed); };
-    recordPage.onCameraDevice = [this] (const std::string& cameraId) { setCameraDevice (cameraId); };
-    recordPage.onJumpToPass = [this] (const song::Id& passId) { jumpToPass (passId); };
-    recordPage.onBringBack = [this] (const song::Id& passId) { edit (intent::BringBackPass { passId }); };
-    recordPage.onAddTrack = [this] { addTrack(); };
+    recordPage.onIntent = [this] (const Intent& intent) { window.run (intent); };
     recordPage.onTrackMenu = [this] (const song::Id& trackId) { showTrackMenu (trackId); };
     recordPage.onImport = [this] { askToImport(); };
 
-    const auto chainActions = makeInsertChainActions();
-    recordPage.insertActions = chainActions;
-    editPage.mixer.insertActions = chainActions;
+    recordPage.onAddInsert = [this] (const song::Id& trackId) { chooseInsert (trackId); };
+    editPage.onAddInsert = [this] (const song::Id& trackId) { chooseInsert (trackId); };
     editPage.mixer.insertStatusOf = [this] (const song::Id& slotId) { return openSong.insertStatus (slotId); };
-    pluginWindows.onBypass = chainActions.bypass;
-    pluginWindows.onClosed = [this] (const song::Id&) { openSong.notePluginStateChanged(); };
+    pluginWindows.onIntent = [this] (const Intent& intent) { window.run (intent); };
 
     editPage.onIntent = [this] (const Intent& intent) { window.run (intent); };
     editPage.onDeleteTrack = [this] (const song::Id& trackId) { askToDeleteTrack (trackId); };
     editPage.timeline.canImportFiles = [this] { return openSong.canChangeTracks(); };
 
-    exportPage.onExport = [this] (exporting::ExportRequest request) { startExport (request); };
+    exportPage.onIntent = [this] (const Intent& intent) { window.run (intent); };
     exportPage.onChooseDestination = [this] (juce::File current) { chooseExportFile (current); };
-    exportPage.onVideoTakeChosen = [this] (const song::Id& videoTakeId) { setExportVideoTake (videoTakeId); };
-    exportPage.onReveal = [this] (juce::File file) {
-        if (window.revealInFinder)
-            window.revealInFinder (file);
-    };
 }
 
 IntentResult SongView::run (const SongIntent& songIntent)
@@ -471,7 +427,7 @@ void SongView::showTrackMenu (const song::Id& trackId)
             return;
         switch (items[*picked].action)
         {
-            case TrackMenuAction::separate: safeThis->startSeparation (trackId); break;
+            case TrackMenuAction::separate: safeThis->window.run (SongIntent { intent::StartSeparation { trackId } }); break;
         }
     });
 }
@@ -540,6 +496,7 @@ IntentResult SongView::startExport (const exporting::ExportRequest& request)
 
 IntentResult SongView::setExportVideoTake (const song::Id& videoTakeId)
 {
+    exportPage.chooseVideoTake (videoTakeId);
     openSong.setExportVideoTake (videoTakeId);
     window.refresh();
     return IntentDone {};
@@ -562,7 +519,7 @@ void SongView::chooseExportFile (const juce::File& current)
     window.chooseExportDestination (current, [safeThis = juce::Component::SafePointer<SongView> (this)] (std::optional<juce::File> chosen) {
         if (safeThis == nullptr || ! chosen.has_value())
             return;
-        safeThis->exportPage.setDestination (*chosen);
+        safeThis->window.run (SongIntent { intent::SetExportDestination { core::AbsolutePath { chosen->getFullPathName().toStdString() } } });
     });
 }
 
@@ -575,7 +532,8 @@ void SongView::chooseInsert (const song::Id& trackId)
     window.chooseInsertPlugin (plugins, [safeThis = juce::Component::SafePointer<SongView> (this), trackId, plugins] (std::optional<std::size_t> picked) {
         if (safeThis == nullptr || ! picked.has_value() || *picked >= plugins.size())
             return;
-        safeThis->addInsert (trackId, plugins[*picked]);
+        const auto& component = plugins[*picked].component;
+        safeThis->window.run (SongIntent { intent::AddInsert { trackId, component.type, component.subtype, component.manufacturer } });
     });
 }
 
