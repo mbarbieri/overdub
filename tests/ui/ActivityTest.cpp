@@ -147,6 +147,13 @@ std::vector<GestureCase> gestureCases()
     };
 }
 
+// Runs a Song Intent under the running Separation's or conversion's own refusal, which
+// MainComponent::run's run-dialog gate (ui::actsUnderRunDialog) would otherwise answer first.
+void runPastRunDialog (SongView& view, const SongIntent& intent)
+{
+    view.run (intent);
+}
+
 bool isPresented (const nlohmann::json& event)
 {
     return event.at ("event") == "ui.notice_shown" || event.at ("event") == "ui.alert_shown";
@@ -238,18 +245,24 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
         window.run (SongIntent { intent::Redo {} });
     }
     auto& view = *window.songView();
-    view.run (SongIntent { intent::Edit { intent::SetTrackMute { guitarId, true } } });
-    view.run (SongIntent { intent::SetArmed { guitarId, false } });
-    view.run (SongIntent { intent::SetInputChannels { guitarId, { 1 } } });
-    view.run (SongIntent { intent::SetMonitoring { guitarId, true } });
-    view.run (SongIntent { intent::SetPreRoll { song::PreRoll::twoSeconds } });
-    view.run (SongIntent { intent::SetCameraArmed { true } });
-    view.run (SongIntent { intent::SetCameraDevice { "camera-usb" } });
-    view.run (SongIntent { intent::AddTrack {} });
-    view.run (SongIntent { intent::MoveTrack { guitarId, 0 } });
+    const auto send = [&view, running] (const SongIntent& intent) {
+        if (running == Running::pass)
+            view.recordPage.onIntent (intent);
+        else
+            runPastRunDialog (view, intent);
+    };
+    send (SongIntent { intent::Edit { intent::SetTrackMute { guitarId, true } } });
+    send (SongIntent { intent::SetArmed { guitarId, false } });
+    send (SongIntent { intent::SetInputChannels { guitarId, { 1 } } });
+    send (SongIntent { intent::SetMonitoring { guitarId, true } });
+    send (SongIntent { intent::SetPreRoll { song::PreRoll::twoSeconds } });
+    send (SongIntent { intent::SetCameraArmed { true } });
+    send (SongIntent { intent::SetCameraDevice { "camera-usb" } });
+    send (SongIntent { intent::AddTrack {} });
+    send (SongIntent { intent::MoveTrack { guitarId, 0 } });
     view.recordPage.onAddInsert (guitarId);
-    view.run (SongIntent { intent::Edit { intent::SetInsertBypassed { "no-such-slot", true } } });
-    view.run (SongIntent { intent::PreviewMix { intent::SetMasterVolume { -3.0 } } });
+    send (SongIntent { intent::Edit { intent::SetInsertBypassed { "no-such-slot", true } } });
+    send (SongIntent { intent::PreviewMix { intent::SetMasterVolume { -3.0 } } });
 
     CHECK (presented (capture).empty());
     CHECK (a.f.alertsShown.empty());
