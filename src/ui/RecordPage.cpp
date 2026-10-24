@@ -314,8 +314,7 @@ RecordPage::RecordPage (PeaksLookup peaks)
     passesList.onSelect = [this] (const song::Id& passId) { emit (SongIntent { intent::JumpToPass { passId } }); };
     passesList.onBringBack = [this] (const song::Id& passId) { emit (SongIntent { intent::Edit { intent::BringBackPass { passId } } }); };
     overview.onSeek = [this] (song::SampleCount sample) { emit (SongIntent { intent::Seek { sample } }); };
-    mix.onEdit = [this] (const intent::Edit& mixEdit) { emit (SongIntent { mixEdit }); };
-    mix.onPreview = [this] (const intent::PreviewMix& preview) { emit (SongIntent { preview }); };
+    mix.onIntent = [this] (const Intent& intent) { emit (intent); };
     mix.onFocusChanged = [this] { showFocus(); };
     mix.onKeyValue = [this] (const MixerControl& control, double value) {
         if (auto* row = rowFor (control.trackId))
@@ -357,7 +356,6 @@ void RecordPage::show (const RecordPageState& state, const song::Song& song)
             }
             auto row = std::make_unique<TrackRow>();
             connectRow (*row, rowState.trackId);
-            row->insertChain.actions = &insertActions;
             addAndMakeVisible (*row);
             rows.push_back (std::move (row));
         }
@@ -403,6 +401,11 @@ void RecordPage::connectRow (TrackRow& row, const song::Id& trackId)
     row.onMute = [this, trackId] (bool mute) { emit (SongIntent { intent::Edit { intent::SetTrackMute { trackId, mute } } }); };
     row.onSolo = [this, trackId] (bool solo) { emit (SongIntent { intent::Edit { intent::SetTrackSolo { trackId, solo } } }); };
     row.clip.onClick = [this, trackId] { emit (SongIntent { intent::ClearClipIndicator { trackId } }); };
+    row.insertChain.onIntent = [this] (const Intent& intent) { emit (intent); };
+    row.insertChain.onAddInsert = [this] (const song::Id& chainTrackId) {
+        if (onAddInsert)
+            onAddInsert (chainTrackId);
+    };
     row.onMenu = [this, trackId] {
         if (onTrackMenu)
             onTrackMenu (trackId);

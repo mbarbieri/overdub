@@ -249,8 +249,8 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
     view.run (SongIntent { intent::SetCameraDevice { "camera-usb" } });
     view.run (SongIntent { intent::AddTrack {} });
     view.run (SongIntent { intent::MoveTrack { guitarId, 0 } });
-    view.recordPage.insertActions.add (guitarId);
-    view.recordPage.insertActions.bypass ("no-such-slot", true); // an operation that fails, for an edit refused anyway
+    view.recordPage.onAddInsert (guitarId);
+    view.run (SongIntent { intent::Edit { intent::SetInsertBypassed { "no-such-slot", true } } }); // an operation that fails, for an edit refused anyway
     view.run (SongIntent { intent::PreviewMix { intent::SetMasterVolume { -3.0 } } });
 
     CHECK (presented (capture).empty());

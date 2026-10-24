@@ -46,32 +46,16 @@ SongView::SongView (OpenSong& song, MainComponent& mainWindow)
 
 SongView::~SongView() = default;
 
-InsertChainActions SongView::makeInsertChainActions()
-{
-    InsertChainActions actions;
-    actions.add = [this] (const song::Id& trackId) { chooseInsert (trackId); };
-    actions.open = [this] (const song::Id& slotId) { openInsertEditor (slotId); };
-    actions.bypass = [this] (const song::Id& slotId, bool bypassed) { edit (intent::SetInsertBypassed { slotId, bypassed }); };
-    actions.remove = [this] (const song::Id& slotId) { edit (intent::RemoveInsert { slotId }); };
-    actions.move = [this] (const song::Id& slotId, std::size_t toIndex) { edit (intent::MoveInsert { slotId, toIndex }); };
-    return actions;
-}
-
 void SongView::wirePages()
 {
-    editPage.mixer.mix.onEdit = [this] (const intent::Edit& mixEdit) { window.run (SongIntent { mixEdit }); };
-    editPage.mixer.mix.onPreview = [this] (const intent::PreviewMix& preview) { window.run (SongIntent { preview }); };
-
     recordPage.onIntent = [this] (const Intent& intent) { window.run (intent); };
     recordPage.onTrackMenu = [this] (const song::Id& trackId) { showTrackMenu (trackId); };
     recordPage.onImport = [this] { askToImport(); };
 
-    const auto chainActions = makeInsertChainActions();
-    recordPage.insertActions = chainActions;
-    editPage.mixer.insertActions = chainActions;
+    recordPage.onAddInsert = [this] (const song::Id& trackId) { chooseInsert (trackId); };
+    editPage.onAddInsert = [this] (const song::Id& trackId) { chooseInsert (trackId); };
     editPage.mixer.insertStatusOf = [this] (const song::Id& slotId) { return openSong.insertStatus (slotId); };
-    pluginWindows.onBypass = chainActions.bypass;
-    pluginWindows.onClosed = [this] (const song::Id&) { openSong.notePluginStateChanged(); };
+    pluginWindows.onIntent = [this] (const Intent& intent) { window.run (intent); };
 
     editPage.onIntent = [this] (const Intent& intent) { window.run (intent); };
     editPage.onDeleteTrack = [this] (const song::Id& trackId) { askToDeleteTrack (trackId); };
@@ -552,7 +536,8 @@ void SongView::chooseInsert (const song::Id& trackId)
     window.chooseInsertPlugin (plugins, [safeThis = juce::Component::SafePointer<SongView> (this), trackId, plugins] (std::optional<std::size_t> picked) {
         if (safeThis == nullptr || ! picked.has_value() || *picked >= plugins.size())
             return;
-        safeThis->addInsert (trackId, plugins[*picked]);
+        const auto& component = plugins[*picked].component;
+        safeThis->window.run (SongIntent { intent::AddInsert { trackId, component.type, component.subtype, component.manufacturer } });
     });
 }
 

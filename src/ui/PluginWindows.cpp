@@ -163,17 +163,13 @@ void PluginWindows::open (std::shared_ptr<juce::AudioProcessor> processor, const
 
     auto window = std::make_unique<PluginWindow> (std::move (processor), state, showOnDesktop);
     window->panel().onBypass = [this, slotId = state.slotId] (bool bypassed) {
-        if (onBypass)
-            onBypass (slotId, bypassed);
+        if (onIntent)
+            onIntent (SongIntent { intent::Edit { intent::SetInsertBypassed { slotId, bypassed } } });
     };
-    // Closed from its own close button: deleted after that callback has returned.
     window->onClose = [this, slotId = state.slotId, alive = std::weak_ptr<int> (lifetime)] {
         juce::MessageManager::callAsync ([this, slotId, alive] {
-            if (alive.expired())
-                return;
-            close (slotId);
-            if (onClosed)
-                onClosed (slotId);
+            if (! alive.expired() && onIntent)
+                onIntent (SongIntent { intent::ClosePluginWindow { slotId } });
         });
     };
     auto& panel = window->panel();

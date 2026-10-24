@@ -118,8 +118,8 @@ bool MixFocus::handleKey (const juce::KeyPress& key, Clock::time_point now)
 
 void MixFocus::commitKeyBurst()
 {
-    if (auto burst = takeKeyBurst(); burst.has_value() && onEdit)
-        onEdit (*burst);
+    if (auto burst = takeKeyBurst())
+        emit (SongIntent { *burst });
 }
 
 std::optional<intent::Edit> MixFocus::takeKeyBurst()
@@ -163,20 +163,24 @@ void MixFocus::set (const MixerControl& control, double value)
 
 void MixFocus::abandon()
 {
-    if (onPreview)
-        onPreview (intent::PreviewMix {});
+    emit (SongIntent { intent::PreviewMix {} });
 }
 
 void MixFocus::preview (const intent::MixEdit& edit)
 {
-    if (onPreview)
-        onPreview (intent::PreviewMix { edit });
+    emit (SongIntent { intent::PreviewMix { edit } });
 }
 
 void MixFocus::report (const intent::Edit& edit)
 {
-    if (auto reported = reportable (edit); reported.has_value() && onEdit)
-        onEdit (*reported);
+    if (auto reported = reportable (edit))
+        emit (SongIntent { *reported });
+}
+
+void MixFocus::emit (Intent intent) const
+{
+    if (onIntent)
+        onIntent (intent);
 }
 
 std::optional<intent::Edit> MixFocus::reportable (const intent::Edit& edit) const

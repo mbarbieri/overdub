@@ -56,34 +56,10 @@ const std::vector<std::string> movesOnItsOwn { "/meters" };
 // "<mode>/<Component path>:<gesture>", each Component named by its class and its index among
 // siblings of that class. Issue #168 migrates these pages and deletes their entries.
 const std::set<std::string> notYetMigrated {
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#0/InsertChainView#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#0/InsertChainView#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#1/InsertChainView#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#1:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0/TextButton#1:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0:double_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/InsertChip#0:right_click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/TextButton#0:click",
-    "edit/SongView#0/EditPage#0/Mixer#0/MixerStrip#2/InsertChainView#0/TextButton#0:right_click",
     "export/SongView#0/ExportPage#0/TextButton#0:click",
     "export/SongView#0/ExportPage#0/TextButton#1:click",
     "export/SongView#0/ExportPage#0/ToggleButton#1:click",
     "export/SongView#0/ExportPage#0/ToggleButton#2:click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/InsertChainView#0/TextButton#0:click",
-    "record/SongView#0/RecordPage#0/TrackRow#0/InsertChainView#0/TextButton#0:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0/TextButton#0:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0/TextButton#0:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0/TextButton#1:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0/TextButton#1:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0:double_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/InsertChip#0:right_click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/TextButton#0:click",
-    "record/SongView#0/RecordPage#0/TrackRow#1/InsertChainView#0/TextButton#0:right_click",
 };
 
 struct ComponentPath

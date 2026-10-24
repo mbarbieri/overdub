@@ -220,6 +220,8 @@ public:
     std::function<void (const song::Id&)> onTrackMenu;
     // Import...: the window asks for the files, then runs import_files.
     std::function<void()> onImport;
+    // "+ Insert" on a row's chain: the window asks for an AU effect, then runs add_insert.
+    std::function<void (const song::Id& trackId)> onAddInsert;
 
     // The grip drag in progress, if any; cancelTrackDrag ends it without a drop and returns whether
     // there was one (Esc).
@@ -228,8 +230,6 @@ public:
     // Each row as a vertical span in this Component's coordinates, in Song order.
     std::vector<juce::Range<int>> trackRowSpans() const;
     void paintOverChildren (juce::Graphics& g) override;
-    // The Insert Chains' gestures (every row's).
-    InsertChainActions insertActions;
 
     // The faders' focus, arrow keys and undo steps (their Intents run through the window); the
     // window sends it keys and commit triggers.

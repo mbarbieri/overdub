@@ -4,9 +4,9 @@
 #include "song/Song.h"
 #include "ui/Intent.h"
 #include "ui/Layout.h"
+#include "ui/PeaksLookup.h"
 #include "ui/TakeLanes.h"
 #include "ui/TimelineGeometry.h"
-#include "ui/PeaksLookup.h"
 #include "ui/TrackDrag.h"
 #include "video/FrameSelection.h"
 

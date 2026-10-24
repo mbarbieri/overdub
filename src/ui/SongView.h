@@ -90,7 +90,6 @@ public:
     PluginWindows pluginWindows;
 
 private:
-    InsertChainActions makeInsertChainActions();
     void wirePages();
 
     // The Error the edit's Song operation or OpenSong handled when it was not applied.

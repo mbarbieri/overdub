@@ -2,6 +2,7 @@
 
 #include "plugin/InsertHost.h"
 #include "song/Song.h"
+#include "ui/Intent.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -16,22 +17,13 @@
 // prototype/main-window): "+ Insert" and one chip per slot. A chip shows the plugin's name (and
 // whether it is loading or missing), a bypass toggle and a remove button; clicking its name opens
 // the plugin's editor, dragging it along the chain reorders it (ui/Layout.h insertDropIndex).
-// Thin: it reports gestures by slot id through InsertChainActions; MainComponent turns them into
-// song/InsertEdits.h operations, one undo step each. While a Pass runs (not editable) only
-// opening an editor acts.
+// Thin: every gesture is an Intent reported through onIntent: open_insert_editor, and
+// set_insert_bypassed, remove_insert and move_insert, one undo step each. "+ Insert" is the one
+// hook, onAddInsert: the window asks for an AU effect, then runs add_insert. While a Pass runs (not
+// editable) only opening an editor acts.
 namespace overdub::ui
 {
 using InsertStatusLookup = std::function<std::optional<plugin::InsertStatus> (const song::Id& slotId)>;
-
-// What a chain's gestures do. trackId is empty for the Master's chain.
-struct InsertChainActions
-{
-    std::function<void (const song::Id& trackId)> add;
-    std::function<void (const song::Id& slotId)> open;
-    std::function<void (const song::Id& slotId, bool bypassed)> bypass;
-    std::function<void (const song::Id& slotId)> remove;
-    std::function<void (const song::Id& slotId, std::size_t toIndex)> move;
-};
 
 struct InsertChipState
 {
@@ -98,8 +90,10 @@ public:
     void show (const song::Id& trackId, const std::vector<InsertChipState>& chips, bool editable);
     void resized() override;
 
-    // Set by the owner (RecordPage, Mixer); called with this chain's Track id.
-    const InsertChainActions* actions = nullptr;
+    // Set by the owner (RecordPage, Mixer): where the chain's Intents go, and "+ Insert" with this
+    // chain's Track id (empty for the Master's chain).
+    IntentSink onIntent;
+    std::function<void (const song::Id& trackId)> onAddInsert;
 
     // The first numShown() are the chain's, in order; any after them are hidden spares.
     std::vector<std::unique_ptr<InsertChip>> chips;
@@ -108,6 +102,7 @@ public:
 
 private:
     void dropped (std::size_t index, juce::Point<int> pointInChain);
+    void emit (Intent intent) const;
 
     bool vertical;
     song::Id trackId;
