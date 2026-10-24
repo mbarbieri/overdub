@@ -161,6 +161,7 @@ ExportPage::ExportPage()
     for (const auto& [button, buttonFormat] : formatButtons)
     {
         button->setRadioGroupId (formatRadioGroup, juce::dontSendNotification);
+        button->setClickingTogglesState (false);
         button->setWantsKeyboardFocus (false);
         button->onClick = [this, format = buttonFormat] { emit (SongIntent { intent::SetExportFormat { format } }); };
         addAndMakeVisible (button);
@@ -174,6 +175,7 @@ ExportPage::ExportPage()
     for (const auto& [button, buttonLength] : lengthButtons)
     {
         button->setRadioGroupId (lengthRadioGroup, juce::dontSendNotification);
+        button->setClickingTogglesState (false);
         button->setWantsKeyboardFocus (false);
         button->onClick = [this, length = buttonLength] { emit (SongIntent { intent::SetExportLength { length } }); };
         addChildComponent (button);
