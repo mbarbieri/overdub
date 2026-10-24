@@ -30,8 +30,8 @@
 // window, except for an Intent a gesture runs every frame (ui::runsPerFrame), and routes the
 // Window group here, the Song group to the SongView (ui.no_song_open while none is open) and the
 // App group to runAppIntent, which the ui::Workspace sets (issue #170; unset, as in a window
-// without one: ui.intent_not_routed). While the modal run dialog shows only cancel_run and the App
-// group run (ui.run_dialog_open); the Workspace refuses App Intents itself. It returns what the handler did or the
+// without one: ui.intent_not_routed). While the modal run dialog shows only the ops
+// actsUnderRunDialog names run (ui.run_dialog_open). It returns what the handler did or the
 // Error it handled; Errors are presented exactly as the gestures always presented them.
 //
 // Record mode (issue #32): the pre-roll picker sets the Song's pre-roll (no undo step); a click on a
@@ -104,6 +104,11 @@
 // `code` and `tier` where it names a message.
 namespace overdub::ui
 {
+// The ops MainComponent::run lets through while the modal run dialog shows: cancel_run,
+// close_plugin_window and the App group. The Settings window and the plugin editor windows are
+// outside the dialog; the Workspace refuses with a presented Notice what may not run.
+bool actsUnderRunDialog (std::string_view op);
+
 class MainComponent final : public juce::Component, private juce::Timer
 {
 public:

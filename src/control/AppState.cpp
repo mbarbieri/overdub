@@ -408,16 +408,15 @@ json refusedSection (const ui::MainComponent& window, const ui::Workspace& works
     auto refused = json::object();
     addAppRefusals (refused, workspace, std::type_identity<ui::AppIntent> {});
     const auto runDialogShowing = window.runDialog.isVisible();
-    const auto dialogGate = runDialogShowing ? json ("ui.run_dialog_open") : json (nullptr);
     for (const auto op : core::operationNames<ui::WindowIntent>())
-        refused[std::string (op)] = dialogGate;
+        refused[std::string (op)] = runDialogShowing && ! ui::actsUnderRunDialog (op) ? json ("ui.run_dialog_open") : json (nullptr);
 
     const auto* song = workspace.openSong();
     for (const auto op : core::operationNames<ui::SongIntent>())
     {
         auto& entry = refused[std::string (op)];
         entry = nullptr;
-        if (runDialogShowing && op != ui::intent::CancelRun::op)
+        if (runDialogShowing && ! ui::actsUnderRunDialog (op))
             entry = "ui.run_dialog_open";
         else if (const auto gesture = gestureOf (op); gesture.has_value() && song != nullptr)
             if (const auto refusal = song->refusalOf (*gesture))
