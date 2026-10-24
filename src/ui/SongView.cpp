@@ -61,13 +61,8 @@ void SongView::wirePages()
     editPage.onDeleteTrack = [this] (const song::Id& trackId) { askToDeleteTrack (trackId); };
     editPage.timeline.canImportFiles = [this] { return openSong.canChangeTracks(); };
 
-    exportPage.onExport = [this] (exporting::ExportRequest request) { startExport (request); };
+    exportPage.onIntent = [this] (const Intent& intent) { window.run (intent); };
     exportPage.onChooseDestination = [this] (juce::File current) { chooseExportFile (current); };
-    exportPage.onVideoTakeChosen = [this] (const song::Id& videoTakeId) { setExportVideoTake (videoTakeId); };
-    exportPage.onReveal = [this] (juce::File file) {
-        if (window.revealInFinder)
-            window.revealInFinder (file);
-    };
 }
 
 IntentResult SongView::run (const SongIntent& songIntent)
@@ -501,6 +496,7 @@ IntentResult SongView::startExport (const exporting::ExportRequest& request)
 
 IntentResult SongView::setExportVideoTake (const song::Id& videoTakeId)
 {
+    exportPage.chooseVideoTake (videoTakeId);
     openSong.setExportVideoTake (videoTakeId);
     window.refresh();
     return IntentDone {};
@@ -523,7 +519,7 @@ void SongView::chooseExportFile (const juce::File& current)
     window.chooseExportDestination (current, [safeThis = juce::Component::SafePointer<SongView> (this)] (std::optional<juce::File> chosen) {
         if (safeThis == nullptr || ! chosen.has_value())
             return;
-        safeThis->exportPage.setDestination (*chosen);
+        safeThis->window.run (SongIntent { intent::SetExportDestination { core::AbsolutePath { chosen->getFullPathName().toStdString() } } });
     });
 }
 

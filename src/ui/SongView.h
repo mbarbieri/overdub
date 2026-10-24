@@ -37,9 +37,10 @@ class VideoScreen;
 // carried, the right half selected after a split, Monitoring off after a Track delete, clip
 // indicators out when a Pass starts, refusals presented only for record, export, Separation and
 // conversion). A gesture that does nothing returns an Error logged at debug and never presented.
-// The Record page (ui/RecordPage.h), the Edit page (ui/EditPage.h), the Mixer, the Track delete,
-// split and delete, and import reach it through MainComponent::run; the other pages' callbacks
-// still call the same methods directly (issue #168 moves them).
+// Everything reaches it through MainComponent::run: keys, the top bar, the Edit menu, and every
+// page (ui/RecordPage.h, ui/EditPage.h, ui/ExportPage.h) and the plugin windows, which report their
+// gestures as Intents through one sink each; their few hooks open a dialog (a chooser, a
+// confirmation, a menu) whose answer runs an Intent the same way.
 //
 // `song` and `window` must outlive this object. Message thread only.
 class SongView final : public juce::Component

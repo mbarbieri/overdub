@@ -2,6 +2,7 @@
 
 #include "export/MixRender.h"
 #include "export/Mp4Decode.h"
+#include "ui/ExportPageSink.h"
 #include "ui/MainWindowFixture.h"
 #include "video/SyntheticMovie.h"
 
@@ -148,10 +149,10 @@ TEST_CASE ("choosing a Video Take and a length updates the span bar and the expo
     ExportPage page;
     layOut (page, windowWidth, 700);
     page.setDestination (juce::File ("/tmp/Song.wav"));
-    std::vector<overdub::song::Id> stored;
-    page.onVideoTakeChosen = [&stored] (const overdub::song::Id& id) { stored.push_back (id); };
-    std::vector<ExportRequest> requests;
-    page.onExport = [&requests] (ExportRequest request) { requests.push_back (request); };
+    ExportPageSink sink;
+    sink.connect (page);
+    const auto& stored = sink.videoTakesChosen;
+    const auto& requests = sink.requests;
     page.show ({ .clipsEnd = 12 * rate, .sampleRate = (int) rate, .videoTakes = { passOne, passTwo }, .storedVideoTakeId = std::string ("video-b") });
 
     // The Video Take controls show for MP4 only.
@@ -205,6 +206,8 @@ TEST_CASE ("an MP4 cannot be exported from a Song without Video Takes", "[ui][ex
     ExportPage page;
     layOut (page, windowWidth, 700);
     page.setDestination (juce::File ("/tmp/Song.wav"));
+    ExportPageSink sink;
+    sink.connect (page);
     page.show ({ .clipsEnd = 12 * rate, .sampleRate = (int) rate });
     click (page.mp4Button);
     CHECK (isShown (page.noVideoTakesLabel));

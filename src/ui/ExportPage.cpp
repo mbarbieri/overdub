@@ -162,7 +162,7 @@ ExportPage::ExportPage()
     {
         button->setRadioGroupId (formatRadioGroup, juce::dontSendNotification);
         button->setWantsKeyboardFocus (false);
-        button->onClick = [this, format = buttonFormat] { chooseFormat (format); };
+        button->onClick = [this, format = buttonFormat] { emit (SongIntent { intent::SetExportFormat { format } }); };
         addAndMakeVisible (button);
     }
     wavButton.setToggleState (true, juce::dontSendNotification);
@@ -175,7 +175,7 @@ ExportPage::ExportPage()
     {
         button->setRadioGroupId (lengthRadioGroup, juce::dontSendNotification);
         button->setWantsKeyboardFocus (false);
-        button->onClick = [this, length = buttonLength] { chooseLength (length); };
+        button->onClick = [this, length = buttonLength] { emit (SongIntent { intent::SetExportLength { length } }); };
         addChildComponent (button);
     }
     trimButton.setToggleState (true, juce::dontSendNotification);
@@ -187,15 +187,9 @@ ExportPage::ExportPage()
         if (onChooseDestination)
             onChooseDestination (chosenDestination);
     };
-    exportButton.onClick = [this] {
-        if (onExport)
-            onExport (request());
-    };
+    exportButton.onClick = [this] { emit (SongIntent { intent::Export {} }); };
     exportButton.setColour (juce::TextButton::buttonColourId, colours::accent);
-    revealButton.onClick = [this] {
-        if (onReveal && shown.finishedFile.has_value())
-            onReveal (*shown.finishedFile);
-    };
+    revealButton.onClick = [this] { emit (SongIntent { intent::RevealExport {} }); };
 
     for (auto* button : { &chooseButton, &exportButton, &revealButton })
         button->setWantsKeyboardFocus (false);
@@ -242,6 +236,9 @@ void ExportPage::setDestination (const juce::File& file)
 void ExportPage::chooseFormat (exporting::ExportFormat format)
 {
     chosenFormat = format;
+    wavButton.setToggleState (format == exporting::ExportFormat::wav, juce::dontSendNotification);
+    m4aButton.setToggleState (format == exporting::ExportFormat::m4a, juce::dontSendNotification);
+    mp4Button.setToggleState (format == exporting::ExportFormat::mp4, juce::dontSendNotification);
     setDestination (chosenDestination);
     updateSpan();
     updateControls();
@@ -251,7 +248,21 @@ void ExportPage::chooseFormat (exporting::ExportFormat format)
 void ExportPage::chooseLength (exporting::VideoLength length)
 {
     chosenLength = length;
+    trimButton.setToggleState (length == exporting::VideoLength::trimToVideoTake, juce::dontSendNotification);
+    fullSongButton.setToggleState (length == exporting::VideoLength::fullSong, juce::dontSendNotification);
     updateSpan();
+}
+
+void ExportPage::chooseVideoTake (const song::Id& videoTakeId)
+{
+    pickedVideoTakeId = videoTakeId;
+    updateSpan();
+}
+
+void ExportPage::emit (Intent intent) const
+{
+    if (onIntent)
+        onIntent (intent);
 }
 
 void ExportPage::pickVideoTake()
@@ -259,10 +270,7 @@ void ExportPage::pickVideoTake()
     const auto index = videoTakePicker.getSelectedItemIndex();
     if (index < 0 || index >= (int) shown.videoTakes.size())
         return;
-    pickedVideoTakeId = shown.videoTakes[(std::size_t) index].videoTakeId;
-    updateSpan();
-    if (onVideoTakeChosen)
-        onVideoTakeChosen (*pickedVideoTakeId);
+    emit (SongIntent { intent::SetExportVideoTake { shown.videoTakes[(std::size_t) index].videoTakeId } });
 }
 
 std::optional<video::VideoTakeSpan> ExportPage::shownVideoTake() const

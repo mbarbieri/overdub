@@ -55,12 +55,7 @@ const std::vector<std::string> movesOnItsOwn { "/meters" };
 
 // "<mode>/<Component path>:<gesture>", each Component named by its class and its index among
 // siblings of that class. Issue #168 migrates these pages and deletes their entries.
-const std::set<std::string> notYetMigrated {
-    "export/SongView#0/ExportPage#0/TextButton#0:click",
-    "export/SongView#0/ExportPage#0/TextButton#1:click",
-    "export/SongView#0/ExportPage#0/ToggleButton#1:click",
-    "export/SongView#0/ExportPage#0/ToggleButton#2:click",
-};
+const std::set<std::string> notYetMigrated {};
 
 struct ComponentPath
 {
