@@ -97,7 +97,7 @@ TEST_CASE ("Add Track is disabled while a Pass runs", "[ui][record_page][add_tra
     CHECK (! page.addTrackButton.isEnabled());
     CHECK (! page.importButton.isEnabled());
     const auto tracksBefore = f.song().tracks.size();
-    page.onIntent (overdub::ui::SongIntent { overdub::ui::intent::AddTrack {} }); // even a direct call adds nothing mid-Pass
+    page.onIntent (overdub::ui::SongIntent { overdub::ui::intent::AddTrack {} });
     CHECK (f.song().tracks.size() == tracksBefore);
 
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));

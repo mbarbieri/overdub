@@ -47,12 +47,9 @@
 // move it), any other Track's post-fader output (as its Mixer meter); arming or disarming switches
 // it. At the meter's right end the clip indicator (ClipIndicator).
 // Thin: it shows state, and every gesture that changes state is an Intent reported through
-// onIntent (ADR 0008): set_pre_roll, set_camera_armed, set_camera_device, jump_to_pass,
-// bring_back_pass, seek (the overview), add_track, and the rows' set_armed, set_track_mute,
-// set_track_solo, set_input_channels, set_monitoring, move_track, clear_clip_indicator and the
-// faders' Intents (MixFocus). Its only other hooks ask the user first and run an Intent with the
-// answer: Import... (import_files) and a row's menu (start_separation). The strip, overview and
-// Passes rows are computed by ui/RecordView.h and ui/TakeLanes.h.
+// onIntent (ADR 0008). Its other hooks ask the user first and run an Intent with the answer:
+// Import... (import_files), a row's menu (start_separation) and "+ Insert" (add_insert). The strip,
+// overview and Passes rows are computed by ui/RecordView.h and ui/TakeLanes.h.
 namespace overdub::ui
 {
 // A Record row's clip indicator (issue #131): an Armed Track's input peak at or over clipPeak

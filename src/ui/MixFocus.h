@@ -18,8 +18,9 @@
 //
 // Every gesture is an Intent reported through onIntent: a drag is previewed while it moves
 // (preview_mix with the mix edit the drag would make) and reported once, on mouse up, as one edit
-// (set_track_volume, set_track_pan, set_master_volume, one undo step each); a drag that ends where it started previews the Song as it is (abandon). A
-// double-click sets 0 dB or C (set), one undo step (none when already there).
+// (set_track_volume, set_track_pan, set_master_volume, one undo step each); a drag that ends where
+// it started previews the Song as it is (abandon). A double-click sets 0 dB or C (set), one undo
+// step (none when already there).
 //
 // Keyboard focus: grabbing a control focuses it; the window sends it keys first (handleKey). The
 // arrows adjust it by faderKeyStepDb / panKeyStep (ui/MixerGeometry.h), each press previewed at

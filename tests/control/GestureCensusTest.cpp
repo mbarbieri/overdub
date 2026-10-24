@@ -29,8 +29,7 @@
 // fired at a Song with Tracks, Clips, a Pass, a Video Take, an Insert and a selection, in each
 // mode, and a gesture that changes the app state without running an Intent through
 // MainComponent::run (its intentsRun count, which includes the per-frame Intents that log no
-// ui.intent_run) is a bypass, and the census fails on any bypass (issue #168 migrated the last
-// pages).
+// ui.intent_run) is a bypass, and the census fails on any bypass.
 //
 // Each mode gets a fresh CensusWorkspace, and before each probe its Song, selection and timeline
 // view are put back as they were built, so no gesture changes what a later one is fired at.

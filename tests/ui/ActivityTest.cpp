@@ -237,8 +237,6 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
         window.run (SongIntent { intent::Undo {} });
         window.run (SongIntent { intent::Redo {} });
     }
-    // The page's Intents, as its gestures report them, reach the Song group's handler: the run
-    // dialog a Separation or a conversion shows is modal, so no gesture reaches MainComponent::run.
     auto& view = *window.songView();
     view.run (SongIntent { intent::Edit { intent::SetTrackMute { guitarId, true } } });
     view.run (SongIntent { intent::SetArmed { guitarId, false } });
@@ -250,7 +248,7 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
     view.run (SongIntent { intent::AddTrack {} });
     view.run (SongIntent { intent::MoveTrack { guitarId, 0 } });
     view.recordPage.onAddInsert (guitarId);
-    view.run (SongIntent { intent::Edit { intent::SetInsertBypassed { "no-such-slot", true } } }); // an operation that fails, for an edit refused anyway
+    view.run (SongIntent { intent::Edit { intent::SetInsertBypassed { "no-such-slot", true } } });
     view.run (SongIntent { intent::PreviewMix { intent::SetMasterVolume { -3.0 } } });
 
     CHECK (presented (capture).empty());
