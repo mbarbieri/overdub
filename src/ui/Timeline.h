@@ -6,7 +6,7 @@
 #include "ui/Layout.h"
 #include "ui/TakeLanes.h"
 #include "ui/TimelineGeometry.h"
-#include "ui/TrackActions.h"
+#include "ui/PeaksLookup.h"
 #include "ui/TrackDrag.h"
 #include "video/FrameSelection.h"
 

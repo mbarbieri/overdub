@@ -7,7 +7,7 @@
 #include "ui/PassesPanel.h"
 #include "ui/TakeLanes.h"
 #include "ui/Timeline.h"
-#include "ui/TrackActions.h"
+#include "ui/PeaksLookup.h"
 #include "ui/TransportText.h"
 #include "video/FrameSelection.h"
 

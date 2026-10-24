@@ -32,8 +32,7 @@ core::Error quiet (std::string code, std::string message, core::Fields fields = 
 SongView::SongView (OpenSong& song, MainComponent& mainWindow)
     : openSong (song),
       window (mainWindow),
-      trackActions (makeTrackActions()),
-      recordPage (trackActions),
+      recordPage ([this] (const song::ClipSource& source) -> const song::Peaks& { return openSong.peaks (source); }),
       editPage ([this] (const song::ClipSource& source) -> const song::Peaks& { return openSong.peaks (source); }),
       pluginWindows (mainWindow.showPluginWindowsOnDesktop)
 {
@@ -46,18 +45,6 @@ SongView::SongView (OpenSong& song, MainComponent& mainWindow)
 }
 
 SongView::~SongView() = default;
-
-TrackActions SongView::makeTrackActions()
-{
-    TrackActions actions;
-    actions.arm = [this] (const song::Id& trackId, bool armed) { setArmed (trackId, armed); };
-    actions.mute = [this] (const song::Id& trackId, bool mute) { edit (intent::SetTrackMute { trackId, mute }); };
-    actions.solo = [this] (const song::Id& trackId, bool solo) { edit (intent::SetTrackSolo { trackId, solo }); };
-    actions.moveTrack = [this] (const song::Id& trackId, std::size_t toIndex) { moveTrack (trackId, toIndex); };
-    actions.seek = [this] (song::SampleCount sample) { seek (sample); };
-    actions.peaksFor = [this] (const song::ClipSource& source) -> const song::Peaks& { return openSong.peaks (source); };
-    return actions;
-}
 
 InsertChainActions SongView::makeInsertChainActions()
 {
@@ -72,20 +59,10 @@ InsertChainActions SongView::makeInsertChainActions()
 
 void SongView::wirePages()
 {
-    for (auto* mix : { &editPage.mixer.mix, &recordPage.mix })
-    {
-        mix->onEdit = [this] (const intent::Edit& mixEdit) { window.run (SongIntent { mixEdit }); };
-        mix->onPreview = [this] (const intent::PreviewMix& preview) { window.run (SongIntent { preview }); };
-    }
+    editPage.mixer.mix.onEdit = [this] (const intent::Edit& mixEdit) { window.run (SongIntent { mixEdit }); };
+    editPage.mixer.mix.onPreview = [this] (const intent::PreviewMix& preview) { window.run (SongIntent { preview }); };
 
-    recordPage.onInput = [this] (const song::Id& trackId, std::vector<int> channels) { setInputChannels (trackId, std::move (channels)); };
-    recordPage.onMonitoring = [this] (const song::Id& trackId, bool on) { setMonitoring (trackId, on); };
-    recordPage.onPreRoll = [this] (song::PreRoll preRoll) { setPreRoll (preRoll); };
-    recordPage.onCameraArm = [this] (bool armed) { armCamera (armed); };
-    recordPage.onCameraDevice = [this] (const std::string& cameraId) { setCameraDevice (cameraId); };
-    recordPage.onJumpToPass = [this] (const song::Id& passId) { jumpToPass (passId); };
-    recordPage.onBringBack = [this] (const song::Id& passId) { edit (intent::BringBackPass { passId }); };
-    recordPage.onAddTrack = [this] { addTrack(); };
+    recordPage.onIntent = [this] (const Intent& intent) { window.run (intent); };
     recordPage.onTrackMenu = [this] (const song::Id& trackId) { showTrackMenu (trackId); };
     recordPage.onImport = [this] { askToImport(); };
 
@@ -471,7 +448,7 @@ void SongView::showTrackMenu (const song::Id& trackId)
             return;
         switch (items[*picked].action)
         {
-            case TrackMenuAction::separate: safeThis->startSeparation (trackId); break;
+            case TrackMenuAction::separate: safeThis->window.run (SongIntent { intent::StartSeparation { trackId } }); break;
         }
     });
 }

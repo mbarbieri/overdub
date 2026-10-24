@@ -5,13 +5,14 @@
 #include "song/Song.h"
 #include "ui/CameraStage.h"
 #include "ui/InsertChain.h"
+#include "ui/Intent.h"
 #include "ui/LookAheadStrip.h"
 #include "ui/MixFocus.h"
 #include "ui/Mixer.h"
 #include "ui/PassesPanel.h"
+#include "ui/PeaksLookup.h"
 #include "ui/RecordView.h"
 #include "ui/SongOverview.h"
-#include "ui/TrackActions.h"
 #include "ui/TrackDrag.h"
 #include "ui/TrackRowEdits.h"
 #include "ui/VideoScreen.h"
@@ -40,24 +41,31 @@
 // text (issue #130), the same volume as its Mixer fader and behaving exactly like it (MixFocus:
 // drags, detent, double-click, keyboard focus, arrow keys and their undo steps); dimmed and inert
 // while a Pass runs. Dragging a row's grip reorders the Tracks (issue #138, ui/TrackDrag.h); a drop
-// that changes the order is reported through onMoveTrack, and no grip drags while a Pass runs.
+// that changes the order is move_track, and no grip drags while a Pass runs.
 // Under the fader, a level meter on the fader's scale (issue #131): an Armed
 // Track's raw input (MeterPeaks::inputs, before its Insert Chain and fader, so the fader does not
 // move it), any other Track's post-fader output (as its Mixer meter); arming or disarming switches
 // it. At the meter's right end the clip indicator (ClipIndicator).
-// Thin: it shows state and reports gestures by Track or Pass id; the strip, overview and Passes
-// rows are computed by ui/RecordView.h and ui/TakeLanes.h.
+// Thin: it shows state, and every gesture that changes state is an Intent reported through
+// onIntent (ADR 0008): set_pre_roll, set_camera_armed, set_camera_device, jump_to_pass,
+// bring_back_pass, seek (the overview), add_track, and the rows' set_armed, set_track_mute,
+// set_track_solo, set_input_channels, set_monitoring, move_track, clear_clip_indicator and the
+// faders' Intents (MixFocus). Its only other hooks ask the user first and run an Intent with the
+// answer: Import... (import_files) and a row's menu (start_separation). The strip, overview and
+// Passes rows are computed by ui/RecordView.h and ui/TakeLanes.h.
 namespace overdub::ui
 {
 // A Record row's clip indicator (issue #131): an Armed Track's input peak at or over clipPeak
-// (ui/MixerGeometry.h) lights it, and it stays lit until clicked or until the next Pass starts.
-// Transient UI state, never in the Song.
+// (ui/MixerGeometry.h) lights it, and it stays lit until clicked (onClick: clear_clip_indicator) or
+// until the next Pass starts. Transient UI state, never in the Song.
 class ClipIndicator final : public juce::Component
 {
 public:
     void light();
     void clear();
     bool isLit() const { return lit; }
+
+    std::function<void()> onClick;
 
     void mouseDown (const juce::MouseEvent& event) override;
     void paint (juce::Graphics& g) override;
@@ -183,10 +191,7 @@ private:
 class RecordPage final : public juce::Component
 {
 public:
-    // `actions` must outlive the page.
-    explicit RecordPage (const TrackActions& actions);
-    // The shared Track gestures this page's rows, overview and grips report through.
-    const TrackActions& actions() const { return trackActions; }
+    explicit RecordPage (PeaksLookup peaksFor);
 
     // The rows and pickers; `song` is the Song they were made from, whose volumes the faders change.
     void show (const RecordPageState& state, const song::Song& song);
@@ -209,10 +214,12 @@ public:
     // True when `component` is the focused fader or inside it.
     bool isFocusedControl (const juce::Component* component);
 
-    std::function<void (const song::Id&, std::vector<int>)> onInput;
-    std::function<void (const song::Id&, bool)> onMonitoring;
-    // A row's menu was asked for (issue #114).
+    // Where the page's Intents go (MainComponent::run).
+    IntentSink onIntent;
+    // A row's menu was asked for (issue #114): the window shows it, and its pick runs an Intent.
     std::function<void (const song::Id&)> onTrackMenu;
+    // Import...: the window asks for the files, then runs import_files.
+    std::function<void()> onImport;
 
     // The grip drag in progress, if any; cancelTrackDrag ends it without a drop and returns whether
     // there was one (Esc).
@@ -223,14 +230,6 @@ public:
     void paintOverChildren (juce::Graphics& g) override;
     // The Insert Chains' gestures (every row's).
     InsertChainActions insertActions;
-    std::function<void()> onAddTrack;
-    std::function<void()> onImport;
-    std::function<void (song::PreRoll)> onPreRoll;
-    std::function<void (bool armed)> onCameraArm;
-    std::function<void (const std::string& cameraId)> onCameraDevice;
-    // A click on a Pass row: jump to that Pass's start.
-    std::function<void (const song::Id& passId)> onJumpToPass;
-    std::function<void (const song::Id& passId)> onBringBack;
 
     // The faders' focus, arrow keys and undo steps (their Intents run through the window); the
     // window sends it keys and commit triggers.
@@ -257,8 +256,9 @@ private:
     void dropTrack (TrackRow& row, juce::Point<int> inGrip);
     TrackRow* rowFor (const song::Id& trackId);
     void showFocus();
+    void emit (Intent intent) const;
 
-    const TrackActions& trackActions;
+    PeaksLookup peaksFor;
     song::PreRoll shownPreRoll = song::PreRoll::off;
     TrackDrag activeTrackDrag;
     bool rowsEnabled = true;

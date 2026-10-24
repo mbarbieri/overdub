@@ -18,7 +18,7 @@
 #include <vector>
 
 // The window's Song-bound content (ADR 0005 UI amendment) through the real window: the Track
-// gestures the Record page and the Edit page share (TrackActions) driven from each page, then the
+// gestures the Record page and the Edit page share driven from each page, then the
 // Song, the playhead or the engine's output; and a Song closed while a chooser, a confirmation or
 // a plugin editor window was still open, then another Song opened.
 using namespace overdub;

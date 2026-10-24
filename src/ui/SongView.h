@@ -6,12 +6,12 @@
 #include "ui/InsertChain.h"
 #include "ui/Intent.h"
 #include "ui/OpenSong.h"
+#include "ui/PeaksLookup.h"
 #include "ui/PluginWindows.h"
 #include "ui/RecordPage.h"
 #include "ui/RunDialog.h"
 #include "ui/SongEdits.h"
 #include "ui/TopBar.h"
-#include "ui/TrackActions.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -37,17 +37,15 @@ class VideoScreen;
 // carried, the right half selected after a split, Monitoring off after a Track delete, clip
 // indicators out when a Pass starts, refusals presented only for record, export, Separation and
 // conversion). A gesture that does nothing returns an Error logged at debug and never presented.
-// The Edit page (ui/EditPage.h), the Mixer, the Track delete, split and delete, and import reach it
-// through MainComponent::run; the other pages' callbacks still call the same methods directly
-// (issue #168 moves them).
+// The Record page (ui/RecordPage.h), the Edit page (ui/EditPage.h), the Mixer, the Track delete,
+// split and delete, and import reach it through MainComponent::run; the other pages' callbacks
+// still call the same methods directly (issue #168 moves them).
 //
 // `song` and `window` must outlive this object. Message thread only.
 class SongView final : public juce::Component
 {
     OpenSong& openSong;
     MainComponent& window;
-    // Before the Record page, which keeps a reference to it.
-    TrackActions trackActions;
 
 public:
     SongView (OpenSong& song, MainComponent& window);
@@ -92,7 +90,6 @@ public:
     PluginWindows pluginWindows;
 
 private:
-    TrackActions makeTrackActions();
     InsertChainActions makeInsertChainActions();
     void wirePages();
 

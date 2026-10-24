@@ -237,18 +237,21 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
         window.run (SongIntent { intent::Undo {} });
         window.run (SongIntent { intent::Redo {} });
     }
-    window.songView()->recordPage.actions().mute (guitarId, true);
-    window.songView()->recordPage.actions().arm (guitarId, false);
-    window.songView()->recordPage.onInput (guitarId, { 1 });
-    window.songView()->recordPage.onMonitoring (guitarId, true);
-    window.songView()->recordPage.onPreRoll (song::PreRoll::twoSeconds);
-    window.songView()->recordPage.onCameraArm (true);
-    window.songView()->recordPage.onCameraDevice ("camera-usb");
-    window.songView()->recordPage.onAddTrack();
-    window.songView()->recordPage.actions().moveTrack (guitarId, 0);
-    window.songView()->recordPage.insertActions.add (guitarId);
-    window.songView()->recordPage.insertActions.bypass ("no-such-slot", true); // an operation that fails, for an edit refused anyway
-    window.songView()->recordPage.mix.onPreview (intent::PreviewMix { intent::SetMasterVolume { -3.0 } });
+    // The page's Intents, as its gestures report them, reach the Song group's handler: the run
+    // dialog a Separation or a conversion shows is modal, so no gesture reaches MainComponent::run.
+    auto& view = *window.songView();
+    view.run (SongIntent { intent::Edit { intent::SetTrackMute { guitarId, true } } });
+    view.run (SongIntent { intent::SetArmed { guitarId, false } });
+    view.run (SongIntent { intent::SetInputChannels { guitarId, { 1 } } });
+    view.run (SongIntent { intent::SetMonitoring { guitarId, true } });
+    view.run (SongIntent { intent::SetPreRoll { song::PreRoll::twoSeconds } });
+    view.run (SongIntent { intent::SetCameraArmed { true } });
+    view.run (SongIntent { intent::SetCameraDevice { "camera-usb" } });
+    view.run (SongIntent { intent::AddTrack {} });
+    view.run (SongIntent { intent::MoveTrack { guitarId, 0 } });
+    view.recordPage.insertActions.add (guitarId);
+    view.recordPage.insertActions.bypass ("no-such-slot", true); // an operation that fails, for an edit refused anyway
+    view.run (SongIntent { intent::PreviewMix { intent::SetMasterVolume { -3.0 } } });
 
     CHECK (presented (capture).empty());
     CHECK (a.f.alertsShown.empty());
