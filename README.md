@@ -51,6 +51,10 @@ It is not a DAW. It has no tempo, no bars, no MIDI and no sequencer: time is mea
 - Mix down to WAV or M4A.
 - Export MP4 video with the mix, either trimmed to the takes or as the full Song.
 
+**Control socket**
+- The running app listens on a local socket at `~/Library/Application Support/Overdub/control/control.sock`. A script or an AI agent can run every operation the window offers, read the app state as JSON, wait for a state or log event, and stream the log, one JSON line per request.
+- Any process of your user can drive the app this way and use its microphone, camera and folder permissions. While one is connected, the top bar shows **CONTROLLED BY** and the process name. Launch with `OVERDUB_CONTROL=0` to turn the socket off. See [ADR 0008](docs/adr/0008-control-socket.md).
+
 See [`GLOSSARY.md`](GLOSSARY.md) for what Song, Track, Pass, Take, Clip and the other terms mean precisely.
 
 ## Requirements
@@ -91,6 +95,8 @@ Always use the presets. `make test` runs the same build and the full suite.
 
 The test suite is headless: it drives the engine through `Engine::process(...)` with fake buffers and asserts computed expectations from synthetic signals (impulses, sines, null tests), with no golden files and no audio hardware.
 
+To check a change in the real app, the `verify` skill (`.claude/skills/verify/`) launches the debug build with its own control socket. It drives the record, edit, export and Separation journeys with `overdub-ctl` and checks the app state, logs and written files at each step.
+
 | Path | What lives there |
 | --- | --- |
 | `src/engine/` | Headless audio engine: transport, render graph, mixer, delay compensation |
@@ -100,13 +106,14 @@ The test suite is headless: it drives the engine through `Engine::process(...)` 
 | `src/video/` | Video preview and placement |
 | `src/export/` | WAV, M4A and MP4 export |
 | `src/separation/` | The `overdub-separate` helper (ONNX Runtime) |
-| `src/ui/`, `src/app/` | JUCE UI and the app shell |
+| `src/ui/`, `src/app/` | JUCE UI, the Intent vocabulary every gesture runs, and the app shell |
+| `src/control/` | The local control socket: protocol, app state as JSON |
 | `src/core/` | Logging, errors, realtime event ring |
 | `tests/` | Catch2 tests, mirroring `src/` |
 
 More reading:
 - [`docs/building.md`](docs/building.md): build, layout, logs, the JUCE patch and signing.
-- [`docs/adr/`](docs/adr/): the architecture decisions, from the stack choice to Separation.
+- [`docs/adr/`](docs/adr/): the architecture decisions, from the stack choice to Separation and the control socket.
 - [`CLAUDE.md`](CLAUDE.md): conventions for the AI agents that write this code.
 
 Overdub's code is written by AI agents (Claude Code) working from GitHub issues, with decisions recorded as ADRs.
