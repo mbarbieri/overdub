@@ -16,8 +16,15 @@ target_sources(overdub_tests PRIVATE
     capture/PassRecorderTest.cpp
     capture/PassRecorderVideoTest.cpp
     capture/VideoPlacementTest.cpp
+    control/AppStateTest.cpp
+    control/ControllerTest.cpp
+    control/GestureCensusTest.cpp
+    control/EventTapTest.cpp
+    control/IntentOpsTest.cpp
+    control/ServerTest.cpp
     core/BuildInfoTest.cpp
     core/DecibelsTest.cpp
+    core/DescribedTest.cpp
     core/ErrorTest.cpp
     core/LogFilesTest.cpp
     core/LogTest.cpp
@@ -69,9 +76,9 @@ target_sources(overdub_tests PRIVATE
     song/VideoTakeEditsTest.cpp
     support/RealtimeGuardTest.cpp
     support/RealtimeGuardCatchTest.cpp
+    ui/AppIntentTest.cpp
     ui/CalibrationPanelTest.cpp
     ui/CalibrationTextTest.cpp
-    ui/CommandsTest.cpp
     ui/DeviceSettingsPanelTest.cpp
     ui/DeleteTrackTest.cpp
     ui/DeleteVideoTakeTest.cpp
@@ -81,6 +88,8 @@ target_sources(overdub_tests PRIVATE
     ui/ExportRunTest.cpp
     ui/FileDropTest.cpp
     ui/InsertChainUiTest.cpp
+    ui/IntentRunTest.cpp
+    ui/IntentTest.cpp
     ui/LayoutTest.cpp
     ui/MainComponentTest.cpp
     ui/MixerGeometryTest.cpp
@@ -120,10 +129,10 @@ target_sources(overdub_tests PRIVATE
 
 set_source_files_properties(export/Mp4Decode.mm plugin/InvalidationWatchTest.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 
-# overdub_ui links overdub_capture and overdub_plugin, which link overdub_engine, overdub_song and overdub_core publicly; listing those too
-# makes ld warn about duplicate libraries.
+# overdub_control links overdub_ui, which links overdub_capture and overdub_plugin, which link overdub_engine, overdub_song and
+# overdub_core publicly; listing those too makes ld warn about duplicate libraries.
 target_link_libraries(overdub_tests PRIVATE
-    overdub_ui
+    overdub_control
     overdub_separation
     overdub_rt_guard
     Catch2::Catch2WithMain

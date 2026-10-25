@@ -11,7 +11,7 @@ Two command-line diagnostics of the real record path. `--selftest loopback` meas
 ## How to get to it (user POV)
 
 - Terminal: `Overdub.app/Contents/MacOS/Overdub --selftest loopback` or `--selftest clap <Song.overdub>`.
-- Settings… → Calibration → **Measure Latency** / **Measure Last Clap Pass**. These are UI only and unverified without a GUI driver.
+- Settings… → Calibration → **Measure Latency** / **Measure Last Clap Pass**. The socket runs them as the `measure_latency` and `measure_clap_pass` Intents, and `state calibration` shows each run. Not in a journey: `measure_latency` plays test signals out of the speakers, so ask the user first.
 
 ## Driving it with the Overdub binary
 

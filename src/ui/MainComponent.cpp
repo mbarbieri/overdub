@@ -7,8 +7,11 @@
 #include "ui/FileDrop.h"
 #include "ui/Layout.h"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
+#include <utility>
+#include <vector>
 
 namespace overdub::ui
 {
@@ -58,6 +61,11 @@ void chooseTrackMenuItemFromMenu (const std::vector<TrackMenuItem>& items, std::
     });
 }
 
+core::Error notRouted (std::string_view op)
+{
+    return core::Error { "ui.intent_not_routed", "this operation does not run through the window yet", { { "op", std::string (op) } } };
+}
+
 // The fields of the ui.* events that name a message.
 core::Fields messageFields (const UserMessage& message)
 {
@@ -74,9 +82,13 @@ void chooseExportFileWithNativeDialog (juce::File current, std::function<void (s
     });
 }
 
-void showAlertWithNativeDialog (const juce::String& sentence)
+MainComponent::CloseAlert showAlertWithNativeDialog (const juce::String& sentence, std::function<void()> closed)
 {
-    juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOk (juce::MessageBoxIconType::WarningIcon, "Overdub", sentence), nullptr);
+    const auto options = juce::MessageBoxOptions::makeOptionsOk (juce::MessageBoxIconType::WarningIcon, "Overdub", sentence);
+    // Closing the ScopedMessageBox closes its window without calling back; closing it again, or
+    // after the user did, does nothing.
+    auto box = std::make_shared<juce::ScopedMessageBox> (juce::AlertWindow::showScopedAsync (options, [done = std::move (closed)] (int) { done(); }));
+    return [box] { box->close(); };
 }
 
 void confirmDeleteWithNativeDialog (const juce::String& question, std::function<void (bool)> whenAnswered)
@@ -85,6 +97,13 @@ void confirmDeleteWithNativeDialog (const juce::String& question, std::function<
     juce::AlertWindow::showAsync (options, [done = std::move (whenAnswered)] (int result) { done (result == 1); });
 }
 } // namespace
+
+bool actsUnderRunDialog (std::string_view op)
+{
+    if (op == intent::CancelRun::op || op == intent::ClosePluginWindow::op)
+        return true;
+    return std::ranges::contains (core::operationNames<AppIntent>(), op);
+}
 
 MainComponent::MainComponent()
 {
@@ -97,12 +116,8 @@ MainComponent::MainComponent()
     chooseExportDestination = chooseExportFileWithNativeDialog;
     revealInFinder = [] (const juce::File& file) { file.revealToUser(); };
 
-    topBar.onCommand = [this] (Command command) { perform (command); };
-    // The dialog shows only while a Separation or a conversion runs, so only with a Song open.
-    runDialog.onCancel = [this] {
-        if (songContent != nullptr)
-            songContent->cancelRun();
-    };
+    topBar.onIntent = [this] (const Intent& intent) { run (intent); };
+    runDialog.onCancel = [this] { run (SongIntent { intent::CancelRun {} }); };
     noSongPage.onNewSong = [this] {
         if (onNewSong)
             onNewSong();
@@ -129,6 +144,8 @@ MainComponent::~MainComponent()
 {
     vblank = {};
     stopTimer();
+    // Out of the member first: closing one must not call back into a vector being destroyed.
+    auto closing = std::exchange (openAlerts, {});
 }
 
 void MainComponent::onVBlank (double timestampSeconds)
@@ -169,7 +186,7 @@ void MainComponent::syncVideoPreview()
     {
         videoPreview = std::make_unique<VideoPreviewWindow> (showVideoPreviewOnDesktop);
         // Closed from its own close button: the toggle goes off.
-        videoPreview->onClose = [this] { setVideoPreviewWanted (false); };
+        videoPreview->onClose = [this] { run (WindowIntent { intent::SetVideoPreviewWanted { false } }); };
     }
     if (videoPreview != nullptr)
         videoPreview->setShown (shown);
@@ -188,20 +205,50 @@ void MainComponent::setOpenSong (OpenSong* song)
     refresh();
 }
 
-void MainComponent::perform (Command command)
+IntentResult MainComponent::run (const Intent& intent, Origin origin)
 {
-    // The run dialog is modal: nothing acts while it shows.
-    if (runShowing())
-        return;
-    if (const auto mode = modeFor (command))
-    {
-        showMode (*mode);
-        return;
-    }
-    if (songContent == nullptr)
-        return;
-    songContent->perform (command);
-    refresh();
+    const auto op = std::string (opName (intent));
+    ++intentRunCount;
+    const auto perFrame = runsPerFrame (intent);
+    if (! perFrame)
+        core::logEvent (core::Level::debug, "ui.intent_run", { { "op", op }, { "origin", originName (origin) } });
+    if (runShowing() && ! actsUnderRunDialog (op))
+        return quietError (core::Error { "ui.run_dialog_open", "a Separation or a conversion runs", { { "op", op } } });
+    auto result = core::visitExhaustively (
+        intent,
+        core::Overloaded {
+            [this] (const AppIntent& app) { return runApp (app); },
+            [this] (const WindowIntent& windowIntent) { return runWindow (windowIntent); },
+            [this, &op] (const SongIntent& songIntent) { return songContent != nullptr ? songContent->run (songIntent) : quietError (noSongOpen (op)); },
+        });
+    if (! perFrame)
+        refresh();
+    return result;
+}
+
+IntentResult MainComponent::runApp (const AppIntent& appIntent)
+{
+    if (! runAppIntent)
+        return quietError (notRouted (core::operationName (appIntent)));
+    return runAppIntent (appIntent);
+}
+
+IntentResult MainComponent::runWindow (const WindowIntent& windowIntent)
+{
+    using namespace intent;
+    return core::visitExhaustively (
+        windowIntent,
+        core::Overloaded {
+            [this] (const ShowMode& show) -> IntentResult { showMode (show.mode); return IntentDone {}; },
+            [this] (const SetVideoPreviewWanted& preview) -> IntentResult { setVideoPreviewWanted (preview.wanted); return IntentDone {}; },
+            [this] (const DismissAlerts&) { return dismissAlerts(); },
+        });
+}
+
+IntentResult MainComponent::quietError (core::Error error)
+{
+    core::logError (error, core::Level::debug);
+    return std::unexpected (std::move (error));
 }
 
 void MainComponent::showMode (Mode mode)
@@ -214,12 +261,6 @@ void MainComponent::showMode (Mode mode)
     }
     currentMode = mode;
     refresh();
-}
-
-void MainComponent::convertSampleRate (int toRate)
-{
-    if (songContent != nullptr && ! runShowing())
-        songContent->convertSampleRate (toRate);
 }
 
 void MainComponent::handleError (const core::Error& error)
@@ -264,18 +305,64 @@ void MainComponent::presentMessages()
         if (message.tier == Tier::notice)
         {
             core::logEvent (core::Level::info, "ui.notice_shown", messageFields (message));
+            notice = ShownNotice { message, ++noticesEverShown, std::nullopt };
             if (const auto rate = conversionOfferedBy (message))
-                noticeLine.show (sentence, juce::String::fromUTF8 (conversionActionText (*rate).c_str()), [this, toRate = *rate] { convertSampleRate (toRate); });
+            {
+                notice->action = AppIntent { intent::ConvertSampleRate { *rate } };
+                noticeLine.show (sentence, juce::String::fromUTF8 (conversionActionText (*rate).c_str()), [this, action = *notice->action] { run (action); });
+            }
             else
                 noticeLine.show (sentence);
         }
         else
-        {
-            core::logEvent (core::Level::info, "ui.alert_shown", messageFields (message));
-            if (showAlert)
-                showAlert (sentence);
-        }
+            showAlertNow (message, sentence);
     }
+}
+
+void MainComponent::showAlertNow (const UserMessage& message, const juce::String& sentence)
+{
+    core::logEvent (core::Level::info, "ui.alert_shown", messageFields (message));
+    const auto alertId = ++alertsEverShown;
+    openAlerts.push_back (OpenAlert { alertId, message, nullptr });
+    if (! showAlert)
+        return;
+    auto close = showAlert (sentence, [window = juce::Component::SafePointer<MainComponent> (this), alertId] {
+        if (window != nullptr)
+            window->alertClosedByUser (alertId);
+    });
+    // Looked up again: an injected showAlert may have called `closed` already.
+    const auto open = std::ranges::find (openAlerts, alertId, &OpenAlert::id);
+    if (open != openAlerts.end())
+        open->close = std::move (close);
+}
+
+void MainComponent::alertClosedByUser (std::uint64_t alertId)
+{
+    const auto open = std::ranges::find (openAlerts, alertId, &OpenAlert::id);
+    if (open == openAlerts.end())
+        return; // dismiss_alerts closed it first
+    // Out of the list before its handle goes, which may call back into this.
+    auto closed = std::move (*open);
+    openAlerts.erase (open);
+}
+
+IntentResult MainComponent::dismissAlerts()
+{
+    for (auto& alert : std::exchange (openAlerts, {}))
+    {
+        core::logEvent (core::Level::info, "ui.alert_dismissed", messageFields (alert.message));
+        if (alert.close)
+            alert.close();
+    }
+    return IntentDone {};
+}
+
+std::vector<UserMessage> MainComponent::alertsShown() const
+{
+    std::vector<UserMessage> shown;
+    for (const auto& alert : openAlerts)
+        shown.push_back (alert.message);
+    return shown;
 }
 
 void MainComponent::tick (song::SongPackage::Clock::time_point now)
@@ -295,6 +382,7 @@ void MainComponent::refresh()
     state.mode = currentMode;
     if (songContent != nullptr)
         songContent->refresh (state);
+    state.controllingProcesses = controllingProcesses;
     topBar.show (state);
 
     noSongPage.setVisible (songContent == nullptr);
@@ -310,7 +398,7 @@ void MainComponent::refresh()
 bool MainComponent::keyPressed (const juce::KeyPress& key)
 {
     const auto modifiers = key.getModifiers();
-    const auto command = commandForKey (KeyChord {
+    const auto intent = intentForKey (KeyChord {
         .character = (char32_t) key.getKeyCode(),
         .command = modifiers.isCommandDown(),
         .shift = modifiers.isShiftDown(),
@@ -320,9 +408,9 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
         return true;
     if (songContent != nullptr && songContent->handleKey (key, clock()))
         return true;
-    if (! command.has_value())
+    if (! intent.has_value())
         return false;
-    perform (*command);
+    run (*intent);
     return true;
 }
 

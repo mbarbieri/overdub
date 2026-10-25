@@ -48,6 +48,9 @@ add_subdirectory(src/separation)
 # The main window's Components and the pure UI logic under them (issue #27).
 add_subdirectory(src/ui)
 
+# The local control socket: newline-delimited JSON over AF_UNIX, and the log tap it streams.
+add_subdirectory(src/control)
+
 # Overdub.app
 add_subdirectory(src/app)
 

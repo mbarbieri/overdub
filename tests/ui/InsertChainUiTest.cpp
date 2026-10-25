@@ -1,6 +1,7 @@
 #include "ui/InsertChain.h"
 
 #include "plugin/PluginTestSupport.h"
+#include "song/FakeSeparationHelper.h"
 #include "song/SongJson.h"
 #include "ui/MainWindowFixture.h"
 #include "ui/Mixer.h"
@@ -86,7 +87,8 @@ struct InsertUiFixture : MainWindowFixture
     std::vector<AvailableAudioUnit> offered { auDelay, auPeakLimiter, auReverb };
     std::size_t pick = 0;
 
-    explicit InsertUiFixture (PendingPlugins& pending) : MainWindowFixture (overdub::song::testing::threeTrackFixture(), pending.instantiator()), plugins (&pending)
+    explicit InsertUiFixture (PendingPlugins& pending, std::unique_ptr<overdub::song::testing::FixtureSong> song = overdub::song::testing::threeTrackFixture())
+        : MainWindowFixture (std::move (song), pending.instantiator()), plugins (&pending)
     {
         window->listInsertPlugins = [this] { return offered; };
         window->chooseInsertPlugin = [this] (const std::vector<AvailableAudioUnit>&, std::function<void (std::optional<std::size_t>)> done) { done (pick); };
@@ -439,6 +441,41 @@ TEST_CASE ("closing an editor window schedules a song.json write without an undo
 
     CHECK (f.openSong->package().hasPendingWrite());
     CHECK (f.undoLabel() == labelBefore);
+}
+
+TEST_CASE ("while a Separation runs an editor window still closes, and its bypass toggle quietly does nothing", "[ui][inserts][plugin_window][separation]")
+{
+    using namespace overdub::song::testing;
+    PendingPlugins plugins;
+    InsertUiFixture f { plugins, FixtureSongBuilder {}.sampleRate (helperSampleRate).backingTrack ("Band Mix").track ("Guitar", true, { 0 }).build() };
+    f.addThrough (f.rowNamed ("Guitar").insertChain, 0);
+    const auto slotId = f.trackNamed ("Guitar").insertChain[0].id;
+    auto* window = f.window->songView()->pluginWindows.find (slotId);
+    REQUIRE (window != nullptr);
+    f.openSong->setSeparationTools (overdub::song::SeparationTools {
+        .model = writeStandInModel (f.fixture->folder),
+        .startHelper = fakeSeparationHelper ({}, std::make_shared<FakeHelperLog>()),
+        .workFolder = f.fixture->folder.getChildFile ("work"),
+    });
+    f.openSong->poll (overdub::song::SongPackage::Clock::now() + 10s); // nothing pending
+    REQUIRE (f.openSong->startSeparation (f.trackNamed ("Band Mix").id).has_value());
+    REQUIRE_FALSE (f.openSong->package().hasPendingWrite());
+    const auto before = f.song();
+    ScopedLogCapture capture;
+
+    click (window->panel().bypassButton);
+    CHECK_FALSE (window->panel().bypassButton.getToggleState());
+    CHECK (f.song() == before);
+    for (const auto& event : capture.events())
+        CHECK (event.at ("event") != "ui.notice_shown");
+    CHECK (f.alertsShown.empty());
+
+    REQUIRE (f.openSong->isSeparating());
+    window->closeButtonPressed();
+    CHECK (overdub::plugin::testing::runMessagesUntil ([&] { return f.window->songView()->pluginWindows.size() == 0; }, 5s));
+    for (const auto& refused : eventsNamed (capture, "ui.run_dialog_open"))
+        CHECK (refused.at ("op") != "close_plugin_window");
+    CHECK (f.openSong->package().hasPendingWrite());
 }
 
 TEST_CASE ("a Mixer strip with three Inserts, one bypassed, renders to a snapshot", "[ui][mixer][inserts][snapshot]")

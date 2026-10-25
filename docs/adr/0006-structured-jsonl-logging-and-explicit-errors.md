@@ -13,7 +13,7 @@ Overdub logs to its own JSON Lines file, one per app launch, in `~/Library/Logs/
 ## Consequences
 
 - **Event shape.** Each line is one flat JSON object with reserved keys `t` (UTC wall time, millisecond precision), `host_ns` (`mach_absolute_time` in ns), `lvl`, `thread` (`audio | ui | video | io | logger | worker`) and `event`, plus an optional `msg`. Every other key is the event's own field. Nesting is allowed only for arrays. RT events carry the `host_ns` and `sample` from when the audio thread captured them, not from when they were drained.
-- **Naming.** Event names are `area.snake_case`, where `area` is the `src/` feature folder (`engine`, `plugin`, `song`, `capture`, `video`, `export`, `ui`, `app`). `Error.code` uses the same namespace. Names are string literals at the call site and stay stable once they ship. The RT `enum` and its name table are the only catalog.
+- **Naming.** Event names are `area.snake_case`, where `area` is the `src/` feature folder (`engine`, `plugin`, `song`, `capture`, `video`, `export`, `ui`, `control`, `app`). `Error.code` uses the same namespace. Names are string literals at the call site and stay stable once they ship. The RT `enum` and its name table are the only catalog.
 - **Levels.** `debug | info | warn | error`. Debug builds log `debug` and up, release builds `info` and up, and `OVERDUB_LOG=debug` overrides either at launch. There's no `trace` level and no per-area filter.
 - **RT path.** RT events are `{code, sample, hostTimeNs, 2–4 numeric args}`. When the ring is full, an atomic `dropped` counter goes up and is logged on the next drain. Very frequent values (callback load, peak callback time) are atomics, summarised once a second as `engine.load` at `debug`, and only while playing or recording. Video and AVFoundation callbacks run on dispatch queues and use the normal API directly.
 - **Required boundary events** (the minimum; slices may add more):
@@ -38,3 +38,8 @@ Overdub logs to its own JSON Lines file, one per app launch, in `~/Library/Logs/
   - Every RT event code has a test for its `sample` and `host_ns`, plus a ring-overflow test.
   - Boundary events are asserted where a test already drives that boundary.
   - Assertions check `event` and fields, never `msg`.
+
+## Amendment: the `control` area (issue #166)
+
+- `src/control/` is the control socket (ADR 0008). Its events and its protocol Error codes use the `control` area. An Error keeps the area of the folder that raises it, so a refusal returned over the socket is still `ui.*`.
+- An Intent that does nothing (no Song open, a Clip key outside Edit mode, nothing to undo) returns an Error that is logged at `debug` and never presented, because the UI already shows the gesture as unavailable.

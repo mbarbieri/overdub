@@ -1,10 +1,10 @@
 #include "ui/EditPage.h"
 
-#include "song/ClipEdits.h"
 #include "song/TakeEdits.h"
 #include "song/VideoTakeEdits.h"
 #include "ui/Colours.h"
 #include "ui/Layout.h"
+#include "ui/SongEdits.h"
 
 #include <algorithm>
 #include <cctype>
@@ -248,74 +248,59 @@ void MixerDivider::paint (juce::Graphics& g)
 
 //==============================================================================
 
-EditPage::EditPage (const TrackActions& trackActions)
-    : timeline (trackActions)
+EditPage::EditPage (PeaksLookup peaksFor)
+    : timeline (std::move (peaksFor))
 {
-    toolbar.onSplit = [this] {
-        if (onSplit)
-            onSplit();
-    };
-    toolbar.onDelete = [this] {
-        if (onDelete)
-            onDelete();
-    };
-    toolbar.onZoomIn = [this] { timeline.zoomIn(); };
-    toolbar.onZoomOut = [this] { timeline.zoomOut(); };
-    toolbar.onToggleMixer = [this] { setMixerVisible (! mixerVisible); };
-    toolbar.onToggleVideo = [this] {
-        if (onToggleVideo)
-            onToggleVideo();
-    };
+    toolbar.onSplit = [this] { emit (SongIntent { intent::SplitSelectedClip {} }); };
+    toolbar.onDelete = [this] { emit (SongIntent { intent::DeleteSelection {} }); };
+    toolbar.onZoomIn = [this] { emit (SongIntent { intent::SetTimelineView { timeline.view().firstSample, zoomedIn (timeline.view()).samplesPerPixel } }); };
+    toolbar.onZoomOut = [this] { emit (SongIntent { intent::SetTimelineView { timeline.view().firstSample, zoomedOut (timeline.view()).samplesPerPixel } }); };
+    toolbar.onToggleMixer = [this] { emit (SongIntent { intent::SetMixerVisible { ! mixerVisible } }); };
+    toolbar.onToggleVideo = [this] { emit (WindowIntent { intent::SetVideoPreviewWanted { ! videoPreviewShown } }); };
     toolbar.onFadeInEntered = [this] (const std::string& text) {
         const auto samples = parseSeconds (text, current.song.sampleRate);
-        editSelectedClip ([&] (const song::Song& song, const song::Id& clipId) -> core::Expected<song::Song> {
+        editSelectedClip ([&] (const song::Id& clipId) -> std::optional<intent::Edit> {
             if (! samples.has_value())
-                return song;
-            return song::setClipFadeIn (song, clipId, *samples);
-        }, song::fadeInLabel);
+                return std::nullopt;
+            return intent::SetClipFadeIn { clipId, *samples };
+        });
     };
     toolbar.onFadeOutEntered = [this] (const std::string& text) {
         const auto samples = parseSeconds (text, current.song.sampleRate);
-        editSelectedClip ([&] (const song::Song& song, const song::Id& clipId) -> core::Expected<song::Song> {
+        editSelectedClip ([&] (const song::Id& clipId) -> std::optional<intent::Edit> {
             if (! samples.has_value())
-                return song;
-            return song::setClipFadeOut (song, clipId, *samples);
-        }, song::fadeOutLabel);
+                return std::nullopt;
+            return intent::SetClipFadeOut { clipId, *samples };
+        });
     };
     toolbar.onGainEntered = [this] (const std::string& text) {
         const auto gainDb = parseDecibels (text);
-        editSelectedClip ([&] (const song::Song& song, const song::Id& clipId) -> core::Expected<song::Song> {
+        editSelectedClip ([&] (const song::Id& clipId) -> std::optional<intent::Edit> {
             if (! gainDb.has_value())
-                return song;
-            return song::setClipGain (song, clipId, *gainDb);
-        }, song::clipGainLabel);
+                return std::nullopt;
+            return intent::SetClipGain { clipId, *gainDb };
+        });
     };
 
-    timeline.onEdit = [this] (song::Song changed, std::string label) {
-        if (onEdit)
-            onEdit (std::move (changed), std::move (label));
+    timeline.onIntent = [this] (const Intent& intent) { emit (intent); };
+    mixer.onIntent = [this] (const Intent& intent) { emit (intent); };
+    mixer.onAddInsert = [this] (const song::Id& trackId) {
+        if (onAddInsert)
+            onAddInsert (trackId);
     };
     timeline.onDeleteTrack = [this] (const song::Id& trackId) {
         if (onDeleteTrack)
             onDeleteTrack (trackId);
     };
     timeline.onSelectionChanged = [this] { showToolbar(); };
-    mixer.onEdit = [this] (song::Song changed, std::string label) {
-        if (onEdit)
-            onEdit (std::move (changed), std::move (label));
-    };
-    mixer.onPreview = [&trackActions] (const song::Song& preview) { trackActions.previewMix (preview); };
 
     passesButton.setButtonText (juce::String::fromUTF8 ("Passes \xE2\x96\xBE"));
     passesButton.setWantsKeyboardFocus (false);
     passesButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
-    passesButton.onClick = [this] { setPassesPanelOpen (! isPassesPanelOpen()); };
+    passesButton.onClick = [this] { emit (SongIntent { intent::SetPassesPanelOpen { ! isPassesPanelOpen() } }); };
     passesPanel.onBringBack = [this] (const song::Id& passId) { bringBackPass (passId); };
 
-    divider.onDragTo = [this] (int top) {
-        mixerHeightRequested = clampMixerHeight (getHeight() - top - mixerDividerHeight, getHeight());
-        resized();
-    };
+    divider.onDragTo = [this] (int top) { emit (SongIntent { intent::SetMixerHeight { getHeight() - top - mixerDividerHeight } }); };
 
     addAndMakeVisible (toolbar);
     addAndMakeVisible (timeline);
@@ -362,13 +347,10 @@ void EditPage::bringBackPass (const song::Id& passId)
     if (! current.editable)
         return;
     // The button is enabled only for a Pass that can be brought back.
-    auto brought = song::bringBackPass (current.song, passId);
-    if (! OVERDUB_CHECK (brought.has_value(), "ui.bring_back_failed", { "pass_id", passId }))
+    if (! OVERDUB_CHECK (song::bringBackPass (current.song, passId).has_value(), "ui.bring_back_failed", { "pass_id", passId }))
         return;
-    const auto label = song::bringBackPassLabel (current.song, passId);
-    setPassesPanelOpen (false);
-    if (onEdit)
-        onEdit (std::move (*brought), label);
+    emit (SongIntent { intent::SetPassesPanelOpen { false } });
+    emit (SongIntent { intent::Edit { intent::BringBackPass { passId } } });
 }
 
 void EditPage::showToolbar()
@@ -385,17 +367,24 @@ void EditPage::setVideoPreviewShown (bool shown)
     showToolbar();
 }
 
-void EditPage::editSelectedClip (const std::function<core::Expected<song::Song> (const song::Song&, const song::Id&)>& change, const char* label)
+void EditPage::editSelectedClip (const std::function<std::optional<intent::Edit> (const song::Id& clipId)>& editFor)
 {
     const auto& clipId = timeline.selectedClip();
-    if (clipId.has_value() && current.editable)
+    const auto edit = clipId.has_value() && current.editable ? editFor (*clipId) : std::nullopt;
+    if (edit.has_value())
     {
         // The fields are enabled only while the selected Clip is in the Song.
-        auto changed = change (current.song, *clipId);
-        if (OVERDUB_CHECK (changed.has_value(), "ui.clip_field_edit_failed", { "clip_id", *clipId }) && *changed != current.song && onEdit)
-            onEdit (std::move (*changed), label);
+        const auto changed = editedSong (current.song, *edit);
+        if (OVERDUB_CHECK (changed.has_value(), "ui.clip_field_edit_failed", { "clip_id", *clipId }) && changed->song != current.song)
+            emit (SongIntent { *edit });
     }
     showToolbar();
+}
+
+void EditPage::emit (Intent intent) const
+{
+    if (onIntent)
+        onIntent (intent);
 }
 
 void EditPage::setMixerVisible (bool visible)
@@ -404,6 +393,12 @@ void EditPage::setMixerVisible (bool visible)
     divider.setVisible (visible);
     mixer.setVisible (visible);
     showToolbar();
+    resized();
+}
+
+void EditPage::setMixerHeight (int height)
+{
+    mixerHeightRequested = clampMixerHeight (height, getHeight());
     resized();
 }
 

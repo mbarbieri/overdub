@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/Error.h"
-#include "ui/Commands.h"
+#include "ui/Intent.h"
 #include "ui/OpenSong.h"
 #include "ui/Pages.h"
 #include "ui/RunDialog.h"
@@ -23,9 +23,16 @@
 // page (Record, Edit (issue #28), or Export (issue #37)), the Notice line, and Alerts.
 // In Edit mode S splits the selected Clip at the playhead and backspace deletes the selected Clip
 // or Video Take (issue #128), each one undo step through OpenSong::edit; in the other modes both
-// keys do nothing. It translates
-// keys and clicks into Commands and OpenSong calls; the logic lives in the pure functions and
-// in OpenSong.
+// keys do nothing.
+//
+// run (ADR 0008) is the one entry for an Intent (ui/Intent.h), from a key, the top bar, the Edit
+// menu, a page or the control socket: it logs ui.intent_run (debug: op, origin) and refreshes the
+// window, except for an Intent a gesture runs every frame (ui::runsPerFrame), and routes the
+// Window group here, the Song group to the SongView (ui.no_song_open while none is open) and the
+// App group to runAppIntent, which the ui::Workspace sets (issue #170; unset, as in a window
+// without one: ui.intent_not_routed). While the modal run dialog shows only the ops
+// actsUnderRunDialog names run (ui.run_dialog_open). It returns what the handler did or the
+// Error it handled; Errors are presented exactly as the gestures always presented them.
 //
 // Record mode (issue #32): the pre-roll picker sets the Song's pre-roll (no undo step); a click on a
 // Pass row moves the playhead to the Pass's start, and on the overview to the Song sample there;
@@ -79,7 +86,7 @@
 // the helper's progress; it closes only when the Separation ends (its Error, if any, presented by
 // its tier) or its Cancel is clicked (OpenSong::cancelSeparation).
 //
-// Sample rate conversion (issue #160): convertSampleRate (the File menu, or the action of the
+// Sample rate conversion (issue #160): convert_sample_rate (the File menu, or the action of the
 // ui.sample_rate_mismatch Notice when the device does not offer the Song's rate) starts one
 // (OpenSong::startSampleRateConversion). While it runs the same modal dialog shows its progress;
 // Cancel stops it (OpenSong::cancelSampleRateConversion), and its Error is presented by its tier.
@@ -90,10 +97,18 @@
 // Every 30 ms (and from tick() in tests) it polls the open Song, which finishes a stopped Pass,
 // refreshes the top bar and the page, feeds the Mixer's and the Record rows' meters from one
 // poll of the engine's peaks, and presents queued messages: Notices at once, Alerts only
-// when no Pass runs (ADR 0006). Logs ui.mode_changed (debug), ui.notice_shown, ui.alert_shown and
-// ui.alert_deferred (info), each with `code` and `tier` where it names a message.
+// when no Pass runs (ADR 0006). It keeps each Alert shown until the user closes it, and
+// dismiss_alerts (issue #171) closes every one still open as its OK button does; a deferred Alert
+// is not open yet and stays queued. Logs ui.mode_changed (debug), ui.notice_shown, ui.alert_shown,
+// ui.alert_deferred and ui.alert_dismissed (info, one per Alert dismiss_alerts closed), each with
+// `code` and `tier` where it names a message.
 namespace overdub::ui
 {
+// The ops MainComponent::run lets through while the modal run dialog shows: cancel_run,
+// close_plugin_window and the App group. The Settings window and the plugin editor windows are
+// outside the dialog; the Workspace refuses with a presented Notice what may not run.
+bool actsUnderRunDialog (std::string_view op);
+
 class MainComponent final : public juce::Component, private juce::Timer
 {
 public:
@@ -111,8 +126,12 @@ public:
 
     Mode mode() const { return currentMode; }
 
-    // Runs a command as the matching key or button would.
-    void perform (Command command);
+    IntentResult run (const Intent& intent, Origin origin = Origin::user);
+    // How many Intents run has run, every one counted, per-frame ones too (GestureCensusTest).
+    std::uint64_t intentsRun() const { return intentRunCount; }
+    // Logs the Error at debug and returns it, never presenting it: what a gesture that did nothing
+    // returns (the UI shows it as unavailable, or it changes nothing).
+    IntentResult quietError (core::Error error);
 
     // Logs the Error once (warn for a Notice, error for an Alert) and presents it by its tier.
     void handleError (const core::Error& error);
@@ -123,9 +142,6 @@ public:
     // convertSampleRate present their refusals with handleError.
     void handleUnlessRefused (const core::Error& error);
     void handleUnlessRefused (const core::Expected<void>& result);
-
-    // Converts the open Song to `toRate` (see the header comment).
-    void convertSampleRate (int toRate);
 
     // One poll at `now` (OpenSong::poll): finish a stopped Pass, write a due song.json, refresh,
     // present messages.
@@ -143,6 +159,20 @@ public:
     bool isVideoPreviewShown() const { return videoPreview != nullptr && videoPreview->isShown(); }
     // Shows the open Song's current state.
     void refresh();
+    // The Notice the Notice line shows now (none while it is hidden), how many Notices were shown
+    // up to it (so showing the same one again is seen), and the Intent its action button runs
+    // (none: it hides on its own, NoticeLine::hidesAtMs).
+    struct ShownNotice
+    {
+        UserMessage message;
+        std::uint64_t counter = 0;
+        std::optional<Intent> action;
+    };
+    std::optional<ShownNotice> noticeShown() const { return noticeLine.isVisible() ? notice : std::nullopt; }
+    // The Alerts shown and not closed yet, by the user or by dismiss_alerts, oldest first.
+    std::vector<UserMessage> alertsShown() const;
+    // The Alerts the running Pass holds back until it stops, oldest first.
+    std::vector<UserMessage> alertsDeferred() const { return messages.deferredAlerts(); }
 
     bool keyPressed (const juce::KeyPress& key) override;
     // Every mouse down in the window, children's included: one outside the Mixer's (or the Record
@@ -156,8 +186,12 @@ public:
     std::function<void (std::function<void (std::vector<juce::File>)>)> chooseFilesToImport;
     // Asks the question with Delete and Cancel and calls back with whether Delete was chosen.
     std::function<void (const juce::String& question, std::function<void (bool confirmed)>)> confirmTrackDelete;
-    // Shows an Alert: a modal dialog with this sentence.
-    std::function<void (const juce::String& sentence)> showAlert;
+    // Shows an Alert, a modal dialog with this sentence and an OK button, and calls `closed` once
+    // the user closes it. Returns what closes it as OK does, which is harmless after the user
+    // closed it. The window owns what it returns until the Alert closes (default:
+    // juce::AlertWindow::showScopedAsync, whose ScopedMessageBox it keeps).
+    using CloseAlert = std::function<void()>;
+    std::function<CloseAlert (const juce::String& sentence, std::function<void()> closed)> showAlert;
     // "+ Insert" (issue #33): the AU effects to offer (AudioUnitLoader::findEffects
     // in the app; none by default), and how the user picks one: calls back with the index picked,
     // or none when dismissed (default: a pop-up menu by name).
@@ -177,9 +211,14 @@ public:
     juce::File exportFolder = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Overdub");
     // The time a key press happens (the Mixer's arrow-key bursts); tests set a fixed one.
     std::function<song::SongPackage::Clock::time_point()> clock = [] { return song::SongPackage::Clock::now(); };
+    // The App group's owner (the ui::Workspace): runs every AppIntent that run is given.
+    std::function<IntentResult (const AppIntent&)> runAppIntent;
     // The File menu's New Song and Open, offered on the no-Song page.
     std::function<void()> onNewSong;
     std::function<void()> onOpenSong;
+    // The connected control clients' process names (control::Server::clientProcesses), which the
+    // top bar shows from the next poll.
+    std::vector<std::string> controllingProcesses;
 
     // Children are public so tests can click them and check what shows.
     TopBar topBar;
@@ -197,9 +236,14 @@ public:
 private:
     void timerCallback() override { tick(); }
 
+    IntentResult runApp (const AppIntent& intent);
+    IntentResult runWindow (const WindowIntent& intent);
     void showMode (Mode mode);
     void post (UserMessage message);
     void presentMessages();
+    void showAlertNow (const UserMessage& message, const juce::String& sentence);
+    void alertClosedByUser (std::uint64_t alertId);
+    IntentResult dismissAlerts();
     void syncVideoPreview();
     void onVBlank (double timestampSeconds);
     bool passRunning() const { return songContent != nullptr && songContent->currentSong().isRecording(); }
@@ -208,6 +252,17 @@ private:
 
     Mode currentMode = Mode::record;
     UserMessageQueue messages;
+    std::optional<ShownNotice> notice;
+    struct OpenAlert
+    {
+        std::uint64_t id = 0;
+        UserMessage message;
+        CloseAlert close;
+    };
+    std::vector<OpenAlert> openAlerts;
+    std::uint64_t alertsEverShown = 0;
+    std::uint64_t noticesEverShown = 0;
+    std::uint64_t intentRunCount = 0;
     bool videoPreviewWanted = false;
     std::unique_ptr<VideoPreviewWindow> videoPreview;
     // Null while no Song is open.

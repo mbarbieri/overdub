@@ -17,7 +17,9 @@
 // Edit mode's Mixer (issue #31, issue #9 resolution, variant C): under the timeline, one strip per
 // Track (name, pan, Insert Chain, fader with its meter, dB value, M and S) and the Master strip
 // (name, Insert Chain, fader, meter, value) at the right edge. Thin over ui/MixerGeometry.h and
-// song/MixEdits.h. The Insert Chains (issue #34, ui/InsertChain.h) report through insertActions.
+// song/MixEdits.h. Every gesture that changes state is an Intent reported through onIntent: the
+// controls' (MixFocus), M and S, and the Insert Chains' (issue #34, ui/InsertChain.h), whose
+// "+ Insert" is the one hook, onAddInsert (the window asks, then runs add_insert).
 //
 // The controls' behaviour (drag previews, undo steps, double-click, keyboard focus and the arrow
 // keys' bursts) is the Mixer's MixFocus (ui/MixFocus.h); the strips draw it and report gestures.
@@ -193,16 +195,14 @@ public:
     // True when `component` is the focused control or inside it.
     bool isFocusedControl (const juce::Component* component);
 
-    // The Song a gesture in progress would make (the mix only).
-    std::function<void (const song::Song& preview)> onPreview;
-    // A finished gesture: the changed Song and its undo label.
-    std::function<void (song::Song changed, std::string label)> onEdit;
-    // The Insert Chains' gestures (every strip's, the Master's included).
-    InsertChainActions insertActions;
+    // Where the Mixer's Intents go (the Edit page's sink).
+    IntentSink onIntent;
+    // "+ Insert" on a strip's chain (empty Track id: the Master's).
+    std::function<void (const song::Id& trackId)> onAddInsert;
     // Each slot's plugin status, for the chips; none: every plugin reads as ready.
     InsertStatusLookup insertStatusOf;
 
-    // The controls' focus, arrow keys and undo steps; the window sends it keys and commit triggers.
+    // The controls' focus, arrow keys and undo steps (their Intents run through the window).
     MixFocus mix;
     std::vector<std::unique_ptr<MixerStrip>> strips;
     MixerStrip masterStrip { true };
@@ -210,6 +210,8 @@ public:
 private:
     void rebuildStrips();
     void connectStrip (MixerStrip& strip, const song::Id& trackId);
+    void connectChain (InsertChainView& chain);
+    void emit (Intent intent) const;
     MixerStrip* stripFor (const song::Id& trackId);
     void showFocus();
 

@@ -63,15 +63,20 @@ void NoticeLine::show (const juce::String& newSentence, const juce::String& acti
     setVisible (true);
     resized();
     repaint();
+    hidesAt.reset();
     if (action != nullptr)
         stopTimer();
     else
+    {
+        hidesAt = juce::Time::currentTimeMillis() + visibleForMs;
         startTimer (visibleForMs);
+    }
 }
 
 void NoticeLine::dismiss()
 {
     stopTimer();
+    hidesAt.reset();
     sentence.clear();
     action = nullptr;
     actionButton.setVisible (false);

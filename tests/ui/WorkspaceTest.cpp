@@ -1,11 +1,7 @@
 #include "ui/Workspace.h"
 
-#include "capture/FakeCamera.h"
-#include "core/Log.h"
 #include "song/FakeSeparationHelper.h"
-#include "song/FixtureSongBuilder.h"
-#include "ui/FakeLiveAudio.h"
-#include "ui/UiHarness.h"
+#include "ui/WorkspaceFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -18,33 +14,26 @@
 
 using overdub::engine::DeviceChange;
 using overdub::exporting::ExportFormat;
-using overdub::song::testing::FixtureSong;
-using overdub::song::testing::FixtureSongBuilder;
-using overdub::ui::CalibrationPanel;
-using overdub::ui::DeviceSettingsPanel;
-using overdub::ui::LiveAudio;
-using overdub::ui::MainComponent;
-using overdub::ui::Workspace;
-using overdub::ui::WorkspaceFiles;
-using overdub::ui::testing::FakeLiveAudio;
-using overdub::ui::testing::FakeMachine;
-using namespace std::chrono_literals;
+using overdub::ui::AppIntent;
 using overdub::ui::testing::choose;
 using overdub::ui::testing::click;
+using overdub::ui::testing::contains;
+using overdub::ui::testing::eventsNamed;
 using overdub::ui::testing::isShown;
+using overdub::ui::testing::messageCodes;
+using overdub::ui::testing::WorkspaceFixture;
+using namespace overdub::ui::intent;
+using namespace std::chrono_literals;
 
 // The main window's device and calibration policy (issue #105), driven through the Workspace with
-// the test LiveAudio: devices are lost, reconfigured or come back by the test's word, and the
-// calibration files live in a temp folder.
+// the test LiveAudio (ui/WorkspaceFixture.h).
 namespace
 {
-std::vector<nlohmann::json> eventsNamed (const overdub::core::ScopedLogCapture& capture, const std::string& name)
+// apply_device_settings with the device choice in use.
+ApplyDeviceSettings applyCurrent (WorkspaceFixture& f)
 {
-    std::vector<nlohmann::json> found;
-    for (const auto& event : capture.events())
-        if (event.at ("event") == name)
-            found.push_back (event);
-    return found;
+    const auto current = f.audio().deviceChoices().current;
+    return ApplyDeviceSettings { current.deviceType, current.inputDevice, current.outputDevice, current.sampleRate, current.bufferSize };
 }
 
 // The events logged at warn or error level: a failed run's Error among them.
@@ -56,100 +45,6 @@ std::vector<nlohmann::json> problems (const overdub::core::ScopedLogCapture& cap
             found.push_back (event);
     return found;
 }
-
-// The codes of the Notices and Alerts the content showed.
-std::vector<std::string> messageCodes (const overdub::core::ScopedLogCapture& capture)
-{
-    std::vector<std::string> codes;
-    for (const auto& event : capture.events())
-        if (event.at ("event") == "ui.notice_shown" || event.at ("event") == "ui.alert_shown")
-            codes.push_back (event.at ("code"));
-    return codes;
-}
-
-bool contains (const std::vector<std::string>& codes, const std::string& code)
-{
-    return std::ranges::contains (codes, code);
-}
-
-struct WorkspaceFixture
-{
-    juce::ScopedJuceInitialiser_GUI gui;
-    juce::File folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("overdub-workspace-" + juce::Uuid().toString());
-    WorkspaceFiles files { folder.getChildFile ("device.json"), folder.getChildFile ("latency.json"), folder.getChildFile ("camera.json") };
-    FakeMachine machine;
-    overdub::capture::testing::FakeCamera camera;
-    MainComponent content;
-    DeviceSettingsPanel devicePanel;
-    CalibrationPanel calibrationPanel;
-    // Every LiveAudio the Workspace was given or opened, oldest first.
-    std::vector<FakeLiveAudio*> opened;
-    std::vector<std::optional<int>> openedForRates;
-    std::unique_ptr<FixtureSong> fixture; // its folder outlives the Workspace's package
-    std::unique_ptr<Workspace> workspace;
-
-    WorkspaceFixture()
-    {
-        REQUIRE (folder.createDirectory());
-        machine.latencyCalibrationFile = files.latencyCalibration;
-        content.showAlert = [] (const juce::String&) {};
-        content.askCameraAccess = [] (std::function<void (bool)> done) { done (true); };
-        content.showPluginWindowsOnDesktop = false;
-        content.showVideoPreviewOnDesktop = false;
-        overdub::ui::testing::layOut (content, 1200, 760);
-        overdub::ui::testing::layOut (calibrationPanel, 460, 520);
-    }
-
-    ~WorkspaceFixture()
-    {
-        workspace.reset();
-        fixture.reset();
-        folder.deleteRecursively();
-    }
-
-    std::unique_ptr<LiveAudio> openAudio (std::optional<int> songSampleRate)
-    {
-        auto audio = std::make_unique<FakeLiveAudio> (machine, songSampleRate);
-        opened.push_back (audio.get());
-        openedForRates.push_back (songSampleRate);
-        return audio;
-    }
-
-    // Launches with the machine as it is now, the settings panels attached.
-    void launch()
-    {
-        workspace = std::make_unique<Workspace> (
-            content,
-            openAudio (std::nullopt),
-            [this] (std::optional<int> rate) { return openAudio (rate); },
-            &camera,
-            overdub::plugin::Instantiator {},
-            files);
-        workspace->attachSettingsPanels (&devicePanel, &calibrationPanel);
-    }
-
-    void openSong (int sampleRate = overdub::engine::testing::testSampleRate)
-    {
-        fixture = FixtureSongBuilder {}.sampleRate (sampleRate).backingTrack ("Band Mix").track ("Guitar", true, { 0 }).build();
-        workspace->showSong (std::move (fixture->package), {});
-    }
-
-    FakeLiveAudio& audio() { return *opened.back(); }
-    overdub::ui::OpenSong& song() { return *workspace->openSong(); }
-
-    // One tick of each window timer: the content's poll, then the Workspace's.
-    void tick (overdub::song::SongPackage::Clock::time_point now = overdub::song::SongPackage::Clock::now())
-    {
-        content.tick (now);
-        workspace->tick (now);
-    }
-
-    void runBlocks (int blocks)
-    {
-        audio().run (blocks);
-        tick();
-    }
-};
 } // namespace
 
 TEST_CASE ("a device lost during an export is answered at once: the export stops and the Song plays on the reopened device", "[ui][workspace][device]")
@@ -327,7 +222,7 @@ TEST_CASE ("on a device that doesn't offer the Song's rate, opening and Record b
 
     f.content.noticeLine.dismiss();
     REQUIRE (f.content.noticeLine.text().isEmpty());
-    f.content.perform (overdub::ui::Command::record);
+    f.content.run (overdub::ui::SongIntent { Record {} });
     CHECK (f.content.noticeLine.text() == expected);
     CHECK_FALSE (f.song().isRecording());
     CHECK (f.song().song().passes.empty());
@@ -352,9 +247,9 @@ TEST_CASE ("a latency calibration binds the Song again only once the audio threa
     f.openSong();
     f.runBlocks (1);
 
-    f.workspace->measureLatency();
+    f.run (AppIntent { MeasureLatency {} });
     CHECK (f.song().audio().engine == nullptr); // the run plays its own Song
-    CHECK_FALSE (f.workspace->isIdle());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExport());
 
     // The device never called back since: the run gives up, but its plan is still pending.
     f.workspace->tick (overdub::song::SongPackage::Clock::now() + 1h);
@@ -365,7 +260,7 @@ TEST_CASE ("a latency calibration binds the Song again only once the audio threa
     f.workspace->tick();
 
     CHECK (f.song().audio().engine == f.audio().engine());
-    CHECK (f.workspace->isIdle());
+    CHECK (f.workspace->nothingRunsButAnExport());
 }
 
 TEST_CASE ("a latency calibration measured on the loopback device is offered in the panel once the Song is bound again", "[ui][workspace][calibration]")
@@ -376,20 +271,21 @@ TEST_CASE ("a latency calibration measured on the loopback device is offered in 
     f.runBlocks (1);
     overdub::core::ScopedLogCapture capture;
 
-    // The run's clock advances by the audio rendered, so its timeout cannot fire under CPU load.
+    // The run's clock advances by the audio rendered, so its timeout cannot fire under CPU load. The
+    // run starts its timeout on the real clock, no earlier than this `now`.
     constexpr int blocksPerTick = 8;
     const auto tickDuration = std::chrono::microseconds ((std::int64_t) blocksPerTick * overdub::ui::testing::liveBlockSize * 1'000'000 / f.audio().sampleRate());
     auto now = overdub::song::SongPackage::Clock::now();
-    f.workspace->measureLatency (now);
+    f.run (AppIntent { MeasureLatency {} });
     const auto deadline = std::chrono::steady_clock::now() + 30s;
-    while (! f.workspace->isIdle() && std::chrono::steady_clock::now() < deadline)
+    while (! f.workspace->nothingRunsButAnExport() && std::chrono::steady_clock::now() < deadline)
     {
         f.audio().run (blocksPerTick);
         now += tickDuration;
         f.workspace->tick (now);
     }
 
-    REQUIRE (f.workspace->isIdle());
+    REQUIRE (f.workspace->nothingRunsButAnExport());
     CHECK (problems (capture).empty());
     CHECK (f.song().audio().engine == f.audio().engine());
     CHECK (overdub::ui::testing::isShown (f.calibrationPanel.saveLatencyButton));
@@ -401,7 +297,7 @@ TEST_CASE ("saving a latency calibration stores it for the device, and the next 
     f.launch();
     f.openSong();
 
-    f.workspace->saveLatencyCalibration (-300);
+    f.run (AppIntent { SaveLatencyCalibration { -300 } });
 
     const auto stored = overdub::engine::findCalibrationOffset (f.files.latencyCalibration, f.audio().calibrationKey());
     REQUIRE (stored.has_value());
@@ -440,7 +336,7 @@ TEST_CASE ("saving a camera calibration stores it under the clap Pass's output d
     f.openSong();
     const overdub::capture::CameraCalibrationKey key { "camera-facetime", "MacBook Pro Speakers" };
 
-    f.workspace->saveCameraCalibration (key, 35.0);
+    f.run (AppIntent { SaveCameraCalibration { key.cameraId, key.outputDevice, 35.0 } });
 
     const auto stored = overdub::capture::findCameraCalibration (f.files.cameraCalibration, key);
     REQUIRE (stored.has_value());
@@ -457,9 +353,9 @@ TEST_CASE ("opening a Song, changing the device and calibrating are refused whil
     REQUIRE (f.song().record().has_value());
     overdub::core::ScopedLogCapture capture;
 
-    CHECK_FALSE (f.workspace->idleOrNotice());
-    f.workspace->applyDeviceSettings (f.audio().deviceChoices().current);
-    f.workspace->measureLatency();
+    CHECK_FALSE (f.workspace->nothingRunsButAnExportOrNotice());
+    f.run (AppIntent { applyCurrent (f) });
+    f.run (AppIntent { MeasureLatency {} });
 
     CHECK (f.opened.size() == 1);
     CHECK (f.song().isRecording());
@@ -480,19 +376,23 @@ TEST_CASE ("opening another Song, changing the device and quitting are refused w
     REQUIRE (f.song().startSeparation (f.song().song().tracks.front().id).has_value());
     overdub::core::ScopedLogCapture capture;
 
-    CHECK_FALSE (f.workspace->isIdle());
-    CHECK_FALSE (f.workspace->idleOrNotice());
-    f.workspace->applyDeviceSettings (f.audio().deviceChoices().current);
-    CHECK_FALSE (f.workspace->mayQuitOrNotice());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExport());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExportOrNotice());
+    const auto applied = f.run (AppIntent { applyCurrent (f) });
+    REQUIRE_FALSE (applied.has_value());
+    CHECK (applied.error().code == "ui.separation_running");
+    CHECK_FALSE (f.run (AppIntent { Quit {} }).has_value());
 
     CHECK (f.opened.size() == 1);
     CHECK (f.song().isSeparating());
+    CHECK (f.quits == 0);
     const auto codes = messageCodes (capture);
     CHECK (std::ranges::count (codes, std::string ("ui.separation_running")) == 3);
 
     f.song().cancelSeparation();
-    CHECK (f.workspace->isIdle());
-    CHECK (f.workspace->mayQuitOrNotice());
+    CHECK (f.workspace->nothingRunsButAnExport());
+    CHECK (f.run (AppIntent { Quit {} }).has_value());
+    CHECK (f.quits == 1);
 }
 
 //==============================================================================
@@ -560,18 +460,18 @@ TEST_CASE ("undoing a conversion brings the Song back at its old rate, without a
     WorkspaceFixture f;
     f.launch();
     f.openSong (44100);
-    f.content.convertSampleRate (48000);
+    f.content.run (AppIntent { ConvertSampleRate { 48000 } });
     finishConversion (f);
     REQUIRE (f.song().song().sampleRate == 48000);
 
-    f.content.perform (overdub::ui::Command::undo);
+    f.content.run (overdub::ui::SongIntent { Undo {} });
     f.tick();
     CHECK (f.song().song().sampleRate == 44100);
     REQUIRE (f.opened.size() == 3);
     REQUIRE (f.song().audioProblem().has_value());
     CHECK (f.song().audioProblem()->code == "ui.sample_rate_mismatch");
 
-    f.content.perform (overdub::ui::Command::redo);
+    f.content.run (overdub::ui::SongIntent { Redo {} });
     f.tick();
     CHECK (f.song().song().sampleRate == 48000);
     CHECK_FALSE (f.song().audioProblem().has_value());
@@ -583,15 +483,15 @@ TEST_CASE ("while a conversion runs, recording, other Songs and device changes w
     f.launch();
     f.openSong (44100);
     const auto before = f.song().song();
-    f.content.convertSampleRate (48000);
+    f.content.run (AppIntent { ConvertSampleRate { 48000 } });
     REQUIRE (f.song().isConverting());
     overdub::core::ScopedLogCapture capture;
 
     const auto recorded = f.song().record();
     REQUIRE_FALSE (recorded.has_value());
     CHECK (recorded.error().code == "ui.conversion_running");
-    CHECK_FALSE (f.workspace->isIdle());
-    CHECK_FALSE (f.workspace->idleOrNotice());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExport());
+    CHECK_FALSE (f.workspace->nothingRunsButAnExportOrNotice());
     CHECK (contains (messageCodes (capture), "ui.conversion_running"));
 
     click (f.content.runDialog.cancelButton);
@@ -610,7 +510,7 @@ TEST_CASE ("a conversion is refused while a Pass runs", "[ui][workspace][convers
     REQUIRE (f.song().record().has_value());
     overdub::core::ScopedLogCapture capture;
 
-    f.content.convertSampleRate (44100);
+    f.content.run (AppIntent { ConvertSampleRate { 44100 } });
     CHECK_FALSE (f.song().isConverting());
     CHECK (f.song().isRecording());
     CHECK (contains (messageCodes (capture), "ui.stop_recording_first"));
@@ -652,7 +552,7 @@ TEST_CASE ("a picked rate that opens at another one says so", "[ui][workspace][s
     auto settings = f.audio().deviceChoices().current;
     settings.sampleRate = 44100;
 
-    f.workspace->applyDeviceSettings (settings);
+    f.run (AppIntent { ApplyDeviceSettings { settings.deviceType, settings.inputDevice, settings.outputDevice, settings.sampleRate, settings.bufferSize } });
 
     std::vector<overdub::core::Fields> substituted;
     for (const auto& event : capture.events())
@@ -670,6 +570,6 @@ TEST_CASE ("a picked rate that opens as picked, or at the open Song's rate, says
     f.launch();
     f.openSong();
     overdub::core::ScopedLogCapture capture;
-    f.workspace->applyDeviceSettings (f.audio().deviceChoices().current);
+    f.run (AppIntent { applyCurrent (f) });
     CHECK_FALSE (contains (messageCodes (capture), "ui.device_rate_substituted"));
 }

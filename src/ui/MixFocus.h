@@ -2,6 +2,7 @@
 
 #include "core/Error.h"
 #include "song/Song.h"
+#include "ui/Intent.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -11,14 +12,15 @@
 #include <string>
 
 // The mix controls' behaviour apart from how they are drawn (issues #129, #130): the gestures on
-// a Track's fader or pan or the Master fader as Songs and undo labels, keyboard focus, and the
+// a Track's fader or pan or the Master fader as Intents (ui/Intent.h), keyboard focus, and the
 // arrow keys' bursts. The Mixer (ui/Mixer.h) and the Record page's rows (ui/RecordPage.h) each own
 // one, so a Record row's fader behaves exactly like its Mixer fader.
 //
-// A drag is previewed while it moves (onPreview: the Song as the drag would make it) and reported
-// once, on mouse up, as one Song and its undo label (onEdit: "Guitar Volume", "Guitar Pan",
-// "Master Volume"); a drag that ends where it started previews the Song as it was (abandon). A
-// double-click sets 0 dB or C (set), one undo step (none when already there).
+// Every gesture is an Intent reported through onIntent: a drag is previewed while it moves
+// (preview_mix with the mix edit the drag would make) and reported once, on mouse up, as one edit
+// (set_track_volume, set_track_pan, set_master_volume, one undo step each); a drag that ends where
+// it started previews the Song as it is (abandon). A double-click sets 0 dB or C (set), one undo
+// step (none when already there).
 //
 // Keyboard focus: grabbing a control focuses it; the window sends it keys first (handleKey). The
 // arrows adjust it by faderKeyStepDb / panKeyStep (ui/MixerGeometry.h), each press previewed at
@@ -72,8 +74,11 @@ public:
     bool handleKey (const juce::KeyPress& key, Clock::time_point now);
 
     bool hasKeyBurst() const { return keyBurst.has_value(); }
-    // Reports the burst of arrow presses (if any) as one undo step now.
+    // Reports the burst of arrow presses (if any) as one undo step now (onIntent).
     void commitKeyBurst();
+    // Ends the burst (if any) and returns the edit commitKeyBurst would report, for a caller that
+    // runs it itself inside the Intent it is handling.
+    std::optional<intent::Edit> takeKeyBurst();
     // Commits the burst once keyBurstDuration has passed since its last press.
     void commitKeyBurstIfDue (Clock::time_point now);
     // An edit made from the Song before the burst was committed, with the burst's value carried into
@@ -85,19 +90,18 @@ public:
     // A finished drag or a double-click: the control set to `value` as one undo step (after a
     // pending burst's own step).
     void set (const MixerControl& control, double value);
-    // A drag that ended where it started: the Song as it was is previewed.
+    // A drag that ended where it started: the Song as it is is previewed.
     void abandon();
-    // Reports an edit (a Song made from song()) unless it changes nothing; nothing while not editable.
-    void report (core::Expected<song::Song> changed, const std::string& label);
+    // Reports an edit unless it changes song(); nothing while not editable.
+    void report (const intent::Edit& edit);
 
     // The focused control changed (focus or releaseFocus).
     std::function<void()> onFocusChanged;
     // An arrow press set this control's value, ahead of the Song.
     std::function<void (const MixerControl& control, double value)> onKeyValue;
-    // The Song a gesture in progress would make (the mix only).
-    std::function<void (const song::Song& preview)> onPreview;
-    // A finished gesture: the changed Song and its undo label.
-    std::function<void (song::Song changed, std::string label)> onEdit;
+    // Where the controls' Intents go (the owning page's sink): preview_mix for a gesture in
+    // progress, heard and not committed, and a finished gesture's edit, one undo step.
+    IntentSink onIntent;
 
 private:
     struct KeyBurst
@@ -107,8 +111,11 @@ private:
         Clock::time_point deadline;
     };
 
-    void preview (core::Expected<song::Song> candidate);
+    void preview (const intent::MixEdit& edit);
+    // The edit unless it changes nothing or the controls are not editable.
+    std::optional<intent::Edit> reportable (const intent::Edit& edit) const;
     void notifyFocusChanged();
+    void emit (Intent intent) const;
 
     song::Song current;
     bool editable = true;

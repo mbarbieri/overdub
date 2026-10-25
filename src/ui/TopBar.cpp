@@ -13,6 +13,39 @@ const juce::String stopGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x96\x
 const juce::String recordGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x8f"));
 } // namespace
 
+std::string controlIndicatorName (const std::vector<std::string>& processes)
+{
+    if (processes.empty())
+        return {};
+    auto text = processes.front();
+    if (processes.size() > 1)
+        text += " +" + std::to_string (processes.size() - 1);
+    return text;
+}
+
+void ControlIndicator::show (const std::string& newName)
+{
+    const auto nameString = juce::String::fromUTF8 (newName.c_str());
+    if (nameString == name)
+        return;
+    name = nameString;
+    repaint();
+}
+
+void ControlIndicator::paint (juce::Graphics& g)
+{
+    if (name.isEmpty())
+        return;
+    auto area = getLocalBounds();
+    auto captionArea = area.removeFromTop (14);
+    g.setColour (colours::mute);
+    g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+    g.drawText (caption, captionArea, juce::Justification::bottomLeft, true);
+    g.setColour (colours::text);
+    g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    g.drawText (name, area, juce::Justification::centredLeft, true);
+}
+
 void ClockDisplay::show (const std::string& newTime, const std::string& newStatus, bool recording)
 {
     const auto timeString = juce::String::fromUTF8 (newTime.c_str());
@@ -55,14 +88,14 @@ TopBar::TopBar()
         modeButton->setColour (juce::TextButton::buttonOnColourId, colours::accent);
     }
 
-    recordModeButton.onClick = [this] { send (Command::showRecord); };
-    editModeButton.onClick = [this] { send (Command::showEdit); };
-    exportModeButton.onClick = [this] { send (Command::showExport); };
-    rewindButton.onClick = [this] { send (Command::rewind); };
-    playStopButton.onClick = [this] { send (Command::playOrStop); };
-    recordButton.onClick = [this] { send (Command::record); };
-    undoButton.onClick = [this] { send (Command::undo); };
-    redoButton.onClick = [this] { send (Command::redo); };
+    recordModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::record } }); };
+    editModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::edit } }); };
+    exportModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::exportSong } }); };
+    rewindButton.onClick = [this] { send (SongIntent { intent::Rewind {} }); };
+    playStopButton.onClick = [this] { send (SongIntent { intent::PlayOrStop {} }); };
+    recordButton.onClick = [this] { send (SongIntent { intent::Record {} }); };
+    undoButton.onClick = [this] { send (SongIntent { intent::Undo {} }); };
+    redoButton.onClick = [this] { send (SongIntent { intent::Redo {} }); };
 
     for (auto* button : { &recordModeButton, &editModeButton, &exportModeButton, &rewindButton, &playStopButton, &recordButton, &undoButton, &redoButton })
     {
@@ -70,12 +103,15 @@ TopBar::TopBar()
         addAndMakeVisible (button);
     }
     addAndMakeVisible (clock);
+
+    controlIndicator.setInterceptsMouseClicks (false, false);
+    addAndMakeVisible (controlIndicator);
 }
 
-void TopBar::send (Command command)
+void TopBar::send (const Intent& intent)
 {
-    if (onCommand)
-        onCommand (command);
+    if (onIntent)
+        onIntent (intent);
 }
 
 void TopBar::show (const TopBarState& state)
@@ -94,6 +130,7 @@ void TopBar::show (const TopBarState& state)
     redoButton.setButtonText (juce::String::fromUTF8 (state.redoText.c_str()));
     undoButton.setEnabled (state.canUndo);
     redoButton.setEnabled (state.canRedo);
+    controlIndicator.show (controlIndicatorName (state.controllingProcesses));
 }
 
 void TopBar::resized()
@@ -108,6 +145,7 @@ void TopBar::resized()
     clock.setBounds (layout.clock);
     undoButton.setBounds (layout.undo);
     redoButton.setBounds (layout.redo);
+    controlIndicator.setBounds (layout.controlIndicator);
 }
 
 void TopBar::paint (juce::Graphics& g)

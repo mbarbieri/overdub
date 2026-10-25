@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Send one request to a running Overdub's control socket and print the reply.
+
+Usage:
+  overdub-ctl [--socket PATH] [--timeout S] [--allow-sound] OP [key=value ...]
+  overdub-ctl [--socket PATH] subscribe events=ui.,song. [level=info] [--seconds N] [--count N]
+
+The socket defaults to the one launch.sh recorded in build/verify/latest/socket.
+Each value is parsed as JSON when it parses (numbers, true/false, null, arrays,
+objects) and kept as a string otherwise: track_id=t-1 armed=true sample=48000.
+
+Prints the reply as one JSON line. Exits 0 when the reply has "ok": true, 1 when
+it has "ok": false, 2 on a usage or connection problem. `subscribe` prints every
+event line until --seconds pass (default 5) or --count events arrive, then exits 0.
+
+Every request has a client-side timeout: --timeout seconds, by default 30, for
+`wait` its timeout_ms (30000 when absent) plus 10 s, and for `subscribe` at least
+--seconds. With no reply by then it exits 2.
+
+Ops that play test signals out of the speakers (SOUND_OPS) are refused, exit 2,
+unless --allow-sound is passed. Pass it only after the user agreed to be heard.
+"""
+
+import json
+import os
+import socket
+import sys
+import time
+
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+DEFAULT_SOCKET_FILE = os.path.join(REPO, "build", "verify", "latest", "socket")
+DEFAULT_TIMEOUT_S = 30.0
+# The app's default for wait's timeout_ms (control::Controller::defaultWaitMs).
+DEFAULT_WAIT_MS = 30000
+WAIT_MARGIN_S = 10.0
+# measure_latency runs the loopback calibration: noise bursts out of the real speakers.
+SOUND_OPS = {"measure_latency"}
+
+
+def fail(message):
+    print(f"overdub-ctl: {message}", file=sys.stderr)
+    sys.exit(2)
+
+
+def parse_args(argv):
+    socket_path = None
+    seconds = None
+    count = None
+    timeout = None
+    allow_sound = False
+    rest = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--allow-sound":
+            allow_sound = True
+            i += 1
+            continue
+        if arg in ("--socket", "--seconds", "--count", "--timeout"):
+            if i + 1 >= len(argv):
+                fail(f"{arg} needs a value")
+            value = argv[i + 1]
+            if arg == "--socket":
+                socket_path = value
+            elif arg == "--seconds":
+                seconds = float(value)
+            elif arg == "--timeout":
+                timeout = float(value)
+            else:
+                count = int(value)
+            i += 2
+            continue
+        rest.append(arg)
+        i += 1
+    if not rest:
+        fail("no op given (try: overdub-ctl hello)")
+    return socket_path, seconds, count, timeout, allow_sound, rest[0], rest[1:]
+
+
+def parse_value(text):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
+
+
+def build_request(op, pairs):
+    request = {"id": 1, "op": op}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        if not sep or not key:
+            fail(f"expected key=value, got {pair!r}")
+        if op == "subscribe" and key == "events" and isinstance(parse_value(value), str):
+            request[key] = [prefix for prefix in value.split(",") if prefix]
+        else:
+            request[key] = parse_value(value)
+    return request
+
+
+def resolve_socket(socket_path):
+    if socket_path:
+        return socket_path
+    try:
+        with open(DEFAULT_SOCKET_FILE) as f:
+            return f.read().strip()
+    except OSError:
+        fail(f"no --socket and no {DEFAULT_SOCKET_FILE}; run launch.sh first")
+
+
+def read_line(conn, buffer):
+    # `buffer` is a bytearray kept by the caller, so bytes read before a timeout are not lost.
+    while b"\n" not in buffer:
+        chunk = conn.recv(65536)
+        if not chunk:
+            return None
+        buffer += chunk
+    end = buffer.index(b"\n")
+    line = bytes(buffer[:end])
+    del buffer[: end + 1]
+    return json.loads(line)
+
+
+def request_timeout(op, request, timeout, seconds):
+    if timeout is not None:
+        return timeout
+    if op == "subscribe" and seconds is not None:
+        return max(DEFAULT_TIMEOUT_S, seconds)
+    if op == "wait":
+        timeout_ms = request.get("timeout_ms", DEFAULT_WAIT_MS)
+        if isinstance(timeout_ms, (int, float)):
+            return timeout_ms / 1000 + WAIT_MARGIN_S
+    return DEFAULT_TIMEOUT_S
+
+
+def main():
+    socket_path, seconds, count, timeout, allow_sound, op, pairs = parse_args(sys.argv[1:])
+    request = build_request(op, pairs)
+    if op in SOUND_OPS and not allow_sound:
+        fail(f"{op} plays test signals out of the speakers; pass --allow-sound only after the user agreed")
+    if op == "subscribe" and seconds is None and count is None:
+        seconds = 5.0
+    timeout = request_timeout(op, request, timeout, seconds)
+    path = resolve_socket(socket_path)
+
+    start = time.monotonic()
+    hard_deadline = start + timeout
+    stream_deadline = None if seconds is None else start + seconds
+    conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    conn.settimeout(timeout)
+    try:
+        conn.connect(path)
+        conn.sendall((json.dumps(request) + "\n").encode())
+    except socket.timeout:
+        fail(f"timed out after {timeout:g} s connecting to {path}")
+    except OSError as error:
+        fail(f"cannot connect to {path}: {error}")
+
+    buffer = bytearray()
+    reply = None
+    seen = 0
+    while True:
+        now = time.monotonic()
+        if stream_deadline is not None and now >= stream_deadline:
+            break
+        deadline = hard_deadline if stream_deadline is None else min(hard_deadline, stream_deadline)
+        if now >= hard_deadline:
+            fail(f"timed out after {timeout:g} s waiting for the {op} reply" + (f" and {count} events" if count else ""))
+        conn.settimeout(deadline - now)
+        try:
+            line = read_line(conn, buffer)
+        except socket.timeout:
+            continue
+        if line is None:
+            break
+        print(json.dumps(line), flush=True)
+        if "id" in line and line.get("id") == request["id"]:
+            reply = line
+            if op != "subscribe":
+                break
+            if not line.get("ok", False):
+                break
+        elif "event" in line:
+            seen += 1
+            if count is not None and seen >= count:
+                break
+    conn.close()
+
+    if reply is None:
+        fail("the connection closed before the reply")
+    sys.exit(0 if reply.get("ok") else 1)
+
+
+if __name__ == "__main__":
+    main()

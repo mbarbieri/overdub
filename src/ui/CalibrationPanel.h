@@ -5,34 +5,36 @@
 #include "capture/LoopbackMeasurement.h"
 #include "core/Error.h"
 #include "song/Song.h"
+#include "ui/Intent.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-#include <functional>
 #include <optional>
 #include <string>
+#include <variant>
 
 // The settings window's calibration section (issue #39, ADR 0002, ADR 0003), under the device
 // picker. Both calibrations are per machine, never in a Song.
 //
 // Latency: shows the loopback calibration stored for the open input device, output device and
-// sample rate (or that there is none), how to patch the loopback, and Measure. The app runs a
-// capture::LoopbackRun and hands the measurement back; a usable one (bursts found, jitter within
-// ADR 0005's limit) offers "Use This Calibration", which hands back the offset in use plus the
-// measured one: the offset to store (a zero result is offered only to a device never calibrated).
+// sample rate (or that there is none), how to patch the loopback, and Measure. A usable measurement
+// (bursts found, jitter within ADR 0005's limit) offers "Use This Calibration", which stores the
+// offset in use plus the measured one (a zero result is offered only to a device never calibrated).
 //
 // Camera: shows the camera calibration stored for the Song's camera and the output device, how to
-// record a clap Pass, and Measure Last Clap Pass. The app measures the open Song's newest Video
-// Take (capture::measureNewestVideoTake); a result with a clap seen offers the calibration it was
-// placed with plus the mean clap offset, for that Video Take's camera and the output device its Pass
-// played through (issue #68). A Video Take that does not know its output device (format 1) offers
-// nothing and says why.
+// record a clap Pass, and Measure Last Clap Pass. A measurement of the open Song's newest Video
+// Take with a clap seen offers the calibration it was placed with plus the mean clap offset, for
+// that Video Take's camera and the output device its Pass played through (issue #68). A Video Take
+// that does not know its output device (format 1) offers nothing and says why.
 //
-// Thin: the texts are ui/CalibrationText.h; the app does the measuring and the storing.
+// A view (issue #170): the ui::Workspace owns the CalibrationState, so measuring works with the
+// Settings window closed, and the panel shows it. Its buttons run the App Intents
+// (measure_latency, save_latency_calibration, measure_clap_pass, save_camera_calibration) through
+// onIntent. The texts are ui/CalibrationText.h.
 namespace overdub::ui
 {
-// What the panel shows. Without an open device (deviceOpen false) no loopback can run; without a
-// camera id no clap Pass can be measured for a camera.
+// The calibrations stored for what is open. Without an open device (deviceOpen false) no loopback
+// can run; without a camera id no clap Pass can be measured for a camera.
 struct CalibrationStatus
 {
     bool deviceOpen = false;
@@ -44,28 +46,65 @@ struct CalibrationStatus
     std::optional<double> cameraOffsetMs; // stored for this camera and output device; none: never
 };
 
+// A loopback run is running: Measure is unavailable until it ends.
+struct LatencyMeasuring
+{
+};
+
+// A loopback run's outcome, and the calibration it offers to store (none when unusable).
+struct LatencyMeasured
+{
+    core::Expected<capture::LoopbackMeasurement> outcome;
+    std::optional<intent::SaveLatencyCalibration> toStore;
+};
+
+// A clap measurement's outcome, and the calibration it offers to store (none when unusable).
+struct ClapMeasured
+{
+    core::Expected<capture::VideoTakeClaps> outcome;
+    std::optional<intent::SaveCameraCalibration> toStore;
+};
+
+// What a clap measurement's save stored, for the output device its Pass played through, which may
+// not be the one open now (issue #88).
+struct CameraSaved
+{
+    intent::SaveCameraCalibration stored;
+};
+
+using LatencyRun = std::variant<std::monostate, LatencyMeasuring, LatencyMeasured>;
+using ClapRun = std::variant<std::monostate, ClapMeasured, CameraSaved>;
+
+// Everything the calibration section shows. The runs' results stay until a save, another Song or
+// another device replaces them.
+struct CalibrationState
+{
+    CalibrationStatus status;
+    LatencyRun latency;
+    ClapRun clap;
+};
+
+// The run's outcome with what it offers: the offset in use plus the measured one, when the
+// measurement passed and changes something (a zero result marks a device never calibrated as
+// calibrated, so it is offered to that device only).
+LatencyMeasured latencyMeasured (core::Expected<capture::LoopbackMeasurement> outcome, std::optional<song::SampleCount> offsetInUse);
+
+// The measurement with what it offers: the calibration the Video Take was placed with plus the
+// mean clap offset, for its camera and output device, when a clap was seen and the output device
+// is known.
+ClapMeasured clapMeasured (core::Expected<capture::VideoTakeClaps> outcome);
+
 class CalibrationPanel final : public juce::Component
 {
 public:
     CalibrationPanel();
 
-    // Shows the calibrations in use and clears any result.
-    void show (const CalibrationStatus& status);
-    // A loopback run started: Measure is disabled until its result arrives.
-    void showLatencyMeasuring();
-    void showLatencyResult (const core::Expected<capture::LoopbackMeasurement>& result);
-    void showClapResult (const core::Expected<capture::VideoTakeClaps>& result);
-    // After a clap calibration was stored (and show() refreshed the status): says what was stored
-    // and for which output device, which may not be the one open now (issue #88).
-    void showCameraSaved (const capture::CameraCalibrationKey& key, double offsetMs);
+    void show (const CalibrationState& state);
 
     void resized() override;
     void paint (juce::Graphics& g) override;
 
-    std::function<void()> onMeasureLatency;
-    std::function<void (song::SampleCount offsetToStore)> onSaveLatency;
-    std::function<void()> onMeasureClap;
-    std::function<void (const capture::CameraCalibrationKey& key, double offsetMsToStore)> onSaveCamera;
+    IntentSink onIntent;
 
     juce::Label deviceLabel;
     juce::Label latencyStatusLabel;
@@ -81,9 +120,11 @@ public:
     juce::TextButton saveCameraButton { "Use This Calibration" };
 
 private:
-    CalibrationStatus current;
-    std::optional<song::SampleCount> latencyToStore;
-    std::optional<std::pair<capture::CameraCalibrationKey, double>> cameraToStore;
+    void showLatencyRun (const LatencyRun& run);
+    void showClapRun (const ClapRun& run);
+    void runIntent (const AppIntent& intent);
+
+    CalibrationState current;
     juce::Label latencyTitle { {}, "Latency calibration" };
     juce::Label cameraTitle { {}, "Camera calibration" };
 

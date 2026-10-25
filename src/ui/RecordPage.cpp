@@ -99,7 +99,8 @@ void ClipIndicator::clear()
 
 void ClipIndicator::mouseDown (const juce::MouseEvent&)
 {
-    clear();
+    if (onClick)
+        onClick();
 }
 
 void ClipIndicator::paint (juce::Graphics& g)
@@ -266,14 +267,11 @@ void TrackRow::paint (juce::Graphics& g)
 
 //==============================================================================
 
-RecordPage::RecordPage (const TrackActions& actions)
-    : trackActions (actions)
+RecordPage::RecordPage (PeaksLookup peaks)
+    : peaksFor (std::move (peaks))
 {
     addTrackButton.setWantsKeyboardFocus (false);
-    addTrackButton.onClick = [this] {
-        if (onAddTrack)
-            onAddTrack();
-    };
+    addTrackButton.onClick = [this] { emit (SongIntent { intent::AddTrack {} }); };
     importButton.setWantsKeyboardFocus (false);
     importButton.onClick = [this] {
         if (onImport)
@@ -295,17 +293,13 @@ RecordPage::RecordPage (const TrackActions& actions)
         const auto index = preRollPicker.getSelectedItemIndex();
         if (index < 0 || (std::size_t) index >= preRollChoices.size() || preRollChoices[(std::size_t) index] == shownPreRoll)
             return;
-        if (onPreRoll)
-            onPreRoll (preRollChoices[(std::size_t) index]);
+        emit (SongIntent { intent::SetPreRoll { preRollChoices[(std::size_t) index] } });
     };
 
     cameraArmButton.setClickingTogglesState (false);
     cameraArmButton.setColour (juce::TextButton::buttonOnColourId, colours::rec);
     cameraArmButton.setWantsKeyboardFocus (false);
-    cameraArmButton.onClick = [this] {
-        if (onCameraArm)
-            onCameraArm (! shownCamera.armed);
-    };
+    cameraArmButton.onClick = [this] { emit (SongIntent { intent::SetCameraArmed { ! shownCamera.armed } }); };
     cameraPicker.setTextWhenNothingSelected ("Camera?");
     cameraPicker.setTextWhenNoChoicesAvailable ("No camera");
     cameraPicker.setWantsKeyboardFocus (false);
@@ -313,21 +307,14 @@ RecordPage::RecordPage (const TrackActions& actions)
         const auto index = cameraPicker.getSelectedItemIndex();
         if (index < 0 || (std::size_t) index >= shownCamera.devices.size() || shownCamera.selected == (std::size_t) index)
             return;
-        if (onCameraDevice)
-            onCameraDevice (shownCamera.devices[(std::size_t) index].id);
+        emit (SongIntent { intent::SetCameraDevice { shownCamera.devices[(std::size_t) index].id } });
     };
     cameraStage.show (nullptr, juce::String::fromUTF8 (cameraStageMessage (false).c_str()));
 
-    passesList.onSelect = [this] (const song::Id& passId) {
-        if (onJumpToPass)
-            onJumpToPass (passId);
-    };
-    passesList.onBringBack = [this] (const song::Id& passId) {
-        if (onBringBack)
-            onBringBack (passId);
-    };
-    overview.onSeek = [this] (song::SampleCount sample) { trackActions.seek (sample); };
-    mix.onPreview = [this] (const song::Song& preview) { trackActions.previewMix (preview); };
+    passesList.onSelect = [this] (const song::Id& passId) { emit (SongIntent { intent::JumpToPass { passId } }); };
+    passesList.onBringBack = [this] (const song::Id& passId) { emit (SongIntent { intent::Edit { intent::BringBackPass { passId } } }); };
+    overview.onSeek = [this] (song::SampleCount sample) { emit (SongIntent { intent::Seek { sample } }); };
+    mix.onIntent = [this] (const Intent& intent) { emit (intent); };
     mix.onFocusChanged = [this] { showFocus(); };
     mix.onKeyValue = [this] (const MixerControl& control, double value) {
         if (auto* row = rowFor (control.trackId))
@@ -369,7 +356,6 @@ void RecordPage::show (const RecordPageState& state, const song::Song& song)
             }
             auto row = std::make_unique<TrackRow>();
             connectRow (*row, rowState.trackId);
-            row->insertChain.actions = &insertActions;
             addAndMakeVisible (*row);
             rows.push_back (std::move (row));
         }
@@ -409,17 +395,17 @@ void RecordPage::clearClipIndicators()
 
 void RecordPage::connectRow (TrackRow& row, const song::Id& trackId)
 {
-    row.onArm = [this, trackId] (bool armed) { trackActions.arm (trackId, armed); };
-    row.onInput = [this, trackId] (std::vector<int> channels) {
-        if (onInput)
-            onInput (trackId, std::move (channels));
+    row.onArm = [this, trackId] (bool armed) { emit (SongIntent { intent::SetArmed { trackId, armed } }); };
+    row.onInput = [this, trackId] (std::vector<int> channels) { emit (SongIntent { intent::SetInputChannels { trackId, std::move (channels) } }); };
+    row.onMonitoring = [this, trackId] (bool on) { emit (SongIntent { intent::SetMonitoring { trackId, on } }); };
+    row.onMute = [this, trackId] (bool mute) { emit (SongIntent { intent::Edit { intent::SetTrackMute { trackId, mute } } }); };
+    row.onSolo = [this, trackId] (bool solo) { emit (SongIntent { intent::Edit { intent::SetTrackSolo { trackId, solo } } }); };
+    row.clip.onClick = [this, trackId] { emit (SongIntent { intent::ClearClipIndicator { trackId } }); };
+    row.insertChain.onIntent = [this] (const Intent& intent) { emit (intent); };
+    row.insertChain.onAddInsert = [this] (const song::Id& chainTrackId) {
+        if (onAddInsert)
+            onAddInsert (chainTrackId);
     };
-    row.onMonitoring = [this, trackId] (bool on) {
-        if (onMonitoring)
-            onMonitoring (trackId, on);
-    };
-    row.onMute = [this, trackId] (bool mute) { trackActions.mute (trackId, mute); };
-    row.onSolo = [this, trackId] (bool solo) { trackActions.solo (trackId, solo); };
     row.onMenu = [this, trackId] {
         if (onTrackMenu)
             onTrackMenu (trackId);
@@ -471,7 +457,7 @@ void RecordPage::dropTrack (TrackRow& row, juce::Point<int> inGrip)
         return;
     core::logEvent (core::Level::debug, "ui.track_dropped", { { "page", "record" }, { "track_id", drop->trackId }, { "from", drop->from }, { "to", drop->to } });
     if (drop->to != drop->from)
-        trackActions.moveTrack (drop->trackId, drop->to);
+        emit (SongIntent { intent::MoveTrack { drop->trackId, drop->to } });
 }
 
 bool RecordPage::cancelTrackDrag()
@@ -480,6 +466,12 @@ bool RecordPage::cancelTrackDrag()
         return false;
     repaint();
     return true;
+}
+
+void RecordPage::emit (Intent intent) const
+{
+    if (onIntent)
+        onIntent (intent);
 }
 
 TrackRow* RecordPage::rowFor (const song::Id& trackId)
@@ -518,7 +510,7 @@ void RecordPage::showSong (const song::Song& song, const RecordTransport& newTra
         passesList.show (passRows (song), editable);
         if (passesList.numRows() != rowsBefore)
             resized();
-        envelope = backingEnvelope (song, trackActions.peaksFor);
+        envelope = backingEnvelope (song, peaksFor);
     }
     transport = newTransport;
     showLookAhead();

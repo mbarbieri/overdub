@@ -399,15 +399,8 @@ Mixer::Mixer()
         if (auto* strip = stripFor (control.trackId))
             strip->showControlValue (control.kind, value);
     };
-    mix.onPreview = [this] (const song::Song& preview) {
-        if (onPreview)
-            onPreview (preview);
-    };
-    mix.onEdit = [this] (song::Song changed, std::string label) {
-        if (onEdit)
-            onEdit (std::move (changed), std::move (label));
-    };
-    masterStrip.insertChain.actions = &insertActions;
+    mix.onIntent = [this] (const Intent& intent) { emit (intent); };
+    connectChain (masterStrip.insertChain);
     connectStrip (masterStrip, {});
     addAndMakeVisible (masterStrip);
 }
@@ -491,7 +484,7 @@ void Mixer::rebuildStrips()
     for (const auto& track : mix.song().tracks)
     {
         auto strip = std::make_unique<MixerStrip> (false);
-        strip->insertChain.actions = &insertActions;
+        connectChain (strip->insertChain);
         connectStrip (*strip, track.id);
         addAndMakeVisible (*strip);
         strips.push_back (std::move (strip));
@@ -509,12 +502,27 @@ void Mixer::connectStrip (MixerStrip& strip, const song::Id& trackId)
     // M and S build on a pending burst: it is committed before the Song they change is read.
     strip.onMute = [this, trackId] (bool mute) {
         mix.commitKeyBurst();
-        mix.report (song::setTrackMute (mix.song(), trackId, mute), song::muteLabel (mix.song(), trackId, mute));
+        mix.report (intent::SetTrackMute { trackId, mute });
     };
     strip.onSolo = [this, trackId] (bool solo) {
         mix.commitKeyBurst();
-        mix.report (song::setTrackSolo (mix.song(), trackId, solo), song::soloLabel (mix.song(), trackId, solo));
+        mix.report (intent::SetTrackSolo { trackId, solo });
     };
+}
+
+void Mixer::connectChain (InsertChainView& chain)
+{
+    chain.onIntent = [this] (const Intent& intent) { emit (intent); };
+    chain.onAddInsert = [this] (const song::Id& trackId) {
+        if (onAddInsert)
+            onAddInsert (trackId);
+    };
+}
+
+void Mixer::emit (Intent intent) const
+{
+    if (onIntent)
+        onIntent (intent);
 }
 
 void Mixer::resized()

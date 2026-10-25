@@ -3,6 +3,8 @@
 #include "app/MainWindow.h"
 #include "app/MicrophonePermission.h"
 #include "capture/ClapSelftest.h"
+#include "control/EventTap.h"
+#include "control/Server.h"
 #include "core/BuildInfo.h"
 #include "core/Log.h"
 #include "core/LogFiles.h"
@@ -27,6 +29,12 @@ public:
     {
         core::setCurrentThreadRole (core::ThreadRole::ui);
         const auto logPath = startLogging();
+        const auto args = juce::StringArray::fromTokens (commandLine, true);
+        const auto selftestIndex = args.indexOf ("--selftest");
+        // The tap goes in before the first line so a client's lookback holds the whole launch.
+        const auto controlConfig = control::serverConfigFrom (std::getenv ("OVERDUB_CONTROL"), std::getenv ("OVERDUB_CONTROL_SOCKET"));
+        if (selftestIndex < 0 && controlConfig.enabled)
+            core::processLogger().addTap (eventTap);
 
         const auto build = core::currentBuildInfo();
         core::logEvent (core::Level::info,
@@ -40,8 +48,6 @@ public:
                             { "pid", static_cast<int> (getpid()) },
                         });
 
-        const auto args = juce::StringArray::fromTokens (commandLine, true);
-        const auto selftestIndex = args.indexOf ("--selftest");
         if (selftestIndex >= 0)
         {
             runSelftest (args[selftestIndex + 1], args[selftestIndex + 2]);
@@ -49,8 +55,8 @@ public:
         }
 
         // Microphone access first: the audio device opens only once the user has decided (ADR 0002).
-        requestMicrophoneAccess ([this] (bool) {
-            mainWindow = std::make_unique<MainWindow> (getApplicationName(), std::make_unique<LiveEngine>());
+        requestMicrophoneAccess ([this, controlConfig] (bool) {
+            mainWindow = std::make_unique<MainWindow> (getApplicationName(), std::make_unique<LiveEngine>(), controlConfig, eventTap);
         });
     }
 
@@ -61,14 +67,14 @@ public:
         liveEngine.reset();
 
         core::logEvent (core::Level::info, "app.stopped");
+        core::processLogger().removeTap (eventTap);
         juce::Logger::setCurrentLogger (nullptr);
     }
 
     void systemRequestedQuit() override
     {
-        // A running Separation's dialog is modal: the app stays until it ends or is cancelled.
-        if (mainWindow != nullptr && ! mainWindow->mayQuitOrNotice())
-            return;
+        if (mainWindow != nullptr)
+            return mainWindow->requestQuit();
         quit();
     }
 
@@ -145,6 +151,7 @@ private:
     }
 
     core::JuceLoggerBridge juceLoggerBridge;
+    std::shared_ptr<control::EventTap> eventTap = std::make_shared<control::EventTap>();
     std::unique_ptr<LiveEngine> liveEngine; // only in --selftest; the window owns its own
     std::unique_ptr<MainWindow> mainWindow; // owns the live engine and the open Song
     std::unique_ptr<LoopbackSelftest> selftest; // only in --selftest loopback; destroyed before liveEngine
