@@ -5,3 +5,4 @@ dist/
 *.safetensors
 *.ckpt
 *.pth
+.claude/worktrees
