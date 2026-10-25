@@ -27,6 +27,18 @@ std::string text (const juce::Button& button)
 {
     return button.getButtonText().toStdString();
 }
+
+// The TooltipWindows that could show the component's tips: children of the component or of one
+// of its parents, as JUCE finds them when the mouse hovers.
+std::vector<juce::TooltipWindow*> tooltipWindowsFor (juce::Component& component)
+{
+    std::vector<juce::TooltipWindow*> found;
+    for (auto* parent = &component; parent != nullptr; parent = parent->getParentComponent())
+        for (auto* child : parent->getChildren())
+            if (auto* tooltipWindow = dynamic_cast<juce::TooltipWindow*> (child))
+                found.push_back (tooltipWindow);
+    return found;
+}
 } // namespace
 
 TEST_CASE ("keys 1 to 3 show the Record, Edit and Export pages", "[ui][main]")
@@ -306,29 +318,19 @@ TEST_CASE ("A on a Record row and on an Edit header arms the Track, follows Arme
     CHECK_FALSE (f.editHeaderNamed ("Guitar").armButton.isEnabled());
 }
 
-namespace
-{
-// The TooltipWindow that shows tips for the component: a child of the component or one of its
-// parents, as JUCE finds it when the mouse hovers.
-juce::TooltipWindow* tooltipWindowFor (juce::Component& component)
-{
-    for (auto* parent = &component; parent != nullptr; parent = parent->getParentComponent())
-        for (auto* child : parent->getChildren())
-            if (auto* tooltipWindow = dynamic_cast<juce::TooltipWindow*> (child))
-                return tooltipWindow;
-    return nullptr;
-}
-} // namespace
-
-TEST_CASE ("a control's tooltip inside the window has a TooltipWindow to show it", "[ui][main]")
+// Not through TooltipWindow::getTipFor: it returns "" unless the process is in the foreground,
+// which a test run is not.
+TEST_CASE ("a control with a tooltip inside the window finds the window's one TooltipWindow", "[ui][main]")
 {
     MainWindowFixture f;
-    auto& armButton = f.rowNamed ("Guitar").armButton;
+    auto& recordArm = f.rowNamed ("Guitar").armButton;
+    REQUIRE (recordArm.getTooltip().isNotEmpty());
+    const auto forRecordRow = tooltipWindowsFor (recordArm);
+    REQUIRE (forRecordRow.size() == 1);
+    CHECK (forRecordRow.front()->getParentComponent() == f.window.get());
 
-    auto* tooltipWindow = tooltipWindowFor (armButton);
-    REQUIRE (tooltipWindow != nullptr);
-    CHECK (tooltipWindow->getParentComponent() == f.window.get());
-    // The text it shows on hover. Not through getTipFor: that returns "" unless the process is
-    // in the foreground, which a test run is not.
-    CHECK (armButton.getTooltip() == "Arm");
+    REQUIRE (pressKey (*f.window, '2'));
+    auto& timelineDelete = f.editHeaderNamed ("Guitar").deleteButton;
+    REQUIRE (timelineDelete.getTooltip().isNotEmpty());
+    CHECK (tooltipWindowsFor (timelineDelete) == forRecordRow);
 }
