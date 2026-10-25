@@ -21,8 +21,8 @@
 //
 // The Song lives in a temp package in a folder of its own inside `parentFolder`, named uniquely
 // per run (issue #187: runs in two processes at once must not share, and so delete, one folder);
-// the run creates it and its destructor deletes it. The run replaces whatever Song the engine played: the caller detaches its own Song
-// first and loads it again afterwards.
+// the run creates it and its destructor deletes it. The run replaces whatever Song the engine
+// played: the caller detaches its own Song first and loads it again afterwards.
 //
 // Message thread (any one non-audio thread): start, poll and the destructor.
 namespace overdub::capture

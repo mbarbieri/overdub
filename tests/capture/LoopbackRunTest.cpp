@@ -115,8 +115,7 @@ TEST_CASE ("two loopback runs in one folder each have a folder of their own, and
     REQUIRE (first.has_value());
     auto second = LoopbackRun::start (secondEngine, RecordLatency {}, testSampleRate, temp.root);
     REQUIRE (second.has_value());
-    const auto bothRunning = runFolders();
-    REQUIRE (bothRunning.size() == 2);
+    REQUIRE (runFolders().size() == 2);
 
     first->reset();
     const auto secondRunning = runFolders();
