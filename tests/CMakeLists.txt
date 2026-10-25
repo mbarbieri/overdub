@@ -90,6 +90,7 @@ target_sources(overdub_tests PRIVATE
     ui/InsertChainUiTest.cpp
     ui/IntentRunTest.cpp
     ui/IntentTest.cpp
+    ui/KeyBurstCommitTest.cpp
     ui/LayoutTest.cpp
     ui/MainComponentTest.cpp
     ui/MixerGeometryTest.cpp

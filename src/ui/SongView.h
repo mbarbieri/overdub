@@ -33,11 +33,10 @@ class VideoScreen;
 // object and is dropped once the Song has closed.
 //
 // run() is the Song group's one handler (ADR 0008): an exhaustive visit into the private methods
-// below, which keep every side effect a gesture has (a pending arrow-key burst committed and
-// carried, the right half selected after a split, Monitoring off after a Track delete, clip
-// indicators out when a Pass starts, refusals presented only for record, export, Separation and
-// conversion). A gesture that does nothing returns an Error logged at debug and never presented.
-// Everything reaches it through MainComponent::run: keys, the top bar, the Edit menu, and every
+// below, which keep every side effect a gesture has (the right half selected after a split,
+// Monitoring off after a Track delete, clip indicators out when a Pass starts, refusals presented
+// only for record, export, Separation and conversion). A gesture that does nothing returns an
+// Error logged at debug and never presented. Everything reaches it through MainComponent::run: keys, the top bar, the Edit menu, and every
 // page (ui/RecordPage.h, ui/EditPage.h, ui/ExportPage.h) and the plugin windows, which report their
 // gestures as Intents through one sink each; their few hooks open a dialog (a chooser, a
 // confirmation, a menu) whose answer runs an Intent the same way.

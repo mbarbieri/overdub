@@ -137,18 +137,6 @@ void MixFocus::commitKeyBurstIfDue (Clock::time_point now)
         commitKeyBurst();
 }
 
-song::Song MixFocus::withKeyBurstCarried (song::Song changed) const
-{
-    if (! keyBurst.has_value())
-        return changed;
-    const auto before = mixValue (current, keyBurst->control);
-    const auto edited = mixValue (changed, keyBurst->control);
-    if (! before.has_value() || ! edited.has_value() || ! juce::exactlyEqual (*before, *edited))
-        return changed;
-    auto carried = editedSong (changed, asEdit (mixEditFor (keyBurst->control, keyBurst->value)));
-    return carried.has_value() ? std::move (carried->song) : changed;
-}
-
 // A gesture that changes the Song commits a pending key burst first, so it builds on the burst.
 void MixFocus::drag (const MixerControl& control, double value)
 {

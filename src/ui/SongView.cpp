@@ -137,7 +137,6 @@ IntentResult SongView::presented (const core::Expected<void>& result)
 
 IntentResult SongView::record()
 {
-    commitKeyBursts();
     const auto passWasRunning = openSong.isRecording();
     auto started = presented (openSong.record());
     if (started.has_value() && ! passWasRunning)
@@ -147,7 +146,6 @@ IntentResult SongView::record()
 
 IntentResult SongView::undo()
 {
-    commitKeyBursts();
     if (! openSong.package().canUndo())
         return window.quietError (quiet ("ui.nothing_to_undo", "there is no step to undo"));
     return unlessRefused (openSong.undo());
@@ -155,7 +153,6 @@ IntentResult SongView::undo()
 
 IntentResult SongView::redo()
 {
-    commitKeyBursts();
     if (! openSong.package().canRedo())
         return window.quietError (quiet ("ui.nothing_to_redo", "there is no step to redo"));
     return unlessRefused (openSong.redo());
@@ -207,15 +204,6 @@ IntentResult SongView::applyEdit (core::Expected<song::Song> changed, const std:
 {
     if (! changed.has_value())
         return std::unexpected (handleOperationError (changed.error()));
-    for (auto* mix : { &editPage.mixer.mix, &recordPage.mix })
-    {
-        if (! mix->hasKeyBurst())
-            continue;
-        // `changed` was made from the Song before the burst: commit the burst, then keep its value.
-        auto carried = mix->withKeyBurstCarried (std::move (*changed));
-        commitKeyBurst (*mix);
-        changed = std::move (carried);
-    }
     auto edited = unlessRefused (openSong.edit (std::move (*changed), label));
     window.refresh();
     return edited;
@@ -355,7 +343,6 @@ IntentResult SongView::importFiles (const std::vector<core::AbsolutePath>& paths
 {
     if (paths.empty())
         return window.quietError (quiet ("ui.no_files_to_import", "no files to import"));
-    commitKeyBursts();
     std::vector<juce::File> files;
     for (const auto& path : paths)
         files.push_back (juce::File (path.value));
@@ -434,7 +421,6 @@ void SongView::showTrackMenu (const song::Id& trackId)
 
 IntentResult SongView::startSeparation (const song::Id& trackId)
 {
-    commitKeyBursts();
     auto started = presented (openSong.startSeparation (trackId));
     window.refresh();
     return started;
@@ -451,7 +437,6 @@ IntentResult SongView::cancelRun()
 
 IntentResult SongView::convertSampleRate (int toRate)
 {
-    commitKeyBursts();
     core::logEvent (core::Level::info, "ui.sample_rate_conversion_requested", { { "from_rate", openSong.song().sampleRate }, { "to_rate", toRate } });
     auto started = presented (openSong.startSampleRateConversion (toRate));
     window.refresh();
@@ -722,7 +707,6 @@ void SongView::releaseFocusOutside (const juce::Component* clicked)
 
 void SongView::releaseFocus()
 {
-    commitKeyBursts();
     editPage.mixer.mix.releaseFocus();
     recordPage.mix.releaseFocus();
 }
