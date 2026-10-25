@@ -35,6 +35,16 @@ ApplyDeviceSettings applyCurrent (WorkspaceFixture& f)
     const auto current = f.audio().deviceChoices().current;
     return ApplyDeviceSettings { current.deviceType, current.inputDevice, current.outputDevice, current.sampleRate, current.bufferSize };
 }
+
+// The events logged at warn or error level: a failed run's Error among them.
+std::vector<nlohmann::json> problems (const overdub::core::ScopedLogCapture& capture)
+{
+    std::vector<nlohmann::json> found;
+    for (const auto& event : capture.events())
+        if (event.at ("lvl") == "warn" || event.at ("lvl") == "error")
+            found.push_back (event);
+    return found;
+}
 } // namespace
 
 TEST_CASE ("a device lost during an export is answered at once: the export stops and the Song plays on the reopened device", "[ui][workspace][device]")
@@ -261,16 +271,22 @@ TEST_CASE ("a latency calibration measured on the loopback device is offered in 
     f.runBlocks (1);
     overdub::core::ScopedLogCapture capture;
 
+    // The run's clock advances by the audio rendered, so its timeout cannot fire under CPU load. The
+    // run starts its timeout on the real clock, no earlier than this `now`.
+    constexpr int blocksPerTick = 8;
+    const auto tickDuration = std::chrono::microseconds ((std::int64_t) blocksPerTick * overdub::ui::testing::liveBlockSize * 1'000'000 / f.audio().sampleRate());
+    auto now = overdub::song::SongPackage::Clock::now();
     f.run (AppIntent { MeasureLatency {} });
     const auto deadline = std::chrono::steady_clock::now() + 30s;
     while (! f.workspace->nothingRunsButAnExport() && std::chrono::steady_clock::now() < deadline)
     {
-        f.audio().run (8);
-        f.workspace->tick();
+        f.audio().run (blocksPerTick);
+        now += tickDuration;
+        f.workspace->tick (now);
     }
 
     REQUIRE (f.workspace->nothingRunsButAnExport());
-    CHECK (messageCodes (capture).empty()); // on failure, names why the run ended without a result
+    CHECK (problems (capture).empty());
     CHECK (f.song().audio().engine == f.audio().engine());
     CHECK (overdub::ui::testing::isShown (f.calibrationPanel.saveLatencyButton));
 }

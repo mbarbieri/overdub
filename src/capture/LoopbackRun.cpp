@@ -15,8 +15,8 @@ constexpr double tailSeconds = 0.75;
 constexpr auto timeoutMargin = std::chrono::seconds (5);
 } // namespace
 
-LoopbackRun::LoopbackRun (engine::Engine& engineToUse, RecordLatency recordLatency, int rate, juce::File runFolder, Clock::time_point now)
-    : engine (engineToUse), latency (recordLatency), sampleRate (rate), folder (std::move (runFolder)), startedAt (now)
+LoopbackRun::LoopbackRun (engine::Engine& engineToUse, RecordLatency recordLatency, int rate, const juce::File& parentFolder, Clock::time_point now)
+    : engine (engineToUse), latency (recordLatency), sampleRate (rate), folder (parentFolder.getChildFile ("overdub-loopback-run-" + juce::Uuid().toString())), startedAt (now)
 {
 }
 
@@ -29,9 +29,9 @@ LoopbackRun::~LoopbackRun()
     folder.deleteRecursively();
 }
 
-core::Expected<std::unique_ptr<LoopbackRun>> LoopbackRun::start (engine::Engine& engine, RecordLatency latency, int sampleRate, juce::File folder, Clock::time_point now)
+core::Expected<std::unique_ptr<LoopbackRun>> LoopbackRun::start (engine::Engine& engine, RecordLatency latency, int sampleRate, const juce::File& parentFolder, Clock::time_point now)
 {
-    std::unique_ptr<LoopbackRun> run { new LoopbackRun (engine, latency, sampleRate, std::move (folder), now) };
+    std::unique_ptr<LoopbackRun> run { new LoopbackRun (engine, latency, sampleRate, parentFolder, now) };
     if (auto begun = run->begin(); ! begun.has_value())
         return std::unexpected (begun.error());
     return run;
@@ -39,7 +39,6 @@ core::Expected<std::unique_ptr<LoopbackRun>> LoopbackRun::start (engine::Engine&
 
 core::Expected<void> LoopbackRun::begin()
 {
-    folder.deleteRecursively();
     if (! folder.createDirectory().wasOk())
         return std::unexpected (core::Error { "capture.calibration_folder_failed", "could not create the calibration folder", { { "path", folder.getFullPathName().toStdString() } } });
 

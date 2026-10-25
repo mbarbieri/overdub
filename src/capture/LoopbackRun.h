@@ -19,8 +19,9 @@
 // placed Take put each burst (capture/LoopbackMeasurement.h). Monitoring stays off so speakers do
 // not feed back.
 //
-// The Song lives in a temp package inside `folder`, which the run creates and its destructor
-// deletes. The run replaces whatever Song the engine played: the caller detaches its own Song
+// The Song lives in a temp package in a folder of its own inside `parentFolder`, named uniquely
+// per run (issue #187: runs in two processes at once must not share, and so delete, one folder);
+// the run creates it and its destructor deletes it. The run replaces whatever Song the engine played: the caller detaches its own Song
 // first and loads it again afterwards.
 //
 // Message thread (any one non-audio thread): start, poll and the destructor.
@@ -44,7 +45,7 @@ public:
     // seeks to 0, starts the Pass and plays; `now` starts the timeout. Logs
     // capture.calibration_run_started. Errors: capture.calibration_folder_failed (path), the package
     // and import Errors, PassRecorder::start's Errors.
-    static core::Expected<std::unique_ptr<LoopbackRun>> start (engine::Engine& engine, RecordLatency latency, int sampleRate, juce::File folder, Clock::time_point now = Clock::now());
+    static core::Expected<std::unique_ptr<LoopbackRun>> start (engine::Engine& engine, RecordLatency latency, int sampleRate, const juce::File& parentFolder, Clock::time_point now = Clock::now());
 
     // Stops the transport (when the run did not finish), drops the recorder and deletes the folder.
     ~LoopbackRun();
@@ -65,7 +66,7 @@ public:
     std::optional<core::Expected<LoopbackRunResult>> poll (Clock::time_point now = Clock::now());
 
 private:
-    LoopbackRun (engine::Engine& engine, RecordLatency latency, int sampleRate, juce::File folder, Clock::time_point now);
+    LoopbackRun (engine::Engine& engine, RecordLatency latency, int sampleRate, const juce::File& parentFolder, Clock::time_point now);
 
     core::Expected<void> begin();
     core::Expected<LoopbackRunResult> measure (const RecordedPass& pass);
