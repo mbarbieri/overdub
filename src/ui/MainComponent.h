@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Error.h"
+#include "ui/Availability.h"
 #include "ui/Intent.h"
 #include "ui/OpenSong.h"
 #include "ui/Pages.h"
@@ -30,9 +31,9 @@
 // window, except for an Intent a gesture runs every frame (ui::runsPerFrame), and routes the
 // Window group here, the Song group to the SongView (ui.no_song_open while none is open) and the
 // App group to runAppIntent, which the ui::Workspace sets (issue #170; unset, as in a window
-// without one: ui.intent_not_routed). While the modal run dialog shows only the ops
-// actsUnderRunDialog names run (ui.run_dialog_open). It returns what the handler did or the
-// Error it handled; Errors are presented exactly as the gestures always presented them.
+// without one: ui.intent_not_routed). An Intent refused by what runs (ui/Availability.h, issue
+// #195) reaches no handler: its refusal is presented or logged at debug as the Availability says.
+// It returns what the handler did or the Error it handled; Errors are presented exactly as the gestures always presented them.
 //
 // Record mode (issue #32): the pre-roll picker sets the Song's pre-roll (no undo step); a click on a
 // Pass row moves the playhead to the Pass's start, and on the overview to the Song sample there;
@@ -104,11 +105,6 @@
 // `code` and `tier` where it names a message.
 namespace overdub::ui
 {
-// The ops MainComponent::run lets through while the modal run dialog shows: cancel_run,
-// close_plugin_window and the App group. The Settings window and the plugin editor windows are
-// outside the dialog; the Workspace refuses with a presented Notice what may not run.
-bool actsUnderRunDialog (std::string_view op);
-
 class MainComponent final : public juce::Component, private juce::Timer
 {
 public:
@@ -129,6 +125,13 @@ public:
     IntentResult run (const Intent& intent, Origin origin = Origin::user);
     // How many Intents run has run, every one counted, per-frame ones too (GestureCensusTest).
     std::uint64_t intentsRun() const { return intentRunCount; }
+    // What runs now, and the refusal run would answer the op with (its default fields), none when
+    // it may run: what a control reads to show itself unavailable.
+    Running running() const;
+    std::optional<Refusal> refusalOf (std::string_view op) const { return ui::refusalOf (op, running()); }
+    // Before opening a dialog whose answer runs the op: false after presenting or logging its
+    // refusal as run would.
+    bool mayRun (std::string_view op);
     // Logs the Error at debug and returns it, never presenting it: what a gesture that did nothing
     // returns (the UI shows it as unavailable, or it changes nothing).
     IntentResult quietError (core::Error error);
@@ -138,8 +141,7 @@ public:
     // Presents a Notice-tier code that was already logged where it arose (e.g. song.history_dropped).
     void showNotice (const std::string& code);
     // handleError, except that an OpenSong refusal (ui/Activity.h) is logged at debug only: a gesture
-    // the running activity refuses is not presented. record, startExport, startSeparation and
-    // convertSampleRate present their refusals with handleError.
+    // the running activity refuses is not presented.
     void handleUnlessRefused (const core::Error& error);
     void handleUnlessRefused (const core::Expected<void>& result);
 
@@ -211,8 +213,10 @@ public:
     juce::File exportFolder = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Overdub");
     // The time a key press happens (the Mixer's arrow-key bursts); tests set a fixed one.
     std::function<song::SongPackage::Clock::time_point()> clock = [] { return song::SongPackage::Clock::now(); };
-    // The App group's owner (the ui::Workspace): runs every AppIntent that run is given.
+    // The App group's owner (the ui::Workspace): runs every AppIntent that run is given, and says
+    // whether its loopback latency calibration runs.
     std::function<IntentResult (const AppIntent&)> runAppIntent;
+    std::function<bool()> calibrationRunning;
     // The File menu's New Song and Open, offered on the no-Song page.
     std::function<void()> onNewSong;
     std::function<void()> onOpenSong;
@@ -238,6 +242,9 @@ private:
 
     IntentResult runApp (const AppIntent& intent);
     IntentResult runWindow (const WindowIntent& intent);
+    // The Intent's refusal, or what its owner's handler did.
+    IntentResult dispatch (const Intent& intent, const std::string& op);
+    IntentResult refused (Refusal refusal);
     void showMode (Mode mode);
     void post (UserMessage message);
     void presentMessages();

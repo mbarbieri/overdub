@@ -77,6 +77,7 @@ target_sources(overdub_tests PRIVATE
     support/RealtimeGuardTest.cpp
     support/RealtimeGuardCatchTest.cpp
     ui/AppIntentTest.cpp
+    ui/AvailabilityTest.cpp
     ui/CalibrationPanelTest.cpp
     ui/CalibrationTextTest.cpp
     ui/DeviceSettingsPanelTest.cpp

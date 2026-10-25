@@ -32,13 +32,9 @@
 // app (onQuit).
 //
 // Opening another Song, changing the device and closing each finish a running Pass first
-// (ui::OpenSong's invariant). While a Pass, a Separation, a conversion or a loopback run runs,
-// new_song_at, open_song_at, duplicate_song_to, convert_sample_rate, show_settings (shown),
-// apply_device_settings, measure_latency, save_latency_calibration, measure_clap_pass and
-// save_camera_calibration are refused with the Notice that says what runs
-// (ui.stop_recording_first, ui.separation_running, ui.conversion_running, ui.calibration_running).
-// quit is refused only while a Separation runs (ui.separation_running: its dialog is modal and
-// closes only on success, Cancel or failure); a Pass is finished on quit as on close.
+// (ui::OpenSong's invariant), and quit finishes it as close does. Which App Intents wait for what
+// runs is ui/Availability.h's, checked by MainComponent::run before this run is called; the
+// Workspace tells the window whether its loopback run runs (calibrationRunning).
 //
 // Device changes (issue #41, ADR 0004 amendment): opening a Song switches the device to the Song's
 // rate when the device offers it (a new LiveAudio); otherwise the Song opens without audio and
@@ -102,11 +98,9 @@ public:
     // Null while no Song is open.
     OpenSong* openSong() const { return song.get(); }
     LiveAudio& liveAudio() const { return *live; }
-    // True when no Pass, Separation, conversion or loopback run is running; an export may be.
+    // True when no Pass, Separation, conversion or loopback run is running; an export may be. A
+    // device change that may wait is answered only then.
     bool nothingRunsButAnExport() const;
-    // nothingRunsButAnExport(), or false after showing the Notice that says what runs (before
-    // opening a dialog).
-    bool nothingRunsButAnExportOrNotice();
 
     // Runs one App Intent (see the header comment). An Error is presented by its tier, except
     // ui.no_song_open, which is logged at debug.
@@ -126,9 +120,6 @@ public:
     ActivityKind activityKind() const;
     // Every activity started and finished in this Workspace, the open Songs' included.
     const ActivityLog& activities() const { return activityLog; }
-    // The code run would refuse this App Intent with now because something runs; none when it
-    // would run.
-    std::optional<std::string> refusalCodeOf (const AppIntent& intent) const;
 
     // Call regularly (window timer): answers a device change the LiveAudio reported once it may
     // (see the header comment), and advances a loopback run (`now` is its clock).
@@ -142,10 +133,6 @@ public:
     std::function<void()> onQuit;
 
 private:
-    // The Notice code of what runs, none when nothing runs but an export.
-    std::optional<std::string> runningCode() const;
-    // `op` refused because something runs: the Error, presented as its Notice.
-    IntentResult refuseWhileRunning (const std::string& code, std::string_view op);
     IntentResult newSongAt (const juce::File& chosen);
     // The open Song again changes nothing.
     IntentResult openSongFrom (const juce::File& chosen);

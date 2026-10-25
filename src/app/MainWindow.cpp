@@ -160,17 +160,17 @@ juce::StringArray MainWindow::getMenuBarNames()
 juce::PopupMenu MainWindow::getMenuForIndex (int topLevelMenuIndex, const juce::String&)
 {
     juce::PopupMenu menu;
-    const auto idle = workspace->nothingRunsButAnExport();
+    const auto mayRun = [this] (std::string_view op) { return ! content.refusalOf (op).has_value(); };
     auto* openSong = workspace->openSong();
     if (topLevelMenuIndex == 0)
     {
-        menu.addItem (newSongItem, "New Song...", idle);
-        menu.addItem (openSongItem, "Open...", idle);
-        menu.addItem (duplicateSongItem, "Duplicate...", idle && openSong != nullptr);
+        menu.addItem (newSongItem, "New Song...", mayRun (ui::intent::NewSongAt::op));
+        menu.addItem (openSongItem, "Open...", mayRun (ui::intent::OpenSongAt::op));
+        menu.addItem (duplicateSongItem, "Duplicate...", mayRun (ui::intent::DuplicateSongTo::op) && openSong != nullptr);
         const auto rates = convertSampleRateMenu();
-        menu.addSubMenu ("Convert Sample Rate", rates, idle && openSong != nullptr && ! offeredMenuRates.empty());
+        menu.addSubMenu ("Convert Sample Rate", rates, mayRun (ui::intent::ConvertSampleRate::op) && openSong != nullptr && ! offeredMenuRates.empty());
         menu.addSeparator();
-        menu.addItem (settingsItem, "Settings...", idle);
+        menu.addItem (settingsItem, "Settings...", mayRun (ui::intent::ShowSettings::op));
         return menu;
     }
 
@@ -181,8 +181,8 @@ juce::PopupMenu MainWindow::getMenuForIndex (int topLevelMenuIndex, const juce::
         return menu;
     }
     const auto& package = openSong->package();
-    menu.addItem (historyItem (undoItem, "Undo", idle && package.canUndo(), package.undoLabel(), "\xe2\x8c\x98Z"));
-    menu.addItem (historyItem (redoItem, "Redo", idle && package.canRedo(), package.redoLabel(), "\xe2\x87\xa7\xe2\x8c\x98Z"));
+    menu.addItem (historyItem (undoItem, "Undo", mayRun (ui::intent::Undo::op) && package.canUndo(), package.undoLabel(), "\xe2\x8c\x98Z"));
+    menu.addItem (historyItem (redoItem, "Redo", mayRun (ui::intent::Redo::op) && package.canRedo(), package.redoLabel(), "\xe2\x87\xa7\xe2\x8c\x98Z"));
     return menu;
 }
 
@@ -193,11 +193,10 @@ juce::PopupMenu MainWindow::convertSampleRateMenu()
     offeredMenuRates = workspace->liveAudio().deviceChoices().sampleRates;
     const auto* openSong = workspace->openSong();
     const auto songRate = openSong != nullptr ? openSong->song().sampleRate : 0;
-    const auto canConvert = openSong != nullptr && ! openSong->isExporting();
     for (std::size_t i = 0; i < offeredMenuRates.size(); ++i)
     {
         const auto rate = offeredMenuRates[i];
-        rates.addItem (convertSampleRateItemBase + (int) i, juce::String (rate) + " Hz", canConvert && rate != songRate, rate == songRate);
+        rates.addItem (convertSampleRateItemBase + (int) i, juce::String (rate) + " Hz", rate != songRate, rate == songRate);
     }
     return rates;
 }
@@ -223,7 +222,7 @@ void MainWindow::menuItemSelected (int menuItemID, int)
 
 void MainWindow::newSong()
 {
-    if (! workspace->nothingRunsButAnExportOrNotice())
+    if (! content.mayRun (ui::intent::NewSongAt::op))
         return;
     chooser = std::make_unique<juce::FileChooser> ("New Song", defaultSongFolder().getChildFile ("Untitled.overdub"), "*.overdub");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& finished) {
@@ -234,7 +233,7 @@ void MainWindow::newSong()
 
 void MainWindow::chooseSongToOpen()
 {
-    if (! workspace->nothingRunsButAnExportOrNotice())
+    if (! content.mayRun (ui::intent::OpenSongAt::op))
         return;
     chooser = std::make_unique<juce::FileChooser> ("Open Song", defaultSongFolder(), "*.overdub");
     const auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories | juce::FileBrowserComponent::canSelectFiles;
@@ -246,7 +245,7 @@ void MainWindow::chooseSongToOpen()
 
 void MainWindow::duplicateSong()
 {
-    if (workspace->openSong() == nullptr || ! workspace->nothingRunsButAnExportOrNotice())
+    if (workspace->openSong() == nullptr || ! content.mayRun (ui::intent::DuplicateSongTo::op))
         return;
     const auto current = workspace->openSong()->package().location();
     chooser = std::make_unique<juce::FileChooser> ("Duplicate Song", current.getSiblingFile (current.getFileNameWithoutExtension() + " copy.overdub"), "*.overdub");

@@ -111,3 +111,18 @@ TEST_CASE ("a Window Intent during a pending arrow-key burst commits the burst a
     CHECK_THAT (s.guitarVolume(), WithinAbs (-2.0, 1.0e-9));
     CHECK (f.song().package().undoLabel() == "Guitar Volume");
 }
+
+TEST_CASE ("an Intent refused while an export runs still commits a pending arrow-key burst first", "[ui][intent][mixer][export]")
+{
+    SongWithPendingBurst s;
+    auto& f = s.f;
+    REQUIRE (f.content.run (SongIntent { SetExportDestination { core::AbsolutePath { f.folder.getChildFile ("Mix.wav").getFullPathName().toStdString() } } }, Origin::control).has_value());
+    REQUIRE (f.content.run (SongIntent { Export {} }, Origin::control).has_value());
+    REQUIRE (pressKey (f.content, juce::KeyPress (juce::KeyPress::downKey, {}, 0)));
+
+    const auto recorded = f.content.run (SongIntent { Record {} }, Origin::control);
+
+    REQUIRE_FALSE (recorded.has_value());
+    CHECK (recorded.error().code == "ui.export_running");
+    CHECK_THAT (s.guitarVolume(), WithinAbs (-3.0, 1.0e-9));
+}

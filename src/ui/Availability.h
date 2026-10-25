@@ -1,0 +1,46 @@
+#pragma once
+
+#include "core/Error.h"
+#include "ui/Activity.h"
+#include "ui/Intent.h"
+
+#include <optional>
+#include <string_view>
+
+// Which Intents may run now (issue #195): the one answer MainComponent::run checks before it
+// dispatches, and every control, menu item and dialog opener reads to show itself unavailable.
+//
+// While a Separation or a conversion runs, its modal run dialog lets only cancel_run,
+// close_plugin_window and the App group through (ui.run_dialog_open, field `op`, logged at debug).
+// The App group, but quit and hiding the Settings window, waits until nothing runs but an export
+// (ui.calibration_running, ui.separation_running, ui.conversion_running or ui.stop_recording_first,
+// field `op`, presented as its Notice); convert_sample_rate also waits for an export, and quit
+// only for a Separation. A Song op is refused as its ui::Gesture is (ui::refusal, field `gesture`):
+// presented for record, export and start_separation, logged at debug for the others, whose
+// controls already show they are unavailable. Window ops other than under the run dialog are never
+// refused.
+namespace overdub::ui
+{
+// What runs in the app, as the refusals read it.
+struct Running
+{
+    // The open Song's activity; none while no Song is open, when no Song op is refused (each
+    // answers ui.no_song_open).
+    std::optional<ActivityKind> song;
+    // A loopback latency calibration (the Workspace's), which runs beside an export only.
+    bool calibrating = false;
+};
+
+struct Refusal
+{
+    core::Error error;
+    // Shown as its Notice; otherwise logged at debug.
+    bool presented = false;
+};
+
+// The refusal of the op with its default fields (show_settings shows the window), none when it
+// may run.
+std::optional<Refusal> refusalOf (std::string_view op, const Running& running);
+// The refusal of this very Intent: hiding the Settings window is never refused.
+std::optional<Refusal> refusalOf (const Intent& intent, const Running& running);
+} // namespace overdub::ui

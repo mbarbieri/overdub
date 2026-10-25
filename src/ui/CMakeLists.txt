@@ -7,6 +7,7 @@ add_library(overdub_ui STATIC)
 
 target_sources(overdub_ui PRIVATE
     Activity.cpp
+    Availability.cpp
     CalibrationPanel.cpp
     CalibrationText.cpp
     CameraStage.mm

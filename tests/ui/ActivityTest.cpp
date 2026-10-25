@@ -29,7 +29,7 @@ namespace exporting = overdub::exporting;
 
 namespace
 {
-enum class Running
+enum class Started
 {
     nothing,
     pass,
@@ -60,7 +60,7 @@ struct ActivityFixture
 
     // A history with one step to undo and one to redo, then `running` started. Nothing polls, so
     // the activity runs until the test ends.
-    explicit ActivityFixture (Running running)
+    explicit ActivityFixture (Started running)
     {
         f.openSong->setSeparationTools (song::SeparationTools {
             .model = writeStandInModel (f.fixture->folder),
@@ -73,14 +73,14 @@ struct ActivityFixture
 
         switch (running)
         {
-            case Running::nothing: break;
-            case Running::pass: REQUIRE (f.openSong->record().has_value()); break;
-            case Running::separation: REQUIRE (f.openSong->startSeparation (bandMixId()).has_value()); break;
-            case Running::conversion:
+            case Started::nothing: break;
+            case Started::pass: REQUIRE (f.openSong->record().has_value()); break;
+            case Started::separation: REQUIRE (f.openSong->startSeparation (bandMixId()).has_value()); break;
+            case Started::conversion:
                 REQUIRE (f.openSong->startSampleRateConversion (otherSampleRate).has_value());
                 REQUIRE (f.openSong->isConverting());
                 break;
-            case Running::exporting:
+            case Started::exporting:
                 REQUIRE (f.openSong->startExport ({ exporting::ExportFormat::wav, f.fixture->folder.getChildFile ("Song.wav") }).has_value());
                 REQUIRE (f.openSong->isExporting()); // waits for the audio thread, which no block runs
                 break;
@@ -147,13 +147,6 @@ std::vector<GestureCase> gestureCases()
     };
 }
 
-// Runs a Song Intent under the running Separation's or conversion's own refusal, which
-// MainComponent::run's run-dialog gate (ui::actsUnderRunDialog) would otherwise answer first.
-void runPastRunDialog (SongView& view, const SongIntent& intent)
-{
-    view.run (intent);
-}
-
 bool isPresented (const nlohmann::json& event)
 {
     return event.at ("event") == "ui.notice_shown" || event.at ("event") == "ui.alert_shown";
@@ -173,7 +166,7 @@ TEST_CASE ("every gesture against every activity is refused with the activity's 
 {
     const auto cases = gestureCases();
     const auto index = GENERATE_COPY (Catch::Generators::range<std::size_t> (0, cases.size()));
-    const auto running = GENERATE (Running::nothing, Running::pass, Running::separation, Running::conversion, Running::exporting);
+    const auto running = GENERATE (Started::nothing, Started::pass, Started::separation, Started::conversion, Started::exporting);
     const auto& gesture = cases[index];
     INFO ("gesture " << gesture.name << ", running " << (int) running);
 
@@ -187,7 +180,7 @@ TEST_CASE ("every gesture against every activity is refused with the activity's 
 
 TEST_CASE ("a refusal names its gesture", "[ui][activity]")
 {
-    ActivityFixture a { Running::pass };
+    ActivityFixture a { Started::pass };
     const auto refused = a.f.openSong->undo();
     REQUIRE_FALSE (refused.has_value());
     CHECK (refused.error().code == "ui.stop_recording_first");
@@ -205,7 +198,7 @@ TEST_CASE ("an Error is a refusal only with a refusal code and the field gesture
 
 TEST_CASE ("only one activity runs: starting another one is refused while it runs, and allowed once it ends", "[ui][activity]")
 {
-    ActivityFixture a { Running::exporting };
+    ActivityFixture a { Started::exporting };
     CHECK (a.f.openSong->startSeparation (a.bandMixId()).error().code == "ui.export_running");
     CHECK (a.f.openSong->record().error().code == "ui.export_running");
 
@@ -219,9 +212,9 @@ TEST_CASE ("only one activity runs: starting another one is refused while it run
 
 TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separation or a conversion refuses", "[ui][activity]")
 {
-    const auto running = GENERATE (Running::pass, Running::separation, Running::conversion);
-    const auto code = running == Running::pass ? pass : running == Running::separation ? separation
-                                                                                       : conversion;
+    const auto running = GENERATE (Started::pass, Started::separation, Started::conversion);
+    // Under a Separation's or a conversion's modal dialog the window refuses first (ui/Availability.h).
+    const auto code = running == Started::pass ? pass : std::string ("ui.run_dialog_open");
     ActivityFixture a { running };
     auto& window = *a.f.window;
     int pluginMenusShown = 0;
@@ -239,18 +232,13 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
     const auto guitarId = a.guitarId();
 
     ScopedLogCapture capture;
-    if (running == Running::pass)
+    if (running == Started::pass)
     {
         window.run (SongIntent { intent::Undo {} });
         window.run (SongIntent { intent::Redo {} });
     }
     auto& view = *window.songView();
-    const auto send = [&view, running] (const SongIntent& intent) {
-        if (running == Running::pass)
-            view.recordPage.onIntent (intent);
-        else
-            runPastRunDialog (view, intent);
-    };
+    const auto send = [&view] (const SongIntent& intent) { view.recordPage.onIntent (intent); };
     send (SongIntent { intent::Edit { intent::SetTrackMute { guitarId, true } } });
     send (SongIntent { intent::SetArmed { guitarId, false } });
     send (SongIntent { intent::SetInputChannels { guitarId, { 1 } } });
@@ -275,7 +263,7 @@ TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separ
 
 TEST_CASE ("the window still presents a refused record as a Notice while an export runs", "[ui][activity]")
 {
-    ActivityFixture a { Running::exporting };
+    ActivityFixture a { Started::exporting };
     ScopedLogCapture capture;
     a.f.window->run (SongIntent { intent::Record {} });
 

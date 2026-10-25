@@ -54,13 +54,14 @@ struct TrackMenuItem
 // What runs in the open Song that a Track's menu depends on.
 struct TrackMenuState
 {
-    bool passRunning = false;
-    bool exportRunning = false;
+    // The code start_separation is refused with now (ui/Availability.h), none when it may run.
+    std::optional<std::string> separationRefusal;
 };
 
 // A Track's menu: "Separate..." (issue #115), enabled when the Track's Clips all play one Backing
-// Track (song::separableBackingTrack) and no Pass or export runs. Disabled, its tooltip says why:
-// "Stop recording first", "Wait for the export to finish", "This Track has no Clips", "This Track
+// Track (song::separableBackingTrack) and start_separation may run. Disabled, its tooltip says why:
+// "Stop recording first", "Wait for the export to finish", "Wait for what runs to finish" (any
+// other refusal), "This Track has no Clips", "This Track
 // has recorded Takes", "This Track has more than one Backing Track", "This Track's Backing Track is
 // missing".
 std::vector<TrackMenuItem> trackMenuFor (const song::Song& song, const song::Id& trackId, TrackMenuState state);

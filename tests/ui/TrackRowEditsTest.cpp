@@ -96,8 +96,8 @@ TEST_CASE ("a Track's menu offers Separate... only on a Track whose Clips all pl
     };
 
     CHECK (trackMenuFor (song, "track-mix", {}) == std::vector<TrackMenuItem> { { TrackMenuAction::separate, "Separate...", true, "" } });
-    CHECK (trackMenuFor (song, "track-mix", { .passRunning = true }) == disabledBecause ("Stop recording first"));
-    CHECK (trackMenuFor (song, "track-mix", { .exportRunning = true }) == disabledBecause ("Wait for the export to finish"));
+    CHECK (trackMenuFor (song, "track-mix", { .separationRefusal = "ui.stop_recording_first" }) == disabledBecause ("Stop recording first"));
+    CHECK (trackMenuFor (song, "track-mix", { .separationRefusal = "ui.export_running" }) == disabledBecause ("Wait for the export to finish"));
     CHECK (trackMenuFor (song, "track-guitar", {}) == disabledBecause ("This Track has no Clips"));
     CHECK (trackMenuFor (song, "track-vocals", {}) == disabledBecause ("This Track has recorded Takes"));
     CHECK (trackMenuFor (song, "track-mixed", {}) == disabledBecause ("This Track has more than one Backing Track"));

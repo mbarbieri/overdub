@@ -34,6 +34,7 @@ Workspace::Workspace (MainComponent& mainContent,
       live (std::move (audio))
 {
     content.runAppIntent = [this] (const AppIntent& intent) { return run (intent); };
+    content.calibrationRunning = [this] { return latencyMeasuring(); };
     watchDevices();
     if (live->engine() == nullptr)
         content.showNotice ("ui.no_audio_device");
@@ -44,6 +45,7 @@ Workspace::Workspace (MainComponent& mainContent,
 Workspace::~Workspace()
 {
     content.runAppIntent = nullptr;
+    content.calibrationRunning = nullptr;
     onOpenSongChanged = nullptr; // the owner is being torn down too
     latencyRun.reset();
     closeSong();
@@ -51,35 +53,10 @@ Workspace::~Workspace()
 
 bool Workspace::nothingRunsButAnExport() const
 {
-    return ! runningCode().has_value();
-}
-
-std::optional<std::string> Workspace::runningCode() const
-{
     if (latencyMeasuring())
-        return "ui.calibration_running";
-    if (song == nullptr)
-        return std::nullopt;
-    if (song->isSeparating())
-        return "ui.separation_running";
-    if (song->isConverting())
-        return "ui.conversion_running";
-    if (song->isRecording())
-        return "ui.stop_recording_first";
-    return std::nullopt;
-}
-
-bool Workspace::nothingRunsButAnExportOrNotice()
-{
-    const auto running = runningCode();
-    if (running.has_value())
-        content.showNotice (*running);
-    return ! running.has_value();
-}
-
-IntentResult Workspace::refuseWhileRunning (const std::string& code, std::string_view op)
-{
-    return presented (core::Error { code, "waits until what runs has ended", { { "op", std::string (op) } } });
+        return false;
+    const auto kind = song != nullptr ? song->activityKind() : ActivityKind::idle;
+    return kind == ActivityKind::idle || kind == ActivityKind::exportSong;
 }
 
 IntentResult Workspace::presented (core::Error error)
@@ -97,32 +74,7 @@ juce::File fileAt (const core::AbsolutePath& path)
 {
     return juce::File (juce::String::fromUTF8 (path.value.c_str()));
 }
-
-bool waitsForIdle (const AppIntent& intent)
-{
-    if (std::holds_alternative<intent::Quit> (intent))
-        return false;
-    if (const auto* settings = std::get_if<intent::ShowSettings> (&intent))
-        return settings->shown;
-    return true;
-}
 } // namespace
-
-std::optional<std::string> Workspace::refusalCodeOf (const AppIntent& appIntent) const
-{
-    // quit closes the Song, finishing a Pass as on close; only the modal Separation holds it.
-    if (std::holds_alternative<intent::Quit> (appIntent))
-        return song != nullptr && song->isSeparating() ? std::optional<std::string> ("ui.separation_running") : std::nullopt;
-    if (! waitsForIdle (appIntent))
-        return std::nullopt;
-    if (auto running = runningCode())
-        return running;
-    // runningCode() ignores an export, which the open Song's activity refuses a conversion under.
-    if (std::holds_alternative<intent::ConvertSampleRate> (appIntent) && song != nullptr)
-        if (const auto refused = song->refusalOf (Gesture::startSampleRateConversion))
-            return refused->code;
-    return std::nullopt;
-}
 
 ActivityKind Workspace::activityKind() const
 {
@@ -134,8 +86,6 @@ ActivityKind Workspace::activityKind() const
 IntentResult Workspace::run (const AppIntent& appIntent)
 {
     using namespace intent;
-    if (const auto refused = refusalCodeOf (appIntent))
-        return refuseWhileRunning (*refused, core::operationName (appIntent));
     return core::visitExhaustively (
         appIntent,
         core::Overloaded {

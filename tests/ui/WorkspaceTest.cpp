@@ -353,7 +353,7 @@ TEST_CASE ("opening a Song, changing the device and calibrating are refused whil
     REQUIRE (f.song().record().has_value());
     overdub::core::ScopedLogCapture capture;
 
-    CHECK_FALSE (f.workspace->nothingRunsButAnExportOrNotice());
+    CHECK_FALSE (f.content.mayRun (NewSongAt::op));
     f.run (AppIntent { applyCurrent (f) });
     f.run (AppIntent { MeasureLatency {} });
 
@@ -377,7 +377,7 @@ TEST_CASE ("opening another Song, changing the device and quitting are refused w
     overdub::core::ScopedLogCapture capture;
 
     CHECK_FALSE (f.workspace->nothingRunsButAnExport());
-    CHECK_FALSE (f.workspace->nothingRunsButAnExportOrNotice());
+    CHECK_FALSE (f.content.mayRun (NewSongAt::op));
     const auto applied = f.run (AppIntent { applyCurrent (f) });
     REQUIRE_FALSE (applied.has_value());
     CHECK (applied.error().code == "ui.separation_running");
@@ -491,7 +491,7 @@ TEST_CASE ("while a conversion runs, recording, other Songs and device changes w
     REQUIRE_FALSE (recorded.has_value());
     CHECK (recorded.error().code == "ui.conversion_running");
     CHECK_FALSE (f.workspace->nothingRunsButAnExport());
-    CHECK_FALSE (f.workspace->nothingRunsButAnExportOrNotice());
+    CHECK_FALSE (f.content.mayRun (NewSongAt::op));
     CHECK (contains (messageCodes (capture), "ui.conversion_running"));
 
     click (f.content.runDialog.cancelButton);

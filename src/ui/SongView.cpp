@@ -59,7 +59,7 @@ void SongView::wirePages()
 
     editPage.onIntent = [this] (const Intent& intent) { window.run (intent); };
     editPage.onDeleteTrack = [this] (const song::Id& trackId) { askToDeleteTrack (trackId); };
-    editPage.timeline.canImportFiles = [this] { return openSong.canChangeTracks(); };
+    editPage.timeline.canImportFiles = [this] { return ! window.refusalOf (intent::ImportFiles::op).has_value(); };
 
     exportPage.onIntent = [this] (const Intent& intent) { window.run (intent); };
     exportPage.onChooseDestination = [this] (juce::File current) { chooseExportFile (current); };
@@ -219,11 +219,8 @@ IntentResult SongView::edit (const intent::Edit& plainEdit)
 
 core::Error SongView::handleOperationError (const core::Error& error)
 {
-    // During a Pass, a Separation or a conversion the edit is refused anyway: report the refusal,
-    // not the operation's Error.
-    auto handled = openSong.refusalOf (Gesture::edit).value_or (error);
-    window.handleUnlessRefused (handled);
-    return handled;
+    window.handleError (error);
+    return error;
 }
 
 IntentResult SongView::setArmed (const song::Id& trackId, bool armed)
@@ -270,9 +267,6 @@ IntentResult SongView::setCameraDevice (const std::string& cameraId)
 
 IntentResult SongView::armCamera (bool armed)
 {
-    // No camera access prompt for an arm the running activity would refuse.
-    if (auto refused = openSong.refusalOf (Gesture::setCameraArmed))
-        return unlessRefused (std::unexpected (std::move (*refused)));
     if (! armed || ! window.askCameraAccess)
         return setCameraArmed (armed);
 
@@ -327,7 +321,7 @@ IntentResult SongView::addTrack()
 
 void SongView::askToImport()
 {
-    if (! openSong.canChangeTracks() || ! window.chooseFilesToImport)
+    if (! window.chooseFilesToImport || ! window.mayRun (intent::ImportFiles::op))
         return;
     window.chooseFilesToImport ([safeThis = juce::Component::SafePointer<SongView> (this)] (std::vector<juce::File> files) {
         if (safeThis == nullptr || files.empty())
@@ -361,7 +355,7 @@ IntentResult SongView::importFiles (const std::vector<core::AbsolutePath>& paths
 
 void SongView::askToDeleteTrack (const song::Id& trackId)
 {
-    if (! openSong.canChangeTracks() || ! window.confirmTrackDelete)
+    if (! window.confirmTrackDelete || ! window.mayRun (intent::DeleteTrack::op))
         return;
     const auto* track = song::findTrack (openSong.song(), trackId);
     if (track == nullptr)
@@ -375,9 +369,7 @@ void SongView::askToDeleteTrack (const song::Id& trackId)
 
 IntentResult SongView::deleteTrack (const song::Id& trackId)
 {
-    // The answer comes later: by then the Song may be locked or the Track gone (undo).
-    if (auto refused = openSong.refusalOf (Gesture::changeTracks))
-        return unlessRefused (std::unexpected (std::move (*refused)));
+    // The answer comes later: by then the Track may be gone (undo).
     auto deleted = song::deleteTrack (openSong.song(), trackId);
     if (! deleted.has_value())
         return window.quietError (deleted.error());
@@ -408,7 +400,9 @@ void SongView::showTrackMenu (const song::Id& trackId)
     // The run dialog is modal: no menu opens under it.
     if (runShowing() || ! window.chooseTrackMenuItem)
         return;
-    auto items = trackMenuFor (openSong.song(), trackId, TrackMenuState { .passRunning = openSong.isRecording(), .exportRunning = openSong.isExporting() });
+    const auto refused = window.refusalOf (intent::StartSeparation::op);
+    const auto separationRefusal = refused.has_value() ? std::optional<std::string> (refused->error.code) : std::nullopt;
+    auto items = trackMenuFor (openSong.song(), trackId, TrackMenuState { .separationRefusal = separationRefusal });
     window.chooseTrackMenuItem (items, [safeThis = juce::Component::SafePointer<SongView> (this), trackId, items] (std::optional<std::size_t> picked) {
         if (safeThis == nullptr || ! picked.has_value() || *picked >= items.size() || ! items[*picked].enabled)
             return;
@@ -510,8 +504,7 @@ void SongView::chooseExportFile (const juce::File& current)
 
 void SongView::chooseInsert (const song::Id& trackId)
 {
-    // No plugin menu for an Insert the running activity would refuse.
-    if (openSong.refusalOf (Gesture::addInsert).has_value() || ! window.chooseInsertPlugin)
+    if (! window.chooseInsertPlugin || ! window.mayRun (intent::AddInsert::op))
         return;
     auto plugins = window.listInsertPlugins ? window.listInsertPlugins() : std::vector<plugin::AvailableAudioUnit> {};
     window.chooseInsertPlugin (plugins, [safeThis = juce::Component::SafePointer<SongView> (this), trackId, plugins] (std::optional<std::size_t> picked) {
@@ -621,8 +614,8 @@ void SongView::refresh (TopBarState& state)
     });
     state.undoText = undoButtonText (package.canUndo() ? package.undoLabel() : "");
     state.redoText = redoButtonText (package.canRedo() ? package.redoLabel() : "");
-    state.canUndo = package.canUndo() && ! recording;
-    state.canRedo = package.canRedo() && ! recording;
+    state.canUndo = package.canUndo() && ! window.refusalOf (intent::Undo::op).has_value();
+    state.canRedo = package.canRedo() && ! window.refusalOf (intent::Redo::op).has_value();
 
     recordPage.show (recordPageStateFor (
                          song,
@@ -636,7 +629,7 @@ void SongView::refresh (TopBarState& state)
     if (mode == Mode::record)
         recordPage.showSong (song, RecordTransport { position, openSong.runningPassStart(), recordPoint }, ! recording);
     if (mode == Mode::edit)
-        editPage.show (TimelineState { song, openSong.position(), state.playing, ! recording, openSong.canChangeTracks(), openSong.videoPlayback().spans (song) });
+        editPage.show (TimelineState { song, openSong.position(), state.playing, ! recording, ! window.refusalOf (intent::ImportFiles::op).has_value(), openSong.videoPlayback().spans (song) });
     const auto exportPhase = openSong.exportPhase();
     exportPage.show (ExportPageState {
         .clipsEnd = exporting::lastClipEnd (song),

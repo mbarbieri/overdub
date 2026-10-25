@@ -98,13 +98,6 @@ void confirmDeleteWithNativeDialog (const juce::String& question, std::function<
 }
 } // namespace
 
-bool actsUnderRunDialog (std::string_view op)
-{
-    if (op == intent::CancelRun::op || op == intent::ClosePluginWindow::op)
-        return true;
-    return std::ranges::contains (core::operationNames<AppIntent>(), op);
-}
-
 MainComponent::MainComponent()
 {
     chooseFilesToImport = chooseFilesWithNativeDialog;
@@ -212,23 +205,52 @@ IntentResult MainComponent::run (const Intent& intent, Origin origin)
     const auto perFrame = runsPerFrame (intent);
     if (! perFrame)
         core::logEvent (core::Level::debug, "ui.intent_run", { { "op", op }, { "origin", originName (origin) } });
-    if (runShowing() && ! actsUnderRunDialog (op))
-        return quietError (core::Error { "ui.run_dialog_open", "a Separation or a conversion runs", { { "op", op } } });
     // Invariant: a pending arrow-key burst is its own undo step before what any Intent does, so an
     // export, a copy or another Song change never misses it (issue #194). Per-frame Intents are
     // gesture phases, not steps.
     if (! perFrame && songContent != nullptr)
         songContent->commitKeyBursts();
-    auto result = core::visitExhaustively (
+    auto result = dispatch (intent, op);
+    if (! perFrame)
+        refresh();
+    return result;
+}
+
+IntentResult MainComponent::dispatch (const Intent& intent, const std::string& op)
+{
+    if (auto refusal = ui::refusalOf (intent, running()))
+        return refused (std::move (*refusal));
+    return core::visitExhaustively (
         intent,
         core::Overloaded {
             [this] (const AppIntent& app) { return runApp (app); },
             [this] (const WindowIntent& windowIntent) { return runWindow (windowIntent); },
             [this, &op] (const SongIntent& songIntent) { return songContent != nullptr ? songContent->run (songIntent) : quietError (noSongOpen (op)); },
         });
-    if (! perFrame)
-        refresh();
-    return result;
+}
+
+Running MainComponent::running() const
+{
+    return Running {
+        .song = songContent != nullptr ? std::optional (songContent->currentSong().activityKind()) : std::nullopt,
+        .calibrating = calibrationRunning != nullptr && calibrationRunning(),
+    };
+}
+
+bool MainComponent::mayRun (std::string_view op)
+{
+    auto refusal = refusalOf (op);
+    if (refusal.has_value())
+        refused (std::move (*refusal));
+    return ! refusal.has_value();
+}
+
+IntentResult MainComponent::refused (Refusal refusal)
+{
+    if (! refusal.presented)
+        return quietError (std::move (refusal.error));
+    handleError (refusal.error);
+    return std::unexpected (std::move (refusal.error));
 }
 
 IntentResult MainComponent::runApp (const AppIntent& appIntent)
