@@ -426,3 +426,30 @@ TEST_CASE ("the control indicator shows without a Song open, at the smallest win
     CHECK (window.topBar.controlIndicator.getRight() < window.topBar.rewindButton.getX());
     CHECK (writeSnapshot (window, "issue-177", "controlled-long-name-minimum-width").existsAsFile());
 }
+
+namespace
+{
+// The TooltipWindow that shows tips for the component: a child of the component or one of its
+// parents, as JUCE finds it when the mouse hovers.
+juce::TooltipWindow* tooltipWindowFor (juce::Component& component)
+{
+    for (auto* parent = &component; parent != nullptr; parent = parent->getParentComponent())
+        for (auto* child : parent->getChildren())
+            if (auto* tooltipWindow = dynamic_cast<juce::TooltipWindow*> (child))
+                return tooltipWindow;
+    return nullptr;
+}
+} // namespace
+
+TEST_CASE ("a control's tooltip inside the window has a TooltipWindow to show it", "[ui][main]")
+{
+    MainWindowFixture f;
+    auto& armButton = f.rowNamed ("Guitar").armButton;
+
+    auto* tooltipWindow = tooltipWindowFor (armButton);
+    REQUIRE (tooltipWindow != nullptr);
+    CHECK (tooltipWindow->getParentComponent() == f.window.get());
+    // The text it shows on hover. Not through getTipFor: that returns "" unless the process is
+    // in the foreground, which a test run is not.
+    CHECK (armButton.getTooltip() == "Arm");
+}
