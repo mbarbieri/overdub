@@ -186,6 +186,9 @@ public:
     NoSongPage noSongPage;
     NoticeLine noticeLine;
     RunDialog runDialog;
+    // Shows every child's setTooltip text after the hover delay (issue #180); JUCE shows none
+    // without one. A child, so it finds only this window's components.
+    juce::TooltipWindow tooltipWindow { this };
     // False in tests: plugin editor windows (of Songs opened after it is set) and the Video
     // Preview are built, never put on the desktop.
     bool showPluginWindowsOnDesktop = true;
