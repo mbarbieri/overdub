@@ -319,7 +319,9 @@ void Workspace::measureLatency()
 
     // The run plays its own Song on the engine; the open Song is bound again when it ends.
     detachAudio();
-    const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getNonexistentChildFile ("overdub-calibration-loopback", "", false);
+    // Unique per run, not the next unused name: the run deletes its folder at start and end, and a
+    // second process picking the same name would delete this one's (issue #187).
+    const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("overdub-calibration-loopback-" + juce::Uuid().toString());
     auto started = capture::LoopbackRun::start (*engine, live->recordLatency(), live->sampleRate(), folder);
     if (started.has_value())
         latencyRun = std::move (*started);
