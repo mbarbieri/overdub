@@ -10,6 +10,7 @@
 #include "ui/WorkspaceFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <nlohmann/json.hpp>
 
 #include <chrono>
@@ -419,6 +420,87 @@ TEST_CASE ("during an export every op the refused section names answers that cod
     CHECK (ran >= 6);
     CHECK (f.song().isExporting());
     CHECK (f.song().song() == songBefore);
+}
+
+TEST_CASE ("during a latency calibration every op the refused section names answers that code when run, and undo still runs", "[control][app_state][refused][calibration]")
+{
+    SongForEveryOp every;
+    auto& f = every.f;
+    f.runBlocks (1);
+    run (f, ui::AppIntent { MeasureLatency {} });
+    const auto refused = stateOf (f, { "refused" })["refused"];
+
+    const auto ran = every.runEveryRefusedOp();
+
+    CHECK (ran == 14); // the App group but quit, record, play_or_stop, set_monitoring and export
+    CHECK (refused["record"] == "ui.calibration_running");
+    CHECK (refused["undo"] == nullptr);
+    CHECK (f.content.run (ui::SongIntent { Undo {} }, ui::Origin::control).has_value());
+}
+
+//==============================================================================
+// Controls and the refused section (issue #195): a control shows its Intent unavailable exactly
+// when run refuses it.
+
+namespace
+{
+enum class Situation
+{
+    nothing,
+    pass,
+    exportSong,
+    calibration
+};
+
+void start (WorkspaceFixture& f, Situation situation)
+{
+    switch (situation)
+    {
+        case Situation::nothing: break;
+        case Situation::pass:
+            run (f, ui::SongIntent { Record {} });
+            f.runBlocks (4);
+            break;
+        case Situation::exportSong:
+            run (f, ui::SongIntent { SetExportDestination { core::AbsolutePath { f.folder.getChildFile ("Mix.wav").getFullPathName().toStdString() } } });
+            run (f, ui::SongIntent { Export {} });
+            break;
+        case Situation::calibration:
+            f.runBlocks (1);
+            run (f, ui::AppIntent { MeasureLatency {} });
+            break;
+    }
+}
+} // namespace
+
+TEST_CASE ("the top bar's Undo and the Track menu's Separate are enabled exactly when run would not refuse them", "[control][app_state][refused]")
+{
+    const auto situation = GENERATE (Situation::nothing, Situation::pass, Situation::exportSong, Situation::calibration);
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    run (f, ui::SongIntent { AddTrack {} });
+    std::vector<ui::TrackMenuItem> menuShown;
+    f.content.chooseTrackMenuItem = [&menuShown] (const std::vector<ui::TrackMenuItem>& items, std::function<void (std::optional<std::size_t>)> done) {
+        menuShown = items;
+        done (std::nullopt);
+    };
+    start (f, situation);
+    f.content.refresh();
+    const auto refused = stateOf (f, { "refused" })["refused"];
+
+    f.content.songView()->recordPage.onTrackMenu (f.song().song().tracks.front().id);
+
+    // What the user may do in each situation; the refused section, the controls and run agree.
+    const auto mayUndo = situation != Situation::pass;
+    const auto maySeparate = situation == Situation::nothing || situation == Situation::calibration;
+    REQUIRE (menuShown.size() == 1);
+    CHECK (menuShown[0].enabled == maySeparate);
+    CHECK (refused["start_separation"].is_null() == maySeparate);
+    CHECK (f.content.topBar.undoButton.isEnabled() == mayUndo);
+    CHECK (refused["undo"].is_null() == mayUndo);
+    CHECK (f.content.run (ui::SongIntent { Undo {} }, ui::Origin::control).has_value() == mayUndo);
+    stopPass (f);
 }
 
 //==============================================================================

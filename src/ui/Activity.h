@@ -76,8 +76,8 @@ enum class Gesture
 };
 
 // The Error the running activity refuses the gesture with: ui.stop_recording_first (a Pass),
-// ui.separation_running, ui.conversion_running or ui.export_running, with the field `gesture`.
-// None when it is allowed.
+// ui.separation_running, ui.conversion_running, ui.export_running or ui.calibration_running (a
+// loopback latency calibration), with the field `gesture`. None when it is allowed.
 std::optional<core::Error> refusal (const Activity& activity, Gesture gesture);
 
 // Whether the Error is one refusal() returns (its code, with the field `gesture`).
@@ -105,6 +105,9 @@ inline constexpr std::pair<ActivityKind, std::string_view> activityKindNames[] {
 };
 std::string_view activityKindName (ActivityKind kind);
 ActivityKind kindOf (const Activity& activity);
+// refusal() for what runs; idle and calibrationClap (measured at once, never seen running) refuse
+// nothing.
+std::optional<core::Error> refusal (ActivityKind kind, Gesture gesture);
 
 // How the last activity to finish ended: the code of the Error it ended with, none on success.
 struct ActivityFinish

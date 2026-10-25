@@ -166,9 +166,6 @@ public:
     // The engine and its plan are untouched. A running Pass keeps the latency it started with.
     void setCalibrationOffset (song::SampleCount offsetSamples) { binding.latency.calibrationOffsetSamples = offsetSamples; }
 
-    // The Error the running activity would refuse this gesture with (ui/Activity.h); none when allowed.
-    std::optional<core::Error> refusalOf (Gesture gesture) const { return refusal (activity, gesture); }
-
     ActivityKind activityKind() const { return kindOf (activity); }
     const ActivityLog& activities() const { return activityLog; }
 
@@ -288,11 +285,8 @@ public:
     bool isMonitoring (const song::Id& trackId) const { return monitored.contains (trackId); }
     const std::set<song::Id>& monitoredTracks() const { return monitored; }
 
-    // Whether Tracks can be added by import or deleted now (Gesture::changeTracks): not while a
-    // Pass, a Separation or an export runs.
-    bool canChangeTracks() const { return ! refusalOf (Gesture::changeTracks).has_value(); }
     // One Backing Track import per file (SongPackage::importBackingTracks); refusal()'s for each
-    // file when ! canChangeTracks().
+    // file while the activity refuses Gesture::changeTracks.
     std::vector<core::Expected<song::Id>> importFiles (const std::vector<juce::File>& files);
 
     // The model and helper a Separation uses (none by default: Separation is unavailable).

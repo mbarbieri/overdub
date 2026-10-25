@@ -37,7 +37,7 @@ public:
     ~MainWindow() override;
 
     void closeButtonPressed() override;
-    // Runs quit, which the Workspace refuses (with a Notice) while a Separation runs.
+    // Runs quit, which is refused (with a Notice) while a Separation runs (ui/Availability.h).
     void requestQuit();
 
 private:

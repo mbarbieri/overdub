@@ -98,8 +98,7 @@ private:
     void commitKeyBurst (MixFocus& mix);
     // The plain edit on the Song as it is now (ui/SongEdits.h), through applyEdit.
     IntentResult edit (const intent::Edit& edit);
-    // A Song operation's Error (the Song as it is cannot take it), unless the edit it was for is
-    // refused anyway: then the refusal, not presented. Returns the Error it handled.
+    // A Song operation's Error (the Song as it is cannot take it), presented. Returns it.
     core::Error handleOperationError (const core::Error& error);
     // OpenSong's result, presented unless it is a refusal (MainComponent::handleUnlessRefused).
     IntentResult unlessRefused (const core::Expected<void>& result);

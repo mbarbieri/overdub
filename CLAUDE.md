@@ -48,7 +48,7 @@ build/debug/tests/overdub_tests "[engine][pdc]"      # a subset by Catch2 tag
 
 - Every gesture that changes the app state runs an Intent through `ui::MainComponent::run (Intent, Origin)`, from a key, a menu, a page or the socket. `tests/control/GestureCensusTest.cpp` fires every gesture the window offers and fails on one that bypasses it; it has no allow-list.
 - To add an operation, add a struct with `op` and `fields` to `ui/Intent.h` and a handler to its owner: `ui::Workspace` (App), `ui::MainComponent` (Window) or `ui::SongView` (Song). A missing handler does not compile. The socket and `ops` pick it up with no other change.
-- A dialog only collects an Intent's fields. The handler owns every check, because the same Intent arrives from the socket with no dialog.
+- A dialog only collects an Intent's fields. `MainComponent::run` refuses what may not run now (`ui/Availability.h`, the one table every control also reads) and the handler owns every other check, because the same Intent arrives from the socket with no dialog.
 - `src/control/` → `overdub_control` is the socket transport (`Server`, `Controller`, `AppState`). It links `overdub_ui`, and only the app links it. Protocol errors use the `control` area.
 - Tests run Intents through `MainComponent::run` with `Origin::control` and assert what the gesture asserts. Only `tests/control/ServerTest.cpp` opens a socket, at a temporary path.
 - To prove a change on the real app, use the `verify` skill (`.claude/skills/verify/`). It launches the app with its own socket and drives it with `overdub-ctl` and the journey scripts.

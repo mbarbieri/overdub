@@ -34,89 +34,6 @@ std::string nameOf (core::EnumNames<Enum> names, Enum value)
     return found != names.end() ? std::string (found->second) : std::string();
 }
 
-// Every Song op and the ui::Gesture a running activity may refuse it as; nullopt: no activity ever
-// refuses it. Exhaustive, so a new Song op does not compile until it is decided here.
-struct SongOpGesture
-{
-    std::string_view op;
-    std::optional<ui::Gesture> gesture;
-};
-constexpr SongOpGesture songOpGestures[] {
-    { "move_clip", ui::Gesture::edit },
-    { "trim_clip_start", ui::Gesture::edit },
-    { "trim_clip_end", ui::Gesture::edit },
-    { "set_clip_fade_in", ui::Gesture::edit },
-    { "set_clip_fade_out", ui::Gesture::edit },
-    { "set_clip_gain", ui::Gesture::edit },
-    { "bring_back_pass", ui::Gesture::edit },
-    { "set_track_volume", ui::Gesture::edit },
-    { "set_track_pan", ui::Gesture::edit },
-    { "set_master_volume", ui::Gesture::edit },
-    { "set_track_mute", ui::Gesture::edit },
-    { "set_track_solo", ui::Gesture::edit },
-    { "remove_insert", ui::Gesture::edit },
-    { "move_insert", ui::Gesture::edit },
-    { "set_insert_bypassed", ui::Gesture::edit },
-    { "record", ui::Gesture::record },
-    { "play_or_stop", ui::Gesture::playOrStop },
-    { "rewind", std::nullopt },
-    { "undo", ui::Gesture::undo },
-    { "redo", ui::Gesture::redo },
-    { "seek", ui::Gesture::seek },
-    { "jump_to_pass", ui::Gesture::seek },
-    { "nudge", ui::Gesture::seek },
-    { "add_track", ui::Gesture::edit },
-    { "import_files", ui::Gesture::changeTracks },
-    { "delete_track", ui::Gesture::changeTracks },
-    { "move_track", ui::Gesture::edit },
-    { "set_armed", ui::Gesture::setArmed },
-    { "set_input_channels", ui::Gesture::setInputChannels },
-    { "set_monitoring", ui::Gesture::setMonitoring },
-    { "start_separation", ui::Gesture::startSeparation },
-    { "cancel_run", std::nullopt },
-    { "set_pre_roll", ui::Gesture::setPreRoll },
-    { "set_camera_armed", ui::Gesture::setCameraArmed },
-    { "set_camera_device", ui::Gesture::setCameraDevice },
-    { "split_selected_clip", ui::Gesture::edit },
-    { "delete_selection", ui::Gesture::edit },
-    { "take_lane_click", ui::Gesture::edit },
-    { "preview_mix", ui::Gesture::previewMix },
-    { "add_insert", ui::Gesture::addInsert },
-    { "open_insert_editor", std::nullopt },
-    { "close_plugin_window", std::nullopt },
-    { "set_export_format", std::nullopt },
-    { "set_export_length", std::nullopt },
-    { "set_export_destination", std::nullopt },
-    { "set_export_video_take", std::nullopt },
-    { "export", ui::Gesture::startExport },
-    { "reveal_export", std::nullopt },
-    { "select_clip", std::nullopt },
-    { "select_video_take", std::nullopt },
-    { "set_timeline_view", std::nullopt },
-    { "set_vertical_scroll", std::nullopt },
-    { "set_take_lanes_unfolded", std::nullopt },
-    { "set_mixer_visible", std::nullopt },
-    { "set_mixer_height", std::nullopt },
-    { "set_passes_panel_open", std::nullopt },
-    { "clear_clip_indicator", std::nullopt },
-};
-
-constexpr bool songOpGesturesNameEverySongOpOnce()
-{
-    const auto names = core::operationNames<ui::SongIntent>();
-    if (std::size (songOpGestures) != names.size())
-        return false;
-    return std::ranges::all_of (names, [] (std::string_view op) { return std::ranges::count (songOpGestures, op, &SongOpGesture::op) == 1; });
-}
-static_assert (std::size (songOpGestures) == core::operationNames<ui::SongIntent>().size(), "songOpGestures must list every Song op");
-static_assert (songOpGesturesNameEverySongOpOnce(), "songOpGestures must name each Song op exactly once");
-
-std::optional<ui::Gesture> gestureOf (std::string_view op)
-{
-    const auto found = std::ranges::find (songOpGestures, op, &SongOpGesture::op);
-    return found != std::end (songOpGestures) ? found->gesture : std::nullopt;
-}
-
 json songSection (const ui::OpenSong* song)
 {
     if (song == nullptr)
@@ -397,30 +314,13 @@ json metersSection (const ui::MainComponent& window)
     return { { "tracks", peaks.tracks }, { "inputs", peaks.inputs }, { "master", peaks.master } };
 }
 
-template <typename... Alternatives>
-void addAppRefusals (json& refused, const ui::Workspace& workspace, std::type_identity<std::variant<Alternatives...>>)
-{
-    ((refused[std::string (Alternatives::op)] = orNull (workspace.refusalCodeOf (ui::AppIntent { Alternatives {} }))), ...);
-}
-
-json refusedSection (const ui::MainComponent& window, const ui::Workspace& workspace)
+json refusedSection (const ui::MainComponent& window)
 {
     auto refused = json::object();
-    addAppRefusals (refused, workspace, std::type_identity<ui::AppIntent> {});
-    const auto runDialogShowing = window.runDialog.isVisible();
-    for (const auto op : core::operationNames<ui::WindowIntent>())
-        refused[std::string (op)] = runDialogShowing && ! ui::actsUnderRunDialog (op) ? json ("ui.run_dialog_open") : json (nullptr);
-
-    const auto* song = workspace.openSong();
-    for (const auto op : core::operationNames<ui::SongIntent>())
+    for (const auto op : core::operationNames<ui::Intent>())
     {
-        auto& entry = refused[std::string (op)];
-        entry = nullptr;
-        if (runDialogShowing && ! ui::actsUnderRunDialog (op))
-            entry = "ui.run_dialog_open";
-        else if (const auto gesture = gestureOf (op); gesture.has_value() && song != nullptr)
-            if (const auto refusal = song->refusalOf (*gesture))
-                entry = refusal->code;
+        const auto refusal = window.refusalOf (op);
+        refused[std::string (op)] = refusal.has_value() ? json (refusal->error.code) : json (nullptr);
     }
     return refused;
 }
@@ -457,7 +357,7 @@ json section (std::string_view part, const ui::MainComponent& window, const ui::
     if (part == "meters")
         return metersSection (window);
     if (part == "refused")
-        return refusedSection (window, workspace);
+        return refusedSection (window);
     OVERDUB_CHECK (false, "control.unknown_app_state_part", { "part", part });
     return nullptr;
 }
