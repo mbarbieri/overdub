@@ -259,6 +259,7 @@ TEST_CASE ("a latency calibration measured on the loopback device is offered in 
     f.launch();
     f.openSong();
     f.runBlocks (1);
+    overdub::core::ScopedLogCapture capture;
 
     f.run (AppIntent { MeasureLatency {} });
     const auto deadline = std::chrono::steady_clock::now() + 30s;
@@ -269,6 +270,7 @@ TEST_CASE ("a latency calibration measured on the loopback device is offered in 
     }
 
     REQUIRE (f.workspace->nothingRunsButAnExport());
+    CHECK (messageCodes (capture).empty()); // on failure, names why the run ended without a result
     CHECK (f.song().audio().engine == f.audio().engine());
     CHECK (overdub::ui::testing::isShown (f.calibrationPanel.saveLatencyButton));
 }
