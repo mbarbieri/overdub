@@ -71,8 +71,8 @@
 // and in Record mode a Record row's focused fader (issue #130, the same volume as its Mixer fader):
 // its arrows do not move the playhead. Its focus is released by a mouse down anywhere outside it
 // (the window listens to every child's mouse), Esc or a mode change. Its burst of arrow presses is
-// committed by the poll once due, and at once before undo, redo, record, an import, a Separation
-// or any other edit (which keeps the burst's value unless it set that control itself).
+// committed by the poll once due, and at once, as its own undo step, before run() runs any Intent
+// that does not run per frame (issue #194).
 //
 // Record starting a Pass puts out every Record row's clip indicator (issue #131).
 //

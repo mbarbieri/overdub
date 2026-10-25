@@ -214,6 +214,11 @@ IntentResult MainComponent::run (const Intent& intent, Origin origin)
         core::logEvent (core::Level::debug, "ui.intent_run", { { "op", op }, { "origin", originName (origin) } });
     if (runShowing() && ! actsUnderRunDialog (op))
         return quietError (core::Error { "ui.run_dialog_open", "a Separation or a conversion runs", { { "op", op } } });
+    // Invariant: a pending arrow-key burst is its own undo step before what any Intent does, so an
+    // export, a copy or another Song change never misses it (issue #194). Per-frame Intents are
+    // gesture phases, not steps.
+    if (! perFrame && songContent != nullptr)
+        songContent->commitKeyBursts();
     auto result = core::visitExhaustively (
         intent,
         core::Overloaded {

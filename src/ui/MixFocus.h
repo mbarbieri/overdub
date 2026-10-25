@@ -73,7 +73,6 @@ public:
     // whether the key was used; every other key is left to the window.
     bool handleKey (const juce::KeyPress& key, Clock::time_point now);
 
-    bool hasKeyBurst() const { return keyBurst.has_value(); }
     // Reports the burst of arrow presses (if any) as one undo step now (onIntent).
     void commitKeyBurst();
     // Ends the burst (if any) and returns the edit commitKeyBurst would report, for a caller that
@@ -81,9 +80,6 @@ public:
     std::optional<intent::Edit> takeKeyBurst();
     // Commits the burst once keyBurstDuration has passed since its last press.
     void commitKeyBurstIfDue (Clock::time_point now);
-    // An edit made from the Song before the burst was committed, with the burst's value carried into
-    // it, unless the edit set that control itself (or removed its Track).
-    song::Song withKeyBurstCarried (song::Song changed) const;
 
     // A drag in progress at `value`: previewed.
     void drag (const MixerControl& control, double value);
