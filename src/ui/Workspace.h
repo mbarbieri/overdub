@@ -112,7 +112,8 @@ public:
 
     // Saves this device choice and opens the audio again with it.
     void applyDeviceSettings (const engine::DeviceSettings& settings);
-    void measureLatency();
+    // `now` starts the run's timeout, on the clock tick() advances it with.
+    void measureLatency (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
     void saveLatencyCalibration (song::SampleCount offsetSamples);
     void measureClapPass();
     void saveCameraCalibration (const capture::CameraCalibrationKey& key, double offsetMs);
