@@ -309,7 +309,7 @@ bool Workspace::latencyMeasuring() const
     return latencyRun != nullptr || latencyOutcome.has_value();
 }
 
-void Workspace::measureLatency()
+void Workspace::measureLatency (song::SongPackage::Clock::time_point now)
 {
     if (! idleOrNotice() || calibrationPanel == nullptr)
         return;
@@ -319,8 +319,8 @@ void Workspace::measureLatency()
 
     // The run plays its own Song on the engine; the open Song is bound again when it ends.
     detachAudio();
-    const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getNonexistentChildFile ("overdub-calibration-loopback", "", false);
-    auto started = capture::LoopbackRun::start (*engine, live->recordLatency(), live->sampleRate(), folder);
+    const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory);
+    auto started = capture::LoopbackRun::start (*engine, live->recordLatency(), live->sampleRate(), folder, now);
     if (started.has_value())
         latencyRun = std::move (*started);
     else

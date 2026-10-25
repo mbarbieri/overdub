@@ -49,7 +49,7 @@ void LoopbackSelftest::start()
     if (engine == nullptr || live.sampleRate() <= 0)
         return fail (core::Error { "app.selftest_no_device", "no audio device is open", {} });
 
-    const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getNonexistentChildFile ("overdub-selftest-loopback", "", false);
+    const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory);
     auto started = capture::LoopbackRun::start (*engine, live.recordLatency(), live.sampleRate(), folder);
     if (! started.has_value())
         return fail (started.error());

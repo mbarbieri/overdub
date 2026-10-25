@@ -47,6 +47,16 @@ std::vector<nlohmann::json> eventsNamed (const overdub::core::ScopedLogCapture& 
     return found;
 }
 
+// The events logged at warn or error level: a failed run's Error among them.
+std::vector<nlohmann::json> problems (const overdub::core::ScopedLogCapture& capture)
+{
+    std::vector<nlohmann::json> found;
+    for (const auto& event : capture.events())
+        if (event.at ("lvl") == "warn" || event.at ("lvl") == "error")
+            found.push_back (event);
+    return found;
+}
+
 // The codes of the Notices and Alerts the content showed.
 std::vector<std::string> messageCodes (const overdub::core::ScopedLogCapture& capture)
 {
@@ -364,16 +374,23 @@ TEST_CASE ("a latency calibration measured on the loopback device is offered in 
     f.launch();
     f.openSong();
     f.runBlocks (1);
+    overdub::core::ScopedLogCapture capture;
 
-    f.workspace->measureLatency();
+    // The run's clock advances by the audio rendered, so its timeout cannot fire under CPU load.
+    constexpr int blocksPerTick = 8;
+    const auto tickDuration = std::chrono::microseconds ((std::int64_t) blocksPerTick * overdub::ui::testing::liveBlockSize * 1'000'000 / f.audio().sampleRate());
+    auto now = overdub::song::SongPackage::Clock::now();
+    f.workspace->measureLatency (now);
     const auto deadline = std::chrono::steady_clock::now() + 30s;
     while (! f.workspace->isIdle() && std::chrono::steady_clock::now() < deadline)
     {
-        f.audio().run (8);
-        f.workspace->tick();
+        f.audio().run (blocksPerTick);
+        now += tickDuration;
+        f.workspace->tick (now);
     }
 
     REQUIRE (f.workspace->isIdle());
+    CHECK (problems (capture).empty());
     CHECK (f.song().audio().engine == f.audio().engine());
     CHECK (overdub::ui::testing::isShown (f.calibrationPanel.saveLatencyButton));
 }
