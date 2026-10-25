@@ -68,11 +68,12 @@ See [`GLOSSARY.md`](GLOSSARY.md) for what Song, Track, Pass, Take, Clip and the 
 ```sh
 git clone --recursive https://github.com/mbarbieri/overdub.git
 cd overdub
+make signing-identity   # once: the local code-signing identity
 make app        # builds and signs dist/Overdub.app
 make install    # copies it to /Applications
 ```
 
-Overdub signs the app with a stable local identity so camera and microphone permissions survive rebuilds. Create it once in Keychain Access (see [Code signing](docs/building.md#code-signing)).
+Overdub signs the app with a stable local identity so camera and microphone permissions survive rebuilds. `make signing-identity` creates it in your login keychain and does nothing if it already exists (see [Code signing](docs/building.md#code-signing)).
 
 ### Separation model (optional)
 
