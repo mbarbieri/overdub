@@ -29,5 +29,7 @@ Run `.claude/skills/verify/scripts/journey-export.sh`. It exits 0 when every che
 ## Gotchas
 
 - `show_export shown=true` is refused while a Pass or an export runs (`ui.stop_recording_first`, `ui.export_running`).
-- The form's default destination is under `~/Music/Overdub/`. Always set it to `$RUN_DIR/` first; an export through the socket overwrites the file it names.
+- The form's default destination is under `~/Music/Overdub/`. Always set it to `$RUN_DIR/` first; an export through the socket overwrites the file it names (`/view/export_form/replaces_existing` is `true` then, while the sheet shows).
+- The format, length and destination are saved in the Song (issue #201): they survive closing the Song, so a Song exported by an earlier run already points at that run's file.
+- `set_export_destination` needs an existing folder (`export.folder_missing` otherwise); create it first.
 - An export first hands the engine an empty Song. A device that stops calling back makes the export give up after 5 s with `ui.export_audio_unresponsive`.

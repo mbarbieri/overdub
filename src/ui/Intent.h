@@ -65,15 +65,6 @@ inline constexpr std::pair<song::PreRoll, std::string_view> preRollNames[] {
     { song::PreRoll::twoSeconds, "two_seconds" },
     { song::PreRoll::fourSeconds, "four_seconds" },
 };
-inline constexpr std::pair<exporting::ExportFormat, std::string_view> exportFormatNames[] {
-    { exporting::ExportFormat::wav, "wav" },
-    { exporting::ExportFormat::m4a, "m4a" },
-    { exporting::ExportFormat::mp4, "mp4" },
-};
-inline constexpr std::pair<exporting::VideoLength, std::string_view> videoLengthNames[] {
-    { exporting::VideoLength::trimToVideoTake, "trim_to_video_take" },
-    { exporting::VideoLength::fullSong, "full_song" },
-};
 
 namespace intent
 {
@@ -578,7 +569,8 @@ struct ClosePluginWindow // captures the plugin's state into song.json, outside 
 };
 
 //==============================================================================
-// Song: Export. The form is the Export sheet's; Export starts what the form says.
+// Song: Export. The form's choices are stored in the Song, outside history (issue #201); Export
+// starts what the form says.
 
 struct ShowExport // Export... in the top bar or the File menu (command-E) opens the sheet; Esc and Cancel close it
 {
@@ -588,23 +580,23 @@ struct ShowExport // Export... in the top bar or the File menu (command-E) opens
     static constexpr auto fields = std::tuple { field ("shown", &ShowExport::shown) };
 };
 
-struct SetExportFormat
+struct SetExportFormat // stored in the Song, outside history
 {
     static constexpr std::string_view op = "set_export_format";
     exporting::ExportFormat format = exporting::ExportFormat::wav;
     bool operator== (const SetExportFormat&) const = default;
-    static constexpr auto fields = std::tuple { enumField ("format", &SetExportFormat::format, core::EnumNames<exporting::ExportFormat> { exportFormatNames }) };
+    static constexpr auto fields = std::tuple { enumField ("format", &SetExportFormat::format, core::EnumNames<exporting::ExportFormat> { song::exportFormatNames }) };
 };
 
-struct SetExportLength
+struct SetExportLength // stored in the Song, outside history
 {
     static constexpr std::string_view op = "set_export_length";
     exporting::VideoLength length = exporting::VideoLength::trimToVideoTake;
     bool operator== (const SetExportLength&) const = default;
-    static constexpr auto fields = std::tuple { enumField ("length", &SetExportLength::length, core::EnumNames<exporting::VideoLength> { videoLengthNames }) };
+    static constexpr auto fields = std::tuple { enumField ("length", &SetExportLength::length, core::EnumNames<exporting::VideoLength> { song::videoLengthNames }) };
 };
 
-struct SetExportDestination // Choose..., after the save dialog
+struct SetExportDestination // Choose..., after the save dialog; stored in the Song, outside history; its folder must exist
 {
     static constexpr std::string_view op = "set_export_destination";
     core::AbsolutePath path;

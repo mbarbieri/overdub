@@ -28,7 +28,8 @@
 // Errors: export.video_take_outside_song (video_take_id, video_take_end_sample: the range is
 // empty because the Video Take ends at or before Song sample 0), export.cancelled,
 // export.video_take_unreadable (path, video_take_id, reason), export.movie_failed (step:
-// compose_audio | compose_video | encode, detail), export.write_failed (as exportMix's).
+// compose_audio | compose_video | encode, detail), export.folder_missing and export.write_failed (as
+// exportMix's).
 namespace overdub::exporting
 {
 // The Video Take an MP4 shows, and its movie file.

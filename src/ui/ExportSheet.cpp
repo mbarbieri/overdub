@@ -13,7 +13,7 @@ namespace
 constexpr int formWidth = 560;
 constexpr int panelPadding = 24;
 // The form's rows (resized), without and with the MP4 rows.
-constexpr int formHeight = 274;
+constexpr int formHeight = 292;
 constexpr int mp4RowsHeight = 126;
 constexpr int formatRadioGroup = 3701;
 constexpr int lengthRadioGroup = 3702;
@@ -91,6 +91,28 @@ std::optional<song::Id> defaultExportVideoTake (const std::vector<video::VideoTa
     return videoTakes.front().videoTakeId;
 }
 
+juce::File exportDestinationFor (const song::Song& song, const juce::File& exportFolder, const std::string& songName, bool fallBackWhenFolderGone)
+{
+    if (juce::File::isAbsolutePath (song.exportDestination))
+    {
+        const auto stored = exporting::withFormatExtension (juce::File (song.exportDestination), song.exportFormat);
+        if (! fallBackWhenFolderGone || stored.getParentDirectory().isDirectory())
+            return stored;
+    }
+    return exporting::defaultExportFile (exportFolder, songName, song.exportFormat);
+}
+
+exporting::ExportRequest exportRequestFor (const song::Song& song, const std::vector<video::VideoTakeSpan>& videoTakes, const juce::File& destination)
+{
+    const auto mp4 = song.exportFormat == exporting::ExportFormat::mp4;
+    return { song.exportFormat, destination, mp4 ? defaultExportVideoTake (videoTakes, song.exportVideoTakeId) : std::nullopt, song.exportLength };
+}
+
+std::string replacesExistingText (const juce::File& destination)
+{
+    return "Replaces the existing " + destination.getFileName().toStdString();
+}
+
 void ExportSpanBar::setState (const ExportSpanBarState& state)
 {
     if (state == shown)
@@ -146,6 +168,8 @@ ExportSheet::ExportSheet()
     destinationLabel.setColour (juce::Label::textColourId, colours::text);
     destinationLabel.setColour (juce::Label::backgroundColourId, juce::Colours::black.withAlpha (0.4f));
     destinationLabel.setMinimumHorizontalScale (0.7f);
+    replacesLabel.setColour (juce::Label::textColourId, colours::dimText);
+    replacesLabel.setFont (juce::FontOptions (11.0f));
 
     const std::pair<juce::ToggleButton*, exporting::ExportFormat> formatButtons[] {
         { &wavButton, exporting::ExportFormat::wav },
@@ -160,7 +184,6 @@ ExportSheet::ExportSheet()
         button->onClick = [this, format = buttonFormat] { emit (SongIntent { intent::SetExportFormat { format } }); };
         addAndMakeVisible (button);
     }
-    wavButton.setToggleState (true, juce::dontSendNotification);
 
     const std::pair<juce::ToggleButton*, exporting::VideoLength> lengthButtons[] {
         { &trimButton, exporting::VideoLength::trimToVideoTake },
@@ -174,14 +197,13 @@ ExportSheet::ExportSheet()
         button->onClick = [this, length = buttonLength] { emit (SongIntent { intent::SetExportLength { length } }); };
         addChildComponent (button);
     }
-    trimButton.setToggleState (true, juce::dontSendNotification);
 
     videoTakePicker.setWantsKeyboardFocus (false);
     videoTakePicker.onChange = [this] { pickVideoTake(); };
 
     chooseButton.onClick = [this] {
         if (onChooseDestination)
-            onChooseDestination (chosenDestination);
+            onChooseDestination (shown.request.destination);
     };
     cancelButton.onClick = [this] { emit (SongIntent { intent::ShowExport { false } }); };
     exportButton.onClick = [this] { emit (SongIntent { intent::Export {} }); };
@@ -191,66 +213,33 @@ ExportSheet::ExportSheet()
         button->setWantsKeyboardFocus (false);
     for (juce::Component* child : { (juce::Component*) &title, (juce::Component*) &formatHeading, (juce::Component*) &spanBar, (juce::Component*) &spanLabel, (juce::Component*) &destinationHeading, (juce::Component*) &destinationLabel, (juce::Component*) &chooseButton, (juce::Component*) &cancelButton, (juce::Component*) &exportButton })
         addAndMakeVisible (child);
-    for (juce::Component* child : { (juce::Component*) &videoTakeHeading, (juce::Component*) &videoTakePicker, (juce::Component*) &noVideoTakesLabel, (juce::Component*) &lengthHeading })
+    for (juce::Component* child : { (juce::Component*) &videoTakeHeading, (juce::Component*) &videoTakePicker, (juce::Component*) &noVideoTakesLabel, (juce::Component*) &lengthHeading, (juce::Component*) &replacesLabel })
         addChildComponent (child);
-    updateSpan();
-    updateControls();
+    show (shown);
 }
 
 void ExportSheet::show (const ExportSheetState& state)
 {
     const auto videoTakesChanged = state.videoTakes != shown.videoTakes || state.sampleRate != shown.sampleRate;
+    const auto formatChanged = state.request.format != shown.request.format;
     shown = state;
     if (videoTakesChanged)
         updatePicker();
-    updateSpan();
-    updateControls();
-}
 
-exporting::ExportRequest ExportSheet::request() const
-{
-    if (chosenFormat != exporting::ExportFormat::mp4)
-        return { chosenFormat, chosenDestination };
-    const auto videoTake = shownVideoTake();
-    return {
-        chosenFormat,
-        chosenDestination,
-        videoTake.has_value() ? std::optional<song::Id> (videoTake->videoTakeId) : std::nullopt,
-        chosenLength,
-    };
-}
-
-void ExportSheet::setDestination (const juce::File& file)
-{
-    chosenDestination = file == juce::File() ? file : exporting::withFormatExtension (file, chosenFormat);
-    destinationLabel.setText (chosenDestination.getFullPathName(), juce::dontSendNotification);
-    updateControls();
-}
-
-void ExportSheet::chooseFormat (exporting::ExportFormat format)
-{
-    chosenFormat = format;
+    const auto format = shown.request.format;
     wavButton.setToggleState (format == exporting::ExportFormat::wav, juce::dontSendNotification);
     m4aButton.setToggleState (format == exporting::ExportFormat::m4a, juce::dontSendNotification);
     mp4Button.setToggleState (format == exporting::ExportFormat::mp4, juce::dontSendNotification);
-    setDestination (chosenDestination);
-    updateSpan();
-    updateControls();
-    resized();
-}
-
-void ExportSheet::chooseLength (exporting::VideoLength length)
-{
-    chosenLength = length;
+    const auto length = shown.request.videoLength;
     trimButton.setToggleState (length == exporting::VideoLength::trimToVideoTake, juce::dontSendNotification);
     fullSongButton.setToggleState (length == exporting::VideoLength::fullSong, juce::dontSendNotification);
-    updateSpan();
-}
+    destinationLabel.setText (shown.request.destination.getFullPathName(), juce::dontSendNotification);
+    replacesLabel.setText (shown.replacesExisting ? juce::String::fromUTF8 (replacesExistingText (shown.request.destination).c_str()) : juce::String(), juce::dontSendNotification);
 
-void ExportSheet::chooseVideoTake (const song::Id& videoTakeId)
-{
-    pickedVideoTakeId = videoTakeId;
     updateSpan();
+    updateControls();
+    if (formatChanged)
+        resized();
 }
 
 void ExportSheet::emit (Intent intent) const
@@ -269,12 +258,12 @@ void ExportSheet::pickVideoTake()
 
 std::optional<video::VideoTakeSpan> ExportSheet::shownVideoTake() const
 {
-    const auto id = pickedVideoTakeId.has_value() && std::ranges::contains (shown.videoTakes, *pickedVideoTakeId, &video::VideoTakeSpan::videoTakeId)
-                      ? pickedVideoTakeId
-                      : defaultExportVideoTake (shown.videoTakes, shown.storedVideoTakeId);
+    const auto& id = shown.request.videoTakeId;
     if (! id.has_value())
         return std::nullopt;
     const auto found = std::ranges::find (shown.videoTakes, *id, &video::VideoTakeSpan::videoTakeId);
+    if (found == shown.videoTakes.end())
+        return std::nullopt;
     return *found;
 }
 
@@ -289,14 +278,13 @@ void ExportSheet::updatePicker()
 void ExportSheet::updateSpan()
 {
     const auto videoTake = shownVideoTake();
-    const auto bar = exportSpanBar (chosenFormat, chosenLength, shown.clipsEnd, videoTake);
+    const auto bar = exportSpanBar (shown.request.format, shown.request.videoLength, shown.clipsEnd, videoTake);
     spanBar.setState (bar);
     const auto text = bar.videoTake.has_value() && videoTake.has_value()
-                        ? movieSpanText (chosenLength, *videoTake, bar.exported, shown.sampleRate)
+                        ? movieSpanText (shown.request.videoLength, *videoTake, bar.exported, shown.sampleRate)
                         : exportSpanText (shown.clipsEnd, shown.sampleRate);
     spanLabel.setText (juce::String::fromUTF8 (text.c_str()), juce::dontSendNotification);
 
-    // The picker shows the Video Take shown (the stored choice until the user picks).
     if (videoTake.has_value())
     {
         const auto found = std::ranges::find (shown.videoTakes, videoTake->videoTakeId, &video::VideoTakeSpan::videoTakeId);
@@ -306,7 +294,7 @@ void ExportSheet::updateSpan()
 
 void ExportSheet::updateControls()
 {
-    const auto mp4 = chosenFormat == exporting::ExportFormat::mp4;
+    const auto mp4 = shown.request.format == exporting::ExportFormat::mp4;
     const auto hasVideoTakes = ! shown.videoTakes.empty();
 
     videoTakeHeading.setVisible (mp4);
@@ -315,17 +303,18 @@ void ExportSheet::updateControls()
     lengthHeading.setVisible (mp4 && hasVideoTakes);
     trimButton.setVisible (mp4 && hasVideoTakes);
     fullSongButton.setVisible (mp4 && hasVideoTakes);
+    replacesLabel.setVisible (shown.replacesExisting);
     exportButton.setEnabled (canExport());
 }
 
 bool ExportSheet::canExport() const
 {
-    return chosenDestination != juce::File() && (chosenFormat != exporting::ExportFormat::mp4 || ! shown.videoTakes.empty());
+    return shown.request.destination != juce::File() && (shown.request.format != exporting::ExportFormat::mp4 || ! shown.videoTakes.empty());
 }
 
 juce::Rectangle<int> ExportSheet::panelBounds() const
 {
-    const auto height = formHeight + (chosenFormat == exporting::ExportFormat::mp4 ? mp4RowsHeight : 0) + 2 * panelPadding;
+    const auto height = formHeight + (shown.request.format == exporting::ExportFormat::mp4 ? mp4RowsHeight : 0) + 2 * panelPadding;
     const auto width = std::min (formWidth + 2 * panelPadding, getWidth() - 32);
     return getLocalBounds().withSizeKeepingCentre (width, std::min (height, getHeight() - 32));
 }
@@ -339,7 +328,7 @@ void ExportSheet::resized()
     formatHeading.setBounds (area.removeFromTop (18));
     for (auto* button : { &wavButton, &m4aButton, &mp4Button })
         button->setBounds (area.removeFromTop (24));
-    if (chosenFormat == exporting::ExportFormat::mp4)
+    if (shown.request.format == exporting::ExportFormat::mp4)
     {
         area.removeFromTop (8);
         videoTakeHeading.setBounds (area.removeFromTop (18));
@@ -361,6 +350,7 @@ void ExportSheet::resized()
     chooseButton.setBounds (destinationRow.removeFromRight (90));
     destinationRow.removeFromRight (6);
     destinationLabel.setBounds (destinationRow);
+    replacesLabel.setBounds (area.removeFromTop (18));
     area.removeFromTop (14);
     auto actions = area.removeFromTop (28);
     exportButton.setBounds (actions.removeFromRight (100));

@@ -197,7 +197,7 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest
                                               "the Video Take ends before the Song starts",
                                               { { "video_take_id", source.videoTake.id }, { "video_take_end_sample", videoSpan.end } } });
 
-    if (auto folder = createExportFolder (request.destination); ! folder.has_value())
+    if (auto folder = checkExportFolder (request.destination); ! folder.has_value())
         return std::unexpected (folder.error());
 
     const auto path = request.destination.getFullPathName().toStdString();

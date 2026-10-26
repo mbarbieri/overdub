@@ -85,6 +85,7 @@ target_sources(overdub_tests PRIVATE
     ui/DeleteVideoTakeTest.cpp
     ui/EditPageTest.cpp
     ui/ExportMp4SheetTest.cpp
+    ui/ExportChoicesTest.cpp
     ui/ExportSheetTest.cpp
     ui/ExportRunTest.cpp
     ui/FileDropTest.cpp

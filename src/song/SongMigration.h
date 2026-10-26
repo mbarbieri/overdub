@@ -40,6 +40,8 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
 //           "model": "" } (imported, not separated).
 //   3 -> 4 (issue #137): every Track gains a "colour": trackColourPalette[0], [1], ... in Song
 //           order, wrapping after the last (deterministic, no randomness).
+//   4 -> 5 (issue #201): the Song gains "exportFormat": "wav", "exportLength":
+//           "trim_to_video_take" and "exportDestination": "" (the export folder).
 std::span<const MigrationStep> songMigrationSteps();
 
 // migrateDocument with songMigrationSteps().

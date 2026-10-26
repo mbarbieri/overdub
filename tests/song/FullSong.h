@@ -164,6 +164,9 @@ inline Song fullyPopulatedSong()
     song.cameraDeviceId = "camera-facetime";
     song.playhead = 132300;
     song.exportVideoTakeId = "video-1";
+    song.exportFormat = ExportFormat::mp4;
+    song.exportLength = VideoLength::fullSong;
+    song.exportDestination = "/Users/someone/Music/Mixes/Band Mix.mp4";
     return song;
 }
 } // namespace overdub::song::testing

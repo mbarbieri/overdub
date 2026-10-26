@@ -76,3 +76,20 @@ TEST_CASE ("every edit of a Track the Song does not have is song.track_not_found
         CHECK (error.fields.at ("track_id") == "track-gone");
     }
 }
+
+TEST_CASE ("undo and redo keep the export format, length and destination as they are now", "[song][history][export]")
+{
+    auto snapshot = songWithGuitar();
+    auto current = snapshot;
+    current.tracks.front().name = "Bass";
+    current.exportFormat = ExportFormat::m4a;
+    current.exportLength = VideoLength::fullSong;
+    current.exportDestination = "/Volumes/Share/Mixes/Band Mix.m4a";
+
+    const auto restored = keepStateOutsideHistory (snapshot, current);
+
+    CHECK (restored.tracks.front().name == "Guitar");
+    CHECK (restored.exportFormat == ExportFormat::m4a);
+    CHECK (restored.exportLength == VideoLength::fullSong);
+    CHECK (restored.exportDestination == "/Volumes/Share/Mixes/Band Mix.m4a");
+}

@@ -39,6 +39,7 @@ constexpr std::array codeTable {
     CodeEntry { "ui.export_running", Tier::notice, "Wait for the export to finish." },
     CodeEntry { "ui.export_finished", Tier::notice, "The export is written." },
     CodeEntry { "export.nothing_to_export", Tier::notice, "The Song has no Clips to export." },
+    CodeEntry { "export.folder_missing", Tier::notice, "That folder does not exist. Choose another place to export to." },
     CodeEntry { "export.video_take_outside_song", Tier::notice, "The Video Take ends before the Song starts, so there is nothing to export." },
     CodeEntry { "ui.no_video_take", Tier::notice, "Pick a Video Take to export an MP4." },
     CodeEntry { "ui.latency_not_calibrated", Tier::notice, "This audio device is not calibrated, so Takes may land late. Calibrate it in Settings." },

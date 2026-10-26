@@ -106,11 +106,16 @@ TEST_CASE ("the fully populated test Song sets every field away from its default
     checkListsHoldTwoOrMore (document, "$");
 }
 
-TEST_CASE ("song.json carries formatVersion 4 and the key names fixed by issues #8, #14, #68, #114 and #137", "[song][json]")
+TEST_CASE ("song.json carries formatVersion 5 and the key names fixed by issues #8, #14, #68, #114, #137 and #201", "[song][json]")
 {
     const auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
 
-    CHECK (document.at ("formatVersion") == 4);
+    CHECK (document.at ("formatVersion") == 5);
+    CHECK (document.at ("exportFormat") == "mp4");
+    CHECK (document.at ("exportLength") == "full_song");
+    CHECK (document.at ("exportDestination") == "/Users/someone/Music/Mixes/Band Mix.mp4");
+    CHECK (songToJson (overdub::song::Song {}).at ("exportFormat") == "wav");
+    CHECK (songToJson (overdub::song::Song {}).at ("exportLength") == "trim_to_video_take");
     CHECK (document.at ("tracks").at (0).at ("colour") == "#c0ffee");
     CHECK (document.at ("tracks").at (1).at ("colour") == "#f5e19c");
     CHECK (document.at ("backingTracks").at (0).at ("separatedFrom") == nlohmann::json { { "backingTrackId", "" }, { "model", "" } });
@@ -184,6 +189,17 @@ TEST_CASE ("an unknown Clip source kind is an Error naming the JSON path", "[son
 
     REQUIRE_FALSE (result.has_value());
     CHECK (result.error().fields.at ("json_path") == "$.tracks[0].clips[0].source.kind");
+}
+
+TEST_CASE ("an unknown export format or length is an Error naming the JSON path", "[song][json][export]")
+{
+    auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
+    document["exportFormat"] = "flac";
+    CHECK (songFromJson (document).error().fields.at ("json_path") == "$.exportFormat");
+
+    document = songToJson (overdub::song::testing::fullyPopulatedSong());
+    document["exportLength"] = "trim";
+    CHECK (songFromJson (document).error().fields.at ("json_path") == "$.exportLength");
 }
 
 TEST_CASE ("a document that is not an object, or holds a wrong-shaped list, is an Error naming the JSON path", "[song][json]")

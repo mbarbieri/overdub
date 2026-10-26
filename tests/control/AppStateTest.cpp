@@ -134,6 +134,7 @@ TEST_CASE ("the app state has every section, each with its keys, over a Song wit
     CHECK (view["export_form"]["format"] == "wav");
     CHECK (view["export_form"]["length"] == "trim_to_video_take");
     CHECK (view["export_form"]["video_take"] == nullptr);
+    CHECK (view["export_form"]["replaces_existing"] == false);
 
     CHECK (state["window"] == json { { "video_preview_shown", false }, { "run_dialog", { { "showing", false }, { "title", "" }, { "status", "" }, { "progress", 0.0 } } } });
 

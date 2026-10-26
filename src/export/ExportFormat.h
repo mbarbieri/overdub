@@ -12,12 +12,7 @@
 // the Export sheet hands to the open Song. Pure; no I/O.
 namespace overdub::exporting
 {
-enum class ExportFormat
-{
-    wav, // 24-bit integer PCM at the Song's rate
-    m4a, // AAC at 256 kbit/s
-    mp4  // the mix and one Video Take (H.264 + AAC), export/MovieExport.h
-};
+using song::ExportFormat; // a Song setting (issue #201)
 
 struct ExportRequest
 {

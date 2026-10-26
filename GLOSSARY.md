@@ -43,7 +43,7 @@ The small picture beside Edit mode's mixer while the camera is armed: the camera
 _Avoid_: Camera pane, video window, monitor
 
 **Export**:
-Writing the Song's mix, optionally with one Video Take, to a single file outside the Song. The Song is unchanged.
+Writing the Song's mix, optionally with one Video Take, to a single file outside the Song. The Song is unchanged; it only remembers the export's format, length, Video Take and destination as settings outside history.
 _Avoid_: Bounce, render, mixdown
 
 **Take Lane**:

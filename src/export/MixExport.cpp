@@ -17,6 +17,18 @@ juce::File partialFileFor (const juce::File& destination)
 }
 } // namespace
 
+core::Expected<void> checkExportFolder (const juce::File& destination)
+{
+    const auto folder = destination.getParentDirectory();
+    if (folder.isDirectory())
+        return {};
+    return std::unexpected (core::Error {
+        "export.folder_missing",
+        "the export's folder does not exist",
+        { { "path", folder.getFullPathName().toStdString() } },
+    });
+}
+
 core::Expected<void> createExportFolder (const juce::File& destination)
 {
     const auto folder = destination.getParentDirectory();
@@ -96,7 +108,7 @@ core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& 
     if (render.songEnd() <= 0)
         return std::unexpected (core::Error { "export.nothing_to_export", "the Song has no Clips to export", {} });
 
-    if (auto folder = createExportFolder (request.destination); ! folder.has_value())
+    if (auto folder = checkExportFolder (request.destination); ! folder.has_value())
         return std::unexpected (folder.error());
 
     core::logEvent (core::Level::info,

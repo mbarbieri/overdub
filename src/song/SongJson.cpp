@@ -178,6 +178,27 @@ constexpr std::array<std::pair<PreRoll, int>, 4> preRollSeconds { {
 // Every ClipSourceKind; its song.json name is toString (kind).
 constexpr std::array<ClipSourceKind, 2> clipSourceKinds { ClipSourceKind::take, ClipSourceKind::backing };
 
+template <typename Enum, std::size_t count>
+std::string nameOf (Enum value, const std::pair<Enum, std::string_view> (&names)[count])
+{
+    for (const auto& [named, name] : names)
+        if (named == value)
+            return std::string (name);
+    return std::string (names[0].second);
+}
+
+// The value named by the string at `key`; the first one, with `expected` reported, for any other.
+template <typename Enum, std::size_t count>
+Enum readNamed (const Reader& reader, std::string_view key, const std::pair<Enum, std::string_view> (&names)[count], const char* expected)
+{
+    const auto read = reader.string (key);
+    for (const auto& [named, name] : names)
+        if (name == read)
+            return named;
+    reader.report (reader.childPath (key), expected);
+    return names[0].first;
+}
+
 int preRollToSeconds (PreRoll preRoll)
 {
     for (const auto& [value, seconds] : preRollSeconds)
@@ -442,6 +463,9 @@ Song readSong (const Reader& reader)
     song.cameraDeviceId = reader.string ("cameraDeviceId");
     song.playhead = reader.integer ("playhead");
     song.exportVideoTakeId = readOptionalId (reader, "exportVideoTakeId");
+    song.exportFormat = readNamed (reader, "exportFormat", exportFormatNames, "expected \"wav\", \"m4a\" or \"mp4\"");
+    song.exportLength = readNamed (reader, "exportLength", videoLengthNames, "expected \"trim_to_video_take\" or \"full_song\"");
+    song.exportDestination = reader.string ("exportDestination");
     return song;
 }
 } // namespace
@@ -462,6 +486,9 @@ nlohmann::json songToJson (const Song& song)
         { "cameraDeviceId", song.cameraDeviceId },
         { "playhead", song.playhead },
         { "exportVideoTakeId", song.exportVideoTakeId.has_value() ? json (*song.exportVideoTakeId) : json (nullptr) },
+        { "exportFormat", nameOf (song.exportFormat, exportFormatNames) },
+        { "exportLength", nameOf (song.exportLength, videoLengthNames) },
+        { "exportDestination", song.exportDestination },
     };
 }
 

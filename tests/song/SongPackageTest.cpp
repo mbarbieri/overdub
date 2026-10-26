@@ -657,6 +657,8 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
             backingTrack.erase ("separatedFrom");
         for (auto& track : document.at ("tracks"))
             track.erase ("colour");
+        for (const auto* key : { "exportFormat", "exportLength", "exportDestination" })
+            document.erase (key);
         return document;
     };
     const auto songJson = temp.package().getChildFile ("song.json");
@@ -676,6 +678,9 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
         backingTrack.separatedFrom = {};
     expected.tracks.at (0).colour = "#a8d8b9";
     expected.tracks.at (1).colour = "#f4a6a6";
+    expected.exportFormat = overdub::song::ExportFormat::wav;
+    expected.exportLength = overdub::song::VideoLength::trimToVideoTake;
+    expected.exportDestination = "";
     CHECK (opened.package->song() == expected);
     CHECK (firstEvent (capture, "song.migrated").at ("from_version") == 1);
     CHECK (noticesWithCode (opened, "song.history_dropped").empty()); // the v1 snapshot migrates too
@@ -718,6 +723,38 @@ TEST_CASE ("a v3 package opens with its Tracks coloured in palette order, and it
     CHECK (colours (opened.package->song()) == std::vector<std::string> { "#a8d8b9", "#f4a6a6" });
     REQUIRE (opened.package->redo().has_value());
     CHECK (colours (opened.package->song()) == std::vector<std::string> { "#a8d8b9", "#f4a6a6", "#a6d4f2" });
+}
+
+TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exporting WAV, trimmed, into the export folder, with its undo history", "[song][package][migration][export]")
+{
+    TempDirectory temp;
+    const auto original = overdub::song::testing::fullyPopulatedSong();
+    createPackage (temp.package(), original);
+    // Turn song.json and the history snapshot back into what a v4 build wrote.
+    const auto toV4 = [] (nlohmann::json document) {
+        document["formatVersion"] = 4;
+        for (const auto* key : { "exportFormat", "exportLength", "exportDestination" })
+            document.erase (key);
+        return document;
+    };
+    const auto songJson = temp.package().getChildFile ("song.json");
+    REQUIRE (songJson.replaceWithText (toV4 (*overdub::song::parseJsonText (songJson.loadFileAsString().toStdString())).dump()));
+    const auto snapshot = temp.package().getChildFile ("history/000000.json");
+    auto snapshotDocument = *overdub::song::parseJsonText (snapshot.loadFileAsString().toStdString());
+    snapshotDocument["song"] = toV4 (snapshotDocument.at ("song"));
+    REQUIRE (snapshot.replaceWithText (snapshotDocument.dump()));
+
+    ScopedLogCapture capture;
+    const auto opened = openPackage (temp.package());
+
+    auto expected = original;
+    expected.exportFormat = overdub::song::ExportFormat::wav;
+    expected.exportLength = overdub::song::VideoLength::trimToVideoTake;
+    expected.exportDestination = "";
+    CHECK (opened.package->song() == expected);
+    CHECK (firstEvent (capture, "song.migrated").at ("from_version") == 4);
+    CHECK (noticesWithCode (opened, "song.history_dropped").empty());
+    CHECK (std::ranges::none_of (capture.events(), [] (const nlohmann::json& event) { return event.at ("lvl") == "error"; }));
 }
 
 TEST_CASE ("opening a current, consistent Song leaves song.json as it is", "[song][package]")

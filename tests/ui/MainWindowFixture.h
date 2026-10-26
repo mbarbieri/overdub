@@ -121,6 +121,12 @@ struct MainWindowFixture
         window->tick();
     }
 };
+// set_export_destination, as Choose... runs it after the save dialog.
+inline void setExportDestination (MainComponent& window, const juce::File& file)
+{
+    REQUIRE (window.run (SongIntent { intent::SetExportDestination { core::AbsolutePath { file.getFullPathName().toStdString() } } }, Origin::control).has_value());
+}
+
 // Opens the Export sheet as a click on the top bar's Export... does (issue #200).
 inline ExportSheet& openExportSheet (MainComponent& window)
 {
