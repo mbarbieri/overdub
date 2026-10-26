@@ -47,6 +47,10 @@
 // across one, issue #160), tick() opens the audio again under the same rule (change
 // song_rate_changed).
 //
+// The Last Song (issue #206): a Song becomes it at the first tick() after showSong has shown it, so
+// one whose open fails or never finishes (a crash, in the open or its first callbacks) is never
+// recorded. Failing to record it is logged, never presented.
+//
 // Calibration (issues #39, #170): a device opened without a stored latency calibration shows the
 // ui.latency_not_calibrated Notice. measure_latency detaches the open Song from the engine and runs
 // a capture::LoopbackRun on the live device (polled by tick()); the Song is bound again only once
@@ -73,6 +77,8 @@ struct WorkspaceFiles
     // Separation is unavailable (song.separation_unavailable or song.separation_model_missing).
     juce::File separationModel = {};
     juce::File separationHelper = {};
+    // The Last Song (issue #206, ui/LastSong.h). Empty: neither read nor recorded.
+    juce::File lastSong = {};
 
     static WorkspaceFiles defaults();
 };
@@ -121,7 +127,7 @@ public:
     // Every activity started and finished in this Workspace, the open Songs' included.
     const ActivityLog& activities() const { return activityLog; }
 
-    // Call regularly (window timer): answers a device change the LiveAudio reported once it may
+    // Call regularly (window timer): records the Last Song, answers a device change the LiveAudio reported once it may
     // (see the header comment), and advances a loopback run (`now` is its clock).
     void tick (song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
 
@@ -136,6 +142,8 @@ private:
     IntentResult newSongAt (const juce::File& chosen);
     // The open Song again changes nothing.
     IntentResult openSongFrom (const juce::File& chosen);
+    // ui.no_last_song (quiet) when none is recorded; logs ui.last_song_reopened once it opens.
+    IntentResult reopenLastSong();
     IntentResult duplicateSongTo (const juce::File& chosen);
     IntentResult convertSampleRate (int toRate);
     IntentResult showSettings (bool shown);
@@ -147,6 +155,8 @@ private:
     // key.outputDevice is the clap Pass's (its Video Take's), not necessarily the one open now.
     IntentResult saveCameraCalibration (const capture::CameraCalibrationKey& key, double offsetMs);
     IntentResult quit();
+    // Records the open Song as the Last Song once after it was shown, unless files.lastSong is empty.
+    void recordLastSong();
     // A result handled here: presented by its tier, then returned.
     IntentResult presented (core::Error error);
 
@@ -193,5 +203,7 @@ private:
     // The run's outcome, held until the audio thread lets go of the plans and the Song is bound again.
     std::optional<core::Expected<capture::LoopbackMeasurement>> latencyOutcome;
     CalibrationState calibrationState;
+    // The open Song is shown and not recorded as the Last Song yet.
+    bool lastSongPending = false;
 };
 } // namespace overdub::ui

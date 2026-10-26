@@ -42,7 +42,7 @@ std::map<std::string, std::string> allBut (const std::set<std::string>& allowed,
     return codes;
 }
 
-const std::set<std::string> appOps { "new_song_at", "open_song_at", "duplicate_song_to", "convert_sample_rate", "show_settings", "apply_device_settings", "measure_latency", "save_latency_calibration", "measure_clap_pass", "save_camera_calibration", "quit" };
+const std::set<std::string> appOps { "new_song_at", "open_song_at", "reopen_last_song", "duplicate_song_to", "convert_sample_rate", "show_settings", "apply_device_settings", "measure_latency", "save_latency_calibration", "measure_clap_pass", "save_camera_calibration", "quit" };
 } // namespace
 
 TEST_CASE ("while nothing runs only cancel_export is refused, and with no Song open nothing is", "[ui][availability]")

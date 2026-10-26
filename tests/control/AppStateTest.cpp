@@ -313,6 +313,7 @@ struct SongForEveryOp
         return {
             { "new_song_at", { { "path", path ("New.overdub") } } },
             { "open_song_at", { { "path", path ("Other.overdub") } } },
+            { "reopen_last_song", json::object() },
             { "duplicate_song_to", { { "path", path ("Copy.overdub") } } },
             { "convert_sample_rate", { { "rate", 44100 } } },
             { "show_settings", { { "shown", true } } },
@@ -437,7 +438,7 @@ TEST_CASE ("during a latency calibration every op the refused section names answ
 
     const auto ran = every.runEveryRefusedOp();
 
-    CHECK (ran == 16); // the App group but quit, record, play_or_stop, set_monitoring, export, show_export and cancel_export
+    CHECK (ran == 17); // the App group but quit, record, play_or_stop, set_monitoring, export, show_export and cancel_export
     CHECK (refused["record"] == "ui.calibration_running");
     CHECK (refused["undo"] == nullptr);
     CHECK (f.content.run (ui::SongIntent { Undo {} }, ui::Origin::control).has_value());

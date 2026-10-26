@@ -10,6 +10,10 @@ A simple macOS app for recording songs one part at a time over imported backing 
 The single document a user works in: its tracks, takes, mixer settings and video takes. Time is measured in seconds; there is no tempo or bar grid.
 _Avoid_: Project, session, arrangement
 
+**Last Song**:
+The Song most recently opened successfully on this Mac, which Overdub reopens at launch.
+_Avoid_: Last project, recent project, last session
+
 **Track**:
 A horizontal lane in a song that holds clips of takes, backing tracks or both, with its own mixer channel, insert chain and colour. Tracks have one order in the song, which every view shows and the user can change.
 _Avoid_: Channel (when you mean the lane), lane
