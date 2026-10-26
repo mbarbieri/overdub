@@ -142,7 +142,15 @@ private:
     IntentResult showExport (bool shown);
     // Shows or hides the Export sheet, logging ui.export_sheet_shown when that changes.
     void setExportSheetShown (bool shown);
-    IntentResult startExport (const exporting::ExportRequest& request);
+    // The Song's package name: its default export file's name.
+    std::string exportSongName() const;
+    // What Export writes now, from the Song's choices (exportRequestFor, exportDestinationFor).
+    exporting::ExportRequest exportRequest() const;
+    IntentResult exportSong();
+    IntentResult setExportFormat (exporting::ExportFormat format);
+    IntentResult setExportLength (exporting::VideoLength length);
+    // Errors: export.folder_missing (the file's folder does not exist; nothing is stored).
+    IntentResult setExportDestination (const juce::File& file);
     IntentResult setExportVideoTake (const song::Id& videoTakeId);
     IntentResult revealExport();
     void chooseExportFile (const juce::File& current);

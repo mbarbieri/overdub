@@ -242,7 +242,8 @@ public:
     // Starts exporting the mix (with the request's Video Take for an MP4, issue #38) to the
     // request's file (see the header comment); `now` starts ExportRun::audioTimeout. Does nothing
     // while an export runs.
-    // Errors: refusal()'s, ui.no_video_take (an MP4 without a Video Take of the Song), and
+    // Errors: refusal()'s, ui.no_video_take (an MP4 without a Video Take of the Song),
+    // export.folder_missing (the destination's folder does not exist; it is not created), and
     // without audio ui.export_plugin_crashed (ExportRun's).
     core::Expected<void> startExport (exporting::ExportRequest request, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
     ExportPhase exportPhase() const;
@@ -252,9 +253,13 @@ public:
     // The file the last export wrote, once it finished; none before (or after one failed).
     const std::optional<juce::File>& lastExportedFile() const { return lastExport; }
 
-    // The Video Take an MP4 export shows: a Song setting outside history (song.json, no undo
-    // step), the Export sheet's default. Ignored for an id that is not a Video Take of the Song.
+    // The Export sheet's choices (issue #201): Song settings outside history (song.json, no undo
+    // step). The Video Take an MP4 shows ignores an id that is not a Video Take of the Song. The
+    // destination is an absolute path, "" for the export folder; its folder is not checked here.
     void setExportVideoTake (const song::Id& videoTakeId);
+    void setExportFormat (song::ExportFormat format);
+    void setExportLength (song::VideoLength length);
+    void setExportDestination (const std::string& path);
 
     // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
     // Errors: refusal()'s.

@@ -13,21 +13,19 @@
 #include <string>
 #include <vector>
 
-// The Export sheet (issues #37, #38, #200, after the prototype's Export form): a modal panel over
-// the whole main window, dimming it and taking every click, with the format (WAV, M4A, MP4), for
-// an MP4 the Video Take and the length (trimmed to the Video Take, or the full song with black
-// where there is no video), the span bar previewing what is exported, where the file goes, Cancel
-// and Export. Export closes it: the top bar shows the export's progress and a Notice its file. It
-// stays thin: every gesture is an Intent reported through onIntent (ADR 0008): set_export_format,
-// set_export_length, set_export_video_take, export (which runs the sheet's request()) and
-// show_export { false } (Cancel). Choose... is the one hook, onChooseDestination: the window asks
-// for a file, then runs set_export_destination. The form changes only when a handler calls back
-// (chooseFormat, chooseLength, chooseVideoTake, setDestination), and the rest of what it shows
-// comes from show().
+// The Export sheet (issues #37, #38, #200, #201, after the prototype's Export form): a modal panel
+// over the whole main window, dimming it and taking every click, with the format (WAV, M4A, MP4),
+// for an MP4 the Video Take and the length (trimmed to the Video Take, or the full song with black
+// where there is no video), the span bar previewing what is exported, where the file goes (and
+// "Replaces the existing <file name>" when a file is there), Cancel and Export. Export closes it:
+// the top bar shows the export's progress and a Notice its file.
 //
-// The destination keeps its folder and name when the format changes; only its extension follows.
-// The Video Take shown is the sheet's choice once the user picked one, else the Song's stored
-// choice (defaultExportVideoTake); set_export_video_take sets both.
+// It shows the Song's stored choices (Song::export*) and keeps none of its own: show() sets the
+// whole form, and every gesture is an Intent reported through onIntent (ADR 0008):
+// set_export_format, set_export_length, set_export_video_take, export and show_export { false }
+// (Cancel). Choose... is the one hook, onChooseDestination: the window asks for a file, then runs
+// set_export_destination. While it shows, a stored destination whose folder is gone is replaced
+// by the export folder, and Export writes there (SongView::exportRequest).
 namespace overdub::ui
 {
 struct ExportSheetState
@@ -35,7 +33,8 @@ struct ExportSheetState
     song::SampleCount clipsEnd = 0; // the end of the Song's last Clip
     int sampleRate = 48000;
     std::vector<video::VideoTakeSpan> videoTakes; // the Song's, in its order
-    std::optional<song::Id> storedVideoTakeId;     // Song::exportVideoTakeId
+    exporting::ExportRequest request;             // what Export writes (exportRequestFor)
+    bool replacesExisting = false;                // a file is at request.destination
 };
 
 // What the span bar shows, in Song samples.
@@ -65,6 +64,15 @@ std::string movieSpanText (exporting::VideoLength length, const video::VideoTake
 std::string videoTakeChoiceText (const video::VideoTakeSpan& videoTake, int sampleRate);
 // The stored choice when it is one of the Video Takes, else the first; none without Video Takes.
 std::optional<song::Id> defaultExportVideoTake (const std::vector<video::VideoTakeSpan>& videoTakes, const std::optional<song::Id>& stored);
+// Where the Song exports to (issue #201): its stored destination with the format's extension, or
+// <exportFolder>/<songName>.<extension> when none is stored, and, with `fallBackWhenFolderGone`
+// (it asks the disk), when the stored destination's folder no longer exists.
+juce::File exportDestinationFor (const song::Song& song, const juce::File& exportFolder, const std::string& songName, bool fallBackWhenFolderGone);
+// What Export writes: the Song's format and length (which only an MP4 uses) to `destination`; an
+// MP4 also with the Video Take defaultExportVideoTake picks from `videoTakes` (none without any).
+exporting::ExportRequest exportRequestFor (const song::Song& song, const std::vector<video::VideoTakeSpan>& videoTakes, const juce::File& destination);
+// "Replaces the existing Band Mix.wav".
+std::string replacesExistingText (const juce::File& destination);
 
 // The span bar: the exported range over the scale, the Video Take on top, black around it for a
 // full-song MP4.
@@ -86,19 +94,14 @@ public:
 
     void show (const ExportSheetState& state);
 
-    exporting::ExportFormat format() const { return chosenFormat; }
-    const juce::File& destination() const { return chosenDestination; }
-    // Sets where the file goes, with the chosen format's extension.
-    void setDestination (const juce::File& file);
-    // The request Export would make: an MP4's carries the Video Take shown and the length.
-    exporting::ExportRequest request() const;
+    exporting::ExportFormat format() const { return shown.request.format; }
+    const juce::File& destination() const { return shown.request.destination; }
+    // The request the form shows.
+    const exporting::ExportRequest& request() const { return shown.request; }
+    bool replacesExisting() const { return shown.replacesExisting; }
     // Whether Export (the button, and Return) is offered: a destination is set, and an MP4 has a
     // Video Take to show.
     bool canExport() const;
-    // The form's choices; the toggles and the picker show them.
-    void chooseFormat (exporting::ExportFormat format);
-    void chooseLength (exporting::VideoLength length);
-    void chooseVideoTake (const song::Id& videoTakeId);
 
     void resized() override;
     void paint (juce::Graphics& g) override;
@@ -124,6 +127,7 @@ public:
     juce::Label spanLabel;
     juce::Label destinationHeading;
     juce::Label destinationLabel;
+    juce::Label replacesLabel;
     juce::TextButton chooseButton { juce::String::fromUTF8 ("Choose\xe2\x80\xa6") };
     juce::TextButton cancelButton { "Cancel" };
     juce::TextButton exportButton { "Export" };
@@ -132,17 +136,13 @@ private:
     // The panel in the middle of the sheet, as tall as the form for the chosen format.
     juce::Rectangle<int> panelBounds() const;
     void pickVideoTake();
-    // The Video Take shown: the sheet's pick while it is still in the Song, else the default.
+    // The request's Video Take, when it is one of the Song's.
     std::optional<video::VideoTakeSpan> shownVideoTake() const;
     void updatePicker();
     void updateSpan();
     void updateControls();
     void emit (Intent intent) const;
 
-    exporting::ExportFormat chosenFormat = exporting::ExportFormat::wav;
-    exporting::VideoLength chosenLength = exporting::VideoLength::trimToVideoTake;
-    std::optional<song::Id> pickedVideoTakeId;
-    juce::File chosenDestination;
     ExportSheetState shown;
 };
 } // namespace overdub::ui

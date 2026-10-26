@@ -97,6 +97,7 @@ TEST_CASE ("a WAV export is 24-bit at the Song rate, as long as the Song span, w
     const auto mix = clickSong (package);
     MixRender render { mix, package.root, 256, {} };
     const auto destination = package.root.getChildFile ("exports/Click Song.wav");
+    REQUIRE (destination.getParentDirectory().createDirectory().wasOk());
 
     core::ScopedLogCapture capture;
     const auto exported = overdub::exporting::exportMix (render, ExportRequest { ExportFormat::wav, destination });
@@ -135,6 +136,21 @@ TEST_CASE ("a WAV export is 24-bit at the Song rate, as long as the Song span, w
     CHECK (finished[0]["format"] == "wav");
     CHECK (finished[0]["samples"] == clipLength);
     CHECK (finished[0]["speed"].get<double>() > 1.0); // faster than real time
+}
+
+TEST_CASE ("an export into a folder that does not exist fails with export.folder_missing and makes no folder", "[export][folder]")
+{
+    TempPackage package;
+    const auto mix = clickSong (package);
+    MixRender render { mix, package.root, 256, {} };
+    const auto folder = package.root.getChildFile ("gone");
+
+    const auto exported = overdub::exporting::exportMix (render, ExportRequest { ExportFormat::wav, folder.getChildFile ("Click Song.wav") });
+
+    REQUIRE_FALSE (exported.has_value());
+    CHECK (exported.error().code == "export.folder_missing");
+    CHECK (exported.error().fields.at ("path") == folder.getFullPathName().toStdString());
+    CHECK (! folder.exists());
 }
 
 TEST_CASE ("an M4A export is AAC and decodes to the Song span's length with the click at its sample", "[export][m4a]")

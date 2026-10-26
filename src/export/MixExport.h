@@ -18,8 +18,10 @@
 // only once the file is complete, so a failed or cancelled export leaves no partial file and an
 // existing file is replaced whole. Logs export.started and export.finished (info).
 //
+// The destination's folder must exist: an export never creates it (issue #201).
+//
 // Errors: export.nothing_to_export (the Song has no Clips, whatever its Insert Chains' tails), export.cancelled,
-// export.format_unavailable, export.write_failed (path, step: folder (detail) | create |
+// export.folder_missing (path), export.format_unavailable, export.write_failed (path, step: create |
 // client_format | bit_rate | write | close (os_status) | rename (from)).
 namespace overdub::exporting
 {
@@ -36,7 +38,10 @@ using ShouldStopFn = std::function<bool()>;
 
 core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& request, const ProgressFn& progress = {}, const ShouldStopFn& shouldStop = {});
 
-// The destination's folder, created if missing. Errors: export.write_failed (step folder).
+// Errors: export.folder_missing (path: the destination's folder, which is not a folder).
+core::Expected<void> checkExportFolder (const juce::File& destination);
+// The destination's folder, created if missing: only the export folder is (ui::SongView).
+// Errors: export.write_failed (path, step folder, detail).
 core::Expected<void> createExportFolder (const juce::File& destination);
 // Renames the complete `partial` over `destination`; on failure deletes it.
 // Errors: export.write_failed (step rename).
@@ -45,7 +50,7 @@ core::Expected<void> moveExportIntoPlace (const juce::File& partial, const juce:
 // Renders the whole mix into `file` (no logging, no rename): what exportMix and exportMovie
 // share. After the mix ends, silence is written up to `padToSamples` (exportMovie's range end, so
 // its audio is as long as its video, even for a Song with no Clips). On failure or a stop the file
-// is deleted. Errors: as exportMix's, but folder and rename.
+// is deleted. Errors: as exportMix's, but folder_missing and rename.
 core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop, song::SampleCount padToSamples = 0);
 
 struct MovieSource; // export/MovieExport.h

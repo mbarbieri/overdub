@@ -106,10 +106,11 @@ json exportForm (const ui::SongView& view)
 {
     const auto request = view.exportSheet.request();
     return {
-        { "format", nameOf<exporting::ExportFormat> (ui::exportFormatNames, request.format) },
-        { "length", nameOf<exporting::VideoLength> (ui::videoLengthNames, request.videoLength) },
+        { "format", nameOf<exporting::ExportFormat> (song::exportFormatNames, request.format) },
+        { "length", nameOf<exporting::VideoLength> (song::videoLengthNames, request.videoLength) },
         { "destination", request.destination.getFullPathName().toStdString() },
         { "video_take", orNull (request.videoTakeId) },
+        { "replaces_existing", view.exportSheet.replacesExisting() },
     };
 }
 

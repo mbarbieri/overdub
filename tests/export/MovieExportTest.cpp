@@ -174,6 +174,7 @@ TEST_CASE ("an MP4 trimmed to the Video Take keeps every flash on its click", "[
     FlashFixture f;
     MixRender render { f.mix, f.package.root, 256, {} };
     const auto destination = f.package.root.getChildFile ("exports/Trimmed.mp4");
+    REQUIRE (destination.getParentDirectory().createDirectory().wasOk());
 
     core::ScopedLogCapture capture;
     std::vector<double> progress;
@@ -248,6 +249,7 @@ TEST_CASE ("a stopped MP4 export leaves no file", "[export][mp4]")
     FlashFixture f;
     MixRender render { f.mix, f.package.root, 256, {} };
     const auto destination = f.package.root.getChildFile ("exports/Stopped.mp4");
+    REQUIRE (destination.getParentDirectory().createDirectory().wasOk());
 
     int asked = 0;
     const auto exported = overdub::exporting::exportMovie (render, f.request (VideoLength::trimToVideoTake, destination), f.source(), {}, [&asked] { return ++asked > 3; });
@@ -283,6 +285,7 @@ TEST_CASE ("a Song with a Video Take but no Clips exports an MP4 of the Video Ta
                                            std::pair { VideoLength::fullSong, SampleRange { 0, videoEnd() } });
     CAPTURE (overdub::exporting::videoLengthName (length));
     const auto destination = f.package.root.getChildFile ("exports/Silent.mp4");
+    REQUIRE (destination.getParentDirectory().createDirectory().wasOk());
 
     core::ScopedLogCapture capture;
     std::vector<double> progress;
@@ -327,6 +330,7 @@ TEST_CASE ("a stopped MP4 export of a Song with no Clips leaves no file", "[expo
     f.mix.tracks.clear();
     MixRender render { f.mix, f.package.root, 256, {} };
     const auto destination = f.package.root.getChildFile ("exports/Stopped.mp4");
+    REQUIRE (destination.getParentDirectory().createDirectory().wasOk());
 
     // Stopped while the silent mix is written, before the encode starts.
     int asked = 0;

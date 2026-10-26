@@ -37,7 +37,6 @@ SongView::SongView (OpenSong& song, MainComponent& mainWindow)
       pluginWindows (mainWindow.showPluginWindowsOnDesktop)
 {
     wirePages();
-    exportSheet.setDestination (exporting::defaultExportFile (window.exportFolder, openSong.package().location().getFileNameWithoutExtension().toStdString(), exportSheet.format()));
 
     addChildComponent (recordPage);
     addChildComponent (editPage);
@@ -99,11 +98,11 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const OpenInsertEditor& i) { return openInsertEditor (i.slotId); },
             [this] (const ClosePluginWindow& i) { return closePluginWindow (i.slotId); },
             [this] (const ShowExport& i) { return showExport (i.shown); },
-            [this] (const SetExportFormat& i) -> IntentResult { exportSheet.chooseFormat (i.format); return IntentDone {}; },
-            [this] (const SetExportLength& i) -> IntentResult { exportSheet.chooseLength (i.length); return IntentDone {}; },
-            [this] (const SetExportDestination& i) -> IntentResult { exportSheet.setDestination (juce::File (i.path.value)); return IntentDone {}; },
+            [this] (const SetExportFormat& i) { return setExportFormat (i.format); },
+            [this] (const SetExportLength& i) { return setExportLength (i.length); },
+            [this] (const SetExportDestination& i) { return setExportDestination (juce::File (i.path.value)); },
             [this] (const SetExportVideoTake& i) { return setExportVideoTake (i.videoTakeId); },
-            [this] (const Export&) { return startExport (exportSheet.request()); },
+            [this] (const Export&) { return exportSong(); },
             [this] (const RevealExport&) { return revealExport(); },
             [this] (const SelectClip& i) -> IntentResult { editPage.timeline.selectClip (i.clipId); return IntentDone {}; },
             [this] (const SelectVideoTake& i) -> IntentResult { editPage.timeline.selectVideoTake (i.videoTakeId); return IntentDone {}; },
@@ -482,8 +481,28 @@ void SongView::setExportSheetShown (bool shown)
         takeKeyboardFocus();
 }
 
-IntentResult SongView::startExport (const exporting::ExportRequest& request)
+exporting::ExportRequest SongView::exportRequest() const
 {
+    const auto& song = openSong.song();
+    // The sheet falls back to the export folder; Export without it (the socket) keeps the stored
+    // destination, and fails with export.folder_missing when that folder is gone.
+    const auto destination = exportDestinationFor (song, window.exportFolder, exportSongName(), exportSheetShown);
+    return exportRequestFor (song, openSong.videoPlayback().spans (song), destination);
+}
+
+std::string SongView::exportSongName() const
+{
+    return openSong.package().location().getFileNameWithoutExtension().toStdString();
+}
+
+IntentResult SongView::exportSong()
+{
+    const auto request = exportRequest();
+    // Only the default destination's folder (the export folder) is made when missing; any other is
+    // the user's, and a gone one is startExport's export.folder_missing.
+    if (request.destination == exporting::defaultExportFile (window.exportFolder, exportSongName(), request.format))
+        if (auto made = exporting::createExportFolder (request.destination); ! made.has_value())
+            return presented (made);
     auto started = presented (openSong.startExport (request));
     // The top bar shows the export's progress from here on.
     if (started.has_value())
@@ -492,9 +511,31 @@ IntentResult SongView::startExport (const exporting::ExportRequest& request)
     return started;
 }
 
+IntentResult SongView::setExportFormat (exporting::ExportFormat format)
+{
+    openSong.setExportFormat (format);
+    window.refresh();
+    return IntentDone {};
+}
+
+IntentResult SongView::setExportLength (exporting::VideoLength length)
+{
+    openSong.setExportLength (length);
+    window.refresh();
+    return IntentDone {};
+}
+
+IntentResult SongView::setExportDestination (const juce::File& file)
+{
+    if (auto folder = exporting::checkExportFolder (file); ! folder.has_value())
+        return presented (folder);
+    openSong.setExportDestination (file.getFullPathName().toStdString());
+    window.refresh();
+    return IntentDone {};
+}
+
 IntentResult SongView::setExportVideoTake (const song::Id& videoTakeId)
 {
-    exportSheet.chooseVideoTake (videoTakeId);
     openSong.setExportVideoTake (videoTakeId);
     window.refresh();
     return IntentDone {};
@@ -678,11 +719,13 @@ void SongView::refresh (TopBarState& state)
             .videoTakes = openSong.videoPlayback().spans (song),
             .canArmCamera = cameraControls.canArm && ! window.refusalOf (intent::SetCameraArmed::op).has_value(),
         });
+    const auto request = exportRequest();
     exportSheet.show (ExportSheetState {
         .clipsEnd = exporting::lastClipEnd (song),
         .sampleRate = song.sampleRate,
         .videoTakes = openSong.videoPlayback().spans (song),
-        .storedVideoTakeId = song.exportVideoTakeId,
+        .request = request,
+        .replacesExisting = exportSheetShown && request.destination.existsAsFile(),
     });
     syncPluginWindows();
 

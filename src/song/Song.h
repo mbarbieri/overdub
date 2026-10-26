@@ -8,6 +8,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 // The v1 Song model: plain value structs (ADR 0004, issues #8, #14, #15, #23).
@@ -26,7 +27,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 4;
+inline constexpr int songFormatVersion = 5;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -36,6 +37,34 @@ enum class PreRoll
     oneSecond,
     twoSeconds,
     fourSeconds
+};
+
+// The export's format and an MP4's length: Song settings outside history (issue #201), what the
+// Export sheet opens with. Exporting is export/ExportFormat.h, export/MovieSpan.h.
+enum class ExportFormat
+{
+    wav, // 24-bit integer PCM at the Song's rate
+    m4a, // AAC at 256 kbit/s
+    mp4  // the mix and one Video Take (H.264 + AAC), export/MovieExport.h
+};
+
+// The MP4's length: trimmed to the chosen Video Take, or the full song with black where there is
+// no video.
+enum class VideoLength
+{
+    trimToVideoTake,
+    fullSong
+};
+
+// Their names in song.json and on the control socket.
+inline constexpr std::pair<ExportFormat, std::string_view> exportFormatNames[] {
+    { ExportFormat::wav, "wav" },
+    { ExportFormat::m4a, "m4a" },
+    { ExportFormat::mp4, "mp4" },
+};
+inline constexpr std::pair<VideoLength, std::string_view> videoLengthNames[] {
+    { VideoLength::trimToVideoTake, "trim_to_video_take" },
+    { VideoLength::fullSong, "full_song" },
 };
 
 // The AudioComponentDescription that identifies an AU, each part a four-character code ("aufx").
@@ -212,7 +241,11 @@ struct Song
     bool cameraArmed = false;
     std::string cameraDeviceId; // empty = no camera chosen
     SampleCount playhead = 0;
+    // The Export sheet's choices (issue #201).
     std::optional<Id> exportVideoTakeId;
+    ExportFormat exportFormat = ExportFormat::wav;
+    VideoLength exportLength = VideoLength::trimToVideoTake;
+    std::string exportDestination; // an absolute path; empty = <export folder>/<Song name>.<ext>
 
     bool operator== (const Song&) const = default;
 };
@@ -236,8 +269,9 @@ core::Expected<const Track*> lookupTrack (const Song& song, const Id& trackId);
 core::Expected<Track*> lookupTrack (Song& song, const Id& trackId);
 
 // Undo and redo restore a snapshot's undoable content but keep the current state that lives
-// outside history: pre-roll, camera arm and device, playhead (converted to the snapshot's rate), the export choice (unless it would
-// name a Video Take the snapshot does not have), per Track id Armed and input channels, and per
+// outside history: pre-roll, camera arm and device, playhead (converted to the snapshot's rate), the
+// export format, length and destination, the export's Video Take (unless the snapshot does not
+// have it), per Track id Armed and input channels, and per
 // Insert Chain slot id (Master's included) the plugin state hash: plugin parameters are outside
 // history. A slot only the snapshot has keeps the snapshot's hash.
 Song keepStateOutsideHistory (Song snapshot, const Song& current);

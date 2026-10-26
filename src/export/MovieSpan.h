@@ -5,13 +5,7 @@
 // What part of the Song an MP4 export covers (issue #38, ADR 0003). Pure; no I/O.
 namespace overdub::exporting
 {
-// The MP4's length: trimmed to the chosen Video Take, or the full song with black where there is
-// no video.
-enum class VideoLength
-{
-    trimToVideoTake,
-    fullSong
-};
+using song::VideoLength; // a Song setting (issue #201)
 
 // [start, end) in Song samples.
 struct SampleRange

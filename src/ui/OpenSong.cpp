@@ -233,6 +233,33 @@ void OpenSong::setExportVideoTake (const song::Id& videoTakeId)
     package_->changeWithoutHistory (std::move (changed));
 }
 
+void OpenSong::setExportFormat (song::ExportFormat format)
+{
+    if (song().exportFormat == format)
+        return;
+    auto changed = song();
+    changed.exportFormat = format;
+    package_->changeWithoutHistory (std::move (changed));
+}
+
+void OpenSong::setExportLength (song::VideoLength length)
+{
+    if (song().exportLength == length)
+        return;
+    auto changed = song();
+    changed.exportLength = length;
+    package_->changeWithoutHistory (std::move (changed));
+}
+
+void OpenSong::setExportDestination (const std::string& path)
+{
+    if (song().exportDestination == path)
+        return;
+    auto changed = song();
+    changed.exportDestination = path;
+    package_->changeWithoutHistory (std::move (changed));
+}
+
 void OpenSong::stop()
 {
     if (binding.engine == nullptr)
@@ -774,6 +801,8 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, so
             return std::unexpected (core::Error { "ui.no_video_take", "an MP4 needs a Video Take of the Song", { { "video_take_id", request.videoTakeId.value_or ("") } } });
         movie = exporting::MovieSource { package_->location().getChildFile (found->file), *found };
     }
+    if (auto folder = exporting::checkExportFolder (request.destination); ! folder.has_value())
+        return std::unexpected (std::move (folder.error()));
 
     lastExport.reset();
     if (binding.engine != nullptr)

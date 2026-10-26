@@ -106,6 +106,9 @@ Song keepStateOutsideHistory (Song snapshot, const Song& current)
                                  || std::ranges::any_of (snapshot.videoTakes, [&] (const VideoTake& videoTake) { return videoTake.id == *current.exportVideoTakeId; });
     if (exportChoiceExists)
         snapshot.exportVideoTakeId = current.exportVideoTakeId;
+    snapshot.exportFormat = current.exportFormat;
+    snapshot.exportLength = current.exportLength;
+    snapshot.exportDestination = current.exportDestination;
 
     for (auto& track : snapshot.tracks)
     {

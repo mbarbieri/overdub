@@ -2,7 +2,6 @@
 
 #include "export/MixRender.h"
 #include "song/AudioFileDecode.h"
-#include "ui/ExportSheetSink.h"
 #include "ui/MainWindowFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -81,56 +80,55 @@ TEST_CASE ("the Export sheet's span and the top bar's export status read as the 
     CHECK (exportStatusText (false, 1.0) == "Exporting\xe2\x80\xa6 100%");
 }
 
-TEST_CASE ("the format choice and the destination flow into the export request", "[ui][export]")
+TEST_CASE ("the Export sheet shows the request it is given, and each gesture is an Intent that leaves the form as it was", "[ui][export]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
     ExportSheet sheet;
     layOut (sheet, windowWidth, 600);
-    sheet.setDestination (juce::File ("/Users/someone/Music/Overdub/My Song.wav"));
-    ExportSheetSink sink;
-    sink.connect (sheet);
-    const auto& requests = sink.requests;
+    const auto file = juce::File ("/Users/someone/Music/Overdub/My Song.m4a");
+    sheet.show ({ .clipsEnd = 48000, .request = { ExportFormat::m4a, file } });
+    std::vector<overdub::ui::Intent> emitted;
+    sheet.onIntent = [&emitted] (const overdub::ui::Intent& intent) { emitted.push_back (intent); };
     std::vector<juce::File> askedFrom;
     sheet.onChooseDestination = [&askedFrom] (juce::File current) { askedFrom.push_back (current); };
 
-    CHECK (sheet.wavButton.getToggleState());
-    CHECK (sheet.mp4Button.isEnabled()); // issue #38
-    click (sheet.exportButton);
-    REQUIRE (requests.size() == 1);
-    CHECK (requests[0] == ExportRequest { ExportFormat::wav, juce::File ("/Users/someone/Music/Overdub/My Song.wav") });
-
-    click (sheet.m4aButton);
     CHECK (sheet.m4aButton.getToggleState());
     CHECK (! sheet.wavButton.getToggleState());
-    CHECK (sheet.destinationLabel.getText() == "/Users/someone/Music/Overdub/My Song.m4a");
+    CHECK (sheet.mp4Button.isEnabled()); // issue #38
+    CHECK (sheet.destinationLabel.getText() == file.getFullPathName());
+    CHECK (! isShown (sheet.replacesLabel));
 
-    click (sheet.chooseButton);
-    REQUIRE (askedFrom.size() == 1);
-    CHECK (askedFrom[0] == juce::File ("/Users/someone/Music/Overdub/My Song.m4a"));
-    sheet.setDestination (juce::File ("/Volumes/Share/Mixes/take two")); // what the dialog chose
-
+    click (sheet.wavButton);
     click (sheet.exportButton);
-    REQUIRE (requests.size() == 2);
-    CHECK (requests[1] == ExportRequest { ExportFormat::m4a, juce::File ("/Volumes/Share/Mixes/take two.m4a") });
-
+    click (sheet.chooseButton);
     click (sheet.cancelButton);
-    CHECK (sink.closes == 1);
+    CHECK (emitted
+           == std::vector<overdub::ui::Intent> {
+               SongIntent { overdub::ui::intent::SetExportFormat { ExportFormat::wav } },
+               SongIntent { Export {} },
+               SongIntent { ShowExport { false } },
+           });
+    CHECK (askedFrom == std::vector<juce::File> { file });
+    CHECK (sheet.m4aButton.getToggleState());
+    CHECK (! sheet.wavButton.getToggleState());
+    CHECK (sheet.request() == ExportRequest { ExportFormat::m4a, file });
 }
 
-TEST_CASE ("a format toggle the handler does not call back leaves the form as it was", "[ui][export]")
+TEST_CASE ("the Export sheet says under the destination when Export replaces a file", "[ui][export][replace]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
     ExportSheet sheet;
     layOut (sheet, windowWidth, 600);
-    sheet.setDestination (juce::File ("/Users/someone/Music/Overdub/My Song.wav"));
-    std::vector<overdub::ui::Intent> refused;
-    sheet.onIntent = [&refused] (const overdub::ui::Intent& intent) { refused.push_back (intent); };
+    const auto file = juce::File ("/Users/someone/Music/Overdub/Band Mix.wav");
 
-    click (sheet.mp4Button);
-    CHECK (refused.size() == 1);
-    CHECK (sheet.wavButton.getToggleState());
-    CHECK_FALSE (sheet.mp4Button.getToggleState());
-    CHECK (sheet.request() == ExportRequest { ExportFormat::wav, juce::File ("/Users/someone/Music/Overdub/My Song.wav") });
+    sheet.show ({ .clipsEnd = 48000, .request = { ExportFormat::wav, file }, .replacesExisting = true });
+    REQUIRE (isShown (sheet.replacesLabel));
+    CHECK (sheet.replacesLabel.getText() == juce::String ("Replaces the existing Band Mix.wav"));
+    CHECK (sheet.replacesLabel.getY() >= sheet.destinationLabel.getBottom());
+    CHECK (sheet.exportButton.isEnabled());
+
+    sheet.show ({ .clipsEnd = 48000, .request = { ExportFormat::wav, file }, .replacesExisting = false });
+    CHECK (! isShown (sheet.replacesLabel));
 }
 
 TEST_CASE ("Export is no mode: the top bar offers Record, Edit and Export..., and key 3 does nothing", "[ui][export][main]")
@@ -212,7 +210,7 @@ TEST_CASE ("Return in the Export sheet exports what it shows and closes it", "[u
     MainWindowFixture f;
     auto& window = *f.window;
     auto& sheet = openExportSheet (window);
-    sheet.setDestination (folder.root.getChildFile ("Returned.wav"));
+    setExportDestination (window, folder.root.getChildFile ("Returned.wav"));
 
     REQUIRE (pressKey (window, juce::KeyPress::returnKey));
     CHECK (! sheetShown (f));
@@ -369,16 +367,17 @@ TEST_CASE ("an export run over the socket with no sheet, in Edit mode, shows the
     CHECK (window.noticeLine.hasAction());
 }
 
-TEST_CASE ("an export that cannot write its file is an Alert, and Export... is offered again", "[ui][export]")
+TEST_CASE ("an export folder that cannot be made is an Alert, and Export... is offered again", "[ui][export]")
 {
     MainWindowFixture f;
     auto& window = *f.window;
-    // A regular file stands where the destination's folder should be.
+    // A regular file stands where the export folder's parent should be.
     ExportFolder folder;
     const auto blocker = folder.root.getChildFile ("not-a-folder");
     REQUIRE (blocker.replaceWithText ("x"));
+    window.exportFolder = blocker.getChildFile ("Exports");
     auto& sheet = openExportSheet (window);
-    sheet.setDestination (blocker.getChildFile ("Song.wav"));
+    REQUIRE (sheet.destination().getParentDirectory() == window.exportFolder);
 
     ScopedLogCapture capture;
     click (sheet.exportButton);
@@ -402,7 +401,7 @@ TEST_CASE ("a Song without Clips is a Notice, not an export", "[ui][export]")
     ExportFolder folder;
     auto& window = *f.window;
     auto& sheet = openExportSheet (window);
-    sheet.setDestination (folder.root.getChildFile ("Empty.wav"));
+    setExportDestination (window, folder.root.getChildFile ("Empty.wav"));
 
     ScopedLogCapture capture;
     click (sheet.exportButton);
