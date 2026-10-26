@@ -6,7 +6,7 @@ This directory is the maintained source for verifying the user-facing behavior o
 
 - Run `launch.sh <run-name>`, which builds this checkout's debug app. Run `doctor.sh` and require every check to be `ok`.
 - No other Overdub may be running. The app is single-instance and shares `~/Library/Application Support/Overdub/` with the user's copy.
-- The app starts with no Song open. Any Song a journey creates lives under `$RUN_DIR/songs/`.
+- The app starts with no Song open: `launch.sh` gives each launch its own Last Song file, `$RUN_DIR/last-song.json`, which does not exist yet. Any Song a journey creates lives under `$RUN_DIR/songs/`.
 - Never drive an instance that this run did not start.
 
 ## Driving conventions
@@ -32,7 +32,7 @@ Each feature file starts with an H1 title and one paragraph that describes the u
 
 | Feature | Drivable today |
 | --- | --- |
-| [App startup and audio device](./app-startup.md) | yes: launch, doctor, log |
+| [App startup and audio device](./app-startup.md) | yes: launch, doctor, log; the Last Song: `journey-last-song.sh` (proven 2026-10-26) |
 | [Separation](./separation.md) | yes: `separation-proof.sh` (helper) and `journey-separation.sh` (in a Song, proven 2026-10-23); cancel: no |
 | [Selftests](./selftests.md) | yes, with conditions (loopback plays sound; clap needs a clap Pass) |
 | [Record a Pass](./record-pass.md) | yes: `journey-record-pass.sh` (proven 2026-10-23); the camera: no |

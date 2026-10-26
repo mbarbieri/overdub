@@ -4,6 +4,7 @@
 #include "core/Described.h"
 #include "core/Log.h"
 #include "engine/LatencyCalibration.h"
+#include "ui/LastSong.h"
 #include "ui/SongFiles.h"
 #include "ui/UserMessages.h"
 
@@ -91,6 +92,7 @@ IntentResult Workspace::run (const AppIntent& appIntent)
         core::Overloaded {
             [this] (const NewSongAt& create) { return newSongAt (fileAt (create.path)); },
             [this] (const OpenSongAt& open) { return openSongFrom (fileAt (open.path)); },
+            [this] (const ReopenLastSong&) { return reopenLastSong(); },
             [this] (const DuplicateSongTo& duplicate) { return duplicateSongTo (fileAt (duplicate.path)); },
             [this] (const ConvertSampleRate& convert) { return convertSampleRate (convert.rate); },
             [this] (const ShowSettings& settings) { return showSettings (settings.shown); },
@@ -151,6 +153,19 @@ void Workspace::showSong (std::unique_ptr<song::SongPackage> package, const std:
     refreshCalibration();
     if (onOpenSongChanged)
         onOpenSongChanged();
+    lastSongPending = true;
+}
+
+void Workspace::recordLastSong()
+{
+    // Only once the message loop is back, after the device has run the Song (issue #206).
+    if (! lastSongPending || song == nullptr)
+        return;
+    lastSongPending = false;
+    if (files.lastSong == juce::File())
+        return;
+    if (auto written = writeLastSong (files.lastSong, song->package().location()); ! written.has_value())
+        core::logError (written.error(), core::Level::warn);
 }
 
 IntentResult Workspace::newSongAt (const juce::File& chosen)
@@ -174,6 +189,32 @@ IntentResult Workspace::openSongFrom (const juce::File& chosen)
     return IntentDone {};
 }
 
+IntentResult Workspace::reopenLastSong()
+{
+    const auto noLastSong = [] (std::string reason) {
+        return core::Error { "ui.no_last_song", "no Last Song is recorded", { { "op", std::string (intent::ReopenLastSong::op) }, { "reason", std::move (reason) } } };
+    };
+    if (files.lastSong == juce::File())
+        return content.quietError (noLastSong ("not_recorded_here"));
+    const auto recorded = readLastSong (files.lastSong);
+    // Logged once, never presented: the no-Song page shows as with no Last Song.
+    if (! recorded.has_value())
+    {
+        core::logError (recorded.error(), core::Level::warn);
+        return std::unexpected (recorded.error());
+    }
+    if (! recorded->has_value())
+        return content.quietError (noLastSong ("none_recorded"));
+
+    // The open Song again changes nothing (openSongFrom), and nothing was reopened.
+    const auto& package = **recorded;
+    const auto* before = song.get();
+    auto opened = openSongFrom (package);
+    if (opened.has_value() && song.get() != before)
+        core::logEvent (core::Level::info, "ui.last_song_reopened", { { "path", package.getFullPathName().toStdString() } });
+    return opened;
+}
+
 IntentResult Workspace::duplicateSongTo (const juce::File& chosen)
 {
     if (song == nullptr)
@@ -193,6 +234,7 @@ IntentResult Workspace::convertSampleRate (int toRate)
 
 void Workspace::closeSong()
 {
+    lastSongPending = false;
     detachAudio();
     content.setOpenSong (nullptr);
     song.reset();
@@ -306,6 +348,7 @@ void Workspace::watchDevices()
 
 void Workspace::tick (song::SongPackage::Clock::time_point now)
 {
+    recordLastSong();
     answerSongRateChange();
     answerDeviceChange();
     pollLatencyRun (now);

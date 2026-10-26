@@ -19,6 +19,7 @@ target_sources(overdub_ui PRIVATE
     FileDrop.cpp
     InsertChain.cpp
     Intent.cpp
+    LastSong.cpp
     Layout.cpp
     LookAheadStrip.cpp
     MainComponent.cpp

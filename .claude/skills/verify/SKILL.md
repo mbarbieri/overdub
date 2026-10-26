@@ -45,6 +45,7 @@ The drivable surfaces are:
   - `journey-edit.sh`: split, move, trim, fade, undo twice and redo once on that Take's Clip. See `features/edit.md`.
   - `journey-export.sh`: WAV and M4A into `$RUN_DIR/exports/`, read with `afinfo`. See `features/export.md`.
   - `journey-separation.sh`: Separation of a 6 s Backing Track in a Song, about 1 minute. See `features/separation.md`.
+  - `journey-last-song.sh`: a new Song, quit, launch again with that launch's Last Song file, and the Song is reopened. It quits both launches itself. See `features/app-startup.md`.
   - `journeys-all.sh [journey ...]` runs each journey once from a fresh launch, with doctor before and cleanup after, prints one result line per journey and exits 1 when any failed. Use it after a change that touches several journeys.
   - The edit and export journeys run `journey-record-pass.sh` first when no Song is open. All of them source `journey-lib.sh` (`ctl`, `state`, `check`, `silence_master`, `wait_finish`).
 

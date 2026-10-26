@@ -1,9 +1,11 @@
 #!/bin/zsh
 # Builds the debug Overdub.app and starts it through LaunchServices for verification.
-# Usage: .claude/skills/verify/scripts/launch.sh [run-name]
+# Usage: [LAST_SONG_FILE=<path>] .claude/skills/verify/scripts/launch.sh [run-name]
 # Prints RUN_DIR, PID and LOG; the run dir is build/verify/<stamp>-<run-name>, linked as build/verify/latest.
 # Refuses when any Overdub is already running: the app is single-instance and shares
 # ~/Library/Application Support/Overdub (device choice, calibrations, model) with the user's copy.
+# The app reads and records its Last Song in $LAST_SONG_FILE, by default $RUN_DIR/last-song.json, which
+# does not exist yet: the app starts with no Song open and never touches the user's Last Song.
 set -euo pipefail
 setopt null_glob
 REPO="$(cd "$(dirname "$0")/../../../.." && pwd)"
@@ -26,9 +28,10 @@ mkdir -p "$RUN_DIR/songs"
 SOCKET="/tmp/ovd-$(date +%s)-$$/control.sock"
 echo "$SOCKET" >"$RUN_DIR/socket"
 ln -sfn "$RUN_DIR" "$REPO/build/verify/latest"
+LAST_SONG="${LAST_SONG_FILE:-$RUN_DIR/last-song.json}"
 
 # `open` (not the bare binary) so the app is a LaunchServices app that answers the quit Apple Event.
-open -n -g "$APP" --env OVERDUB_LOG=debug --env OVERDUB_CONTROL_SOCKET="$SOCKET" --stdout "$RUN_DIR/stdout.txt" --stderr "$RUN_DIR/stderr.txt"
+open -n -g "$APP" --env OVERDUB_LOG=debug --env OVERDUB_CONTROL_SOCKET="$SOCKET" --env OVERDUB_LAST_SONG_FILE="$LAST_SONG" --stdout "$RUN_DIR/stdout.txt" --stderr "$RUN_DIR/stderr.txt"
 
 PID=""
 for _ in {1..20}; do
@@ -68,5 +71,6 @@ echo "$LOG" >"$RUN_DIR/log-path"
 echo "RUN_DIR=$RUN_DIR"
 echo "SOCKET=$SOCKET"
 echo "PID=$PID"
+echo "LAST_SONG=$LAST_SONG"
 echo "LOG=$LOG"
 echo "READY=$READY"

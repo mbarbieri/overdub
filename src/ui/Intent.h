@@ -90,6 +90,13 @@ struct OpenSongAt // File > Open..., and the no-Song page's Open
     static constexpr auto fields = std::tuple { field ("path", &OpenSongAt::path) };
 };
 
+struct ReopenLastSong // launch (issue #206): opens the Last Song as open_song_at does
+{
+    static constexpr std::string_view op = "reopen_last_song";
+    bool operator== (const ReopenLastSong&) const = default;
+    static constexpr auto fields = std::tuple {};
+};
+
 struct DuplicateSongTo // File > Duplicate...
 {
     static constexpr std::string_view op = "duplicate_song_to";
@@ -715,7 +722,7 @@ struct ClearClipIndicator // a click on a Record row's clip indicator
 };
 } // namespace intent
 
-using AppIntent = std::variant<intent::NewSongAt, intent::OpenSongAt, intent::DuplicateSongTo, intent::ConvertSampleRate,
+using AppIntent = std::variant<intent::NewSongAt, intent::OpenSongAt, intent::ReopenLastSong, intent::DuplicateSongTo, intent::ConvertSampleRate,
                                intent::ShowSettings, intent::ApplyDeviceSettings, intent::MeasureLatency,
                                intent::SaveLatencyCalibration, intent::MeasureClapPass, intent::SaveCameraCalibration,
                                intent::Quit>;

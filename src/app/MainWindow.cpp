@@ -3,9 +3,12 @@
 #include "capture/AvCamera.h"
 #include "control/AppState.h"
 #include "control/IntentOps.h"
+#include "ui/LastSong.h"
 #include "ui/Layout.h"
 #include "ui/SongFiles.h"
 #include "ui/SongMenuItems.h"
+
+#include <cstdlib>
 
 namespace overdub::app
 {
@@ -107,6 +110,10 @@ MainWindow::MainWindow (const juce::String& name,
     setResizeLimits (ui::minimumWindowWidth, ui::minimumWindowHeight, 10000, 10000);
     centreWithSize (1200, 800);
 
+    // A scripted launch (its socket moved) never touches the user's Last Song (issue #206).
+    auto files = ui::WorkspaceFiles::defaults();
+    files.lastSong = ui::lastSongFileFor (std::getenv ("OVERDUB_LAST_SONG_FILE"), controlConfig.enabled && ! controlConfig.privateFolder);
+
     // Before the menu: installing it asks getMenuForIndex at once, which reads the Workspace.
     workspace = std::make_unique<ui::Workspace> (
         content,
@@ -114,7 +121,7 @@ MainWindow::MainWindow (const juce::String& name,
         [] (std::optional<int> songSampleRate) -> std::unique_ptr<ui::LiveAudio> { return std::make_unique<LiveEngine> (songSampleRate); },
         camera.get(),
         pluginLoader.instantiator(),
-        ui::WorkspaceFiles::defaults());
+        std::move (files));
     workspace->onOpenSongChanged = [this] {
         updateTitle();
         content.grabKeyboardFocus();
@@ -128,6 +135,7 @@ MainWindow::MainWindow (const juce::String& name,
 
     setVisible (true);
     content.grabKeyboardFocus();
+    content.run (ui::AppIntent { ui::intent::ReopenLastSong {} });
     workspaceTick.startTimer (workspaceTickIntervalMs);
 
     controlServer = control::Server::start (controlConfig, control::Controller { std::move (eventTap), control::intentOps (content), control::appStateReader (content, *workspace) });
