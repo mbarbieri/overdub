@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <functional>
@@ -21,18 +22,21 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <typeinfo>
 #include <utility>
 #include <vector>
 
 // The UI → Intent proof (ADR 0008, issue #167): every gesture the window's Components offer is
 // fired at a Song with Tracks, Clips, a Pass, a Video Take, an Insert and a selection, in each
-// mode, and a gesture that changes the app state without running an Intent through
+// mode and with the Export sheet open (issue #200), and a gesture that changes the app state without running an Intent through
 // MainComponent::run (its intentsRun count, which includes the per-frame Intents that log no
 // ui.intent_run) is a bypass, and the census fails on any bypass.
 //
-// Each mode gets a fresh CensusWorkspace, and before each probe its Song, selection and timeline
-// view are put back as they were built, so no gesture changes what a later one is fired at.
+// Each scene gets a fresh CensusWorkspace, and before each probe its Song, selection and timeline
+// view are put back as they were built, an export a gesture started is finished, and the mode
+// and the Export sheet are as the scene has them, so no gesture changes what a later one is fired
+// at.
 //
 // What it cannot see: a handler that runs some Intent and also edits the app state directly (the
 // Intent run hides the bypass); text typed into an editor (Labels and TextEditors get
@@ -58,9 +62,17 @@ struct ComponentPath
     static ComponentPath windowContent (std::string id = {}) { return { {}, std::move (id) }; }
 };
 
+// What the window shows while a scene's probes fire: a mode, and the Export sheet over it or not.
+struct Scene
+{
+    std::string name;
+    ui::Mode mode = ui::Mode::record;
+    bool exportSheet = false;
+};
+
 struct Probe
 {
-    // "<mode>/<Component path>:<gesture>", each Component named by its class and its index among
+    // "<scene>/<Component path>:<gesture>", each Component named by its class and its index among
     // siblings of that class.
     std::string id;
     ComponentPath path;
@@ -259,6 +271,18 @@ struct CensusWorkspace
         REQUIRE (song::writeFloatWavAtomically (file, audio, engine::testing::testSampleRate, {}).has_value());
     }
 
+    // An export a gesture started runs to its end: the Export sheet opens only when none runs.
+    void finishExport()
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (20);
+        while (f.song().isExporting() && std::chrono::steady_clock::now() < deadline)
+        {
+            f.runBlocks (1);
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        }
+        REQUIRE (! f.song().isExporting());
+    }
+
     void stopTransport()
     {
         if (f.song().isRecording() || f.song().isPlaying())
@@ -308,13 +332,17 @@ struct CensusWorkspace
             f.content.run (ui::SongIntent { SetPassesPanelOpen { builtView["passes_panel_open"].get<bool>() } });
     }
 
-    void settle (ui::Mode mode)
+    void settle (const Scene& scene)
     {
         if (auto* view = f.content.songView())
             view->commitKeyBursts();
         stopTransport();
+        finishExport();
         restore();
-        f.content.run (ui::WindowIntent { ShowMode { mode } });
+        f.content.run (ui::SongIntent { ShowExport { false } });
+        f.content.run (ui::WindowIntent { ShowMode { scene.mode } });
+        if (scene.exportSheet)
+            run (ui::SongIntent { ShowExport { true } });
     }
 };
 
@@ -326,9 +354,9 @@ struct CensusResult
     int fired = 0;
 };
 
-void fireProbe (CensusWorkspace& census, const Probe& probe, ui::Mode mode, CensusResult& result)
+void fireProbe (CensusWorkspace& census, const Probe& probe, const Scene& scene, CensusResult& result)
 {
-    census.settle (mode);
+    census.settle (scene);
     auto* target = resolve (census.f.content, probe.path);
     if (target == nullptr || ! ui::testing::isShown (*target) || ! target->isEnabled())
         return;
@@ -351,20 +379,24 @@ void fireProbe (CensusWorkspace& census, const Probe& probe, ui::Mode mode, Cens
 CensusResult runCensus()
 {
     CensusResult result;
-    for (const auto mode : { ui::Mode::record, ui::Mode::edit, ui::Mode::exportSong })
+    const Scene scenes[] {
+        { "record", ui::Mode::record, false },
+        { "edit", ui::Mode::edit, false },
+        { "export_sheet", ui::Mode::record, true },
+    };
+    for (const auto& scene : scenes)
     {
         CensusWorkspace census;
-        census.settle (mode);
-        const auto modeName = std::string (ui::modeName (mode));
+        census.settle (scene);
         std::vector<Probe> probes;
-        collectProbes (census.f.content, ComponentPath::windowContent (modeName), census.dropFile, probes);
+        collectProbes (census.f.content, ComponentPath::windowContent (scene.name), census.dropFile, probes);
         for (auto key : keyProbes())
         {
-            key.id = modeName + "/" + key.id;
+            key.id = scene.name + "/" + key.id;
             probes.push_back (std::move (key));
         }
         for (const auto& probe : probes)
-            fireProbe (census, probe, mode, result);
+            fireProbe (census, probe, scene, result);
     }
     return result;
 }
@@ -380,6 +412,12 @@ TEST_CASE ("no gesture changes the app state without running an Intent", "[contr
     // The Camera lane header's A (issue #198), the Timeline's only direct TextButton, is fired.
     const auto cameraArm = std::ranges::find_if (result.firedIds, [] (const std::string& id) { return id.starts_with ("edit/") && id.ends_with ("/Timeline#0/TextButton#0:click"); });
     CHECK (cameraArm != result.firedIds.end());
+    // The top bar's Export... and the Export sheet's Cancel and Export (issue #200) are fired.
+    const auto fired = [&result] (std::string_view prefix, std::string_view suffix) {
+        return std::ranges::any_of (result.firedIds, [&] (const std::string& id) { return id.starts_with (prefix) && id.ends_with (suffix); });
+    };
+    CHECK (fired ("record/TopBar#0/", ":click"));
+    CHECK (fired ("export_sheet/ExportSheet#0/TextButton#", ":click"));
 }
 
 TEST_CASE ("the census fails on a button that edits the Song without an Intent", "[control][census]")
@@ -399,7 +437,7 @@ TEST_CASE ("the census fails on a button that edits the Song without an Intent",
     const auto plantedProbe = std::ranges::find_if (probes, [] (const Probe& probe) { return probe.id == "record/TextButton#0:click"; });
     REQUIRE (plantedProbe != probes.end());
     CensusResult result;
-    fireProbe (census, *plantedProbe, ui::Mode::record, result);
+    fireProbe (census, *plantedProbe, Scene { "record", ui::Mode::record, false }, result);
 
     CHECK (result.bypasses == std::set<std::string> { "record/TextButton#0:click" });
     CHECK (result.changedBy["record/TextButton#0:click"].find ("/song/song/master/volumeDb") != std::string::npos);

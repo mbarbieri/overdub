@@ -40,6 +40,7 @@ constexpr GestureRule ruleFor (Gesture gesture)
         case Gesture::setCameraArmed: return { "set_camera_armed", true, true, true, false, false };
         case Gesture::setCameraDevice: return { "set_camera_device", true, true, true, false, false };
         case Gesture::changeTracks: return { "change_tracks", true, true, true, true, false };
+        case Gesture::showExport: return { "show_export", true, true, true, true, true };
         case Gesture::startExport: return { "start_export", true, true, true, false, true };
         case Gesture::startSeparation: return { "start_separation", true, false, true, true, false };
         case Gesture::startSampleRateConversion: return { "start_sample_rate_conversion", true, true, false, true, false };

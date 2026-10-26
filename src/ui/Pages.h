@@ -6,7 +6,7 @@
 #include <optional>
 
 // The simple pages and the notice line (issue #27): the page shown when no Song is open and the
-// Notice one-liner. (Export mode's page is ui/ExportPage.h.)
+// Notice one-liner. (The Export sheet is ui/ExportSheet.h.)
 namespace overdub::ui
 {
 // Shown with no Song open: New Song and Open.

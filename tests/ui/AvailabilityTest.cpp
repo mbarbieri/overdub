@@ -74,7 +74,7 @@ TEST_CASE ("during a Pass only transport, view and plugin window ops, the Window
     CHECK (refusedCodes (Running { .song = ActivityKind::pass }) == allBut (allowed, "ui.stop_recording_first"));
 }
 
-TEST_CASE ("during an export only record, play, import, Track delete, Separation and conversion are refused", "[ui][availability][export]")
+TEST_CASE ("during an export only record, play, import, Track delete, Separation, conversion and opening the Export sheet are refused", "[ui][availability][export]")
 {
     const std::map<std::string, std::string> refused {
         { "record", "ui.export_running" },
@@ -83,6 +83,7 @@ TEST_CASE ("during an export only record, play, import, Track delete, Separation
         { "delete_track", "ui.export_running" },
         { "start_separation", "ui.export_running" },
         { "convert_sample_rate", "ui.export_running" },
+        { "show_export", "ui.export_running" },
     };
 
     CHECK (refusedCodes (Running { .song = ActivityKind::exportSong }) == refused);
@@ -112,7 +113,7 @@ TEST_CASE ("a latency calibration refuses the App group but quit, and the Song o
     for (const auto& op : appOps)
         if (op != "quit")
             expected[op] = "ui.calibration_running";
-    for (const auto* op : { "record", "play_or_stop", "set_monitoring", "export" })
+    for (const auto* op : { "record", "play_or_stop", "set_monitoring", "export", "show_export" })
         expected[op] = "ui.calibration_running";
 
     CHECK (refusedCodes (Running { .song = ActivityKind::idle, .calibrating = true }) == expected);
@@ -150,6 +151,19 @@ TEST_CASE ("a refusal names the op of an App Intent and the gesture of a Song In
     CHECK (refusalOf ("move_clip", pass)->error.fields == core::Fields { { "gesture", "edit" } });
     CHECK (refusalOf ("export", Running { .song = ActivityKind::idle, .calibrating = true })->error.fields == core::Fields { { "gesture", "start_export" } });
     CHECK (refusalOf ("undo", Running { .song = ActivityKind::conversion })->error.fields == core::Fields { { "op", "undo" } });
+}
+
+TEST_CASE ("closing the Export sheet is never refused, opening it waits until nothing runs", "[ui][availability][export]")
+{
+    for (const auto kind : { ActivityKind::pass, ActivityKind::exportSong, ActivityKind::separation })
+    {
+        const Running running { .song = kind };
+        CHECK_FALSE (refusalOf (Intent { SongIntent { intent::ShowExport { false } } }, running).has_value());
+        const auto opening = refusalOf (Intent { SongIntent { intent::ShowExport { true } } }, running);
+        REQUIRE (opening.has_value());
+        CHECK_FALSE (opening->presented);
+    }
+    CHECK_FALSE (refusalOf (Intent { SongIntent { intent::ShowExport { true } } }, Running { .song = ActivityKind::idle }).has_value());
 }
 
 TEST_CASE ("hiding the Settings window is never refused, showing it waits", "[ui][availability][calibration]")

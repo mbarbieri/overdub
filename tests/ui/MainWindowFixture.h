@@ -121,4 +121,11 @@ struct MainWindowFixture
         window->tick();
     }
 };
+// Opens the Export sheet as a click on the top bar's Export... does (issue #200).
+inline ExportSheet& openExportSheet (MainComponent& window)
+{
+    click (window.topBar.exportButton);
+    REQUIRE (window.songView()->isExportSheetShown());
+    return window.songView()->exportSheet;
+}
 } // namespace overdub::ui::testing

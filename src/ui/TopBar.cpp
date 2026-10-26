@@ -3,6 +3,8 @@
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 
+#include <cmath>
+
 namespace overdub::ui
 {
 namespace
@@ -12,6 +14,13 @@ const juce::String playGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x96\x
 const juce::String stopGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xa0"));
 const juce::String recordGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x8f"));
 } // namespace
+
+std::string exportStatusText (bool waitingForAudio, double progress)
+{
+    if (waitingForAudio)
+        return "Preparing\xe2\x80\xa6";
+    return "Exporting\xe2\x80\xa6 " + std::to_string ((int) std::floor (progress * 100.0)) + "%";
+}
 
 std::string controlIndicatorName (const std::vector<std::string>& processes)
 {
@@ -82,7 +91,7 @@ TopBar::TopBar()
     recordButton.setColour (juce::TextButton::buttonOnColourId, colours::rec);
     recordButton.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
 
-    for (auto* modeButton : { &recordModeButton, &editModeButton, &exportModeButton })
+    for (auto* modeButton : { &recordModeButton, &editModeButton })
     {
         modeButton->setClickingTogglesState (false);
         modeButton->setColour (juce::TextButton::buttonOnColourId, colours::accent);
@@ -90,19 +99,24 @@ TopBar::TopBar()
 
     recordModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::record } }); };
     editModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::edit } }); };
-    exportModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::exportSong } }); };
     rewindButton.onClick = [this] { send (SongIntent { intent::Rewind {} }); };
     playStopButton.onClick = [this] { send (SongIntent { intent::PlayOrStop {} }); };
     recordButton.onClick = [this] { send (SongIntent { intent::Record {} }); };
     undoButton.onClick = [this] { send (SongIntent { intent::Undo {} }); };
     redoButton.onClick = [this] { send (SongIntent { intent::Redo {} }); };
+    exportButton.onClick = [this] { send (SongIntent { intent::ShowExport { true } }); };
 
-    for (auto* button : { &recordModeButton, &editModeButton, &exportModeButton, &rewindButton, &playStopButton, &recordButton, &undoButton, &redoButton })
+    for (auto* button : { &recordModeButton, &editModeButton, &rewindButton, &playStopButton, &recordButton, &undoButton, &redoButton, &exportButton })
     {
         button->setWantsKeyboardFocus (false); // keys go to the main window (MainComponent::keyPressed)
         addAndMakeVisible (button);
     }
     addAndMakeVisible (clock);
+    exportStatusLabel.setColour (juce::Label::textColourId, colours::dimText);
+    exportStatusLabel.setFont (juce::FontOptions (11.0f));
+    exportStatusLabel.setInterceptsMouseClicks (false, false);
+    addChildComponent (exportStatusLabel);
+    addChildComponent (exportProgressBar);
 
     controlIndicator.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (controlIndicator);
@@ -118,7 +132,6 @@ void TopBar::show (const TopBarState& state)
 {
     recordModeButton.setToggleState (state.mode == Mode::record, juce::dontSendNotification);
     editModeButton.setToggleState (state.mode == Mode::edit, juce::dontSendNotification);
-    exportModeButton.setToggleState (state.mode == Mode::exportSong, juce::dontSendNotification);
 
     for (auto* transport : { &rewindButton, &playStopButton, &recordButton })
         transport->setEnabled (state.songOpen);
@@ -130,6 +143,14 @@ void TopBar::show (const TopBarState& state)
     redoButton.setButtonText (juce::String::fromUTF8 (state.redoText.c_str()));
     undoButton.setEnabled (state.canUndo);
     redoButton.setEnabled (state.canRedo);
+
+    const auto exporting = state.exportStatus.has_value();
+    exportButton.setVisible (! exporting);
+    exportButton.setEnabled (state.canExport);
+    exportStatusLabel.setVisible (exporting);
+    exportProgressBar.setVisible (exporting);
+    exportStatusLabel.setText (juce::String::fromUTF8 (state.exportStatus.value_or ("").c_str()), juce::dontSendNotification);
+    exportProgressBar.setFraction (state.exportProgress);
     controlIndicator.show (controlIndicatorName (state.controllingProcesses));
 }
 
@@ -138,13 +159,16 @@ void TopBar::resized()
     const auto layout = topBarLayout (getLocalBounds());
     recordModeButton.setBounds (layout.modeButtons[0]);
     editModeButton.setBounds (layout.modeButtons[1]);
-    exportModeButton.setBounds (layout.modeButtons[2]);
     rewindButton.setBounds (layout.rewind);
     playStopButton.setBounds (layout.playStop);
     recordButton.setBounds (layout.record);
     clock.setBounds (layout.clock);
     undoButton.setBounds (layout.undo);
     redoButton.setBounds (layout.redo);
+    exportButton.setBounds (layout.exportSlot);
+    auto exportSlot = layout.exportSlot;
+    exportStatusLabel.setBounds (exportSlot.removeFromTop (exportSlot.getHeight() - 10));
+    exportProgressBar.setBounds (exportSlot.removeFromTop (6));
     controlIndicator.setBounds (layout.controlIndicator);
 }
 

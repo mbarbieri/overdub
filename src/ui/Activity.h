@@ -70,6 +70,7 @@ enum class Gesture
     setCameraArmed,
     setCameraDevice,
     changeTracks, // import, or delete a Track
+    showExport,
     startExport,
     startSeparation,
     startSampleRateConversion,

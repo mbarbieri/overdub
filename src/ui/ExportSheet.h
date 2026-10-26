@@ -4,7 +4,6 @@
 #include "export/MovieSpan.h"
 #include "song/Song.h"
 #include "ui/Intent.h"
-#include "ui/ThinProgressBar.h"
 #include "video/FrameSelection.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -14,29 +13,27 @@
 #include <string>
 #include <vector>
 
-// Export mode's page (issues #37 and #38, after the prototype's Export form): the format (WAV,
-// M4A, MP4), for an MP4 the Video Take and the length (trimmed to the Video Take, or the full song
-// with black where there is no video), the span bar previewing what is exported, where the file
-// goes, the Export button, progress, and Reveal in Finder once a file is written. It stays thin:
-// every gesture is an Intent reported through onIntent (ADR 0008): set_export_format,
-// set_export_length, set_export_video_take, export (which runs the page's request()) and
-// reveal_export. Choose... is the one hook, onChooseDestination: the window asks for a file, then
-// runs set_export_destination. The form changes only when a handler calls back (chooseFormat,
-// chooseLength, chooseVideoTake, setDestination), and the rest of what it shows comes from show().
+// The Export sheet (issues #37, #38, #200, after the prototype's Export form): a modal panel over
+// the whole main window, dimming it and taking every click, with the format (WAV, M4A, MP4), for
+// an MP4 the Video Take and the length (trimmed to the Video Take, or the full song with black
+// where there is no video), the span bar previewing what is exported, where the file goes, Cancel
+// and Export. Export closes it: the top bar shows the export's progress and a Notice its file. It
+// stays thin: every gesture is an Intent reported through onIntent (ADR 0008): set_export_format,
+// set_export_length, set_export_video_take, export (which runs the sheet's request()) and
+// show_export { false } (Cancel). Choose... is the one hook, onChooseDestination: the window asks
+// for a file, then runs set_export_destination. The form changes only when a handler calls back
+// (chooseFormat, chooseLength, chooseVideoTake, setDestination), and the rest of what it shows
+// comes from show().
 //
 // The destination keeps its folder and name when the format changes; only its extension follows.
-// The Video Take shown is the page's choice once the user picked one, else the Song's stored
+// The Video Take shown is the sheet's choice once the user picked one, else the Song's stored
 // choice (defaultExportVideoTake); set_export_video_take sets both.
 namespace overdub::ui
 {
-struct ExportPageState
+struct ExportSheetState
 {
     song::SampleCount clipsEnd = 0; // the end of the Song's last Clip
     int sampleRate = 48000;
-    bool waitingForAudio = false; // an export was asked for and waits for the audio to let go
-    bool rendering = false;
-    double progress = 0.0; // 0..1 while rendering
-    std::optional<juce::File> finishedFile;
     std::vector<video::VideoTakeSpan> videoTakes; // the Song's, in its order
     std::optional<song::Id> storedVideoTakeId;     // Song::exportVideoTakeId
 };
@@ -68,8 +65,6 @@ std::string movieSpanText (exporting::VideoLength length, const video::VideoTake
 std::string videoTakeChoiceText (const video::VideoTakeSpan& videoTake, int sampleRate);
 // The stored choice when it is one of the Video Takes, else the first; none without Video Takes.
 std::optional<song::Id> defaultExportVideoTake (const std::vector<video::VideoTakeSpan>& videoTakes, const std::optional<song::Id>& stored);
-// "Preparing…", "Exporting… 42%", "Exported to /path/Song.wav", or empty when idle.
-std::string exportStatusText (const ExportPageState& state);
 
 // The span bar: the exported range over the scale, the Video Take on top, black around it for a
 // full-song MP4.
@@ -84,12 +79,12 @@ private:
     ExportSpanBarState shown;
 };
 
-class ExportPage final : public juce::Component
+class ExportSheet final : public juce::Component
 {
 public:
-    ExportPage();
+    ExportSheet();
 
-    void show (const ExportPageState& state);
+    void show (const ExportSheetState& state);
 
     exporting::ExportFormat format() const { return chosenFormat; }
     const juce::File& destination() const { return chosenDestination; }
@@ -97,8 +92,9 @@ public:
     void setDestination (const juce::File& file);
     // The request Export would make: an MP4's carries the Video Take shown and the length.
     exporting::ExportRequest request() const;
-    // The progress bar's value, 0..1.
-    double progress() const { return progressBar.fraction(); }
+    // Whether Export (the button, and Return) is offered: a destination is set, and an MP4 has a
+    // Video Take to show.
+    bool canExport() const;
     // The form's choices; the toggles and the picker show them.
     void chooseFormat (exporting::ExportFormat format);
     void chooseLength (exporting::VideoLength length);
@@ -107,7 +103,7 @@ public:
     void resized() override;
     void paint (juce::Graphics& g) override;
 
-    // Where the page's Intents go (MainComponent::run).
+    // Where the sheet's Intents go (MainComponent::run).
     IntentSink onIntent;
     // Choose… pressed: asks for a destination, starting from the current one.
     std::function<void (juce::File current)> onChooseDestination;
@@ -129,14 +125,14 @@ public:
     juce::Label destinationHeading;
     juce::Label destinationLabel;
     juce::TextButton chooseButton { juce::String::fromUTF8 ("Choose\xe2\x80\xa6") };
+    juce::TextButton cancelButton { "Cancel" };
     juce::TextButton exportButton { "Export" };
-    ThinProgressBar progressBar;
-    juce::Label statusLabel;
-    juce::TextButton revealButton { "Reveal in Finder" };
 
 private:
+    // The panel in the middle of the sheet, as tall as the form for the chosen format.
+    juce::Rectangle<int> panelBounds() const;
     void pickVideoTake();
-    // The Video Take shown: the page's pick while it is still in the Song, else the default.
+    // The Video Take shown: the sheet's pick while it is still in the Song, else the default.
     std::optional<video::VideoTakeSpan> shownVideoTake() const;
     void updatePicker();
     void updateSpan();
@@ -147,6 +143,6 @@ private:
     exporting::VideoLength chosenLength = exporting::VideoLength::trimToVideoTake;
     std::optional<song::Id> pickedVideoTakeId;
     juce::File chosenDestination;
-    ExportPageState shown;
+    ExportSheetState shown;
 };
 } // namespace overdub::ui

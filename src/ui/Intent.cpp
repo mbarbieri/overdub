@@ -24,7 +24,6 @@ const char* modeName (Mode mode)
     {
         case Mode::record: return "record";
         case Mode::edit: return "edit";
-        case Mode::exportSong: return "export";
     }
     return "unknown";
 }
@@ -63,6 +62,8 @@ std::optional<Intent> intentForKey (KeyChord key)
     {
         if (character == U'z')
             return key.shift ? Intent { SongIntent { intent::Redo {} } } : Intent { SongIntent { intent::Undo {} } };
+        if (character == U'e' && ! key.shift)
+            return SongIntent { intent::ShowExport { true } };
         return std::nullopt;
     }
     if (key.shift)
@@ -72,7 +73,6 @@ std::optional<Intent> intentForKey (KeyChord key)
     {
         case U'1': return WindowIntent { intent::ShowMode { Mode::record } };
         case U'2': return WindowIntent { intent::ShowMode { Mode::edit } };
-        case U'3': return WindowIntent { intent::ShowMode { Mode::exportSong } };
         case U'r': return SongIntent { intent::Record {} };
         case U' ': return SongIntent { intent::PlayOrStop {} };
         case U's': return SongIntent { intent::SplitSelectedClip {} };

@@ -3,7 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 // A thin bar filled to the fraction done (drawn at once, unlike juce::ProgressBar, which follows
-// its value on a timer). The Export page and the Separation dialog show progress with it.
+// its value on a timer). The top bar's export status and the Separation dialog show progress with it.
 namespace overdub::ui
 {
 class ThinProgressBar final : public juce::Component

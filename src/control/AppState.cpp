@@ -104,7 +104,7 @@ json timelineView (const ui::SongView& view)
 
 json exportForm (const ui::SongView& view)
 {
-    const auto request = view.exportPage.request();
+    const auto request = view.exportSheet.request();
     return {
         { "format", nameOf<exporting::ExportFormat> (ui::exportFormatNames, request.format) },
         { "length", nameOf<exporting::VideoLength> (ui::videoLengthNames, request.videoLength) },
@@ -126,6 +126,7 @@ json viewSection (const ui::MainComponent& window)
     view["mixer_visible"] = editPage.isMixerVisible();
     view["mixer_height"] = editPage.mixerHeight();
     view["passes_panel_open"] = editPage.isPassesPanelOpen();
+    view["export_sheet_shown"] = songView->isExportSheetShown();
     view["export_form"] = exportForm (*songView);
     return view;
 }

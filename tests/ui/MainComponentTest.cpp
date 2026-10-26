@@ -55,7 +55,7 @@ std::vector<juce::TooltipWindow*> tooltipWindowsFor (juce::Component& component)
 }
 } // namespace
 
-TEST_CASE ("keys 1 to 3 show the Record, Edit and Export pages", "[ui][main]")
+TEST_CASE ("keys 1 and 2 show the Record and Edit pages", "[ui][main]")
 {
     MainWindowFixture f;
     auto& window = *f.window;
@@ -67,13 +67,9 @@ TEST_CASE ("keys 1 to 3 show the Record, Edit and Export pages", "[ui][main]")
     CHECK (! isShown (window.songView()->recordPage));
     CHECK (window.topBar.editModeButton.getToggleState());
 
-    CHECK (pressKey (window, '3'));
-    CHECK (isShown (window.songView()->exportPage));
-    CHECK (! isShown (window.songView()->editPage));
-
     CHECK (pressKey (window, '1'));
     CHECK (isShown (window.songView()->recordPage));
-    CHECK (! isShown (window.songView()->exportPage));
+    CHECK (! isShown (window.songView()->editPage));
     CHECK (window.topBar.recordModeButton.getToggleState());
 
     CHECK (! pressKey (window, 'x'));
@@ -82,15 +78,15 @@ TEST_CASE ("keys 1 to 3 show the Record, Edit and Export pages", "[ui][main]")
 TEST_CASE ("clicking a mode button shows its page", "[ui][main]")
 {
     MainWindowFixture f;
-    click (f.window->topBar.exportModeButton);
-    CHECK (isShown (f.window->songView()->exportPage));
+    click (f.window->topBar.editModeButton);
+    CHECK (isShown (f.window->songView()->editPage));
     click (f.window->topBar.recordModeButton);
     CHECK (isShown (f.window->songView()->recordPage));
 }
 
 TEST_CASE ("R in any mode records a Pass and Space stops it, as one labelled undo step", "[ui][main][record]")
 {
-    const auto modeKey = GENERATE ('1', '2', '3');
+    const auto modeKey = GENERATE ('1', '2');
     MainWindowFixture f;
     auto& window = *f.window;
     REQUIRE (pressKey (window, (juce::juce_wchar) modeKey));

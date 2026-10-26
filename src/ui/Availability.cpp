@@ -62,6 +62,7 @@ constexpr SongOpGesture songOpGestures[] {
     { "add_insert", Gesture::addInsert },
     { "open_insert_editor", std::nullopt },
     { "close_plugin_window", std::nullopt },
+    { "show_export", Gesture::showExport },
     { "set_export_format", std::nullopt },
     { "set_export_length", std::nullopt },
     { "set_export_destination", std::nullopt },
@@ -160,6 +161,9 @@ std::optional<Refusal> refusalOf (const Intent& intent, const Running& running)
 {
     if (const auto* app = std::get_if<AppIntent> (&intent))
         if (const auto* settings = std::get_if<ShowSettings> (app); settings != nullptr && ! settings->shown)
+            return std::nullopt;
+    if (const auto* song = std::get_if<SongIntent> (&intent))
+        if (const auto* sheet = std::get_if<ShowExport> (song); sheet != nullptr && ! sheet->shown)
             return std::nullopt;
     return refusalOf (opName (intent), running);
 }

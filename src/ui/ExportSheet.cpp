@@ -1,4 +1,4 @@
-#include "ui/ExportPage.h"
+#include "ui/ExportSheet.h"
 
 #include "ui/Colours.h"
 
@@ -11,6 +11,10 @@ namespace overdub::ui
 namespace
 {
 constexpr int formWidth = 560;
+constexpr int panelPadding = 24;
+// The form's rows (resized), without and with the MP4 rows.
+constexpr int formHeight = 274;
+constexpr int mp4RowsHeight = 126;
 constexpr int formatRadioGroup = 3701;
 constexpr int lengthRadioGroup = 3702;
 
@@ -87,17 +91,6 @@ std::optional<song::Id> defaultExportVideoTake (const std::vector<video::VideoTa
     return videoTakes.front().videoTakeId;
 }
 
-std::string exportStatusText (const ExportPageState& state)
-{
-    if (state.waitingForAudio)
-        return "Preparing\xe2\x80\xa6";
-    if (state.rendering)
-        return "Exporting\xe2\x80\xa6 " + std::to_string ((int) std::floor (state.progress * 100.0)) + "%";
-    if (state.finishedFile.has_value())
-        return "Exported to " + state.finishedFile->getFullPathName().toStdString();
-    return {};
-}
-
 void ExportSpanBar::setState (const ExportSpanBarState& state)
 {
     if (state == shown)
@@ -136,8 +129,10 @@ void ExportSpanBar::paint (juce::Graphics& g)
     }
 }
 
-ExportPage::ExportPage()
+ExportSheet::ExportSheet()
 {
+    // Covers the window: every click lands here, none on the page under it.
+    setInterceptsMouseClicks (true, true);
     title.setText ("Export", juce::dontSendNotification);
     title.setColour (juce::Label::textColourId, colours::text);
     title.setFont (juce::FontOptions (16.0f, juce::Font::bold));
@@ -151,7 +146,6 @@ ExportPage::ExportPage()
     destinationLabel.setColour (juce::Label::textColourId, colours::text);
     destinationLabel.setColour (juce::Label::backgroundColourId, juce::Colours::black.withAlpha (0.4f));
     destinationLabel.setMinimumHorizontalScale (0.7f);
-    statusLabel.setColour (juce::Label::textColourId, colours::dimText);
 
     const std::pair<juce::ToggleButton*, exporting::ExportFormat> formatButtons[] {
         { &wavButton, exporting::ExportFormat::wav },
@@ -189,33 +183,31 @@ ExportPage::ExportPage()
         if (onChooseDestination)
             onChooseDestination (chosenDestination);
     };
+    cancelButton.onClick = [this] { emit (SongIntent { intent::ShowExport { false } }); };
     exportButton.onClick = [this] { emit (SongIntent { intent::Export {} }); };
     exportButton.setColour (juce::TextButton::buttonColourId, colours::accent);
-    revealButton.onClick = [this] { emit (SongIntent { intent::RevealExport {} }); };
 
-    for (auto* button : { &chooseButton, &exportButton, &revealButton })
+    for (auto* button : { &chooseButton, &cancelButton, &exportButton })
         button->setWantsKeyboardFocus (false);
-    for (juce::Component* child : { (juce::Component*) &title, (juce::Component*) &formatHeading, (juce::Component*) &spanBar, (juce::Component*) &spanLabel, (juce::Component*) &destinationHeading, (juce::Component*) &destinationLabel, (juce::Component*) &chooseButton, (juce::Component*) &exportButton, (juce::Component*) &progressBar, (juce::Component*) &statusLabel })
+    for (juce::Component* child : { (juce::Component*) &title, (juce::Component*) &formatHeading, (juce::Component*) &spanBar, (juce::Component*) &spanLabel, (juce::Component*) &destinationHeading, (juce::Component*) &destinationLabel, (juce::Component*) &chooseButton, (juce::Component*) &cancelButton, (juce::Component*) &exportButton })
         addAndMakeVisible (child);
-    for (juce::Component* child : { (juce::Component*) &videoTakeHeading, (juce::Component*) &videoTakePicker, (juce::Component*) &noVideoTakesLabel, (juce::Component*) &lengthHeading, (juce::Component*) &revealButton })
+    for (juce::Component* child : { (juce::Component*) &videoTakeHeading, (juce::Component*) &videoTakePicker, (juce::Component*) &noVideoTakesLabel, (juce::Component*) &lengthHeading })
         addChildComponent (child);
     updateSpan();
     updateControls();
 }
 
-void ExportPage::show (const ExportPageState& state)
+void ExportSheet::show (const ExportSheetState& state)
 {
     const auto videoTakesChanged = state.videoTakes != shown.videoTakes || state.sampleRate != shown.sampleRate;
     shown = state;
-    progressBar.setFraction (state.rendering ? state.progress : (state.finishedFile.has_value() ? 1.0 : 0.0));
-    statusLabel.setText (juce::String::fromUTF8 (exportStatusText (state).c_str()), juce::dontSendNotification);
     if (videoTakesChanged)
         updatePicker();
     updateSpan();
     updateControls();
 }
 
-exporting::ExportRequest ExportPage::request() const
+exporting::ExportRequest ExportSheet::request() const
 {
     if (chosenFormat != exporting::ExportFormat::mp4)
         return { chosenFormat, chosenDestination };
@@ -228,14 +220,14 @@ exporting::ExportRequest ExportPage::request() const
     };
 }
 
-void ExportPage::setDestination (const juce::File& file)
+void ExportSheet::setDestination (const juce::File& file)
 {
     chosenDestination = file == juce::File() ? file : exporting::withFormatExtension (file, chosenFormat);
     destinationLabel.setText (chosenDestination.getFullPathName(), juce::dontSendNotification);
     updateControls();
 }
 
-void ExportPage::chooseFormat (exporting::ExportFormat format)
+void ExportSheet::chooseFormat (exporting::ExportFormat format)
 {
     chosenFormat = format;
     wavButton.setToggleState (format == exporting::ExportFormat::wav, juce::dontSendNotification);
@@ -247,7 +239,7 @@ void ExportPage::chooseFormat (exporting::ExportFormat format)
     resized();
 }
 
-void ExportPage::chooseLength (exporting::VideoLength length)
+void ExportSheet::chooseLength (exporting::VideoLength length)
 {
     chosenLength = length;
     trimButton.setToggleState (length == exporting::VideoLength::trimToVideoTake, juce::dontSendNotification);
@@ -255,19 +247,19 @@ void ExportPage::chooseLength (exporting::VideoLength length)
     updateSpan();
 }
 
-void ExportPage::chooseVideoTake (const song::Id& videoTakeId)
+void ExportSheet::chooseVideoTake (const song::Id& videoTakeId)
 {
     pickedVideoTakeId = videoTakeId;
     updateSpan();
 }
 
-void ExportPage::emit (Intent intent) const
+void ExportSheet::emit (Intent intent) const
 {
     if (onIntent)
         onIntent (intent);
 }
 
-void ExportPage::pickVideoTake()
+void ExportSheet::pickVideoTake()
 {
     const auto index = videoTakePicker.getSelectedItemIndex();
     if (index < 0 || index >= (int) shown.videoTakes.size())
@@ -275,7 +267,7 @@ void ExportPage::pickVideoTake()
     emit (SongIntent { intent::SetExportVideoTake { shown.videoTakes[(std::size_t) index].videoTakeId } });
 }
 
-std::optional<video::VideoTakeSpan> ExportPage::shownVideoTake() const
+std::optional<video::VideoTakeSpan> ExportSheet::shownVideoTake() const
 {
     const auto id = pickedVideoTakeId.has_value() && std::ranges::contains (shown.videoTakes, *pickedVideoTakeId, &video::VideoTakeSpan::videoTakeId)
                       ? pickedVideoTakeId
@@ -287,14 +279,14 @@ std::optional<video::VideoTakeSpan> ExportPage::shownVideoTake() const
 }
 
 // Fills the picker's items; updateSpan() selects the one shown.
-void ExportPage::updatePicker()
+void ExportSheet::updatePicker()
 {
     videoTakePicker.clear (juce::dontSendNotification);
     for (std::size_t i = 0; i < shown.videoTakes.size(); ++i)
         videoTakePicker.addItem (juce::String::fromUTF8 (videoTakeChoiceText (shown.videoTakes[i], shown.sampleRate).c_str()), (int) i + 1);
 }
 
-void ExportPage::updateSpan()
+void ExportSheet::updateSpan()
 {
     const auto videoTake = shownVideoTake();
     const auto bar = exportSpanBar (chosenFormat, chosenLength, shown.clipsEnd, videoTake);
@@ -312,13 +304,10 @@ void ExportPage::updateSpan()
     }
 }
 
-void ExportPage::updateControls()
+void ExportSheet::updateControls()
 {
-    const auto busy = shown.waitingForAudio || shown.rendering;
     const auto mp4 = chosenFormat == exporting::ExportFormat::mp4;
     const auto hasVideoTakes = ! shown.videoTakes.empty();
-    for (auto* button : { &wavButton, &m4aButton, &mp4Button })
-        button->setEnabled (! busy);
 
     videoTakeHeading.setVisible (mp4);
     videoTakePicker.setVisible (mp4 && hasVideoTakes);
@@ -326,18 +315,24 @@ void ExportPage::updateControls()
     lengthHeading.setVisible (mp4 && hasVideoTakes);
     trimButton.setVisible (mp4 && hasVideoTakes);
     fullSongButton.setVisible (mp4 && hasVideoTakes);
-    for (juce::Component* child : { (juce::Component*) &videoTakePicker, (juce::Component*) &trimButton, (juce::Component*) &fullSongButton })
-        child->setEnabled (! busy);
-
-    chooseButton.setEnabled (! busy);
-    exportButton.setEnabled (! busy && chosenDestination != juce::File() && (! mp4 || hasVideoTakes));
-    revealButton.setVisible (! busy && shown.finishedFile.has_value());
+    exportButton.setEnabled (canExport());
 }
 
-void ExportPage::resized()
+bool ExportSheet::canExport() const
 {
-    auto area = getLocalBounds().reduced (30);
-    area = area.withSizeKeepingCentre (std::min (formWidth, area.getWidth()), area.getHeight());
+    return chosenDestination != juce::File() && (chosenFormat != exporting::ExportFormat::mp4 || ! shown.videoTakes.empty());
+}
+
+juce::Rectangle<int> ExportSheet::panelBounds() const
+{
+    const auto height = formHeight + (chosenFormat == exporting::ExportFormat::mp4 ? mp4RowsHeight : 0) + 2 * panelPadding;
+    const auto width = std::min (formWidth + 2 * panelPadding, getWidth() - 32);
+    return getLocalBounds().withSizeKeepingCentre (width, std::min (height, getHeight() - 32));
+}
+
+void ExportSheet::resized()
+{
+    auto area = panelBounds().reduced (panelPadding);
 
     title.setBounds (area.removeFromTop (28));
     area.removeFromTop (8);
@@ -370,15 +365,16 @@ void ExportPage::resized()
     auto actions = area.removeFromTop (28);
     exportButton.setBounds (actions.removeFromRight (100));
     actions.removeFromRight (6);
-    revealButton.setBounds (actions.removeFromRight (140));
-    area.removeFromTop (12);
-    progressBar.setBounds (area.removeFromTop (10));
-    area.removeFromTop (6);
-    statusLabel.setBounds (area.removeFromTop (22));
+    cancelButton.setBounds (actions.removeFromRight (90));
 }
 
-void ExportPage::paint (juce::Graphics& g)
+void ExportSheet::paint (juce::Graphics& g)
 {
-    g.fillAll (colours::background);
+    g.fillAll (juce::Colours::black.withAlpha (0.55f));
+    const auto panel = panelBounds().toFloat();
+    g.setColour (colours::panel);
+    g.fillRoundedRectangle (panel, 10.0f);
+    g.setColour (colours::line);
+    g.drawRoundedRectangle (panel.reduced (0.5f), 10.0f, 1.0f);
 }
 } // namespace overdub::ui

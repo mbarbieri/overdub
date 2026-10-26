@@ -15,6 +15,7 @@ enum MenuItem
     newSongItem = 1,
     openSongItem,
     duplicateSongItem,
+    exportItem,
     settingsItem,
     undoItem,
     redoItem,
@@ -170,6 +171,12 @@ juce::PopupMenu MainWindow::getMenuForIndex (int topLevelMenuIndex, const juce::
         const auto rates = convertSampleRateMenu();
         menu.addSubMenu ("Convert Sample Rate", rates, mayRun (ui::intent::ConvertSampleRate::op) && openSong != nullptr && ! offeredMenuRates.empty());
         menu.addSeparator();
+        juce::PopupMenu::Item exportMenuItem { "Export..." };
+        exportMenuItem.setID (exportItem).setEnabled (mayRun (ui::intent::ShowExport::op) && openSong != nullptr);
+        exportMenuItem.shortcutKeyDescription = juce::String (juce::CharPointer_UTF8 ("\xe2\x8c\x98"
+                                                                                      "E"));
+        menu.addItem (std::move (exportMenuItem));
+        menu.addSeparator();
         menu.addItem (settingsItem, "Settings...", mayRun (ui::intent::ShowSettings::op));
         return menu;
     }
@@ -210,6 +217,7 @@ void MainWindow::menuItemSelected (int menuItemID, int)
         case newSongItem: newSong(); break;
         case openSongItem: chooseSongToOpen(); break;
         case duplicateSongItem: duplicateSong(); break;
+        case exportItem: content.run (ui::SongIntent { ui::intent::ShowExport { true } }); break;
         case settingsItem: content.run (ui::AppIntent { ui::intent::ShowSettings { true } }); break;
         case undoItem: content.run (ui::SongIntent { ui::intent::Undo {} }); break;
         case redoItem: content.run (ui::SongIntent { ui::intent::Redo {} }); break;

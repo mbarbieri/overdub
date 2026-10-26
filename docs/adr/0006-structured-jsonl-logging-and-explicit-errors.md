@@ -43,3 +43,8 @@ Overdub logs to its own JSON Lines file, one per app launch, in `~/Library/Logs/
 
 - `src/control/` is the control socket (ADR 0008). Its events and its protocol Error codes use the `control` area. An Error keeps the area of the folder that raises it, so a refusal returned over the socket is still `ui.*`.
 - An Intent that does nothing (no Song open, a Clip key outside Edit mode, nothing to undo) returns an Error that is logged at `debug` and never presented, because the UI already shows the gesture as unavailable.
+
+## Amendment: a Notice that offers an action (issues #160, #200)
+
+- A Notice may carry one action button. Such a Notice stays until the action is clicked or another Notice replaces it. `ui.sample_rate_mismatch` offers to convert the Song (issue #160).
+- `ui.export_finished` is the one Notice that is not about a problem. An export runs in the background once the Export sheet closes, so the Notice is how the user learns that the file is written. It names the file (`file_name`) and offers Reveal in Finder (`reveal_export`).

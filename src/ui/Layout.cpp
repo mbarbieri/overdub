@@ -14,6 +14,7 @@ constexpr int transportButtonWidth = 40;
 constexpr int clockWidth = 130;
 constexpr int undoButtonWidth = 190;
 constexpr int controlIndicatorWidth = 130;
+constexpr int exportSlotWidth = 150;
 constexpr int importButtonHeight = 30;
 } // namespace
 
@@ -39,6 +40,9 @@ TopBarLayout topBarLayout (juce::Rectangle<int> bar)
     area.removeFromLeft (gap);
     layout.controlIndicator = area.removeFromLeft (controlIndicatorWidth);
     area.removeFromLeft (gap);
+
+    layout.exportSlot = area.removeFromRight (exportSlotWidth);
+    area.removeFromRight (gap);
 
     const auto groupWidth = 3 * transportButtonWidth + 3 * gap + clockWidth;
     const auto undoWidth = std::min (undoButtonWidth, (area.getWidth() - groupWidth - 2 * gap) / 2);

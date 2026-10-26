@@ -20,11 +20,11 @@ namespace overdub::app
 // The one top-level window (issue #27). Closing it quits the app. It owns the camera (issue #35),
 // the content (ui::MainComponent) and the ui::Workspace, which holds the live audio and the open
 // Song and runs the App Intents (issue #170). The window keeps what needs native dialogs and
-// windows: the File menu (New Song, Open, Duplicate), whose dialogs' answers run App Intents, Undo /
-// Redo in the Edit menu, the settings window with the audio device picker and the calibration
-// panel (per machine), which the Workspace shows and hides through onShowSettings, and quitting
-// (onQuit). While a Pass or a loopback calibration runs, the menu items that would interrupt it are
-// disabled.
+// windows: the File menu (New Song, Open, Duplicate, whose dialogs' answers run App Intents, and
+// Export..., which opens the Export sheet), Undo / Redo in the Edit menu, the settings window with
+// the audio device picker and the calibration panel (per machine), which the Workspace shows and
+// hides through onShowSettings, and quitting (onQuit). While a Pass or a loopback calibration
+// runs, the menu items that would interrupt it are disabled.
 class MainWindow final : public juce::DocumentWindow, private juce::MenuBarModel
 {
 public:

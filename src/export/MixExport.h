@@ -11,7 +11,7 @@
 #include <memory>
 #include <optional>
 
-// Export mode's work (issue #37): render the mix offline (MixRender) and write it (MixFileWriter)
+// An Export's work (issue #37): render the mix offline (MixRender) and write it (MixFileWriter)
 // to the requested file, faster than real time.
 //
 // exportMix writes a hidden sibling of the destination first and renames it over the destination

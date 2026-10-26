@@ -33,20 +33,20 @@
 // Each owner visits its group with core::visitExhaustively, so an alternative without a handler does
 // not compile, and a struct without `op` and `fields` cannot be an alternative.
 //
-// Keys (issue #9 resolution, issues #27, #28, #128): 1-3 pick a mode, R records, Space plays or
-// stops, command-Z / shift-command-Z undo and redo, and S, backspace (or forward delete) and the
-// left and right arrows split, delete and nudge, which their handlers refuse outside Edit mode.
+// Keys (issue #9 resolution, issues #27, #28, #128, #200): 1 and 2 pick a mode, R records, Space
+// plays or stops, command-Z / shift-command-Z undo and redo, command-E opens the Export sheet, and
+// S, backspace (or forward delete) and the left and right arrows split, delete and nudge, which
+// their handlers refuse outside Edit mode.
 namespace overdub::ui
 {
 enum class Mode
 {
     record,
-    edit,
-    exportSong
+    edit
 };
-inline constexpr std::pair<Mode, std::string_view> modeNames[] { { Mode::record, "record" }, { Mode::edit, "edit" }, { Mode::exportSong, "export" } };
+inline constexpr std::pair<Mode, std::string_view> modeNames[] { { Mode::record, "record" }, { Mode::edit, "edit" } };
 
-// "record", "edit" or "export": the name in ui.* event fields and in the Intent's JSON.
+// "record" or "edit": the name in ui.* event fields and in the Intent's JSON.
 const char* modeName (Mode mode);
 
 enum class Direction
@@ -183,7 +183,7 @@ struct Quit // the window's close button, command-Q
 //==============================================================================
 // Window: what the main window shows besides the Song. Needs no Song.
 
-struct ShowMode // keys 1-3, the top bar's mode buttons
+struct ShowMode // keys 1 and 2, the top bar's mode buttons
 {
     static constexpr std::string_view op = "show_mode";
     Mode mode = Mode::record;
@@ -578,7 +578,15 @@ struct ClosePluginWindow // captures the plugin's state into song.json, outside 
 };
 
 //==============================================================================
-// Song: Export. The form is the Export page's; Export starts what the form says.
+// Song: Export. The form is the Export sheet's; Export starts what the form says.
+
+struct ShowExport // Export... in the top bar or the File menu (command-E) opens the sheet; Esc and Cancel close it
+{
+    static constexpr std::string_view op = "show_export";
+    bool shown = true;
+    bool operator== (const ShowExport&) const = default;
+    static constexpr auto fields = std::tuple { field ("shown", &ShowExport::shown) };
+};
 
 struct SetExportFormat
 {
@@ -724,7 +732,7 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::SetPreRoll, intent::SetCameraArmed, intent::SetCameraDevice,
                                 intent::SplitSelectedClip, intent::DeleteSelection, intent::TakeLaneClick, intent::PreviewMix,
                                 intent::AddInsert, intent::OpenInsertEditor, intent::ClosePluginWindow,
-                                intent::SetExportFormat, intent::SetExportLength, intent::SetExportDestination,
+                                intent::ShowExport, intent::SetExportFormat, intent::SetExportLength, intent::SetExportDestination,
                                 intent::SetExportVideoTake, intent::Export, intent::RevealExport,
                                 intent::SelectClip, intent::SelectVideoTake, intent::SetTimelineView,
                                 intent::SetVerticalScroll, intent::SetTakeLanesUnfolded, intent::SetMixerVisible,

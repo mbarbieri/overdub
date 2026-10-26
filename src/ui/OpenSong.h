@@ -253,7 +253,7 @@ public:
     const std::optional<juce::File>& lastExportedFile() const { return lastExport; }
 
     // The Video Take an MP4 export shows: a Song setting outside history (song.json, no undo
-    // step), the Export page's default. Ignored for an id that is not a Video Take of the Song.
+    // step), the Export sheet's default. Ignored for an id that is not a Video Take of the Song.
     void setExportVideoTake (const song::Id& videoTakeId);
 
     // Pre-roll is a Song setting outside history: written to song.json, never an undo step.

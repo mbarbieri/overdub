@@ -21,7 +21,8 @@ check "the Song has Clips and no Insert" "$s" \
 SPAN="$(jq -n "$SPAN_SAMPLES / $RATE")"
 echo "song span: $SPAN_SAMPLES samples = $SPAN s at $RATE Hz" | tee "$EVIDENCE/span.txt"
 
-ctl show_mode mode=export >/dev/null
+ctl show_export shown=true >/dev/null
+check "Export... opened the Export sheet" "$(state view)" '.view.export_sheet_shown == true'
 
 # export_as FORMAT FILE: fills the form, starts the export and waits for it to finish.
 export_as() {
@@ -35,6 +36,7 @@ export_as() {
     ctl export >/dev/null
     activity_started
     wait_finish export 60000
+    check "the export closed the Export sheet" "$(state view)" '.view.export_sheet_shown == false'
     check_cmd "$2 exists with nonzero length" '[[ -s "$file" ]]'
     check_cmd "no .partial file is left in $OUT" '[[ -z "$(ls -a "$OUT" | grep -F .partial)" ]]'
     afinfo "$file" >"$EVIDENCE/afinfo-$2.txt" 2>&1
