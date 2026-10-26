@@ -46,7 +46,7 @@ target_sources(overdub_ui PRIVATE
     TrackRowEdits.cpp
     TransportText.cpp
     UserMessages.cpp
-    VideoPreviewWindow.cpp
+    VideoPreview.cpp
     VideoScreen.mm
     Workspace.cpp)
 

@@ -23,7 +23,8 @@
 
 // Edit mode's timeline (issue #28, issue #9 resolution, variant C): a ruler, the Camera lane
 // (issue #36: one block per Video Take, from its start to the end of its movie on the audio clock,
-// titled with its Pass; a Video Take whose movie cannot be read is a narrow block), and one lane
+// titled with its Pass; a Video Take whose movie cannot be read is a narrow block; its header's A
+// arms the camera, issue #198), and one lane
 // per Track with a compact header (its colour stripe, grip, name, Take Lanes toggle, A M S, ×). Clips are
 // drawn in their Track's colour (issue #137), in layer order with waveforms from
 // the peaks cache, a hatched strip marks where a Clip covers an older one, and the playhead
@@ -43,7 +44,7 @@
 //
 // Every gesture that changes state is reported as an Intent through onIntent (ADR 0008), which
 // runs it: select_clip, select_video_take, seek, set_timeline_view, set_vertical_scroll,
-// set_take_lanes_unfolded, take_lane_click, move_track, import_files, set_armed, the Track
+// set_take_lanes_unfolded, take_lane_click, move_track, import_files, set_armed, set_camera_armed, the Track
 // header's mute and solo, and a drag's plain edit. The Timeline changes what it shows only when
 // the Intent's handler calls back (selectClip, setView, ...); gesture phases (a drag's preview,
 // the pinch's pending levels, Esc) stay here.
@@ -88,6 +89,7 @@ struct TimelineState
     bool editable = true; // false while a Pass runs: no gestures
     bool tracksDeletable = true; // false while a Pass, a Separation or an Export runs
     std::vector<video::VideoTakeSpan> videoTakes; // the Camera lane's blocks (video::videoTakeSpans)
+    bool canArmCamera = true; // the Camera lane header's A: as Record mode's camera arm, and not refused
 };
 
 // The name a Clip shows: "Pass n" for a Take (its Pass's number), the file name for a Backing
@@ -221,6 +223,7 @@ public:
 
     std::vector<std::unique_ptr<TrackHeader>> headers; // children of trackHeaderColumn
     juce::Label cameraHeader;
+    juce::TextButton cameraArmButton { "A" };
     juce::ScrollBar scrollBar { false };
     juce::ScrollBar verticalScrollBar { true }; // shown only when the Track rows overflow
 

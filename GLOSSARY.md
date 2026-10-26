@@ -38,6 +38,10 @@ _Avoid_: Stem split, demix, unmix
 Camera footage captured during a pass, which stays aligned with that pass's takes on the timeline. A song has at most one camera armed at a time.
 _Avoid_: Video track, camera clip
 
+**Video Preview**:
+The small picture beside Edit mode's mixer while the camera is armed: the camera's live feed, or the Video Takes playing back.
+_Avoid_: Camera pane, video window, monitor
+
 **Take Lane**:
 A thin row under a Track, one per Take recorded on that Track, showing where that Take is currently heard. Clicking it makes the Clip at that point play that Take (a Swap), or brings the whole Take back on top where no Take Clip sounds.
 _Avoid_: Comp lane, playlist, take folder

@@ -66,7 +66,6 @@ struct MainWindowFixture
         };
         window->askCameraAccess = [this] (std::function<void (bool)> done) { done (cameraAccessGranted); };
         window->showPluginWindowsOnDesktop = false; // editor windows are built, never shown
-        window->showVideoPreviewOnDesktop = false;    // so is the Video Preview
         layOut (*window, windowWidth, windowHeight);
         window->setOpenSong (openSong.get());
     }

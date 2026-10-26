@@ -311,9 +311,10 @@ TEST_CASE ("snapshots of Record mode's camera arm, picker and stage", "[ui][snap
 
 // Video Take playback (issue #36): build/ui-snapshots/slice-15/*.png. Two Video Takes (Pass 1's 4 s
 // from 1 s, Pass 2's 2 s from 3 s) on the Camera lane in Edit mode, with the playhead in their
-// overlap; the Video Preview's content, and the Record stage showing playback with the playhead
-// outside every Video Take. The AVSampleBufferDisplayLayer area renders blank off-screen; which
-// frame shows is covered by the pure and Component tests.
+// overlap; the camera Armed, so the Video Preview sits beside the Mixer (issue #198) with the
+// camera's line, then its playback while playing; and the Record stage showing playback with the
+// playhead outside every Video Take. The AVSampleBufferDisplayLayer area renders blank
+// off-screen; which frame shows is covered by the pure and Component tests.
 TEST_CASE ("snapshots of Edit mode with the Camera lane and the Video Preview", "[ui][snapshot][video]")
 {
     const std::string slice = "slice-15";
@@ -329,17 +330,24 @@ TEST_CASE ("snapshots of Edit mode with the Camera lane and the Video Preview", 
     window.songView()->editPage.timeline.setView (0, 250);
     f.openSong->seek (4 * 48000);
     f.runBlocks (1);
-    click (window.songView()->editPage.toolbar.videoButton);
-    window.refreshVideo (f.device.hostTimeNs);
-    REQUIRE (window.videoPreviewWindow() != nullptr);
     CHECK (writeSnapshot (window, slice, "edit-camera-lane").existsAsFile());
-    CHECK (writeSnapshot (window.videoPreviewWindow()->screen(), slice, "video-preview").existsAsFile());
+
+    REQUIRE (window.run (overdub::ui::SongIntent { overdub::ui::intent::SetCameraArmed { true } }, overdub::ui::Origin::control).has_value());
+    auto& preview = window.songView()->editPage.videoPreview;
+    REQUIRE (isShown (preview));
+    CHECK (writeSnapshot (window, slice, "edit-video-preview-camera").existsAsFile());
+
+    REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+    window.refreshVideo (f.device.hostTimeNs);
+    REQUIRE (preview.showsPlayback());
+    CHECK (writeSnapshot (preview, slice, "video-preview").existsAsFile());
+    REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+    REQUIRE (window.run (overdub::ui::SongIntent { overdub::ui::intent::SetCameraArmed { false } }, overdub::ui::Origin::control).has_value());
 
     f.openSong->seek (8 * 48000);
     f.runBlocks (1);
-    window.refreshVideo (f.device.hostTimeNs);
-    CHECK (writeSnapshot (window.videoPreviewWindow()->screen(), slice, "video-preview-no-video-take").existsAsFile());
-
     REQUIRE (pressKey (window, '1'));
     window.refreshVideo (f.device.hostTimeNs);
     CHECK (writeSnapshot (window, slice, "record-stage-playback").existsAsFile());

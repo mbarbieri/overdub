@@ -134,7 +134,7 @@ TEST_CASE ("the app state has every section, each with its keys, over a Song wit
     CHECK (view["export_form"]["length"] == "trim_to_video_take");
     CHECK (view["export_form"]["video_take"] == nullptr);
 
-    CHECK (state["window"] == json { { "video_preview_wanted", false }, { "video_preview_shown", false }, { "run_dialog", { { "showing", false }, { "title", "" }, { "status", "" }, { "progress", 0.0 } } } });
+    CHECK (state["window"] == json { { "video_preview_shown", false }, { "run_dialog", { { "showing", false }, { "title", "" }, { "status", "" }, { "progress", 0.0 } } } });
 
     CHECK (state["messages"]["notice"]["code"] == "ui.no_audio_device");
     CHECK (state["messages"]["notice"]["text"] == f.content.noticeLine.text().toStdString());

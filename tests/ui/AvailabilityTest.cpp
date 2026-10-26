@@ -68,7 +68,7 @@ TEST_CASE ("during a Pass only transport, view and plugin window ops, the Window
         "set_export_format", "set_export_length", "set_export_destination", "set_export_video_take", "reveal_export",
         "select_clip", "select_video_take", "set_timeline_view", "set_vertical_scroll", "set_take_lanes_unfolded",
         "set_mixer_visible", "set_mixer_height", "set_passes_panel_open", "clear_clip_indicator",
-        "show_mode", "set_video_preview_wanted", "dismiss_alerts", "quit"
+        "show_mode", "dismiss_alerts", "quit"
     };
 
     CHECK (refusedCodes (Running { .song = ActivityKind::pass }) == allBut (allowed, "ui.stop_recording_first"));

@@ -32,7 +32,7 @@ class Workspace;
 //                "take_lanes_unfolded": [track ids]}, "mixer_visible", "mixer_height",
 //                "passes_panel_open", "export_form" {"format", "length", "destination",
 //                "video_take"}
-//   window       {"video_preview_wanted", "video_preview_shown", "run_dialog": {"showing",
+//   window       {"video_preview_shown", "run_dialog": {"showing",
 //                "title", "status", "progress"}}
 //   messages     {"notice", "alerts_shown", "alerts_deferred"}; each message is {"code", "tier",
 //                "text"}. notice is null while none shows, else also "counter" (the Notices shown

@@ -42,7 +42,7 @@ It is not a DAW. It has no tempo, no bars, no MIDI and no sequencer: time is mea
 
 **Video**
 - Camera capture on the audio clock, so a **Video Take** stays aligned with its pass.
-- A synced video preview window and a camera lane on the timeline.
+- A synced Video Preview beside the Mixer while the camera is armed, and a camera lane on the timeline.
 
 **Separation**
 - Split a backing track into six new ones (vocals, drums, bass, guitar, piano, other) with the BS-RoFormer SW model, running locally in a helper process.

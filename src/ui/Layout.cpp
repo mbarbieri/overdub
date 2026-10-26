@@ -215,7 +215,7 @@ int clampMixerHeight (int requested, int pageHeight)
     return std::max (minimumMixerHeight, std::min (requested, largest));
 }
 
-EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int mixerHeight)
+EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int mixerHeight, bool videoPreviewShown)
 {
     EditPageLayout layout;
     auto area = page;
@@ -224,6 +224,8 @@ EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int
     {
         layout.mixer = area.removeFromBottom (clampMixerHeight (mixerHeight, page.getHeight()));
         layout.mixerDivider = area.removeFromBottom (mixerDividerHeight);
+        if (videoPreviewShown)
+            layout.videoPreview = layout.mixer.removeFromRight (videoPreviewWidth);
     }
     layout.timeline = area;
     layout.passesButton = juce::Rectangle<int> (area.getX(), area.getY(), laneHeaderWidth, rulerHeight).reduced (4, 2);
@@ -235,8 +237,6 @@ ClipToolbarLayout clipToolbarLayout (juce::Rectangle<int> bar)
     ClipToolbarLayout layout;
     auto area = bar.reduced (margin, 5);
     layout.mixerToggle = area.removeFromRight (64);
-    area.removeFromRight (gap);
-    layout.videoToggle = area.removeFromRight (56);
     area.removeFromRight (gap);
     layout.zoomIn = area.removeFromRight (32);
     area.removeFromRight (2);
@@ -294,6 +294,8 @@ TimelineLayout timelineLayout (juce::Rectangle<int> area, const std::vector<int>
     layout.rulerCorner = rulerRow.removeFromLeft (laneHeaderWidth);
     layout.ruler = rulerRow;
     layout.cameraHeader = cameraRow.removeFromLeft (laneHeaderWidth);
+    const auto trackArm = trackHeaderLayout (layout.cameraHeader.withHeight (trackLaneHeight)).arm;
+    layout.cameraArm = trackArm.withCentre ({ trackArm.getCentreX(), layout.cameraHeader.getCentreY() });
     layout.cameraLane = cameraRow;
 
     auto y = rest.getY() - verticalScroll;
