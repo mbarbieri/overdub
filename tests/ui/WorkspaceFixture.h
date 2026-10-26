@@ -72,7 +72,6 @@ struct WorkspaceFixture
         content.showAlert = [] (const juce::String&, std::function<void()>) { return MainComponent::CloseAlert {}; };
         content.askCameraAccess = [] (std::function<void (bool)> done) { done (true); };
         content.showPluginWindowsOnDesktop = false;
-        content.showVideoPreviewOnDesktop = false;
         layOut (content, 1200, 760);
         layOut (calibrationPanel, 460, 520);
     }

@@ -63,9 +63,9 @@ public:
     void showMeters();
     // The peaks the meters show, as the last showMeters took them. Reading them takes no peak.
     const engine::MeterPeaks& shownMeters() const { return shownPeaks; }
-    // Shows the frame heard `refreshNs` after `nowHostNs` on `preview` (when not null) and on the
-    // Record stage when it shows playback.
-    void refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs, VideoScreen* preview);
+    // Shows the frame heard `refreshNs` after `nowHostNs` on the Edit page's Video Preview and the
+    // Record stage, each while it shows playback in its mode.
+    void refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs);
     // Esc during a grip drag, and the focused fader's keys; true when the key was used.
     bool handleKey (const juce::KeyPress& key, song::SongPackage::Clock::time_point now);
     // A mouse down on `clicked`: a focused fader or pan elsewhere loses its focus.

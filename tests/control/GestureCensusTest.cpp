@@ -322,6 +322,7 @@ struct CensusResult
 {
     std::set<std::string> bypasses;
     std::map<std::string, std::string> changedBy;
+    std::set<std::string> firedIds;
     int fired = 0;
 };
 
@@ -337,6 +338,7 @@ void fireProbe (CensusWorkspace& census, const Probe& probe, ui::Mode mode, Cens
     probe.fire (*target);
     const auto after = control::appState (census.f.content, *census.f.workspace);
     ++result.fired;
+    result.firedIds.insert (probe.id);
     const auto ranIntent = census.f.content.intentsRun() != intentsBefore;
     const auto changed = changedPaths (before, after);
     if (! changed.empty() && ! ranIntent)
@@ -375,6 +377,9 @@ TEST_CASE ("no gesture changes the app state without running an Intent", "[contr
         FAIL_CHECK (probe << " changed " << changed << " without running an Intent");
     CHECK (result.bypasses.empty());
     CHECK (result.fired > 1000);
+    // The Camera lane header's A (issue #198), the Timeline's only direct TextButton, is fired.
+    const auto cameraArm = std::ranges::find_if (result.firedIds, [] (const std::string& id) { return id.starts_with ("edit/") && id.ends_with ("/Timeline#0/TextButton#0:click"); });
+    CHECK (cameraArm != result.firedIds.end());
 }
 
 TEST_CASE ("the census fails on a button that edits the Song without an Intent", "[control][census]")

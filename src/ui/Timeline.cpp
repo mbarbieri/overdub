@@ -176,6 +176,11 @@ Timeline::Timeline (PeaksLookup peaks)
     cameraHeader.setColour (juce::Label::textColourId, colours::dimText);
     cameraHeader.setFont (juce::FontOptions (12.0f));
     cameraHeader.setInterceptsMouseClicks (false, false);
+    cameraArmButton.setClickingTogglesState (false);
+    cameraArmButton.setColour (juce::TextButton::buttonOnColourId, colours::rec);
+    cameraArmButton.setWantsKeyboardFocus (false);
+    cameraArmButton.setTooltip ("Arm the camera");
+    cameraArmButton.onClick = [this] { emit (SongIntent { intent::SetCameraArmed { ! current.song.cameraArmed } }); };
     scrollBar.setAutoHide (false);
     scrollBar.addListener (this);
     scrollBar.setWantsKeyboardFocus (false);
@@ -184,6 +189,7 @@ Timeline::Timeline (PeaksLookup peaks)
     verticalScrollBar.setWantsKeyboardFocus (false);
     trackHeaderColumn.setInterceptsMouseClicks (false, true);
     addAndMakeVisible (cameraHeader);
+    addAndMakeVisible (cameraArmButton);
     addAndMakeVisible (trackHeaderColumn);
     addAndMakeVisible (scrollBar);
     addChildComponent (verticalScrollBar);
@@ -205,6 +211,8 @@ void Timeline::show (const TimelineState& state)
         for (const auto& track : current.song.tracks)
             previousTrackIds.push_back (track.id);
     current = state;
+    cameraArmButton.setToggleState (current.song.cameraArmed, juce::dontSendNotification);
+    cameraArmButton.setEnabled (current.canArmCamera);
     if (! current.editable && std::holds_alternative<TrackDrag> (gesture))
         cancelGesture ("pass_running");
     if (! changed)
@@ -564,7 +572,8 @@ void Timeline::layOutRows()
     }
 
     timelineView.laneX = layout.ruler.getX();
-    cameraHeader.setBounds (layout.cameraHeader.reduced (8, 0));
+    cameraHeader.setBounds (layout.cameraHeader.withRight (layout.cameraArm.getX()).reduced (8, 0));
+    cameraArmButton.setBounds (layout.cameraArm);
     scrollBar.setBounds (layout.scrollBar);
     const auto headerColumn = layout.tracksViewport.withWidth (laneHeaderWidth);
     trackHeaderColumn.setBounds (headerColumn);

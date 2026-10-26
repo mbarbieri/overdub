@@ -158,31 +158,7 @@ void MainComponent::onVBlank (double timestampSeconds)
 void MainComponent::refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs)
 {
     if (songContent != nullptr)
-        songContent->refreshVideo (nowHostNs, refreshNs, isVideoPreviewShown() ? &videoPreview->screen() : nullptr);
-}
-
-void MainComponent::setVideoPreviewWanted (bool wanted)
-{
-    if (wanted == videoPreviewWanted)
-        return;
-    videoPreviewWanted = wanted;
-    core::logEvent (core::Level::info, "ui.video_preview_toggled", { { "shown", wanted } });
-    syncVideoPreview();
-}
-
-void MainComponent::syncVideoPreview()
-{
-    const auto shown = videoPreviewWanted && songContent != nullptr && currentMode == Mode::edit;
-    if (songContent != nullptr)
-        songContent->editPage.setVideoPreviewShown (videoPreviewWanted);
-    if (shown && videoPreview == nullptr)
-    {
-        videoPreview = std::make_unique<VideoPreviewWindow> (showVideoPreviewOnDesktop);
-        // Closed from its own close button: the toggle goes off.
-        videoPreview->onClose = [this] { run (WindowIntent { intent::SetVideoPreviewWanted { false } }); };
-    }
-    if (videoPreview != nullptr)
-        videoPreview->setShown (shown);
+        songContent->refreshVideo (nowHostNs, refreshNs);
 }
 
 void MainComponent::setOpenSong (OpenSong* song)
@@ -267,7 +243,6 @@ IntentResult MainComponent::runWindow (const WindowIntent& windowIntent)
         windowIntent,
         core::Overloaded {
             [this] (const ShowMode& show) -> IntentResult { showMode (show.mode); return IntentDone {}; },
-            [this] (const SetVideoPreviewWanted& preview) -> IntentResult { setVideoPreviewWanted (preview.wanted); return IntentDone {}; },
             [this] (const DismissAlerts&) { return dismissAlerts(); },
         });
 }
@@ -419,7 +394,6 @@ void MainComponent::refresh()
     // The conversion a Notice offers no longer applies once the Song is at the device's rate.
     if (noticeLine.hasAction() && (songContent == nullptr || ! songContent->currentSong().audioProblem().has_value()))
         noticeLine.dismiss();
-    syncVideoPreview();
 }
 
 bool MainComponent::keyPressed (const juce::KeyPress& key)

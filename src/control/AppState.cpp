@@ -134,7 +134,6 @@ json windowSection (const ui::MainComponent& window)
 {
     const auto& dialog = window.runDialog;
     return {
-        { "video_preview_wanted", window.isVideoPreviewWanted() },
         { "video_preview_shown", window.isVideoPreviewShown() },
         { "run_dialog",
           { { "showing", dialog.isVisible() },

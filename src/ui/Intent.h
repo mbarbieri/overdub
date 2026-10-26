@@ -191,14 +191,6 @@ struct ShowMode // keys 1-3, the top bar's mode buttons
     static constexpr auto fields = std::tuple { enumField ("mode", &ShowMode::mode, core::EnumNames<Mode> { modeNames }) };
 };
 
-struct SetVideoPreviewWanted // the Edit toolbar's Video toggle, the Video Preview's close button
-{
-    static constexpr std::string_view op = "set_video_preview_wanted";
-    bool wanted = true;
-    bool operator== (const SetVideoPreviewWanted&) const = default;
-    static constexpr auto fields = std::tuple { field ("wanted", &SetVideoPreviewWanted::wanted) };
-};
-
 struct DismissAlerts // OK on every open Alert
 {
     static constexpr std::string_view op = "dismiss_alerts";
@@ -721,7 +713,7 @@ using AppIntent = std::variant<intent::NewSongAt, intent::OpenSongAt, intent::Du
                                intent::SaveLatencyCalibration, intent::MeasureClapPass, intent::SaveCameraCalibration,
                                intent::Quit>;
 
-using WindowIntent = std::variant<intent::ShowMode, intent::SetVideoPreviewWanted, intent::DismissAlerts>;
+using WindowIntent = std::variant<intent::ShowMode, intent::DismissAlerts>;
 
 using SongIntent = std::variant<intent::Edit,
                                 intent::Record, intent::PlayOrStop, intent::Rewind, intent::Undo, intent::Redo,

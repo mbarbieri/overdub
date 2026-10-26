@@ -120,8 +120,6 @@ ClipToolbar::ClipToolbar()
 
     mixerButton.setClickingTogglesState (false);
     mixerButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
-    videoButton.setClickingTogglesState (false);
-    videoButton.setColour (juce::TextButton::buttonOnColourId, colours::accent);
 
     splitButton.onClick = [this] {
         if (onSplit)
@@ -143,11 +141,7 @@ ClipToolbar::ClipToolbar()
         if (onToggleMixer)
             onToggleMixer();
     };
-    videoButton.onClick = [this] {
-        if (onToggleVideo)
-            onToggleVideo();
-    };
-    for (auto* button : { &splitButton, &deleteButton, &zoomOutButton, &zoomInButton, &videoButton, &mixerButton })
+    for (auto* button : { &splitButton, &deleteButton, &zoomOutButton, &zoomInButton, &mixerButton })
     {
         button->setWantsKeyboardFocus (false);
         addAndMakeVisible (button);
@@ -181,7 +175,7 @@ ClipToolbar::ClipToolbar()
     setUpField (*this, gainField, onGainEntered);
 }
 
-void ClipToolbar::show (const ClipToolbarState& state, bool mixerVisible, bool videoPreviewShown)
+void ClipToolbar::show (const ClipToolbarState& state, bool mixerVisible)
 {
     details.setText (juce::String::fromUTF8 (state.details.c_str()), juce::dontSendNotification);
     details.setColour (juce::Label::textColourId, state.hasSelection ? colours::text : colours::dimText);
@@ -194,7 +188,6 @@ void ClipToolbar::show (const ClipToolbarState& state, bool mixerVisible, bool v
     fadeOutField.setEnabled (state.canEditFadesAndGain);
     gainField.setEnabled (state.canEditFadesAndGain);
     mixerButton.setToggleState (mixerVisible, juce::dontSendNotification);
-    videoButton.setToggleState (videoPreviewShown, juce::dontSendNotification);
 }
 
 void ClipToolbar::resized()
@@ -211,7 +204,6 @@ void ClipToolbar::resized()
     deleteButton.setBounds (layout.deleteClip);
     zoomOutButton.setBounds (layout.zoomOut);
     zoomInButton.setBounds (layout.zoomIn);
-    videoButton.setBounds (layout.videoToggle);
     mixerButton.setBounds (layout.mixerToggle);
 }
 
@@ -256,7 +248,6 @@ EditPage::EditPage (PeaksLookup peaksFor)
     toolbar.onZoomIn = [this] { emit (SongIntent { intent::SetTimelineView { timeline.view().firstSample, zoomedIn (timeline.view()).samplesPerPixel } }); };
     toolbar.onZoomOut = [this] { emit (SongIntent { intent::SetTimelineView { timeline.view().firstSample, zoomedOut (timeline.view()).samplesPerPixel } }); };
     toolbar.onToggleMixer = [this] { emit (SongIntent { intent::SetMixerVisible { ! mixerVisible } }); };
-    toolbar.onToggleVideo = [this] { emit (WindowIntent { intent::SetVideoPreviewWanted { ! videoPreviewShown } }); };
     toolbar.onFadeInEntered = [this] (const std::string& text) {
         const auto samples = parseSeconds (text, current.song.sampleRate);
         editSelectedClip ([&] (const song::Id& clipId) -> std::optional<intent::Edit> {
@@ -306,6 +297,7 @@ EditPage::EditPage (PeaksLookup peaksFor)
     addAndMakeVisible (timeline);
     addAndMakeVisible (divider);
     addAndMakeVisible (mixer);
+    addChildComponent (videoPreview);
     addAndMakeVisible (passesButton);
     addChildComponent (passesPanel);
     showToolbar();
@@ -358,13 +350,22 @@ void EditPage::showToolbar()
     const auto& videoTake = timeline.selectedVideoTake();
     const auto state = videoTake.has_value() ? videoTakeToolbarStateFor (current.song, current.videoTakes, *videoTake, current.editable)
                                              : clipToolbarStateFor (current.song, timeline.selectedClip(), current.playhead, current.editable);
-    toolbar.show (state, mixerVisible, videoPreviewShown);
+    toolbar.show (state, mixerVisible);
 }
 
-void EditPage::setVideoPreviewShown (bool shown)
+void EditPage::showVideoPreview (bool armed, void* previewLayer, const juce::String& message, bool playback)
 {
-    videoPreviewShown = shown;
-    showToolbar();
+    videoPreview.show (previewLayer, message, playback);
+    if (armed == cameraArmed)
+        return;
+    cameraArmed = armed;
+    videoPreview.setVisible (isVideoPreviewShown());
+    resized();
+}
+
+VideoScreen* EditPage::shownPlayback()
+{
+    return isVideoPreviewShown() && videoPreview.showsPlayback() ? &videoPreview.playback : nullptr;
 }
 
 void EditPage::editSelectedClip (const std::function<std::optional<intent::Edit> (const song::Id& clipId)>& editFor)
@@ -392,6 +393,7 @@ void EditPage::setMixerVisible (bool visible)
     mixerVisible = visible;
     divider.setVisible (visible);
     mixer.setVisible (visible);
+    videoPreview.setVisible (isVideoPreviewShown());
     showToolbar();
     resized();
 }
@@ -404,11 +406,12 @@ void EditPage::setMixerHeight (int height)
 
 void EditPage::resized()
 {
-    const auto layout = editPageLayout (getLocalBounds(), mixerVisible, mixerHeightRequested);
+    const auto layout = editPageLayout (getLocalBounds(), mixerVisible, mixerHeightRequested, cameraArmed);
     toolbar.setBounds (layout.clipToolbar);
     timeline.setBounds (layout.timeline);
     divider.setBounds (layout.mixerDivider);
     mixer.setBounds (layout.mixer);
+    videoPreview.setBounds (layout.videoPreview);
     passesButton.setBounds (layout.passesButton);
     passesPanel.setBounds (passesPanelBounds (getLocalBounds(), layout.passesButton, passesPanel.numRows()));
 }

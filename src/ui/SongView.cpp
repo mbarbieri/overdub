@@ -624,12 +624,35 @@ void SongView::refresh (TopBarState& state)
                          recording,
                          [this] (const song::Id& slotId) { return openSong.insertStatus (slotId); }),
                      song);
-    recordPage.showCamera (cameraControlsStateFor (song, openSong.cameraDevices(), recording), openSong.cameraPreviewLayer());
-    recordPage.showStagePlayback (! stageShowsLiveFeed (song.cameraArmed, recording, state.playing));
+    const auto cameraControls = cameraControlsStateFor (song, openSong.cameraDevices(), recording);
+    const auto playback = ! stageShowsLiveFeed (song.cameraArmed, recording, state.playing);
+    const auto cameraMessage = juce::String::fromUTF8 (cameraStageMessage (song.cameraArmed).c_str());
+    // The camera's preview layer can sit in one view at a time: the page out of view lets go of it
+    // before the page in view takes it.
+    auto* const previewLayer = openSong.cameraPreviewLayer();
+    if (mode == Mode::edit)
+    {
+        recordPage.showCamera (cameraControls, nullptr);
+        editPage.showVideoPreview (song.cameraArmed, previewLayer, cameraMessage, playback);
+    }
+    else
+    {
+        editPage.showVideoPreview (song.cameraArmed, nullptr, cameraMessage, playback);
+        recordPage.showCamera (cameraControls, mode == Mode::record ? previewLayer : nullptr);
+    }
+    recordPage.showStagePlayback (playback);
     if (mode == Mode::record)
         recordPage.showSong (song, RecordTransport { position, openSong.runningPassStart(), recordPoint }, ! recording);
     if (mode == Mode::edit)
-        editPage.show (TimelineState { song, openSong.position(), state.playing, ! recording, ! window.refusalOf (intent::ImportFiles::op).has_value(), openSong.videoPlayback().spans (song) });
+        editPage.show (TimelineState {
+            .song = song,
+            .playhead = openSong.position(),
+            .playing = state.playing,
+            .editable = ! recording,
+            .tracksDeletable = ! window.refusalOf (intent::ImportFiles::op).has_value(),
+            .videoTakes = openSong.videoPlayback().spans (song),
+            .canArmCamera = cameraControls.canArm && ! window.refusalOf (intent::SetCameraArmed::op).has_value(),
+        });
     const auto exportPhase = openSong.exportPhase();
     exportPage.show (ExportPageState {
         .clipsEnd = exporting::lastClipEnd (song),
@@ -662,9 +685,11 @@ void SongView::showMeters()
     recordPage.showMeters (shownPeaks);
 }
 
-void SongView::refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs, VideoScreen* preview)
+void SongView::refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs)
 {
-    const auto stageShows = window.mode() == Mode::record && recordPage.showsStagePlayback();
+    const auto mode = window.mode();
+    const auto stageShows = mode == Mode::record && recordPage.showsStagePlayback();
+    auto* const preview = mode == Mode::edit ? editPage.shownPlayback() : nullptr;
     if (preview == nullptr && ! stageShows)
         return;
     const auto heard = video::heardSongSample (openSong.playbackClock(), nowHostNs, refreshNs);

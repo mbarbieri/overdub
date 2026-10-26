@@ -1,4 +1,6 @@
-#include "ui/VideoPreviewWindow.h"
+#include "ui/VideoPreview.h"
+
+#include "ui/RecordPage.h"
 
 #include "ui/MainWindowFixture.h"
 #include "video/SyntheticMovie.h"
@@ -6,9 +8,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 // Video Take playback in the window (issue #36), through the real MainComponent over a fixture
-// Song with synthetic Video Take movies: the Video toggle and the floating Video Preview, the
-// Camera lane's blocks, the frame each screen shows for the playhead, and the Record stage.
-using overdub::core::ScopedLogCapture;
+// Song with synthetic Video Take movies: the Video Preview docked beside Edit mode's Mixer while
+// the camera is Armed (issue #198), the Camera lane's blocks and its arm, the frame each screen
+// shows for the playhead, and the Record stage.
 using overdub::song::SampleCount;
 using namespace overdub::ui;
 using namespace overdub::ui::testing;
@@ -40,57 +42,123 @@ struct VideoWindowFixture : MainWindowFixture
         REQUIRE (window->mode() == Mode::edit);
     }
 
-    VideoScreen& previewScreen()
+    void armCamera (bool armed)
     {
-        REQUIRE (window->videoPreviewWindow() != nullptr);
-        return window->videoPreviewWindow()->screen();
+        REQUIRE (window->run (SongIntent { intent::SetCameraArmed { armed } }, Origin::control).has_value());
+        REQUIRE (song().cameraArmed == armed);
     }
-};
 
-int eventCount (const ScopedLogCapture& capture, const std::string& name)
-{
-    int count = 0;
-    for (const auto& event : capture.events())
-        if (event.value ("event", "") == name)
-            ++count;
-    return count;
-}
+    EditPage& editPage() { return window->songView()->editPage; }
+    VideoPreview& preview() { return editPage().videoPreview; }
+};
 } // namespace
 
-TEST_CASE ("the Video toggle shows and hides the floating Video Preview, which floats in Edit mode only", "[ui][video][preview]")
+TEST_CASE ("the Video Preview shows beside the Mixer while the camera is Armed, and hides with the Mixer", "[ui][video][preview]")
 {
     VideoWindowFixture f;
-    ScopedLogCapture capture;
     f.toEditMode();
-    auto& toggle = f.window->songView()->editPage.toolbar.videoButton;
-    CHECK (isShown (toggle));
-    CHECK_FALSE (toggle.getToggleState());
-    CHECK_FALSE (f.window->isVideoPreviewShown());
+    CHECK_FALSE (isShown (f.preview()));
+    CHECK_FALSE (f.editPage().isVideoPreviewShown());
 
-    click (toggle);
-    REQUIRE (f.window->videoPreviewWindow() != nullptr);
-    CHECK (f.window->isVideoPreviewShown());
-    CHECK (f.window->videoPreviewWindow()->getName() == "Video Preview");
-    CHECK (toggle.getToggleState());
-    CHECK (eventCount (capture, "ui.video_preview_toggled") == 1);
+    f.armCamera (true);
+    REQUIRE (isShown (f.preview()));
+    CHECK (f.editPage().isVideoPreviewShown());
+    CHECK (f.preview().getRight() > f.editPage().mixer.getRight());
+    CHECK (f.preview().getRight() <= f.editPage().getWidth());
+    CHECK (f.preview().getY() >= f.editPage().mixer.getY());
+    CHECK (f.preview().getBottom() <= f.editPage().mixer.getBottom());
+    CHECK (f.editPage().mixer.getRight() + videoPreviewWidth == f.editPage().getWidth());
 
-    // Record mode hides it; back in Edit it shows again.
-    REQUIRE (pressKey (*f.window, '1'));
-    CHECK_FALSE (f.window->isVideoPreviewShown());
+    // Hiding the Mixer hides it; showing the Mixer brings it back.
+    REQUIRE (f.window->run (SongIntent { intent::SetMixerVisible { false } }, Origin::control).has_value());
+    CHECK_FALSE (isShown (f.preview()));
+    CHECK_FALSE (f.editPage().isVideoPreviewShown());
+    REQUIRE (f.window->run (SongIntent { intent::SetMixerVisible { true } }, Origin::control).has_value());
+    CHECK (isShown (f.preview()));
+
+    // Disarmed, the Mixer gets its width back.
+    f.armCamera (false);
+    CHECK_FALSE (isShown (f.preview()));
+    CHECK (f.editPage().mixer.getRight() == f.editPage().getWidth());
+}
+
+TEST_CASE ("the Video Preview shows the camera while Armed and stopped or recording, and Video Take playback while playing", "[ui][video][preview]")
+{
+    VideoWindowFixture f;
     f.toEditMode();
-    CHECK (f.window->isVideoPreviewShown());
+    f.armCamera (true);
 
-    click (toggle);
-    CHECK_FALSE (f.window->isVideoPreviewShown());
-    CHECK_FALSE (toggle.getToggleState());
+    // Stopped: the camera, with the stage's line while it has no picture (the fake camera has none).
+    CHECK_FALSE (f.preview().showsPlayback());
+    CHECK (isShown (f.preview().camera));
+    CHECK_FALSE (isShown (f.preview().playback));
+    CHECK (f.preview().camera.message() == juce::String (cameraStageMessage (true)));
 
-    // Its close button turns the toggle off too.
-    click (toggle);
-    REQUIRE (f.window->isVideoPreviewShown());
-    f.window->videoPreviewWindow()->closeButtonPressed();
-    CHECK_FALSE (f.window->isVideoPreviewShown());
-    CHECK_FALSE (f.window->isVideoPreviewWanted());
-    CHECK_FALSE (toggle.getToggleState());
+    // Playing: playback.
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+    CHECK (f.preview().showsPlayback());
+    CHECK (isShown (f.preview().playback));
+    CHECK_FALSE (isShown (f.preview().camera));
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+    CHECK_FALSE (f.preview().showsPlayback());
+
+    // Recording: the camera.
+    f.camera.movie.frames = 10;
+    REQUIRE (pressKey (*f.window, 'r'));
+    f.runBlocks (20);
+    REQUIRE (f.openSong->isRecording());
+    CHECK (isShown (f.preview()));
+    CHECK_FALSE (f.preview().showsPlayback());
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+}
+
+TEST_CASE ("the Camera lane header's A arms and disarms the camera, and is disabled while a Pass runs", "[ui][video][camera_lane][arm]")
+{
+    VideoWindowFixture f;
+    f.toEditMode();
+    auto& arm = f.editPage().timeline.cameraArmButton;
+    REQUIRE (isShown (arm));
+    CHECK (arm.getButtonText() == "A");
+    CHECK (arm.isEnabled());
+    CHECK_FALSE (arm.getToggleState());
+    const auto undoBefore = f.openSong->package().undoLabel();
+
+    click (arm);
+    CHECK (f.song().cameraArmed);
+    REQUIRE (f.camera.opened.has_value());
+    CHECK (arm.getToggleState());
+    CHECK (isShown (f.preview()));
+    CHECK (f.openSong->package().undoLabel() == undoBefore);
+
+    // While a Pass runs, it cannot disarm.
+    f.camera.movie.frames = 10;
+    REQUIRE (pressKey (*f.window, 'r'));
+    f.runBlocks (20);
+    REQUIRE (f.openSong->isRecording());
+    CHECK_FALSE (arm.isEnabled());
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+    f.window->tick();
+    CHECK (arm.isEnabled());
+
+    click (arm);
+    CHECK_FALSE (f.song().cameraArmed);
+    CHECK_FALSE (f.camera.opened.has_value());
+    CHECK_FALSE (arm.getToggleState());
+}
+
+TEST_CASE ("the Camera lane header's A asks for camera access first, and stays disarmed without it", "[ui][video][camera_lane][arm]")
+{
+    VideoWindowFixture f;
+    f.cameraAccessGranted = false;
+    f.toEditMode();
+    click (f.editPage().timeline.cameraArmButton);
+    CHECK_FALSE (f.song().cameraArmed);
+    CHECK_FALSE (f.camera.opened.has_value());
+    CHECK_FALSE (f.editPage().timeline.cameraArmButton.getToggleState());
 }
 
 TEST_CASE ("Camera lane blocks sit at the Video Takes' sample positions and span their movies", "[ui][video][camera_lane]")
@@ -118,46 +186,45 @@ TEST_CASE ("Camera lane blocks sit at the Video Takes' sample positions and span
     CHECK (timeline.videoTakeBounds (f.newerTake).getX() == laneX + 96);
 }
 
-TEST_CASE ("the Video Preview shows the frame at the playhead, the newest Pass's on overlap, and black outside every Video Take", "[ui][video][preview]")
+TEST_CASE ("Video Take playback shows the frame at the playhead, the newest Pass's on overlap, and black outside every Video Take", "[ui][video][record_page]")
 {
     VideoWindowFixture f;
-    f.toEditMode();
-    click (f.window->songView()->editPage.toolbar.videoButton);
+    auto& screen = f.window->songView()->recordPage.stageVideo;
 
     // Stopped at 2.5 s: Pass A's movie at 1.5 s, frame 45.
     f.openSong->seek (rate * 5 / 2);
     f.runBlocks (1);
     f.window->refreshVideo (f.device.hostTimeNs);
-    CHECK (f.previewScreen().shownChoice().videoTakeId == f.olderTake);
-    CHECK (f.previewScreen().shownChoice().frameIndex == std::optional<std::size_t> (45));
-    CHECK (f.previewScreen().showsVideo());
-    CHECK (f.previewScreen().framesDisplayed() == 1);
+    CHECK (screen.shownChoice().videoTakeId == f.olderTake);
+    CHECK (screen.shownChoice().frameIndex == std::optional<std::size_t> (45));
+    CHECK (screen.showsVideo());
+    CHECK (screen.framesDisplayed() == 1);
 
     // The same frame again is not enqueued again.
     f.window->refreshVideo (f.device.hostTimeNs);
-    CHECK (f.previewScreen().framesDisplayed() == 1);
+    CHECK (screen.framesDisplayed() == 1);
 
     // Scrubbed to 4 s: both Video Takes cover it, Pass B's (newer) shows its frame 30.
     f.openSong->seek (4 * rate);
     f.runBlocks (1);
     f.window->refreshVideo (f.device.hostTimeNs);
-    CHECK (f.previewScreen().shownChoice().videoTakeId == f.newerTake);
-    CHECK (f.previewScreen().shownChoice().frameIndex == std::optional<std::size_t> (30));
-    CHECK (f.previewScreen().framesDisplayed() == 2);
+    CHECK (screen.shownChoice().videoTakeId == f.newerTake);
+    CHECK (screen.shownChoice().frameIndex == std::optional<std::size_t> (30));
+    CHECK (screen.framesDisplayed() == 2);
 
     // At 6 s nothing covers the playhead.
     f.openSong->seek (6 * rate);
     f.runBlocks (1);
     f.window->refreshVideo (f.device.hostTimeNs);
-    CHECK_FALSE (f.previewScreen().showsVideo());
-    CHECK (f.previewScreen().message() == noVideoTakeMessage);
+    CHECK_FALSE (screen.showsVideo());
+    CHECK (screen.message() == noVideoTakeMessage);
 }
 
 TEST_CASE ("while playing, the Video Preview shows the frame heard one refresh from now, from the latest anchor", "[ui][video][preview]")
 {
     VideoWindowFixture f;
     f.toEditMode();
-    click (f.window->songView()->editPage.toolbar.videoButton);
+    f.armCamera (true);
     f.openSong->seek (rate * 3 / 2); // 1.5 s
     f.runBlocks (1);
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
@@ -170,8 +237,9 @@ TEST_CASE ("while playing, the Video Preview shows the frame heard one refresh f
     f.window->refreshVideo (anchor->hostTimeNs + 10'000'000);
     const auto heard = anchor->songSample + 480 + 800;
     const auto expectedFrame = (std::size_t) ((heard - rate) * 30 / rate); // Pass A from 1 s, 30 fps
-    CHECK (f.previewScreen().shownChoice().videoTakeId == f.olderTake);
-    CHECK (f.previewScreen().shownChoice().frameIndex == std::optional<std::size_t> (expectedFrame));
+    REQUIRE (f.preview().showsPlayback());
+    CHECK (f.preview().playback.shownChoice().videoTakeId == f.olderTake);
+    CHECK (f.preview().playback.shownChoice().frameIndex == std::optional<std::size_t> (expectedFrame));
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
 }
 

@@ -9,6 +9,7 @@
 #include "ui/TakeLanes.h"
 #include "ui/Timeline.h"
 #include "ui/TransportText.h"
+#include "ui/VideoPreview.h"
 #include "video/FrameSelection.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -21,13 +22,13 @@
 
 // Edit mode's page (issues #28, #29, issue #9 resolution, variant C): the Clip toolbar (the
 // selected Clip's name, Track, start and length, or the selected Video Take's (issue #128); its fade-in, fade-out and gain fields; Split,
-// Delete; zoom; the Video toggle (issue #36: the floating Video Preview, which the window owns);
-// the Mixer toggle) over the Timeline, and under a draggable divider the Mixer
-// (ui/Mixer.h, issue #31), which the toggle hides and shows. Thin: every gesture that changes state
+// Delete; zoom; the Mixer toggle) over the Timeline, and under a draggable divider the Mixer
+// (ui/Mixer.h, issue #31), which the toggle hides and shows. While the camera is Armed the Video
+// Preview (ui/VideoPreview.h, issue #198) sits at the Mixer region's right end and hides with it. Thin: every gesture that changes state
 // is an Intent reported through onIntent (ADR 0008), the Timeline's included. Split and Delete are
 // split_selected_clip and delete_selection, like the S and backspace keys; a field entry that
 // changes the selected Clip is set_clip_fade_in, set_clip_fade_out or set_clip_gain; the zoom
-// buttons, the Mixer and Video toggles, the divider and "Passes ▾" are view Intents. The page
+// buttons, the Mixer toggle, the divider and "Passes ▾" are view Intents. The page
 // changes what it shows only when an Intent's handler calls back (setMixerVisible, ...).
 //
 // "Passes ▾" (issue #30) in the timeline's ruler corner opens the Passes panel: one row per Pass,
@@ -68,7 +69,7 @@ class ClipToolbar final : public juce::Component
 public:
     ClipToolbar();
 
-    void show (const ClipToolbarState& state, bool mixerVisible, bool videoPreviewShown);
+    void show (const ClipToolbarState& state, bool mixerVisible);
     void resized() override;
     void paint (juce::Graphics& g) override;
 
@@ -77,7 +78,6 @@ public:
     std::function<void()> onZoomIn;
     std::function<void()> onZoomOut;
     std::function<void()> onToggleMixer;
-    std::function<void()> onToggleVideo;
     // The text a field was given (by typing and return, or losing focus).
     std::function<void (const std::string& text)> onFadeInEntered;
     std::function<void (const std::string& text)> onFadeOutEntered;
@@ -94,7 +94,6 @@ public:
     juce::TextButton deleteButton { "Delete" };
     juce::TextButton zoomOutButton { "-" };
     juce::TextButton zoomInButton { "+" };
-    juce::TextButton videoButton { "Video" };
     juce::TextButton mixerButton { "Mixer" };
 
 private:
@@ -135,8 +134,11 @@ public:
     int mixerHeight() const { return mixerHeightRequested; }
     // The Mixer region's height, clamped as the divider's drag clamps it.
     void setMixerHeight (int height);
-    // The Video toggle's state: whether the window shows the Video Preview.
-    void setVideoPreviewShown (bool shown);
+    // What the Video Preview shows (VideoPreview::show); it shows only while the camera is Armed.
+    void showVideoPreview (bool armed, void* previewLayer, const juce::String& message, bool playback);
+    bool isVideoPreviewShown() const { return cameraArmed && mixerVisible; }
+    // The Video Preview's playback screen while it shows playback, else null.
+    VideoScreen* shownPlayback();
 
     IntentSink onIntent;
     // The × in a Track's header (Timeline::onDeleteTrack).
@@ -148,6 +150,7 @@ public:
     Timeline timeline;
     MixerDivider divider;
     Mixer mixer;
+    VideoPreview videoPreview;
     juce::TextButton passesButton;
     PassesPanel passesPanel;
 
@@ -162,7 +165,7 @@ private:
 
     TimelineState current;
     bool mixerVisible = true;
-    bool videoPreviewShown = false;
+    bool cameraArmed = false;
     int mixerHeightRequested = defaultMixerHeight;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EditPage)

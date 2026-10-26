@@ -283,9 +283,10 @@ TEST_CASE ("the insertion line sits between the other rows the drop falls betwee
 TEST_CASE ("Edit mode stacks the Clip toolbar, the timeline, the divider and the Mixer region", "[ui][layout][edit]")
 {
     const Rectangle<int> page { 0, topBarHeight, 1200, 700 };
-    const auto layout = editPageLayout (page, true, 220);
+    const auto layout = editPageLayout (page, true, 220, false);
 
     checkInsideAndApart (page, { layout.clipToolbar, layout.timeline, layout.mixerDivider, layout.mixer });
+    CHECK (layout.videoPreview.isEmpty());
     CHECK (layout.clipToolbar.getHeight() == clipToolbarHeight);
     CHECK (layout.timeline.getY() == layout.clipToolbar.getBottom());
     CHECK (layout.mixerDivider.getY() == layout.timeline.getBottom());
@@ -298,10 +299,38 @@ TEST_CASE ("Edit mode stacks the Clip toolbar, the timeline, the divider and the
 TEST_CASE ("a hidden Mixer region gives the whole page below the toolbar to the timeline", "[ui][layout][edit]")
 {
     const Rectangle<int> page { 0, topBarHeight, 1200, 700 };
-    const auto layout = editPageLayout (page, false, 220);
+    const auto layout = editPageLayout (page, false, 220, false);
 
     CHECK (layout.mixer.isEmpty());
     CHECK (layout.mixerDivider.isEmpty());
+    CHECK (layout.timeline.getBottom() == page.getBottom());
+}
+
+TEST_CASE ("the Video Preview takes the Mixer region's right end, a fixed width at its full height", "[ui][layout][edit][video_preview]")
+{
+    const Rectangle<int> page { 0, topBarHeight, 1200, 700 };
+    const auto layout = editPageLayout (page, true, 300, true);
+
+    checkInsideAndApart (page, { layout.clipToolbar, layout.timeline, layout.mixerDivider, layout.mixer, layout.videoPreview });
+    // videoPreviewWidth at the region's full height, inset by 6 px as the Mixer's strips are.
+    CHECK (layout.videoPreview.getWidth() == videoPreviewWidth - 12);
+    CHECK (layout.videoPreview.getRight() == page.getRight() - 6);
+    CHECK (layout.videoPreview.getY() == layout.mixerDivider.getBottom() + 6);
+    CHECK (layout.videoPreview.getBottom() == page.getBottom() - 6);
+    CHECK (layout.mixer.getX() == page.getX());
+    CHECK (layout.mixer.getRight() == layout.videoPreview.getX() - 6);
+    CHECK (layout.mixer.getHeight() == 300);
+    // The divider still spans the page, over the Mixer and the Video Preview.
+    CHECK (layout.mixerDivider.getWidth() == page.getWidth());
+}
+
+TEST_CASE ("a hidden Mixer region hides the Video Preview with it", "[ui][layout][edit][video_preview]")
+{
+    const Rectangle<int> page { 0, topBarHeight, 1200, 700 };
+    const auto layout = editPageLayout (page, false, 300, true);
+
+    CHECK (layout.videoPreview.isEmpty());
+    CHECK (layout.mixer.isEmpty());
     CHECK (layout.timeline.getBottom() == page.getBottom());
 }
 
@@ -313,7 +342,7 @@ TEST_CASE ("the Mixer region's height stays between its minimum and what leaves 
     CHECK (clampMixerHeight (5000, pageHeight) == pageHeight - clipToolbarHeight - mixerDividerHeight - minimumTimelineHeight);
 
     const Rectangle<int> page { 0, 0, 1200, pageHeight };
-    CHECK (editPageLayout (page, true, 5000).timeline.getHeight() == minimumTimelineHeight);
+    CHECK (editPageLayout (page, true, 5000, false).timeline.getHeight() == minimumTimelineHeight);
 }
 
 TEST_CASE ("the timeline has a ruler, the Camera lane, then one lane per Track, each with its header", "[ui][layout][edit]")
@@ -337,6 +366,19 @@ TEST_CASE ("the timeline has a ruler, the Camera lane, then one lane per Track, 
     CHECK (layout.trackLanes[0].getRight() == area.getRight());
     CHECK (layout.scrollBar.getBottom() == area.getBottom());
     CHECK (layout.scrollBar.getX() == layout.ruler.getX());
+}
+
+TEST_CASE ("the Camera lane header puts its A where a Track header puts its A, centred on the lane", "[ui][layout][edit][arm]")
+{
+    const Rectangle<int> area { 0, 88, 1200, 500 };
+    const auto layout = timelineLayout (area, { 0 });
+    const auto trackArm = trackHeaderLayout (layout.trackHeaders[0]).arm;
+
+    CHECK (layout.cameraHeader.contains (layout.cameraArm));
+    CHECK (layout.cameraArm.getX() == trackArm.getX());
+    CHECK (layout.cameraArm.getWidth() == trackArm.getWidth());
+    CHECK (layout.cameraArm.getHeight() == trackArm.getHeight());
+    CHECK (layout.cameraArm.getCentreY() == layout.cameraHeader.getCentreY());
 }
 
 TEST_CASE ("a Track header puts the name on top, and A, M, S and × right of the Takes toggle under it", "[ui][layout][edit][arm]")
@@ -423,7 +465,7 @@ TEST_CASE ("a Track's unfolded Take Lanes sit under its lane, before the next Tr
 TEST_CASE ("the Passes button sits in the timeline's ruler corner and its panel opens under it", "[ui][layout][take_lanes]")
 {
     const Rectangle<int> page { 0, 52, 1200, 700 };
-    const auto edit = editPageLayout (page, true, defaultMixerHeight);
+    const auto edit = editPageLayout (page, true, defaultMixerHeight, false);
     CHECK (edit.timeline.contains (edit.passesButton));
     CHECK (edit.passesButton.getBottom() <= edit.timeline.getY() + rulerHeight);
     CHECK (edit.passesButton.getRight() <= edit.timeline.getX() + laneHeaderWidth);
@@ -445,7 +487,7 @@ TEST_CASE ("the Clip toolbar puts the Clip's details, fade and gain fields, Spli
 {
     const Rectangle<int> bar { 0, 52, minimumWindowWidth, clipToolbarHeight };
     const auto layout = clipToolbarLayout (bar);
-    checkInsideAndApart (bar, { layout.details, layout.fadeInCaption, layout.fadeInField, layout.fadeOutCaption, layout.fadeOutField, layout.gainCaption, layout.gainField, layout.split, layout.deleteClip, layout.zoomOut, layout.zoomIn, layout.videoToggle, layout.mixerToggle });
+    checkInsideAndApart (bar, { layout.details, layout.fadeInCaption, layout.fadeInField, layout.fadeOutCaption, layout.fadeOutField, layout.gainCaption, layout.gainField, layout.split, layout.deleteClip, layout.zoomOut, layout.zoomIn, layout.mixerToggle });
     CHECK (layout.details.getWidth() >= 200);
     CHECK (layout.details.getRight() <= layout.fadeInCaption.getX());
     CHECK (layout.fadeInCaption.getRight() <= layout.fadeInField.getX());
@@ -457,8 +499,7 @@ TEST_CASE ("the Clip toolbar puts the Clip's details, fade and gain fields, Spli
     CHECK (layout.split.getRight() <= layout.deleteClip.getX());
     CHECK (layout.deleteClip.getRight() <= layout.zoomOut.getX());
     CHECK (layout.zoomOut.getRight() <= layout.zoomIn.getX());
-    CHECK (layout.zoomIn.getRight() <= layout.videoToggle.getX());
-    CHECK (layout.videoToggle.getRight() <= layout.mixerToggle.getX());
+    CHECK (layout.zoomIn.getRight() <= layout.mixerToggle.getX());
 }
 
 TEST_CASE ("Tracks that fit show no vertical scroll bar and fill the timeline's width", "[ui][layout][edit][vertical_scroll]")

@@ -206,18 +206,23 @@ TEST_CASE ("deleting the Export's chosen Video Take puts the choice back to the 
 TEST_CASE ("the Video Preview stops showing a deleted Video Take", "[ui][edit][video_takes][preview]")
 {
     VideoTakeFixture f;
-    click (f.toolbar().videoButton);
-    REQUIRE (f.window->videoPreviewWindow() != nullptr);
-    auto& screen = f.window->videoPreviewWindow()->screen();
+    // The Video Preview shows playback while the camera is Armed and the transport plays.
+    REQUIRE (f.window->run (SongIntent { intent::SetCameraArmed { true } }, Origin::control).has_value());
+    auto& preview = f.window->songView()->editPage.videoPreview;
     f.openSong->seek (2 * rate);
     f.runBlocks (1);
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+    REQUIRE (preview.showsPlayback());
     f.window->refreshVideo (f.device.hostTimeNs);
-    REQUIRE (screen.shownChoice().videoTakeId == f.olderTake);
+    REQUIRE (preview.playback.shownChoice().videoTakeId == f.olderTake);
 
     f.selectOlderTake();
     REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::backspaceKey)));
     f.window->refreshVideo (f.device.hostTimeNs);
-    CHECK_FALSE (screen.showsVideo());
+    CHECK_FALSE (preview.playback.showsVideo());
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
 }
 
 TEST_CASE ("a Video Take cannot be deleted while a Pass runs", "[ui][edit][video_takes][record]")

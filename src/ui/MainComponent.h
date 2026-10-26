@@ -9,7 +9,6 @@
 #include "ui/SongView.h"
 #include "ui/TopBar.h"
 #include "ui/UserMessages.h"
-#include "ui/VideoPreviewWindow.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -45,12 +44,10 @@
 // Pass's movie problems, are presented by their tier.
 //
 // Video Take playback (issue #36): on each display refresh (a VBlankAttachment; tests call
-// refreshVideo) the Song sample heard then picks the frame (OpenSong::videoPlayback) shown on the
-// Edit mode's floating Video Preview, which the toolbar's Video toggle shows and hides (built off
-// the desktop when showVideoPreviewOnDesktop is false), and on the Record stage when it shows
-// playback (stageShowsLiveFeed). The Video Preview floats in Edit mode only; the toggle is kept
-// across modes. The Camera lane shows the Song's Video Takes. Logs ui.video_preview_toggled (info:
-// shown).
+// refreshVideo) the Song sample heard then picks the frame (OpenSong::videoPlayback) shown on
+// Edit mode's Video Preview, docked beside the Mixer while the camera is Armed (issue #198), and on
+// the Record stage, each while it shows playback (stageShowsLiveFeed). The Camera lane shows the
+// Song's Video Takes, and its header's A arms the camera as Record mode's arm does.
 //
 // Insert Chains (issues #33, #34) on Record rows, Mixer strips and the Master strip: "+ Insert"
 // lists the AU effects and adds the one picked (OpenSong::addInsert), then opens its editor once
@@ -153,12 +150,8 @@ public:
     void refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs = defaultRefreshNs);
     static constexpr std::uint64_t defaultRefreshNs = 16'666'667; // 60 Hz
 
-    // The Video toggle: whether the Video Preview is wanted (it shows in Edit mode).
-    void setVideoPreviewWanted (bool wanted);
-    bool isVideoPreviewWanted() const { return videoPreviewWanted; }
-    // The Video Preview window; null until first shown.
-    VideoPreviewWindow* videoPreviewWindow() const { return videoPreview.get(); }
-    bool isVideoPreviewShown() const { return videoPreview != nullptr && videoPreview->isShown(); }
+    // True while Edit mode shows the Video Preview (EditPage::isVideoPreviewShown).
+    bool isVideoPreviewShown() const { return songContent != nullptr && currentMode == Mode::edit && songContent->editPage.isVideoPreviewShown(); }
     // Shows the open Song's current state.
     void refresh();
     // The Notice the Notice line shows now (none while it is hidden), how many Notices were shown
@@ -232,10 +225,9 @@ public:
     // Shows every child's setTooltip text after the hover delay (issue #180); JUCE shows none
     // without one. A child, so it finds only this window's components.
     juce::TooltipWindow tooltipWindow { this };
-    // False in tests: plugin editor windows (of Songs opened after it is set) and the Video
-    // Preview are built, never put on the desktop.
+    // False in tests: plugin editor windows (of Songs opened after it is set) are built, never put
+    // on the desktop.
     bool showPluginWindowsOnDesktop = true;
-    bool showVideoPreviewOnDesktop = true;
 
 private:
     void timerCallback() override { tick(); }
@@ -251,7 +243,6 @@ private:
     void showAlertNow (const UserMessage& message, const juce::String& sentence);
     void alertClosedByUser (std::uint64_t alertId);
     IntentResult dismissAlerts();
-    void syncVideoPreview();
     void onVBlank (double timestampSeconds);
     bool passRunning() const { return songContent != nullptr && songContent->currentSong().isRecording(); }
     // True while the modal run dialog shows: a Separation or a conversion runs.
@@ -270,8 +261,6 @@ private:
     std::uint64_t alertsEverShown = 0;
     std::uint64_t noticesEverShown = 0;
     std::uint64_t intentRunCount = 0;
-    bool videoPreviewWanted = false;
-    std::unique_ptr<VideoPreviewWindow> videoPreview;
     // Null while no Song is open.
     std::unique_ptr<SongView> songContent;
     std::optional<double> lastVBlankSeconds;
