@@ -1,8 +1,8 @@
-#include "ui/ExportPage.h"
+#include "ui/ExportSheet.h"
 
 #include "export/MixRender.h"
 #include "export/Mp4Decode.h"
-#include "ui/ExportPageSink.h"
+#include "ui/ExportSheetSink.h"
 #include "ui/MainWindowFixture.h"
 #include "video/SyntheticMovie.h"
 
@@ -14,17 +14,17 @@
 #include <thread>
 #include <vector>
 
-// Export mode's MP4 (issue #38, ADR 0005 UI amendment): the span bar's ranges for "trim to the
-// Video Take" and "full song" (pure), choosing a Video Take and a length on the page (component),
-// an MP4 exported from the window, and snapshots of the page trimmed and full-song.
+// The Export sheet's MP4 (issue #38, ADR 0005 UI amendment): the span bar's ranges for "trim to the
+// Video Take" and "full song" (pure), choosing a Video Take and a length on the sheet (component),
+// an MP4 exported from the window, and snapshots of the sheet trimmed and full-song.
 using overdub::core::ScopedLogCapture;
 using overdub::exporting::ExportFormat;
 using overdub::exporting::ExportRequest;
 using overdub::exporting::SampleRange;
 using overdub::exporting::VideoLength;
 using overdub::song::SampleCount;
-using overdub::ui::ExportPage;
-using overdub::ui::ExportPageState;
+using overdub::ui::ExportSheet;
+using overdub::ui::ExportSheetState;
 using overdub::ui::ExportSpanBarState;
 using overdub::video::VideoTakeSpan;
 using namespace overdub::ui::testing;
@@ -71,12 +71,12 @@ struct Mp4WindowFixture : MainWindowFixture
         window->tick();
     }
 
-    ExportPage& toMp4()
+    ExportSheet& toMp4()
     {
-        REQUIRE (pressKey (*window, '3'));
-        click (window->songView()->exportPage.mp4Button);
-        REQUIRE (window->songView()->exportPage.format() == ExportFormat::mp4);
-        return window->songView()->exportPage;
+        openExportSheet (*window);
+        click (window->songView()->exportSheet.mp4Button);
+        REQUIRE (window->songView()->exportSheet.format() == ExportFormat::mp4);
+        return window->songView()->exportSheet;
     }
 };
 
@@ -146,74 +146,74 @@ TEST_CASE ("the Video Take shown by default is the Song's stored choice, else th
 TEST_CASE ("a length toggle the handler does not call back leaves the form as it was", "[ui][export][mp4]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
-    ExportPage page;
-    layOut (page, windowWidth, 700);
-    page.show ({ .clipsEnd = 12 * rate, .sampleRate = (int) rate, .videoTakes = { passOne, passTwo }, .storedVideoTakeId = std::string ("video-b") });
-    page.chooseFormat (ExportFormat::mp4);
-    REQUIRE (isShown (page.fullSongButton));
+    ExportSheet sheet;
+    layOut (sheet, windowWidth, 700);
+    sheet.show ({ .clipsEnd = 12 * rate, .sampleRate = (int) rate, .videoTakes = { passOne, passTwo }, .storedVideoTakeId = std::string ("video-b") });
+    sheet.chooseFormat (ExportFormat::mp4);
+    REQUIRE (isShown (sheet.fullSongButton));
     std::vector<overdub::ui::Intent> refused;
-    page.onIntent = [&refused] (const overdub::ui::Intent& intent) { refused.push_back (intent); };
+    sheet.onIntent = [&refused] (const overdub::ui::Intent& intent) { refused.push_back (intent); };
 
-    click (page.fullSongButton);
+    click (sheet.fullSongButton);
     CHECK (refused.size() == 1);
-    CHECK (page.trimButton.getToggleState());
-    CHECK_FALSE (page.fullSongButton.getToggleState());
-    CHECK (page.spanBar.state().exported == SampleRange { 3 * rate, 13 * rate });
+    CHECK (sheet.trimButton.getToggleState());
+    CHECK_FALSE (sheet.fullSongButton.getToggleState());
+    CHECK (sheet.spanBar.state().exported == SampleRange { 3 * rate, 13 * rate });
 }
 
 TEST_CASE ("choosing a Video Take and a length updates the span bar and the export request", "[ui][export][mp4]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
-    ExportPage page;
-    layOut (page, windowWidth, 700);
-    page.setDestination (juce::File ("/tmp/Song.wav"));
-    ExportPageSink sink;
-    sink.connect (page);
+    ExportSheet sheet;
+    layOut (sheet, windowWidth, 700);
+    sheet.setDestination (juce::File ("/tmp/Song.wav"));
+    ExportSheetSink sink;
+    sink.connect (sheet);
     const auto& stored = sink.videoTakesChosen;
     const auto& requests = sink.requests;
-    page.show ({ .clipsEnd = 12 * rate, .sampleRate = (int) rate, .videoTakes = { passOne, passTwo }, .storedVideoTakeId = std::string ("video-b") });
+    sheet.show ({ .clipsEnd = 12 * rate, .sampleRate = (int) rate, .videoTakes = { passOne, passTwo }, .storedVideoTakeId = std::string ("video-b") });
 
     // The Video Take controls show for MP4 only.
-    CHECK (! isShown (page.videoTakePicker));
-    CHECK (! isShown (page.trimButton));
-    CHECK (page.spanBar.state().videoTake == std::nullopt);
-    click (page.mp4Button);
-    REQUIRE (isShown (page.videoTakePicker));
-    REQUIRE (isShown (page.trimButton));
-    REQUIRE (isShown (page.fullSongButton));
-    CHECK (page.destination() == juce::File ("/tmp/Song.mp4"));
+    CHECK (! isShown (sheet.videoTakePicker));
+    CHECK (! isShown (sheet.trimButton));
+    CHECK (sheet.spanBar.state().videoTake == std::nullopt);
+    click (sheet.mp4Button);
+    REQUIRE (isShown (sheet.videoTakePicker));
+    REQUIRE (isShown (sheet.trimButton));
+    REQUIRE (isShown (sheet.fullSongButton));
+    CHECK (sheet.destination() == juce::File ("/tmp/Song.mp4"));
 
     // The Song's stored choice, trimmed by default.
-    CHECK (page.videoTakePicker.getText() == juce::String::fromUTF8 ("Pass 2 \xc2\xb7 0:03.0 \xe2\x80\x93 0:13.0"));
-    CHECK (page.trimButton.getToggleState());
-    CHECK (page.spanBar.state().exported == SampleRange { 3 * rate, 13 * rate });
-    CHECK (page.spanLabel.getText() == juce::String::fromUTF8 ("Trimmed to Pass 2: 0:03.0 \xe2\x80\x93 0:13.0"));
+    CHECK (sheet.videoTakePicker.getText() == juce::String::fromUTF8 ("Pass 2 \xc2\xb7 0:03.0 \xe2\x80\x93 0:13.0"));
+    CHECK (sheet.trimButton.getToggleState());
+    CHECK (sheet.spanBar.state().exported == SampleRange { 3 * rate, 13 * rate });
+    CHECK (sheet.spanLabel.getText() == juce::String::fromUTF8 ("Trimmed to Pass 2: 0:03.0 \xe2\x80\x93 0:13.0"));
 
-    choose (page.videoTakePicker, 0);
+    choose (sheet.videoTakePicker, 0);
     CHECK (stored == std::vector<overdub::song::Id> { "video-a" });
-    CHECK (page.spanBar.state().exported == SampleRange { 1 * rate, 5 * rate });
-    CHECK (page.spanBar.state().videoTake == SampleRange { 1 * rate, 5 * rate });
+    CHECK (sheet.spanBar.state().exported == SampleRange { 1 * rate, 5 * rate });
+    CHECK (sheet.spanBar.state().videoTake == SampleRange { 1 * rate, 5 * rate });
 
-    click (page.fullSongButton);
-    CHECK (page.fullSongButton.getToggleState());
-    CHECK (! page.trimButton.getToggleState());
-    CHECK (page.spanBar.state().exported == SampleRange { 0, 12 * rate });
-    CHECK (page.spanBar.state().blackOutsideVideo);
-    CHECK (page.spanLabel.getText() == juce::String::fromUTF8 ("Full song: 0:00.0 \xe2\x80\x93 0:12.0, black outside Pass 1"));
+    click (sheet.fullSongButton);
+    CHECK (sheet.fullSongButton.getToggleState());
+    CHECK (! sheet.trimButton.getToggleState());
+    CHECK (sheet.spanBar.state().exported == SampleRange { 0, 12 * rate });
+    CHECK (sheet.spanBar.state().blackOutsideVideo);
+    CHECK (sheet.spanLabel.getText() == juce::String::fromUTF8 ("Full song: 0:00.0 \xe2\x80\x93 0:12.0, black outside Pass 1"));
 
-    // The page's own choice survives a refresh that still carries the old stored one.
-    page.show ({ .clipsEnd = 12 * rate, .sampleRate = (int) rate, .videoTakes = { passOne, passTwo }, .storedVideoTakeId = std::string ("video-b") });
-    CHECK (page.spanBar.state().videoTake == SampleRange { 1 * rate, 5 * rate });
+    // The sheet's own choice survives a refresh that still carries the old stored one.
+    sheet.show ({ .clipsEnd = 12 * rate, .sampleRate = (int) rate, .videoTakes = { passOne, passTwo }, .storedVideoTakeId = std::string ("video-b") });
+    CHECK (sheet.spanBar.state().videoTake == SampleRange { 1 * rate, 5 * rate });
 
-    click (page.exportButton);
+    click (sheet.exportButton);
     REQUIRE (requests.size() == 1);
     CHECK (requests[0] == ExportRequest { ExportFormat::mp4, juce::File ("/tmp/Song.mp4"), std::string ("video-a"), VideoLength::fullSong });
 
     // Back to WAV: the whole mix, and a request without a Video Take.
-    click (page.wavButton);
-    CHECK (! isShown (page.videoTakePicker));
-    CHECK (page.spanBar.state().videoTake == std::nullopt);
-    click (page.exportButton);
+    click (sheet.wavButton);
+    CHECK (! isShown (sheet.videoTakePicker));
+    CHECK (sheet.spanBar.state().videoTake == std::nullopt);
+    click (sheet.exportButton);
     REQUIRE (requests.size() == 2);
     CHECK (requests[1] == ExportRequest { ExportFormat::wav, juce::File ("/tmp/Song.wav") });
 }
@@ -221,16 +221,16 @@ TEST_CASE ("choosing a Video Take and a length updates the span bar and the expo
 TEST_CASE ("an MP4 cannot be exported from a Song without Video Takes", "[ui][export][mp4]")
 {
     juce::ScopedJuceInitialiser_GUI gui;
-    ExportPage page;
-    layOut (page, windowWidth, 700);
-    page.setDestination (juce::File ("/tmp/Song.wav"));
-    ExportPageSink sink;
-    sink.connect (page);
-    page.show ({ .clipsEnd = 12 * rate, .sampleRate = (int) rate });
-    click (page.mp4Button);
-    CHECK (isShown (page.noVideoTakesLabel));
-    CHECK (! isShown (page.videoTakePicker));
-    CHECK (! page.exportButton.isEnabled());
+    ExportSheet sheet;
+    layOut (sheet, windowWidth, 700);
+    sheet.setDestination (juce::File ("/tmp/Song.wav"));
+    ExportSheetSink sink;
+    sink.connect (sheet);
+    sheet.show ({ .clipsEnd = 12 * rate, .sampleRate = (int) rate });
+    click (sheet.mp4Button);
+    CHECK (isShown (sheet.noVideoTakesLabel));
+    CHECK (! isShown (sheet.videoTakePicker));
+    CHECK (! sheet.exportButton.isEnabled());
 
     MainWindowFixture f;
     ScopedLogCapture capture;
@@ -240,26 +240,26 @@ TEST_CASE ("an MP4 cannot be exported from a Song without Video Takes", "[ui][ex
     CHECK (! f.openSong->isExporting());
 }
 
-TEST_CASE ("Export mode exports an MP4 of the chosen Video Take and stores the choice in the Song", "[ui][export][mp4]")
+TEST_CASE ("the Export sheet exports an MP4 of the chosen Video Take and stores the choice in the Song", "[ui][export][mp4]")
 {
     ExportFolder folder;
     Mp4WindowFixture f;
     auto& window = *f.window;
-    auto& page = f.toMp4();
-    page.setDestination (folder.root.getChildFile ("Band Mix video"));
+    auto& sheet = f.toMp4();
+    sheet.setDestination (folder.root.getChildFile ("Band Mix video"));
     const auto canUndo = f.openSong->package().canUndo();
 
     // The first Video Take is shown by default; choosing the second stores it, with no undo step.
-    CHECK (page.videoTakePicker.getSelectedItemIndex() == 0);
-    choose (page.videoTakePicker, 1);
+    CHECK (sheet.videoTakePicker.getSelectedItemIndex() == 0);
+    choose (sheet.videoTakePicker, 1);
     CHECK (f.song().exportVideoTakeId == f.secondTake);
     CHECK (f.openSong->package().canUndo() == canUndo);
     CHECK (f.openSong->package().undoLabel() == "Add Video Takes");
     window.tick();
-    CHECK (page.videoTakePicker.getSelectedItemIndex() == 1);
+    CHECK (sheet.videoTakePicker.getSelectedItemIndex() == 1);
 
     ScopedLogCapture capture;
-    click (page.exportButton);
+    click (sheet.exportButton);
     tickUntilExported (f);
     REQUIRE (! f.openSong->isExporting());
     CHECK (f.alertsShown.empty());
@@ -289,17 +289,17 @@ TEST_CASE ("a Song with a Video Take but no Clips exports an MP4 over silence, a
     const auto videoTake = overdub::video::testing::addSyntheticVideoTake (changed, f.openSong->package().location(), rate / 2, 30);
     REQUIRE (f.openSong->edit (changed, "Add Video Take").has_value());
     window.tick();
-    REQUIRE (pressKey (window, '3'));
-    auto& page = window.songView()->exportPage;
+    openExportSheet (window);
+    auto& sheet = window.songView()->exportSheet;
 
     SECTION ("MP4: the Video Take over a silent mix")
     {
-        click (page.mp4Button);
-        page.setDestination (folder.root.getChildFile ("Video only"));
-        CHECK (page.exportButton.isEnabled());
+        click (sheet.mp4Button);
+        sheet.setDestination (folder.root.getChildFile ("Video only"));
+        CHECK (sheet.exportButton.isEnabled());
 
         ScopedLogCapture capture;
-        click (page.exportButton);
+        click (sheet.exportButton);
         tickUntilExported (f);
         REQUIRE (! f.openSong->isExporting());
         CHECK (f.alertsShown.empty());
@@ -322,15 +322,16 @@ TEST_CASE ("a Song with a Video Take but no Clips exports an MP4 over silence, a
 
     SECTION ("WAV and M4A: there is no mix to export")
     {
-        for (auto* button : { &page.wavButton, &page.m4aButton })
+        for (auto* button : { &sheet.wavButton, &sheet.m4aButton })
         {
+            openExportSheet (window);
             click (*button);
-            const auto file = folder.root.getChildFile (button == &page.wavButton ? "Empty.wav" : "Empty.m4a");
-            page.setDestination (file);
+            const auto file = folder.root.getChildFile (button == &sheet.wavButton ? "Empty.wav" : "Empty.m4a");
+            sheet.setDestination (file);
             CAPTURE (file.getFileName());
 
             ScopedLogCapture capture;
-            click (page.exportButton);
+            click (sheet.exportButton);
             tickUntilExported (f);
             REQUIRE (! f.openSong->isExporting());
             CHECK (window.noticeLine.text() == juce::String ("The Song has no Clips to export."));
@@ -351,23 +352,23 @@ TEST_CASE ("on a Song with no Clips, the WAV and M4A span text says there is not
     overdub::video::testing::addSyntheticVideoTake (changed, f.openSong->package().location(), rate / 2, 30);
     REQUIRE (f.openSong->edit (changed, "Add Video Take").has_value());
     window.tick();
-    REQUIRE (pressKey (window, '3'));
-    auto& page = window.songView()->exportPage;
+    openExportSheet (window);
+    auto& sheet = window.songView()->exportSheet;
 
-    for (auto* button : { &page.wavButton, &page.m4aButton })
+    for (auto* button : { &sheet.wavButton, &sheet.m4aButton })
     {
         click (*button);
         CAPTURE (button->getButtonText());
-        CHECK (page.spanLabel.getText() == juce::String ("Nothing to export: the Song has no Clips"));
-        CHECK (! page.spanLabel.getText().contains ("effect tails"));
+        CHECK (sheet.spanLabel.getText() == juce::String ("Nothing to export: the Song has no Clips"));
+        CHECK (! sheet.spanLabel.getText().contains ("effect tails"));
     }
 
-    click (page.mp4Button);
-    REQUIRE (page.trimButton.getToggleState());
-    CHECK (page.spanLabel.getText().startsWith ("Trimmed to "));
-    CHECK (page.spanLabel.getText().endsWith (juce::String::fromUTF8 (": 0:00.5 \xe2\x80\x93 0:01.5")));
-    click (page.fullSongButton);
-    CHECK (page.spanLabel.getText().startsWith (juce::String::fromUTF8 ("Full song: 0:00.0 \xe2\x80\x93 0:01.5, black outside ")));
+    click (sheet.mp4Button);
+    REQUIRE (sheet.trimButton.getToggleState());
+    CHECK (sheet.spanLabel.getText().startsWith ("Trimmed to "));
+    CHECK (sheet.spanLabel.getText().endsWith (juce::String::fromUTF8 (": 0:00.5 \xe2\x80\x93 0:01.5")));
+    click (sheet.fullSongButton);
+    CHECK (sheet.spanLabel.getText().startsWith (juce::String::fromUTF8 ("Full song: 0:00.0 \xe2\x80\x93 0:01.5, black outside ")));
 }
 
 TEST_CASE ("an MP4 of a Video Take that ends before the Song starts is a Notice that says so, not one about Clips", "[ui][export][mp4][outside_song]")
@@ -381,15 +382,15 @@ TEST_CASE ("an MP4 of a Video Take that ends before the Song starts is a Notice 
     const auto videoTake = overdub::video::testing::addSyntheticVideoTake (changed, f.openSong->package().location(), -2 * rate, 30);
     REQUIRE (f.openSong->edit (changed, "Add Video Take").has_value());
     window.tick();
-    REQUIRE (pressKey (window, '3'));
-    auto& page = window.songView()->exportPage;
-    click (page.mp4Button);
-    REQUIRE (page.trimButton.getToggleState());
+    openExportSheet (window);
+    auto& sheet = window.songView()->exportSheet;
+    click (sheet.mp4Button);
+    REQUIRE (sheet.trimButton.getToggleState());
     const auto file = folder.root.getChildFile ("Before.mp4");
-    page.setDestination (file);
+    sheet.setDestination (file);
 
     ScopedLogCapture capture;
-    click (page.exportButton);
+    click (sheet.exportButton);
     tickUntilExported (f);
     REQUIRE (! f.openSong->isExporting());
     CHECK (f.alertsShown.empty());
@@ -403,7 +404,7 @@ TEST_CASE ("an MP4 of a Video Take that ends before the Song starts is a Notice 
     CHECK (! file.exists());
 }
 
-TEST_CASE ("snapshots of the Export page with MP4 trimmed and full-song", "[ui][snapshot]")
+TEST_CASE ("snapshots of the Export sheet with MP4 trimmed and full-song", "[ui][snapshot]")
 {
     const std::string slice = "slice-17";
     ExportFolder folder;
@@ -411,13 +412,13 @@ TEST_CASE ("snapshots of the Export page with MP4 trimmed and full-song", "[ui][
     auto& window = *f.window;
     window.exportFolder = folder.root;
     window.setOpenSong (f.openSong.get());
-    auto& page = f.toMp4();
-    choose (page.videoTakePicker, 1); // Pass 2's, which ends before the Clips do
+    auto& sheet = f.toMp4();
+    choose (sheet.videoTakePicker, 1); // Pass 2's, which ends before the Clips do
     window.tick();
-    REQUIRE (page.trimButton.getToggleState());
+    REQUIRE (sheet.trimButton.getToggleState());
     CHECK (writeSnapshot (window, slice, "export-mp4-trimmed").existsAsFile());
 
-    click (page.fullSongButton);
-    REQUIRE (page.fullSongButton.getToggleState());
+    click (sheet.fullSongButton);
+    REQUIRE (sheet.fullSongButton.getToggleState());
     CHECK (writeSnapshot (window, slice, "export-mp4-full-song").existsAsFile());
 }

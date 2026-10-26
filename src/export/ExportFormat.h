@@ -8,8 +8,8 @@
 #include <optional>
 #include <string>
 
-// What Export mode writes (issues #37, #38): the format choice, its file extension and the request
-// the Export page hands to the open Song. Pure; no I/O.
+// What an Export writes (issues #37, #38): the format choice, its file extension and the request
+// the Export sheet hands to the open Song. Pure; no I/O.
 namespace overdub::exporting
 {
 enum class ExportFormat

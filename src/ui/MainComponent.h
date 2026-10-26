@@ -20,7 +20,8 @@
 #include <vector>
 
 // The main window's content (issue #27, issue #9 resolution): the top bar over the current mode's
-// page (Record, Edit (issue #28), or Export (issue #37)), the Notice line, and Alerts.
+// page (Record or Edit (issue #28)), the Export sheet while it shows (issue #200), the Notice line,
+// and Alerts.
 // In Edit mode S splits the selected Clip at the playhead and backspace deletes the selected Clip
 // or Video Take (issue #128), each one undo step through OpenSong::edit; in the other modes both
 // keys do nothing.
@@ -58,8 +59,11 @@
 // slot is removed (or undone away), or whose plugin crashed, closes; closing one schedules a
 // song.json write that captures the plugin's state, outside history.
 //
-// Export mode (issue #37): the page's request goes to OpenSong::startExport; Choose… asks for the
-// destination (chooseExportDestination), Reveal in Finder shows the written file
+// Export (issues #37, #200): Export... in the top bar, the File menu or command-E (show_export)
+// opens the Export sheet over the whole window, under the Notice line; Esc or Cancel closes it.
+// Its request goes to OpenSong::startExport, which closes it; Choose… asks for the destination
+// (chooseExportDestination). While the export runs the top bar shows its progress. One that writes
+// its file posts the ui.export_finished Notice, whose Reveal in Finder shows the file
 // (revealInFinder). A Song opens with its destination at <exportFolder>/<Song name>.wav. An export
 // that fails is presented by its tier.
 //
@@ -135,8 +139,9 @@ public:
 
     // Logs the Error once (warn for a Notice, error for an Alert) and presents it by its tier.
     void handleError (const core::Error& error);
-    // Presents a Notice-tier code that was already logged where it arose (e.g. song.history_dropped).
-    void showNotice (const std::string& code);
+    // Presents a Notice-tier code that was already logged where it arose (e.g. song.history_dropped),
+    // with the fields its sentence names.
+    void showNotice (const std::string& code, core::Fields fields = {});
     // handleError, except that an OpenSong refusal (ui/Activity.h) is logged at debug only: a gesture
     // the running activity refuses is not presented.
     void handleUnlessRefused (const core::Error& error);

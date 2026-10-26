@@ -82,6 +82,16 @@ void chooseExportFileWithNativeDialog (juce::File current, std::function<void (s
     });
 }
 
+// The Intent a Notice's action button runs and its label; none for a Notice without one.
+std::optional<std::pair<Intent, std::string>> noticeAction (const UserMessage& message)
+{
+    if (const auto rate = conversionOfferedBy (message))
+        return std::pair<Intent, std::string> { AppIntent { intent::ConvertSampleRate { *rate } }, conversionActionText (*rate) };
+    if (message.code == exportFinishedCode)
+        return std::pair<Intent, std::string> { SongIntent { intent::RevealExport {} }, revealActionText };
+    return std::nullopt;
+}
+
 MainComponent::CloseAlert showAlertWithNativeDialog (const juce::String& sentence, std::function<void()> closed)
 {
     const auto options = juce::MessageBoxOptions::makeOptionsOk (juce::MessageBoxIconType::WarningIcon, "Overdub", sentence);
@@ -169,6 +179,8 @@ void MainComponent::setOpenSong (OpenSong* song)
     {
         songContent = std::make_unique<SongView> (*song, *this);
         addAndMakeVisible (*songContent, getIndexOfChildComponent (&noticeLine));
+        // Over the top bar and the page, under the Notice line; the SongView owns it.
+        addChildComponent (songContent->exportSheet, getIndexOfChildComponent (&noticeLine));
     }
     resized();
     refresh();
@@ -286,9 +298,9 @@ void MainComponent::handleUnlessRefused (const core::Expected<void>& result)
         handleUnlessRefused (result.error());
 }
 
-void MainComponent::showNotice (const std::string& code)
+void MainComponent::showNotice (const std::string& code, core::Fields fields)
 {
-    post (UserMessage { Tier::notice, code });
+    post (UserMessage { Tier::notice, code, std::move (fields) });
 }
 
 void MainComponent::post (UserMessage message)
@@ -308,10 +320,10 @@ void MainComponent::presentMessages()
         {
             core::logEvent (core::Level::info, "ui.notice_shown", messageFields (message));
             notice = ShownNotice { message, ++noticesEverShown, std::nullopt };
-            if (const auto rate = conversionOfferedBy (message))
+            if (auto action = noticeAction (message))
             {
-                notice->action = AppIntent { intent::ConvertSampleRate { *rate } };
-                noticeLine.show (sentence, juce::String::fromUTF8 (conversionActionText (*rate).c_str()), [this, action = *notice->action] { run (action); });
+                notice->action = action->first;
+                noticeLine.show (sentence, juce::String::fromUTF8 (action->second.c_str()), [this, intent = std::move (action->first)] { run (intent); });
             }
             else
                 noticeLine.show (sentence);
@@ -391,8 +403,10 @@ void MainComponent::refresh()
     if (songContent != nullptr)
         songContent->showRun (runDialog);
     runDialog.setVisible (runShowing());
-    // The conversion a Notice offers no longer applies once the Song is at the device's rate.
-    if (noticeLine.hasAction() && (songContent == nullptr || ! songContent->currentSong().audioProblem().has_value()))
+    // The conversion a Notice offers no longer applies once the Song is at the device's rate, and
+    // no file is revealed once its Song has closed.
+    const auto offersConversion = notice.has_value() && conversionOfferedBy (notice->message).has_value();
+    if (noticeLine.hasAction() && (songContent == nullptr || (offersConversion && ! songContent->currentSong().audioProblem().has_value())))
         noticeLine.dismiss();
 }
 
@@ -429,6 +443,8 @@ void MainComponent::resized()
     if (songContent != nullptr)
         songContent->setBounds (layout.page);
     noticeLine.setBounds (layout.noticeLine);
+    if (songContent != nullptr)
+        songContent->exportSheet.setBounds (getLocalBounds());
     runDialog.setBounds (getLocalBounds());
 }
 

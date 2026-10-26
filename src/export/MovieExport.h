@@ -7,7 +7,7 @@
 
 #include <juce_core/juce_core.h>
 
-// Export mode's MP4 (issue #38, ADR 0003): the offline mix and one Video Take in one movie.
+// An Export's MP4 (issue #38, ADR 0003): the offline mix and one Video Take in one movie.
 //
 // The mix is rendered (MixRender) into a hidden WAV beside the destination, then an
 // AVMutableComposition holds the mix at time 0 and the Video Take at its sample-exact start (a

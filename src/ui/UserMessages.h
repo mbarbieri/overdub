@@ -40,8 +40,13 @@ Tier tierFor (std::string_view code);
 // The sentence the user reads for a code; unknown codes get a generic sentence that names it.
 // ui.sample_rate_mismatch names song_rate and device_rate, and points to Settings only when
 // rate_offered (the device offers the Song's rate); ui.device_rate_substituted names
-// requested_rate and opened_rate.
+// requested_rate and opened_rate; ui.export_finished names file_name.
 std::string sentenceFor (std::string_view code, const core::Fields& fields = {});
+
+// The Notice an export that wrote its file posts (issue #200), with the fields file_name and path:
+// "Exported to Song.m4a." Its action reveals the file (reveal_export).
+inline constexpr const char* exportFinishedCode = "ui.export_finished";
+inline constexpr const char* revealActionText = "Reveal in Finder";
 
 // The rate a Notice offers to convert the Song to: the device's, for a ui.sample_rate_mismatch
 // whose device does not offer the Song's rate (issue #160). None for any other message.

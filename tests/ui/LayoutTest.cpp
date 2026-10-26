@@ -40,14 +40,17 @@ TEST_CASE ("the top bar's controls fit side by side at the smallest window width
     const Rectangle<int> bar { 0, 0, minimumWindowWidth, topBarHeight };
     const auto layout = topBarLayout (bar);
 
-    checkInsideAndApart (bar, { layout.modeButtons[0], layout.modeButtons[1], layout.modeButtons[2], layout.controlIndicator, layout.rewind, layout.playStop, layout.record, layout.clock, layout.undo, layout.redo });
+    checkInsideAndApart (bar, { layout.modeButtons[0], layout.modeButtons[1], layout.controlIndicator, layout.rewind, layout.playStop, layout.record, layout.clock, layout.undo, layout.redo, layout.exportSlot });
     CHECK (layout.modeButtons[0].getX() < layout.modeButtons[1].getX());
-    CHECK (layout.modeButtons[2].getRight() < layout.controlIndicator.getX());
+    CHECK (layout.modeButtons[1].getRight() < layout.controlIndicator.getX());
     CHECK (layout.controlIndicator.getRight() < layout.rewind.getX());
     CHECK (layout.controlIndicator.getWidth() == 130);
-    CHECK (layout.undo.getWidth() == 142);
+    CHECK (layout.undo.getWidth() == 103);
     CHECK (layout.clock.getRight() < layout.undo.getX());
-    CHECK (layout.redo.getRight() <= bar.getRight());
+    // Export... at the right end (issue #200).
+    CHECK (layout.redo.getRight() < layout.exportSlot.getX());
+    CHECK (layout.exportSlot.getWidth() == 150);
+    CHECK (layout.exportSlot.getRight() <= bar.getRight());
 }
 
 TEST_CASE ("at the fixture width Undo and Redo keep their full width beside the control indicator", "[ui][layout]")
@@ -55,7 +58,7 @@ TEST_CASE ("at the fixture width Undo and Redo keep their full width beside the 
     const Rectangle<int> bar { 0, 0, 1200, topBarHeight };
     const auto layout = topBarLayout (bar);
 
-    checkInsideAndApart (bar, { layout.modeButtons[2], layout.controlIndicator, layout.rewind, layout.clock, layout.undo, layout.redo });
+    checkInsideAndApart (bar, { layout.modeButtons[1], layout.controlIndicator, layout.rewind, layout.clock, layout.undo, layout.redo, layout.exportSlot });
     CHECK (layout.controlIndicator.getRight() < layout.rewind.getX());
     CHECK (layout.undo.getWidth() == 190);
     CHECK (layout.redo.getWidth() == 190);

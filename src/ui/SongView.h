@@ -2,7 +2,7 @@
 
 #include "core/Error.h"
 #include "ui/EditPage.h"
-#include "ui/ExportPage.h"
+#include "ui/ExportSheet.h"
 #include "ui/InsertChain.h"
 #include "ui/Intent.h"
 #include "ui/OpenSong.h"
@@ -26,9 +26,12 @@ namespace overdub::ui
 class MainComponent;
 class VideoScreen;
 
-// The part of the main window that needs a Song: the Record, Edit and Export pages and the plugin
-// editor windows, wired to one OpenSong. The window (ui/MainComponent.h) builds one when a Song
-// opens and destroys it when the Song closes, so nothing in here sees a null Song. A callback
+// The part of the main window that needs a Song: the Record and Edit pages, the Export sheet and
+// the plugin editor windows, wired to one OpenSong. The Export sheet covers the whole window, so
+// the window puts it among its own children (MainComponent::setOpenSong) while this object owns
+// it; show_export shows and hides it, and an export that starts closes it (issue #200). The
+// window (ui/MainComponent.h) builds one when a Song opens and destroys it when the Song closes,
+// so nothing in here sees a null Song. A callback
 // that answers later (a chooser, a confirmation, camera access) holds a SafePointer to this
 // object and is dropped once the Song has closed.
 //
@@ -37,7 +40,7 @@ class VideoScreen;
 // Monitoring off after a Track delete, clip indicators out when a Pass starts, refusals presented
 // only for record, export, Separation and conversion). A gesture that does nothing returns an
 // Error logged at debug and never presented. Everything reaches it through MainComponent::run: keys, the top bar, the Edit menu, and every
-// page (ui/RecordPage.h, ui/EditPage.h, ui/ExportPage.h) and the plugin windows, which report their
+// page (ui/RecordPage.h, ui/EditPage.h, ui/ExportSheet.h) and the plugin windows, which report their
 // gestures as Intents through one sink each; their few hooks open a dialog (a chooser, a
 // confirmation, a menu) whose answer runs an Intent the same way.
 //
@@ -80,13 +83,15 @@ public:
     bool runShowing() const { return openSong.isSeparating() || openSong.isConverting(); }
     // Shows the running Separation's or conversion's progress on the dialog.
     void showRun (RunDialog& dialog) const;
+    // True while the Export sheet shows (show_export). It is modal: it takes every click and key.
+    bool isExportSheetShown() const { return exportSheetShown; }
 
     void resized() override;
 
     // Children are public so tests can click them and check what shows.
     RecordPage recordPage;
     EditPage editPage;
-    ExportPage exportPage;
+    ExportSheet exportSheet;
     PluginWindows pluginWindows;
 
 private:
@@ -134,6 +139,9 @@ private:
     IntentResult deleteSelection();
     IntentResult takeLaneClick (const song::Id& takeId, song::SampleCount at);
     IntentResult previewMix (const intent::PreviewMix& preview);
+    IntentResult showExport (bool shown);
+    // Shows or hides the Export sheet, logging ui.export_sheet_shown when that changes.
+    void setExportSheetShown (bool shown);
     IntentResult startExport (const exporting::ExportRequest& request);
     IntentResult setExportVideoTake (const song::Id& videoTakeId);
     IntentResult revealExport();
@@ -150,6 +158,7 @@ private:
 
     // A slot whose editor opens once its plugin is ready (just added, or clicked while loading).
     std::optional<song::Id> pendingEditorSlot;
+    bool exportSheetShown = false;
     engine::MeterPeaks shownPeaks;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SongView)

@@ -130,6 +130,7 @@ TEST_CASE ("the app state has every section, each with its keys, over a Song wit
     CHECK (view["timeline"]["take_lanes_unfolded"] == json::array());
     CHECK (view["mixer_visible"] == true);
     CHECK (view["passes_panel_open"] == false);
+    CHECK (view["export_sheet_shown"] == false);
     CHECK (view["export_form"]["format"] == "wav");
     CHECK (view["export_form"]["length"] == "trim_to_video_take");
     CHECK (view["export_form"]["video_take"] == nullptr);
@@ -199,6 +200,7 @@ TEST_CASE ("during a Pass the refused section names each refusal and the transpo
     CHECK (state["refused"]["new_song_at"] == "ui.stop_recording_first");
     CHECK (state["refused"]["quit"] == nullptr);
     CHECK (state["refused"]["show_mode"] == nullptr);
+    CHECK (state["refused"]["show_export"] == "ui.stop_recording_first");
     CHECK (state["transport"]["running_pass_number"] == 1);
     CHECK (state["transport"]["playing"] == true);
     CHECK (state["activity"]["kind"] == "pass");
@@ -357,6 +359,7 @@ struct SongForEveryOp
             { "preview_mix", { { "edit", { { "op", "set_master_volume" }, { "volume_db", -3.0 } } } } },
             { "add_insert", { { "track_id", guitarId }, { "type", "aufx" }, { "subtype", "dely" }, { "manufacturer", "appl" } } },
             { "export", json::object() },
+            { "show_export", { { "shown", true } } },
         };
     }
 
@@ -432,7 +435,7 @@ TEST_CASE ("during a latency calibration every op the refused section names answ
 
     const auto ran = every.runEveryRefusedOp();
 
-    CHECK (ran == 14); // the App group but quit, record, play_or_stop, set_monitoring and export
+    CHECK (ran == 15); // the App group but quit, record, play_or_stop, set_monitoring, export and show_export
     CHECK (refused["record"] == "ui.calibration_running");
     CHECK (refused["undo"] == nullptr);
     CHECK (f.content.run (ui::SongIntent { Undo {} }, ui::Origin::control).has_value());
@@ -473,7 +476,7 @@ void start (WorkspaceFixture& f, Situation situation)
 }
 } // namespace
 
-TEST_CASE ("the top bar's Undo and the Track menu's Separate are enabled exactly when run would not refuse them", "[control][app_state][refused]")
+TEST_CASE ("the top bar's Undo and Export... and the Track menu's Separate are enabled exactly when run would not refuse them", "[control][app_state][refused]")
 {
     const auto situation = GENERATE (Situation::nothing, Situation::pass, Situation::exportSong, Situation::calibration);
     WorkspaceFixture f;
@@ -500,6 +503,11 @@ TEST_CASE ("the top bar's Undo and the Track menu's Separate are enabled exactly
     CHECK (f.content.topBar.undoButton.isEnabled() == mayUndo);
     CHECK (refused["undo"].is_null() == mayUndo);
     CHECK (f.content.run (ui::SongIntent { Undo {} }, ui::Origin::control).has_value() == mayUndo);
+    // Export... (issue #200) waits until nothing runs.
+    const auto mayExport = situation == Situation::nothing;
+    CHECK (f.content.topBar.exportButton.isEnabled() == mayExport);
+    CHECK (refused["show_export"].is_null() == mayExport);
+    CHECK (f.content.run (ui::SongIntent { ShowExport { true } }, ui::Origin::control).has_value() == mayExport);
     stopPass (f);
 }
 

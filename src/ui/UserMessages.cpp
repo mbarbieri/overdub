@@ -37,6 +37,7 @@ constexpr std::array codeTable {
     CodeEntry { "capture.camera_unavailable", Tier::notice, "The camera could not be opened." },
     CodeEntry { "capture.video_frames_dropped", Tier::notice, "The camera dropped frames during this Pass." },
     CodeEntry { "ui.export_running", Tier::notice, "Wait for the export to finish." },
+    CodeEntry { "ui.export_finished", Tier::notice, "The export is written." },
     CodeEntry { "export.nothing_to_export", Tier::notice, "The Song has no Clips to export." },
     CodeEntry { "export.video_take_outside_song", Tier::notice, "The Video Take ends before the Song starts, so there is nothing to export." },
     CodeEntry { "ui.no_video_take", Tier::notice, "Pick a Video Take to export an MP4." },
@@ -111,6 +112,12 @@ std::optional<std::string> sampleRateMismatchSentence (const core::Fields& field
         return "The audio device runs at " + deviceRate + " Hz and this Song is at " + songRate + " Hz, so it plays and records nothing. Pick " + songRate + " Hz in Settings.";
     return "This Song is at " + songRate + " Hz, which the audio device (at " + deviceRate + " Hz) doesn't offer, so it plays and records nothing. Use a device that offers " + songRate + " Hz, or record in a new Song.";
 }
+std::optional<std::string> exportFinishedSentence (const core::Fields& fields)
+{
+    if (! fields.is_object() || ! fields.contains ("file_name"))
+        return std::nullopt;
+    return "Exported to " + fields["file_name"].get<std::string>() + ".";
+}
 std::optional<std::string> rateSubstitutedSentence (const core::Fields& fields)
 {
     if (! fields.is_object() || ! fields.contains ("requested_rate") || ! fields.contains ("opened_rate"))
@@ -137,6 +144,9 @@ std::string sentenceFor (std::string_view code, const core::Fields& fields)
             return *sentence;
     if (code == "ui.device_rate_substituted")
         if (auto sentence = rateSubstitutedSentence (fields))
+            return *sentence;
+    if (code == exportFinishedCode)
+        if (auto sentence = exportFinishedSentence (fields))
             return *sentence;
     if (const auto* entry = entryFor (code))
         return std::string (entry->sentence);

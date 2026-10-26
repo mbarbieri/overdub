@@ -17,8 +17,8 @@
 // field `op`, presented as its Notice); convert_sample_rate also waits for an export, and quit
 // only for a Separation. A Song op is refused as its ui::Gesture is (ui::refusal, field `gesture`):
 // presented for record, export and start_separation, logged at debug for the others, whose
-// controls already show they are unavailable. Window ops other than under the run dialog are never
-// refused.
+// controls already show they are unavailable: show_export, which opens the Export sheet, waits until
+// nothing runs (issue #200). Window ops other than under the run dialog are never refused.
 namespace overdub::ui
 {
 // What runs in the app, as the refusals read it.
@@ -41,6 +41,6 @@ struct Refusal
 // The refusal of the op with its default fields (show_settings shows the window), none when it
 // may run.
 std::optional<Refusal> refusalOf (std::string_view op, const Running& running);
-// The refusal of this very Intent: hiding the Settings window is never refused.
+// The refusal of this very Intent: hiding the Settings window or the Export sheet is never refused.
 std::optional<Refusal> refusalOf (const Intent& intent, const Running& running);
 } // namespace overdub::ui

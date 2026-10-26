@@ -26,13 +26,14 @@ struct MainLayout
 
 MainLayout mainLayout (juce::Rectangle<int> window);
 
-// Left: Record · Edit · Export, then the control indicator. Centre: ⏮ ▶/■ ● and the clock.
-// Right: Undo, Redo. The indicator's slot is kept whether or not it shows, so nothing moves when
-// a control client connects (issue #177); Undo and Redo narrow below 190 to make room at small
+// Left: Record · Edit, then the control indicator. Centre: ⏮ ▶/■ ● and the clock. Right: Undo,
+// Redo, then the export slot, which holds the Export... button, or the running export's progress
+// (issue #200). The indicator's slot is kept whether or not it shows, so nothing moves when a
+// control client connects (issue #177); Undo and Redo narrow below 190 to make room at small
 // widths.
 struct TopBarLayout
 {
-    std::array<juce::Rectangle<int>, 3> modeButtons;
+    std::array<juce::Rectangle<int>, 2> modeButtons;
     juce::Rectangle<int> controlIndicator;
     juce::Rectangle<int> rewind;
     juce::Rectangle<int> playStop;
@@ -40,6 +41,7 @@ struct TopBarLayout
     juce::Rectangle<int> clock;
     juce::Rectangle<int> undo;
     juce::Rectangle<int> redo;
+    juce::Rectangle<int> exportSlot;
 };
 
 TopBarLayout topBarLayout (juce::Rectangle<int> bar);

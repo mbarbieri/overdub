@@ -42,6 +42,10 @@ _Avoid_: Video track, camera clip
 The small picture beside Edit mode's mixer while the camera is armed: the camera's live feed, or the Video Takes playing back.
 _Avoid_: Camera pane, video window, monitor
 
+**Export**:
+Writing the Song's mix, optionally with one Video Take, to a single file outside the Song. The Song is unchanged.
+_Avoid_: Bounce, render, mixdown
+
 **Take Lane**:
 A thin row under a Track, one per Take recorded on that Track, showing where that Take is currently heard. Clicking it makes the Clip at that point play that Take (a Swap), or brings the whole Take back on top where no Take Clip sounds.
 _Avoid_: Comp lane, playlist, take folder

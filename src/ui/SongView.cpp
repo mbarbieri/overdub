@@ -37,11 +37,10 @@ SongView::SongView (OpenSong& song, MainComponent& mainWindow)
       pluginWindows (mainWindow.showPluginWindowsOnDesktop)
 {
     wirePages();
-    exportPage.setDestination (exporting::defaultExportFile (window.exportFolder, openSong.package().location().getFileNameWithoutExtension().toStdString(), exportPage.format()));
+    exportSheet.setDestination (exporting::defaultExportFile (window.exportFolder, openSong.package().location().getFileNameWithoutExtension().toStdString(), exportSheet.format()));
 
     addChildComponent (recordPage);
     addChildComponent (editPage);
-    addChildComponent (exportPage);
 }
 
 SongView::~SongView() = default;
@@ -61,8 +60,8 @@ void SongView::wirePages()
     editPage.onDeleteTrack = [this] (const song::Id& trackId) { askToDeleteTrack (trackId); };
     editPage.timeline.canImportFiles = [this] { return ! window.refusalOf (intent::ImportFiles::op).has_value(); };
 
-    exportPage.onIntent = [this] (const Intent& intent) { window.run (intent); };
-    exportPage.onChooseDestination = [this] (juce::File current) { chooseExportFile (current); };
+    exportSheet.onIntent = [this] (const Intent& intent) { window.run (intent); };
+    exportSheet.onChooseDestination = [this] (juce::File current) { chooseExportFile (current); };
 }
 
 IntentResult SongView::run (const SongIntent& songIntent)
@@ -99,11 +98,12 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const AddInsert& i) { return addInsert (i); },
             [this] (const OpenInsertEditor& i) { return openInsertEditor (i.slotId); },
             [this] (const ClosePluginWindow& i) { return closePluginWindow (i.slotId); },
-            [this] (const SetExportFormat& i) -> IntentResult { exportPage.chooseFormat (i.format); return IntentDone {}; },
-            [this] (const SetExportLength& i) -> IntentResult { exportPage.chooseLength (i.length); return IntentDone {}; },
-            [this] (const SetExportDestination& i) -> IntentResult { exportPage.setDestination (juce::File (i.path.value)); return IntentDone {}; },
+            [this] (const ShowExport& i) { return showExport (i.shown); },
+            [this] (const SetExportFormat& i) -> IntentResult { exportSheet.chooseFormat (i.format); return IntentDone {}; },
+            [this] (const SetExportLength& i) -> IntentResult { exportSheet.chooseLength (i.length); return IntentDone {}; },
+            [this] (const SetExportDestination& i) -> IntentResult { exportSheet.setDestination (juce::File (i.path.value)); return IntentDone {}; },
             [this] (const SetExportVideoTake& i) { return setExportVideoTake (i.videoTakeId); },
-            [this] (const Export&) { return startExport (exportPage.request()); },
+            [this] (const Export&) { return startExport (exportSheet.request()); },
             [this] (const RevealExport&) { return revealExport(); },
             [this] (const SelectClip& i) -> IntentResult { editPage.timeline.selectClip (i.clipId); return IntentDone {}; },
             [this] (const SelectVideoTake& i) -> IntentResult { editPage.timeline.selectVideoTake (i.videoTakeId); return IntentDone {}; },
@@ -466,16 +466,35 @@ IntentResult SongView::previewMix (const intent::PreviewMix& preview)
     return unlessRefused (openSong.previewMix (edited->song));
 }
 
+IntentResult SongView::showExport (bool shown)
+{
+    setExportSheetShown (shown);
+    window.refresh();
+    return IntentDone {};
+}
+
+void SongView::setExportSheetShown (bool shown)
+{
+    if (shown != exportSheetShown)
+        core::logEvent (core::Level::debug, "ui.export_sheet_shown", { { "shown", shown } });
+    exportSheetShown = shown;
+    if (! shown)
+        takeKeyboardFocus();
+}
+
 IntentResult SongView::startExport (const exporting::ExportRequest& request)
 {
     auto started = presented (openSong.startExport (request));
+    // The top bar shows the export's progress from here on.
+    if (started.has_value())
+        setExportSheetShown (false);
     window.refresh();
     return started;
 }
 
 IntentResult SongView::setExportVideoTake (const song::Id& videoTakeId)
 {
-    exportPage.chooseVideoTake (videoTakeId);
+    exportSheet.chooseVideoTake (videoTakeId);
     openSong.setExportVideoTake (videoTakeId);
     window.refresh();
     return IntentDone {};
@@ -616,6 +635,12 @@ void SongView::refresh (TopBarState& state)
     state.redoText = redoButtonText (package.canRedo() ? package.redoLabel() : "");
     state.canUndo = package.canUndo() && ! window.refusalOf (intent::Undo::op).has_value();
     state.canRedo = package.canRedo() && ! window.refusalOf (intent::Redo::op).has_value();
+    state.canExport = ! window.refusalOf (intent::ShowExport::op).has_value();
+    if (openSong.isExporting())
+    {
+        state.exportStatus = exportStatusText (openSong.exportPhase() == ExportPhase::waitingForAudio, openSong.exportProgress());
+        state.exportProgress = openSong.exportProgress();
+    }
 
     recordPage.show (recordPageStateFor (
                          song,
@@ -653,14 +678,9 @@ void SongView::refresh (TopBarState& state)
             .videoTakes = openSong.videoPlayback().spans (song),
             .canArmCamera = cameraControls.canArm && ! window.refusalOf (intent::SetCameraArmed::op).has_value(),
         });
-    const auto exportPhase = openSong.exportPhase();
-    exportPage.show (ExportPageState {
+    exportSheet.show (ExportSheetState {
         .clipsEnd = exporting::lastClipEnd (song),
         .sampleRate = song.sampleRate,
-        .waitingForAudio = exportPhase == ExportPhase::waitingForAudio,
-        .rendering = exportPhase == ExportPhase::rendering,
-        .progress = openSong.exportProgress(),
-        .finishedFile = openSong.lastExportedFile(),
         .videoTakes = openSong.videoPlayback().spans (song),
         .storedVideoTakeId = song.exportVideoTakeId,
     });
@@ -668,14 +688,20 @@ void SongView::refresh (TopBarState& state)
 
     recordPage.setVisible (mode == Mode::record);
     editPage.setVisible (mode == Mode::edit);
-    exportPage.setVisible (mode == Mode::exportSong);
+    exportSheet.setVisible (exportSheetShown);
 }
 
 void SongView::poll (song::SongPackage::Clock::time_point now)
 {
     editPage.mixer.mix.commitKeyBurstIfDue (now);
     recordPage.mix.commitKeyBurstIfDue (now);
+    const auto wasExporting = openSong.isExporting();
     handleErrors (openSong.poll (now));
+    if (wasExporting && ! openSong.isExporting() && openSong.lastExportedFile().has_value())
+    {
+        const auto& file = *openSong.lastExportedFile();
+        window.showNotice (exportFinishedCode, { { "file_name", file.getFileName().toStdString() }, { "path", file.getFullPathName().toStdString() } });
+    }
 }
 
 void SongView::showMeters()
@@ -702,6 +728,16 @@ void SongView::refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs)
 
 bool SongView::handleKey (const juce::KeyPress& key, song::SongPackage::Clock::time_point now)
 {
+    // The Export sheet is modal: Esc closes it, Return exports as its Export button does, and every
+    // other key does nothing.
+    if (exportSheetShown)
+    {
+        if (key.isKeyCode (juce::KeyPress::escapeKey))
+            window.run (SongIntent { intent::ShowExport { false } });
+        else if (key.isKeyCode (juce::KeyPress::returnKey) && exportSheet.canExport())
+            window.run (SongIntent { intent::Export {} });
+        return true;
+    }
     if (key.isKeyCode (juce::KeyPress::escapeKey) && editPage.timeline.cancelGesture ("escape"))
         return true;
     if (key.isKeyCode (juce::KeyPress::escapeKey) && recordPage.cancelTrackDrag())
@@ -756,7 +792,7 @@ void SongView::takeKeyboardFocus()
 
 void SongView::resized()
 {
-    for (auto* page : std::initializer_list<juce::Component*> { &recordPage, &editPage, &exportPage })
+    for (auto* page : std::initializer_list<juce::Component*> { &recordPage, &editPage })
         page->setBounds (getLocalBounds());
 }
 } // namespace overdub::ui

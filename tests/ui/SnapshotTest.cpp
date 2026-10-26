@@ -27,9 +27,6 @@ TEST_CASE ("snapshots of Record mode, idle and recording, and the Export placeho
     f.runBlocks (1);
     REQUIRE (! f.openSong->isRecording());
 
-    REQUIRE (pressKey (window, '3'));
-    CHECK (writeSnapshot (window, slice, "export-placeholder").existsAsFile());
-
     juce::ScopedJuceInitialiser_GUI gui;
     overdub::ui::MainComponent empty;
     layOut (empty, windowWidth, windowHeight);

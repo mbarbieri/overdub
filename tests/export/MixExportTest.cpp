@@ -5,7 +5,7 @@
 #include "engine/EngineFixture.h"
 #include "engine/TestProcessors.h"
 #include "song/AudioFileDecode.h"
-#include "ui/ExportPage.h"
+#include "ui/ExportSheet.h"
 
 #include <AudioToolbox/AudioToolbox.h>
 #include <juce_audio_formats/juce_audio_formats.h>

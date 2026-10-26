@@ -5,7 +5,7 @@ description: Launch the real Overdub.app (macOS JUCE desktop app) from this chec
 
 # Verify Overdub in the real app
 
-Overdub is a single-window macOS app (JUCE). Users touch its window (Record · Edit · Export modes, the File/Edit menus, Settings) and, for diagnostics, two command-line selftests. The app runs the `overdub-separate` helper process for every Separation.
+Overdub is a single-window macOS app (JUCE). Users touch its window (Record · Edit modes, the Export sheet, the File/Edit menus, Settings) and, for diagnostics, two command-line selftests. The app runs the `overdub-separate` helper process for every Separation.
 
 **The control socket is the driver.** The running app listens on a local socket (ADR 0008): one JSON request per line in, one reply per line out, plus a live stream of its log events. Every user operation is an Intent there, and `state` reads the app state. `scripts/overdub-ctl` is the client, and the `journey-*.sh` scripts drive whole user journeys through it. There is still no way to click or screenshot the window itself, so a gesture's pixels and layout are unverified. Never claim that a unit test or a log line proves a journey you did not drive. `features/README.md` lists what is drivable today.
 

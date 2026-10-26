@@ -17,7 +17,7 @@
 // sample 0 and drops its first L outputs: output sample n is Song sample n for every n.
 //
 // A Song without Clips has no mix: the export rules refuse it (export.nothing_to_export) even when
-// its Insert Chains report a tail, as the Export page's span text says (issue #95).
+// its Insert Chains report a tail, as the Export sheet's span text says (issue #95).
 //
 // One thread at a time (it may be a worker thread). The plan is built by the constructor on the
 // calling thread. Invariant (the caller's): while it renders, no other plan renders the same

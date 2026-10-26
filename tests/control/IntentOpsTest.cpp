@@ -168,7 +168,7 @@ TEST_CASE ("ops lists every Intent with its group and the JSON form of each fiel
 
     const auto* showMode = schemaOf (ops, "show_mode");
     REQUIRE (showMode != nullptr);
-    CHECK (*showMode == json { { "op", "show_mode" }, { "group", "window" }, { "fields", json::array ({ { { "key", "mode" }, { "type", "string" }, { "enum", { "record", "edit", "export" } } } }) } });
+    CHECK (*showMode == json { { "op", "show_mode" }, { "group", "window" }, { "fields", json::array ({ { { "key", "mode" }, { "type", "string" }, { "enum", { "record", "edit" } } } }) } });
 
     const auto* mute = schemaOf (ops, "set_track_mute");
     REQUIRE (mute != nullptr);

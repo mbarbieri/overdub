@@ -37,4 +37,4 @@ Each feature file starts with an H1 title and one paragraph that describes the u
 | [Selftests](./selftests.md) | yes, with conditions (loopback plays sound; clap needs a clap Pass) |
 | [Record a Pass](./record-pass.md) | yes: `journey-record-pass.sh` (proven 2026-10-23); the camera: no |
 | [Edit Clips](./edit.md) | yes: `journey-edit.sh` (split, move, trim, fade, undo, redo; proven 2026-10-23) |
-| [Export](./export.md) | yes: `journey-export.sh` (WAV and M4A, proven 2026-10-23); MP4: no |
+| [Export](./export.md) | yes: `journey-export.sh` (WAV and M4A through the Export sheet, proven 2026-10-26); MP4: no |
