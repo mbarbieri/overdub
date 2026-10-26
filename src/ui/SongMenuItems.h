@@ -17,14 +17,10 @@ struct SongMenuItem
     SongIntent intent;
 };
 
-inline const std::array<SongMenuItem, 2>& songMenuItems()
-{
-    static const std::array<SongMenuItem, 2> items {
-        SongMenuItem { "Export...", "\xe2\x8c\x98"
-                                    "E",
-                       SongIntent { intent::ShowExport { true } } },
-        SongMenuItem { "Cancel Export", "", SongIntent { intent::CancelExport {} } },
-    };
-    return items;
-}
+inline const std::array songMenuItems {
+    SongMenuItem { "Export...", "\xe2\x8c\x98"
+                                "E",
+                   SongIntent { intent::ShowExport { true } } },
+    SongMenuItem { "Cancel Export", "", SongIntent { intent::CancelExport {} } },
+};
 } // namespace overdub::ui

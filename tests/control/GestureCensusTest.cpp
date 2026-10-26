@@ -194,7 +194,7 @@ void collectProbes (juce::Component& component, ComponentPath path, const juce::
 std::vector<Probe> menuProbes()
 {
     std::vector<Probe> probes;
-    for (const auto& item : ui::songMenuItems())
+    for (const auto& item : ui::songMenuItems)
         probes.push_back ({ "menu:" + std::string (item.name), ComponentPath::windowContent(), [&item] (juce::Component& window) {
             auto& content = dynamic_cast<ui::MainComponent&> (window);
             if (! content.refusalOf (ui::opName (ui::Intent { item.intent })).has_value())
@@ -443,7 +443,12 @@ TEST_CASE ("no gesture changes the app state without running an Intent", "[contr
     CHECK (fired ("record/TopBar#0/", ":click"));
     CHECK (fired ("export_sheet/ExportSheet#0/TextButton#", ":click"));
     // The top bar's ✕ and File > Cancel Export while an export runs (issue #202).
-    CHECK (fired ("exporting/TopBar#0/TextButton#8", ":click"));
+    const ui::TopBar bar;
+    int cancelOrdinal = 0;
+    for (int i = 0; bar.getChildComponent (i) != &bar.cancelExportButton; ++i)
+        if (dynamic_cast<const juce::TextButton*> (bar.getChildComponent (i)) != nullptr)
+            ++cancelOrdinal;
+    CHECK (fired ("exporting/TopBar#0/TextButton#" + std::to_string (cancelOrdinal), ":click"));
     CHECK (fired ("exporting/menu:Cancel Export", ""));
     CHECK (fired ("record/menu:Export...", ""));
 }

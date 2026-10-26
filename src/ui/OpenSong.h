@@ -247,10 +247,10 @@ public:
     // without audio ui.export_plugin_crashed (ExportRun's).
     core::Expected<void> startExport (exporting::ExportRequest request, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
     // Cancels the running export (issue #202, ExportRun::cancel): its partial file goes, a file
-    // that was at the destination stays, and the engine plays the Song again. True when it was
-    // cancelled; false when none ran, or when it had written its file already (kept, as
-    // lastExportedFile).
-    bool cancelExport();
+    // that was at the destination stays, and the engine plays the Song again. Returns how it
+    // ended: ui.export_cancelled, the render's own Error when it failed before it heard the stop,
+    // or none when it had written its file already (kept, as lastExportedFile) or none ran.
+    std::optional<core::Error> cancelExport();
     ExportPhase exportPhase() const;
     bool isExporting() const { return std::holds_alternative<ExportActivity> (activity); }
     // The fraction of the running export written, 0..1 (0 while it waits for the audio).

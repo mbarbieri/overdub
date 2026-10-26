@@ -491,3 +491,19 @@ TEST_CASE ("a cancel that arrives after the file is written is too late: the exp
     CHECK (f.destination.existsAsFile());
     CHECK (eventsNamed (capture, "ui.export_cancelled").empty());
 }
+
+TEST_CASE ("cancelling a render that already failed ends with its own Error, not a cancel", "[ui][export_run][cancel]")
+{
+    RunFixture f;
+    f.destination = f.folder.getChildFile ("gone").getChildFile ("Song.wav"); // its folder does not exist
+    f.startRendering();
+    f.waitUntilFileWritten(); // the job is done: it could not create its file
+    overdub::core::ScopedLogCapture capture;
+
+    const auto end = f.run->cancel();
+
+    REQUIRE (end.error.has_value());
+    CHECK (end.error->code == "export.folder_missing");
+    CHECK_FALSE (end.file.has_value());
+    CHECK (eventsNamed (capture, "ui.export_cancelled").empty());
+}

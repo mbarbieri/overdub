@@ -99,8 +99,8 @@ public:
     std::optional<ExportEnd> crashed (const std::vector<plugin::InsertCrash>& crashes);
     // The Song changed: syncs the InsertHost with it, keeping removed slots hosted.
     void followSong();
-    // Ends the run for the user: an ExportEnd with ui.export_cancelled (path), or the file the
-    // render wrote before it heard the stop.
+    // Ends the run for the user: an ExportEnd with ui.export_cancelled (path), or what the render
+    // ended with before it heard the stop (its file, or its own Error).
     ExportEnd cancel();
     // Ends the run for `reason` (logged); the owner destroys it next.
     void stop (const char* reason);

@@ -546,11 +546,16 @@ IntentResult SongView::cancelExport()
 {
     if (! openSong.isExporting())
         return window.quietError (quiet ("ui.no_export_running", "no export is running"));
-    if (openSong.cancelExport())
-        window.showNotice ("ui.export_cancelled");
-    else
-        showExportFinished();
+    const auto ended = openSong.cancelExport();
     window.refresh();
+    if (! ended.has_value())
+    {
+        showExportFinished();
+        return IntentDone {};
+    }
+    if (ended->code != "ui.export_cancelled")
+        return presented (std::unexpected (*ended));
+    window.showNotice (ended->code);
     return IntentDone {};
 }
 

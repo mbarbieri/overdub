@@ -21,7 +21,7 @@ enum MenuItem
     redoItem,
     // File > Convert Sample Rate: this plus the rate's index in the device's offered rates.
     convertSampleRateItemBase = 100,
-    // The File menu's Song items: this plus the item's index in ui::songMenuItems().
+    // The File menu's Song items: this plus the item's index in ui::songMenuItems.
     songMenuItemBase = 200
 };
 
@@ -173,7 +173,7 @@ juce::PopupMenu MainWindow::getMenuForIndex (int topLevelMenuIndex, const juce::
         const auto rates = convertSampleRateMenu();
         menu.addSubMenu ("Convert Sample Rate", rates, mayRun (ui::intent::ConvertSampleRate::op) && openSong != nullptr && ! offeredMenuRates.empty());
         menu.addSeparator();
-        const auto& songItems = ui::songMenuItems();
+        const auto& songItems = ui::songMenuItems;
         for (std::size_t i = 0; i < songItems.size(); ++i)
         {
             const auto& item = songItems[i];
@@ -218,8 +218,8 @@ void MainWindow::menuItemSelected (int menuItemID, int)
 {
     if (const auto index = menuItemID - convertSampleRateItemBase; index >= 0 && index < (int) offeredMenuRates.size())
         return (void) content.run (ui::AppIntent { ui::intent::ConvertSampleRate { offeredMenuRates[(std::size_t) index] } });
-    if (const auto index = menuItemID - songMenuItemBase; index >= 0 && index < (int) ui::songMenuItems().size())
-        return (void) content.run (ui::songMenuItems()[(std::size_t) index].intent);
+    if (const auto index = menuItemID - songMenuItemBase; index >= 0 && index < (int) ui::songMenuItems.size())
+        return (void) content.run (ui::songMenuItems[(std::size_t) index].intent);
     switch (menuItemID)
     {
         case newSongItem: newSong(); break;
