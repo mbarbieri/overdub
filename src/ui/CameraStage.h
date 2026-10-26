@@ -12,7 +12,8 @@ namespace overdub::ui
 class CameraStage final : public juce::Component
 {
 public:
-    CameraStage();
+    // messageFontSize: the line's font height (the Edit Video Preview's is smaller than the stage's).
+    explicit CameraStage (float messageFontSize = 13.0f);
     ~CameraStage() override;
 
     // The feed to show (a CALayer*, from OpenSong::cameraPreviewLayer), or null for `message`.
@@ -27,6 +28,7 @@ public:
 private:
     struct FeedView; // the NSView hosting the layer, in CameraStage.mm
 
+    float messageFontSize;
     void* currentLayer = nullptr;
     juce::String currentMessage;
     juce::NSViewComponent feed;

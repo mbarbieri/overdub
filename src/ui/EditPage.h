@@ -135,8 +135,10 @@ public:
     // The Mixer region's height, clamped as the divider's drag clamps it.
     void setMixerHeight (int height);
     // What the Video Preview shows (VideoPreview::show); it shows only while the camera is Armed.
-    void showVideoPreview (bool cameraArmed, void* previewLayer, const juce::String& message, bool playback);
+    void showVideoPreview (bool armed, void* previewLayer, const juce::String& message, bool playback);
     bool isVideoPreviewShown() const { return cameraArmed && mixerVisible; }
+    // The Video Preview's playback screen while it shows playback, else null.
+    VideoScreen* shownPlayback();
 
     IntentSink onIntent;
     // The × in a Track's header (Timeline::onDeleteTrack).

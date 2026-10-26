@@ -215,7 +215,7 @@ int clampMixerHeight (int requested, int pageHeight)
     return std::max (minimumMixerHeight, std::min (requested, largest));
 }
 
-EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int mixerHeight, bool videoPreviewShown)
+EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int mixerHeight, bool cameraArmed)
 {
     EditPageLayout layout;
     auto area = page;
@@ -224,8 +224,8 @@ EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int
     {
         layout.mixer = area.removeFromBottom (clampMixerHeight (mixerHeight, page.getHeight()));
         layout.mixerDivider = area.removeFromBottom (mixerDividerHeight);
-        if (videoPreviewShown)
-            layout.videoPreview = layout.mixer.removeFromRight (videoPreviewWidth);
+        if (cameraArmed)
+            layout.videoPreview = layout.mixer.removeFromRight (videoPreviewWidth).reduced (gap);
     }
     layout.timeline = area;
     layout.passesButton = juce::Rectangle<int> (area.getX(), area.getY(), laneHeaderWidth, rulerHeight).reduced (4, 2);

@@ -363,6 +363,11 @@ void EditPage::showVideoPreview (bool armed, void* previewLayer, const juce::Str
     resized();
 }
 
+VideoScreen* EditPage::shownPlayback()
+{
+    return isVideoPreviewShown() && videoPreview.showsPlayback() ? &videoPreview.playback : nullptr;
+}
+
 void EditPage::editSelectedClip (const std::function<std::optional<intent::Edit> (const song::Id& clipId)>& editFor)
 {
     const auto& clipId = timeline.selectedClip();

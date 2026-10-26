@@ -4,12 +4,8 @@
 
 namespace overdub::ui
 {
-namespace
-{
-constexpr int inset = 6; // as the Mixer's strips sit inside its region (ui/Layout.cpp gap)
-} // namespace
-
 VideoPreview::VideoPreview()
+    : camera (11.0f)
 {
     addAndMakeVisible (camera);
     addChildComponent (playback);
@@ -24,9 +20,8 @@ void VideoPreview::show (void* previewLayer, const juce::String& message, bool s
 
 void VideoPreview::resized()
 {
-    const auto area = getLocalBounds().reduced (inset);
-    camera.setBounds (area);
-    playback.setBounds (area.reduced (1));
+    camera.setBounds (getLocalBounds());
+    playback.setBounds (getLocalBounds().reduced (1));
 }
 
 void VideoPreview::paint (juce::Graphics& g)

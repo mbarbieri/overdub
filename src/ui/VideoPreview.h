@@ -7,7 +7,7 @@
 
 // Edit mode's Video Preview (issue #198, GLOSSARY.md): the small picture docked at the Mixer
 // region's right end while the camera is Armed. Like Record mode's stage it shows the camera
-// (CameraStage: its live feed, or its line while it has no picture) or Video Take playback
+// (CameraStage: its live feed, or its line in small type while it has no picture) or Video Take playback
 // (VideoScreen); which one is the caller's choice (stageShowsLiveFeed).
 //
 // Message thread only.

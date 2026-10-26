@@ -13,7 +13,8 @@ struct CameraStage::FeedView
     NSView* view = nil;
 };
 
-CameraStage::CameraStage()
+CameraStage::CameraStage (float fontSize)
+    : messageFontSize (fontSize)
 {
     setInterceptsMouseClicks (false, false);
     addChildComponent (feed);
@@ -64,7 +65,7 @@ void CameraStage::paint (juce::Graphics& g)
     if (currentLayer != nullptr)
         return;
     g.setColour (colours::dimText);
-    g.setFont (juce::FontOptions (13.0f));
-    g.drawText (currentMessage, getLocalBounds(), juce::Justification::centred);
+    g.setFont (juce::FontOptions (messageFontSize));
+    g.drawFittedText (currentMessage, getLocalBounds().reduced (8, 0), juce::Justification::centred, 3);
 }
 } // namespace overdub::ui

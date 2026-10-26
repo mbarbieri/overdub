@@ -689,7 +689,7 @@ void SongView::refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs)
 {
     const auto mode = window.mode();
     const auto stageShows = mode == Mode::record && recordPage.showsStagePlayback();
-    auto* const preview = mode == Mode::edit && editPage.isVideoPreviewShown() && editPage.videoPreview.showsPlayback() ? &editPage.videoPreview.playback : nullptr;
+    auto* const preview = mode == Mode::edit ? editPage.shownPlayback() : nullptr;
     if (preview == nullptr && ! stageShows)
         return;
     const auto heard = video::heardSongSample (openSong.playbackClock(), nowHostNs, refreshNs);

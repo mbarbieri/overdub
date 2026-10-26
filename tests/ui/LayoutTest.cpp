@@ -312,12 +312,13 @@ TEST_CASE ("the Video Preview takes the Mixer region's right end, a fixed width 
     const auto layout = editPageLayout (page, true, 300, true);
 
     checkInsideAndApart (page, { layout.clipToolbar, layout.timeline, layout.mixerDivider, layout.mixer, layout.videoPreview });
-    CHECK (layout.videoPreview.getWidth() == videoPreviewWidth);
-    CHECK (layout.videoPreview.getRight() == page.getRight());
-    CHECK (layout.videoPreview.getY() == layout.mixerDivider.getBottom());
-    CHECK (layout.videoPreview.getBottom() == page.getBottom());
+    // videoPreviewWidth at the region's full height, inset by 6 px as the Mixer's strips are.
+    CHECK (layout.videoPreview.getWidth() == videoPreviewWidth - 12);
+    CHECK (layout.videoPreview.getRight() == page.getRight() - 6);
+    CHECK (layout.videoPreview.getY() == layout.mixerDivider.getBottom() + 6);
+    CHECK (layout.videoPreview.getBottom() == page.getBottom() - 6);
     CHECK (layout.mixer.getX() == page.getX());
-    CHECK (layout.mixer.getRight() == layout.videoPreview.getX());
+    CHECK (layout.mixer.getRight() == layout.videoPreview.getX() - 6);
     CHECK (layout.mixer.getHeight() == 300);
     // The divider still spans the page, over the Mixer and the Video Preview.
     CHECK (layout.mixerDivider.getWidth() == page.getWidth());

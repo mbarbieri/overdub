@@ -63,11 +63,11 @@ TEST_CASE ("the Video Preview shows beside the Mixer while the camera is Armed, 
     f.armCamera (true);
     REQUIRE (isShown (f.preview()));
     CHECK (f.editPage().isVideoPreviewShown());
-    CHECK (f.preview().getWidth() == videoPreviewWidth);
-    CHECK (f.preview().getRight() == f.editPage().getWidth());
-    CHECK (f.preview().getY() == f.editPage().mixer.getY());
-    CHECK (f.preview().getHeight() == f.editPage().mixer.getHeight());
-    CHECK (f.editPage().mixer.getRight() == f.preview().getX());
+    CHECK (f.preview().getRight() > f.editPage().mixer.getRight());
+    CHECK (f.preview().getRight() <= f.editPage().getWidth());
+    CHECK (f.preview().getY() >= f.editPage().mixer.getY());
+    CHECK (f.preview().getBottom() <= f.editPage().mixer.getBottom());
+    CHECK (f.editPage().mixer.getRight() + videoPreviewWidth == f.editPage().getWidth());
 
     // Hiding the Mixer hides it; showing the Mixer brings it back.
     REQUIRE (f.window->run (SongIntent { intent::SetMixerVisible { false } }, Origin::control).has_value());

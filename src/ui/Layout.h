@@ -110,7 +110,7 @@ TrackRowLayout trackRowLayout (juce::Rectangle<int> row);
 // Edit mode (issue #28, issue #9 resolution): the Clip toolbar, the timeline, and under a
 // draggable divider the Mixer region (issue #31), which can be hidden. While the camera is Armed
 // the Video Preview (issue #198) takes the Mixer region's right end, videoPreviewWidth wide at the
-// region's full height; it hides with the region.
+// region's full height, inset as the Mixer's strips are; it hides with the region.
 inline constexpr int clipToolbarHeight = 36;
 inline constexpr int mixerDividerHeight = 6;
 inline constexpr int minimumMixerHeight = 220;
@@ -125,14 +125,14 @@ struct EditPageLayout
     juce::Rectangle<int> passesButton; // over the timeline's ruler corner (issue #30)
     juce::Rectangle<int> mixerDivider; // empty when the Mixer region is hidden
     juce::Rectangle<int> mixer;        // empty when the Mixer region is hidden
-    juce::Rectangle<int> videoPreview; // empty when not shown or the Mixer region is hidden
+    juce::Rectangle<int> videoPreview; // empty when the camera is not Armed or the Mixer region is hidden
 };
 
 // The Mixer region's height kept within [minimumMixerHeight, what leaves the timeline
 // minimumTimelineHeight]; the minimum wins when the page is too short for both.
 int clampMixerHeight (int requested, int pageHeight);
 
-EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int mixerHeight, bool videoPreviewShown);
+EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int mixerHeight, bool cameraArmed);
 
 // Left: the selected Clip's details, its fade-in, fade-out and gain fields (each after its
 // caption), Split, Delete. Right: zoom out, zoom in, Mixer.
