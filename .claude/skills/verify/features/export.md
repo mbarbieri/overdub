@@ -7,6 +7,7 @@ Export is an action, not a mode (issue #200): the Export sheet renders the Song'
 - `export-wav`, `export-m4a`: the audio mix over the Song span plus Insert Chain tails.
 - `export-mp4`: the mix plus the chosen Video Take, trimmed or full-song length.
 - `export-progress`: the top bar's progress, then the `ui.export_finished` Notice with **Reveal in Finder**.
+- `export-cancel` (issue #202): **✕** beside the top bar's progress, or File ▸ Cancel Export, runs `cancel_export`. The render stops, its `.partial` file goes, a file that was at the destination stays, and the `ui.export_cancelled` Notice says "The export was cancelled." (event `ui.export_cancelled`: `path`, `phase`). A cancel that arrives after the file is written is too late: the export ends as written.
 
 ## How to get to it (user POV)
 
@@ -23,6 +24,8 @@ Run `.claude/skills/verify/scripts/journey-export.sh`. It exits 0 when every che
 1. `show_export shown=true` once (`/view/export_sheet_shown` is `true`), then per format `set_export_format format=wav` (or `m4a`), `set_export_destination path=$RUN_DIR/exports/song.wav`. `/view/export_form` shows that format and destination. The form's Intents and `export` work with the sheet closed too.
 2. `set_master_volume volume_db=-60`, then `export`. Read `/activity/counter`, `wait pointer=/activity/last_finish/counter equals=<counter>`, and `/activity/last_finish` is `{"kind": "export", "error_code": null}`. `/view/export_sheet_shown` is `false`: starting the export closed the sheet.
 3. The file exists with nonzero length and no `.partial` file is left. `afinfo` says `WAVE`, `2 ch, <rate> Hz, lpcm ... 24-bit` and a duration within 0.01 s of the Song span (the end of the last Clip over the sample rate). For M4A it says `m4af`, `2 ch, <rate> Hz, aac` and a duration within 0.05 s.
+
+`export-cancel` is not driven by the journey: a short Song's export ends before a `cancel_export` sent after `export` arrives. Over the socket, `cancel_export` while no export runs answers `ui.no_export_running`.
 
 `export-mp4` is not driven: it needs a Video Take, and the camera stays unarmed under the audio rules. `export-progress`'s Reveal in Finder is not driven.
 

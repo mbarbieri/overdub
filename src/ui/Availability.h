@@ -18,7 +18,8 @@
 // only for a Separation. A Song op is refused as its ui::Gesture is (ui::refusal, field `gesture`):
 // presented for record, export and start_separation, logged at debug for the others, whose
 // controls already show they are unavailable: show_export, which opens the Export sheet, waits until
-// nothing runs (issue #200). Window ops other than under the run dialog are never refused.
+// nothing runs (issue #200), and cancel_export waits for an export (ui.no_export_running, field
+// `op`, issue #202). Window ops other than under the run dialog are never refused.
 namespace overdub::ui
 {
 // What runs in the app, as the refusals read it.

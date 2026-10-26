@@ -12,7 +12,8 @@
 
 // The always-visible top bar (issue #9 resolution): Record · Edit, the transport (⏮ ▶/■ ●) with
 // the clock and its REC · PASS n line, Undo / Redo naming their steps, and Export..., which opens
-// the Export sheet (issue #200); while an export runs, its status and progress stand in its place.
+// the Export sheet (issue #200); while an export runs, its status and progress stand in its place,
+// with ✕, which cancels it (issue #202).
 // While a control client is connected it names the controlling process (ADR 0008 Security, issue
 // #177). Thin: it shows a TopBarState and turns clicks into Intents.
 namespace overdub::ui
@@ -29,7 +30,8 @@ struct TopBarState
     std::string redoText = "Redo";
     bool canUndo = false;
     bool canRedo = false;
-    bool canExport = false; // show_export may run
+    bool canExport = false;       // show_export may run
+    bool canCancelExport = false; // cancel_export may run
     // While an export runs: "Preparing…" or "Exporting… 42%" (exportStatusText), and its progress.
     std::optional<std::string> exportStatus;
     double exportProgress = 0.0;
@@ -100,6 +102,7 @@ public:
     juce::TextButton exportButton { juce::String::fromUTF8 ("Export\xe2\x80\xa6") };
     juce::Label exportStatusLabel;
     ThinProgressBar exportProgressBar;
+    juce::TextButton cancelExportButton;
 
 private:
     void send (const Intent& intent);

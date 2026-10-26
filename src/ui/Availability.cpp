@@ -68,6 +68,7 @@ constexpr SongOpGesture songOpGestures[] {
     { "set_export_destination", std::nullopt },
     { "set_export_video_take", std::nullopt },
     { "export", Gesture::startExport },
+    { "cancel_export", std::nullopt }, // refused unless an export runs (refusalOfSongOp)
     { "reveal_export", std::nullopt },
     { "select_clip", std::nullopt },
     { "select_video_take", std::nullopt },
@@ -134,6 +135,8 @@ std::optional<Refusal> refusalOfAppOp (std::string_view op, const Running& runni
 
 std::optional<Refusal> refusalOfSongOp (std::string_view op, const Running& running)
 {
+    if (op == CancelExport::op && running.song.has_value() && *running.song != ActivityKind::exportSong)
+        return Refusal { core::Error { "ui.no_export_running", "no export is running", { { "op", std::string (op) } } }, false };
     const auto found = std::ranges::find (songOpGestures, op, &SongOpGesture::op);
     if (! running.song.has_value() || found == std::end (songOpGestures) || ! found->gesture.has_value())
         return std::nullopt;

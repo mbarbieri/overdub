@@ -619,6 +619,13 @@ struct Export
     static constexpr auto fields = std::tuple {};
 };
 
+struct CancelExport // the top bar's ✕ beside the export's progress, or File > Cancel Export (issue #202)
+{
+    static constexpr std::string_view op = "cancel_export";
+    bool operator== (const CancelExport&) const = default;
+    static constexpr auto fields = std::tuple {};
+};
+
 struct RevealExport // Reveal in Finder: the file the last export wrote
 {
     static constexpr std::string_view op = "reveal_export";
@@ -725,7 +732,7 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::SplitSelectedClip, intent::DeleteSelection, intent::TakeLaneClick, intent::PreviewMix,
                                 intent::AddInsert, intent::OpenInsertEditor, intent::ClosePluginWindow,
                                 intent::ShowExport, intent::SetExportFormat, intent::SetExportLength, intent::SetExportDestination,
-                                intent::SetExportVideoTake, intent::Export, intent::RevealExport,
+                                intent::SetExportVideoTake, intent::Export, intent::CancelExport, intent::RevealExport,
                                 intent::SelectClip, intent::SelectVideoTake, intent::SetTimelineView,
                                 intent::SetVerticalScroll, intent::SetTakeLanesUnfolded, intent::SetMixerVisible,
                                 intent::SetMixerHeight, intent::SetPassesPanelOpen, intent::ClearClipIndicator>;

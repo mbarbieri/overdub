@@ -2,6 +2,7 @@
 
 #include "core/Log.h"
 #include "song/AudioFileDecode.h"
+#include "ui/SongMenuItems.h"
 #include "ui/UiHarness.h"
 #include "ui/WorkspaceFixture.h"
 
@@ -27,16 +28,17 @@
 #include <utility>
 #include <vector>
 
-// The UI → Intent proof (ADR 0008, issue #167): every gesture the window's Components offer is
-// fired at a Song with Tracks, Clips, a Pass, a Video Take, an Insert and a selection, in each
-// mode and with the Export sheet open (issue #200), and a gesture that changes the app state without running an Intent through
+// The UI → Intent proof (ADR 0008, issue #167): every gesture the window's Components offer, and
+// each File menu Song item (ui/SongMenuItems.h), is fired at a Song with Tracks, Clips, a Pass, a
+// Video Take, an Insert and a selection, in each mode, with the Export sheet open (issue #200) and
+// while an export runs (issue #202), and a gesture that changes the app state without running an Intent through
 // MainComponent::run (its intentsRun count, which includes the per-frame Intents that log no
 // ui.intent_run) is a bypass, and the census fails on any bypass.
 //
 // Each scene gets a fresh CensusWorkspace, and before each probe its Song, selection and timeline
 // view are put back as they were built, an export a gesture started is finished, and the mode
-// and the Export sheet are as the scene has them, so no gesture changes what a later one is fired
-// at.
+// and the Export sheet and a running export are as the scene has them, so no gesture changes what
+// a later one is fired at.
 //
 // What it cannot see: a handler that runs some Intent and also edits the app state directly (the
 // Intent run hides the bypass); text typed into an editor (Labels and TextEditors get
@@ -62,12 +64,14 @@ struct ComponentPath
     static ComponentPath windowContent (std::string id = {}) { return { {}, std::move (id) }; }
 };
 
-// What the window shows while a scene's probes fire: a mode, and the Export sheet over it or not.
+// What the window shows while a scene's probes fire: a mode, the Export sheet over it or not, and
+// an export running (waiting for the audio, which no probe runs) or not.
 struct Scene
 {
     std::string name;
     ui::Mode mode = ui::Mode::record;
     bool exportSheet = false;
+    bool exporting = false;
 };
 
 struct Probe
@@ -184,6 +188,19 @@ void collectProbes (juce::Component& component, ComponentPath path, const juce::
         childPath.id += "/" + name + "#" + std::to_string (ordinal);
         collectProbes (child, std::move (childPath), dropFile, probes);
     }
+}
+
+// Each File menu Song item, picked as MainWindow picks it: only while it is enabled.
+std::vector<Probe> menuProbes()
+{
+    std::vector<Probe> probes;
+    for (const auto& item : ui::songMenuItems)
+        probes.push_back ({ "menu:" + std::string (item.name), ComponentPath::windowContent(), [&item] (juce::Component& window) {
+            auto& content = dynamic_cast<ui::MainComponent&> (window);
+            if (! content.refusalOf (ui::opName (ui::Intent { item.intent })).has_value())
+                content.run (item.intent);
+        } });
+    return probes;
 }
 
 std::vector<Probe> keyProbes()
@@ -337,12 +354,16 @@ struct CensusWorkspace
         if (auto* view = f.content.songView())
             view->commitKeyBursts();
         stopTransport();
+        if (scene.exporting && f.song().isExporting())
+            run (ui::SongIntent { CancelExport {} });
         finishExport();
         restore();
         f.content.run (ui::SongIntent { ShowExport { false } });
         f.content.run (ui::WindowIntent { ShowMode { scene.mode } });
         if (scene.exportSheet)
             run (ui::SongIntent { ShowExport { true } });
+        if (scene.exporting)
+            run (ui::SongIntent { Export {} });
     }
 };
 
@@ -383,6 +404,7 @@ CensusResult runCensus()
         { "record", ui::Mode::record, false },
         { "edit", ui::Mode::edit, false },
         { "export_sheet", ui::Mode::record, true },
+        { "exporting", ui::Mode::record, false, true },
     };
     for (const auto& scene : scenes)
     {
@@ -397,6 +419,8 @@ CensusResult runCensus()
         }
         for (const auto& probe : probes)
             fireProbe (census, probe, scene, result);
+        for (const auto& probe : menuProbes())
+            fireProbe (census, { scene.name + "/" + probe.id, probe.path, probe.fire }, scene, result);
     }
     return result;
 }
@@ -418,6 +442,15 @@ TEST_CASE ("no gesture changes the app state without running an Intent", "[contr
     };
     CHECK (fired ("record/TopBar#0/", ":click"));
     CHECK (fired ("export_sheet/ExportSheet#0/TextButton#", ":click"));
+    // The top bar's ✕ and File > Cancel Export while an export runs (issue #202).
+    const ui::TopBar bar;
+    int cancelOrdinal = 0;
+    for (int i = 0; bar.getChildComponent (i) != &bar.cancelExportButton; ++i)
+        if (dynamic_cast<const juce::TextButton*> (bar.getChildComponent (i)) != nullptr)
+            ++cancelOrdinal;
+    CHECK (fired ("exporting/TopBar#0/TextButton#" + std::to_string (cancelOrdinal), ":click"));
+    CHECK (fired ("exporting/menu:Cancel Export", ""));
+    CHECK (fired ("record/menu:Export...", ""));
 }
 
 TEST_CASE ("the census fails on a button that edits the Song without an Intent", "[control][census]")

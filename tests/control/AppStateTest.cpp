@@ -361,6 +361,7 @@ struct SongForEveryOp
             { "add_insert", { { "track_id", guitarId }, { "type", "aufx" }, { "subtype", "dely" }, { "manufacturer", "appl" } } },
             { "export", json::object() },
             { "show_export", { { "shown", true } } },
+            { "cancel_export", json::object() },
         };
     }
 
@@ -436,7 +437,7 @@ TEST_CASE ("during a latency calibration every op the refused section names answ
 
     const auto ran = every.runEveryRefusedOp();
 
-    CHECK (ran == 15); // the App group but quit, record, play_or_stop, set_monitoring, export and show_export
+    CHECK (ran == 16); // the App group but quit, record, play_or_stop, set_monitoring, export, show_export and cancel_export
     CHECK (refused["record"] == "ui.calibration_running");
     CHECK (refused["undo"] == nullptr);
     CHECK (f.content.run (ui::SongIntent { Undo {} }, ui::Origin::control).has_value());

@@ -5,6 +5,7 @@
 #include "control/IntentOps.h"
 #include "ui/Layout.h"
 #include "ui/SongFiles.h"
+#include "ui/SongMenuItems.h"
 
 namespace overdub::app
 {
@@ -15,12 +16,13 @@ enum MenuItem
     newSongItem = 1,
     openSongItem,
     duplicateSongItem,
-    exportItem,
     settingsItem,
     undoItem,
     redoItem,
     // File > Convert Sample Rate: this plus the rate's index in the device's offered rates.
-    convertSampleRateItemBase = 100
+    convertSampleRateItemBase = 100,
+    // The File menu's Song items: this plus the item's index in ui::songMenuItems.
+    songMenuItemBase = 200
 };
 
 juce::File defaultSongFolder()
@@ -171,11 +173,15 @@ juce::PopupMenu MainWindow::getMenuForIndex (int topLevelMenuIndex, const juce::
         const auto rates = convertSampleRateMenu();
         menu.addSubMenu ("Convert Sample Rate", rates, mayRun (ui::intent::ConvertSampleRate::op) && openSong != nullptr && ! offeredMenuRates.empty());
         menu.addSeparator();
-        juce::PopupMenu::Item exportMenuItem { "Export..." };
-        exportMenuItem.setID (exportItem).setEnabled (mayRun (ui::intent::ShowExport::op) && openSong != nullptr);
-        exportMenuItem.shortcutKeyDescription = juce::String (juce::CharPointer_UTF8 ("\xe2\x8c\x98"
-                                                                                      "E"));
-        menu.addItem (std::move (exportMenuItem));
+        const auto& songItems = ui::songMenuItems;
+        for (std::size_t i = 0; i < songItems.size(); ++i)
+        {
+            const auto& item = songItems[i];
+            juce::PopupMenu::Item menuItem { juce::String::fromUTF8 (item.name.data(), (int) item.name.size()) };
+            menuItem.setID (songMenuItemBase + (int) i).setEnabled (mayRun (ui::opName (ui::Intent { item.intent })) && openSong != nullptr);
+            menuItem.shortcutKeyDescription = juce::String::fromUTF8 (item.shortcut.data(), (int) item.shortcut.size());
+            menu.addItem (std::move (menuItem));
+        }
         menu.addSeparator();
         menu.addItem (settingsItem, "Settings...", mayRun (ui::intent::ShowSettings::op));
         return menu;
@@ -212,12 +218,13 @@ void MainWindow::menuItemSelected (int menuItemID, int)
 {
     if (const auto index = menuItemID - convertSampleRateItemBase; index >= 0 && index < (int) offeredMenuRates.size())
         return (void) content.run (ui::AppIntent { ui::intent::ConvertSampleRate { offeredMenuRates[(std::size_t) index] } });
+    if (const auto index = menuItemID - songMenuItemBase; index >= 0 && index < (int) ui::songMenuItems.size())
+        return (void) content.run (ui::songMenuItems[(std::size_t) index].intent);
     switch (menuItemID)
     {
         case newSongItem: newSong(); break;
         case openSongItem: chooseSongToOpen(); break;
         case duplicateSongItem: duplicateSong(); break;
-        case exportItem: content.run (ui::SongIntent { ui::intent::ShowExport { true } }); break;
         case settingsItem: content.run (ui::AppIntent { ui::intent::ShowSettings { true } }); break;
         case undoItem: content.run (ui::SongIntent { ui::intent::Undo {} }); break;
         case redoItem: content.run (ui::SongIntent { ui::intent::Redo {} }); break;

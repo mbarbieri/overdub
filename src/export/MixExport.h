@@ -75,6 +75,9 @@ public:
     bool isDone() const { return done.load(); }
     // The result once isDone(); none before.
     std::optional<core::Expected<ExportResult>> takeResult();
+    // Stops a running export and waits for its thread: isDone() after, its result an
+    // export.cancelled Error, or what it ended with before it heard the stop.
+    void stop();
 
 private:
     void run() override;

@@ -35,9 +35,14 @@
 //   removes stays hosted (the export may render it, and only a hosted plugin's crash is heard); a
 //   slot an edit adds loads at once and is not rendered.
 //
+// - cancel() (the user's, issue #202) stops the render and waits for it: its partial file is
+//   deleted and a file that was at the destination stays (exporting::exportMix renames only a
+//   complete file over it). A file written before the stop was heard is kept: the run ends with it.
+//
 // Every end is returned as an ExportEnd, once; the owner then destroys the run and gives the
 // engine the Song again. stop() ends it without an ExportEnd (the owner is detaching the audio).
-// Logs ui.export_stopped (info: reason, phase) for every end but a written file and a failed job.
+// Logs ui.export_stopped (info: reason, phase) for every end but a written file, a failed job and
+// a cancel, which logs ui.export_cancelled (info: path, phase).
 //
 // Message thread only. The SongPackage and InsertHost must outlive the run.
 namespace overdub::ui
@@ -94,6 +99,9 @@ public:
     std::optional<ExportEnd> crashed (const std::vector<plugin::InsertCrash>& crashes);
     // The Song changed: syncs the InsertHost with it, keeping removed slots hosted.
     void followSong();
+    // Ends the run for the user: an ExportEnd with ui.export_cancelled (path), or what the render
+    // ended with before it heard the stop (its file, or its own Error).
+    ExportEnd cancel();
     // Ends the run for `reason` (logged); the owner destroys it next.
     void stop (const char* reason);
 

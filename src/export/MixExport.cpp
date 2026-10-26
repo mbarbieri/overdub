@@ -154,6 +154,11 @@ ExportJob::ExportJob (std::unique_ptr<MixRender> mixRender, ExportRequest reques
 
 ExportJob::~ExportJob()
 {
+    stop();
+}
+
+void ExportJob::stop()
+{
     signalThreadShouldExit();
     stopThread (-1);
 }

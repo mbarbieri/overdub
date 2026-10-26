@@ -45,10 +45,24 @@ std::map<std::string, std::string> allBut (const std::set<std::string>& allowed,
 const std::set<std::string> appOps { "new_song_at", "open_song_at", "duplicate_song_to", "convert_sample_rate", "show_settings", "apply_device_settings", "measure_latency", "save_latency_calibration", "measure_clap_pass", "save_camera_calibration", "quit" };
 } // namespace
 
-TEST_CASE ("nothing is refused while nothing runs", "[ui][availability]")
+TEST_CASE ("while nothing runs only cancel_export is refused, and with no Song open nothing is", "[ui][availability]")
 {
     CHECK (refusedCodes (Running {}).empty());
-    CHECK (refusedCodes (Running { .song = ActivityKind::idle }).empty());
+    CHECK (refusedCodes (Running { .song = ActivityKind::idle }) == std::map<std::string, std::string> { { "cancel_export", "ui.no_export_running" } });
+}
+
+TEST_CASE ("cancel_export may run only while an export runs, beside a calibration too", "[ui][availability][export]")
+{
+    CHECK_FALSE (refusalOf ("cancel_export", Running { .song = ActivityKind::exportSong }).has_value());
+    CHECK_FALSE (refusalOf ("cancel_export", Running { .song = ActivityKind::exportSong, .calibrating = true }).has_value());
+    for (const auto kind : { ActivityKind::idle, ActivityKind::pass })
+    {
+        const auto refused = refusalOf ("cancel_export", Running { .song = kind });
+        REQUIRE (refused.has_value());
+        CHECK (refused->error.code == "ui.no_export_running");
+        CHECK (refused->error.fields == core::Fields { { "op", "cancel_export" } });
+        CHECK_FALSE (refused->presented);
+    }
 }
 
 TEST_CASE ("with no Song open a latency calibration refuses only the App group but quit", "[ui][availability][calibration]")
@@ -71,7 +85,9 @@ TEST_CASE ("during a Pass only transport, view and plugin window ops, the Window
         "show_mode", "dismiss_alerts", "quit"
     };
 
-    CHECK (refusedCodes (Running { .song = ActivityKind::pass }) == allBut (allowed, "ui.stop_recording_first"));
+    auto expected = allBut (allowed, "ui.stop_recording_first");
+    expected["cancel_export"] = "ui.no_export_running";
+    CHECK (refusedCodes (Running { .song = ActivityKind::pass }) == expected);
 }
 
 TEST_CASE ("during an export only record, play, import, Track delete, Separation, conversion and opening the Export sheet are refused", "[ui][availability][export]")
@@ -115,6 +131,7 @@ TEST_CASE ("a latency calibration refuses the App group but quit, and the Song o
             expected[op] = "ui.calibration_running";
     for (const auto* op : { "record", "play_or_stop", "set_monitoring", "export", "show_export" })
         expected[op] = "ui.calibration_running";
+    expected["cancel_export"] = "ui.no_export_running";
 
     CHECK (refusedCodes (Running { .song = ActivityKind::idle, .calibrating = true }) == expected);
 }
