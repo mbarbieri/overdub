@@ -826,6 +826,14 @@ core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, so
     return {};
 }
 
+bool OpenSong::cancelExport()
+{
+    auto* exporting = std::get_if<ExportActivity> (&activity);
+    if (exporting == nullptr)
+        return false;
+    return endExportIfEnded (exporting->run->cancel()).has_value();
+}
+
 ExportPhase OpenSong::exportPhase() const
 {
     const auto* exporting = std::get_if<ExportActivity> (&activity);

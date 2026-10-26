@@ -13,6 +13,8 @@ const juce::String rewindGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x8f
 const juce::String playGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xb6"));
 const juce::String stopGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xa0"));
 const juce::String recordGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x8f"));
+const juce::String cancelGlyph = juce::String (juce::CharPointer_UTF8 ("\xe2\x9c\x95"));
+constexpr int cancelExportButtonWidth = 24;
 } // namespace
 
 std::string exportStatusText (bool waitingForAudio, double progress)
@@ -105,6 +107,10 @@ TopBar::TopBar()
     undoButton.onClick = [this] { send (SongIntent { intent::Undo {} }); };
     redoButton.onClick = [this] { send (SongIntent { intent::Redo {} }); };
     exportButton.onClick = [this] { send (SongIntent { intent::ShowExport { true } }); };
+    cancelExportButton.setButtonText (cancelGlyph);
+    cancelExportButton.setTooltip ("Cancel Export");
+    cancelExportButton.onClick = [this] { send (SongIntent { intent::CancelExport {} }); };
+    cancelExportButton.setWantsKeyboardFocus (false);
 
     for (auto* button : { &recordModeButton, &editModeButton, &rewindButton, &playStopButton, &recordButton, &undoButton, &redoButton, &exportButton })
     {
@@ -117,6 +123,7 @@ TopBar::TopBar()
     exportStatusLabel.setInterceptsMouseClicks (false, false);
     addChildComponent (exportStatusLabel);
     addChildComponent (exportProgressBar);
+    addChildComponent (cancelExportButton);
 
     controlIndicator.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (controlIndicator);
@@ -149,6 +156,8 @@ void TopBar::show (const TopBarState& state)
     exportButton.setEnabled (state.canExport);
     exportStatusLabel.setVisible (exporting);
     exportProgressBar.setVisible (exporting);
+    cancelExportButton.setVisible (exporting);
+    cancelExportButton.setEnabled (state.canCancelExport);
     exportStatusLabel.setText (juce::String::fromUTF8 (state.exportStatus.value_or ("").c_str()), juce::dontSendNotification);
     exportProgressBar.setFraction (state.exportProgress);
     controlIndicator.show (controlIndicatorName (state.controllingProcesses));
@@ -167,6 +176,8 @@ void TopBar::resized()
     redoButton.setBounds (layout.redo);
     exportButton.setBounds (layout.exportSlot);
     auto exportSlot = layout.exportSlot;
+    cancelExportButton.setBounds (exportSlot.removeFromRight (cancelExportButtonWidth));
+    exportSlot.removeFromRight (4);
     exportStatusLabel.setBounds (exportSlot.removeFromTop (exportSlot.getHeight() - 10));
     exportProgressBar.setBounds (exportSlot.removeFromTop (6));
     controlIndicator.setBounds (layout.controlIndicator);

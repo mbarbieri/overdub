@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <optional>
@@ -39,13 +40,30 @@ struct FakeInstantiator
         return [this] (const overdub::song::InsertSlot&, double, int, ProcessorReady ready) { requests.push_back (std::move (ready)); };
     }
 
-    juce::AudioProcessor* succeed (std::size_t index)
+    juce::AudioProcessor* succeed (std::size_t index, std::unique_ptr<juce::AudioProcessor> processor = std::make_unique<overdub::engine::testing::GainProcessor> (1.0f))
     {
-        auto processor = std::make_unique<overdub::engine::testing::GainProcessor> (1.0f);
         auto* raw = processor.get();
-        requests.at (index) (std::unique_ptr<juce::AudioProcessor> (std::move (processor)));
+        requests.at (index) (std::move (processor));
         return raw;
     }
+};
+
+// Holds the render in its first block until the export's worker is told to stop, so a test acts
+// while the render is under way, its partial file open.
+class HoldingProcessor final : public overdub::engine::PlainProcessor
+{
+public:
+    HoldingProcessor() : PlainProcessor (stereoInOut()) {}
+
+    const juce::String getName() const override { return "Test Hold"; }
+    void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override
+    {
+        entered.store (true);
+        while (! juce::Thread::currentThreadShouldExit())
+            juce::Thread::sleep (1);
+    }
+
+    std::atomic<bool> entered { false };
 };
 
 std::vector<nlohmann::json> eventsNamed (const overdub::core::ScopedLogCapture& capture, const std::string& name)
@@ -411,4 +429,65 @@ TEST_CASE ("stopping an export logs its reason and phase", "[ui][export_run]")
     REQUIRE (stopped.size() == 1);
     CHECK (stopped[0]["reason"] == "audio_detached");
     CHECK (stopped[0]["phase"] == "waiting_for_audio");
+}
+
+TEST_CASE ("cancelling a render stops it, removes its partial file and keeps the file that was at the destination", "[ui][export_run][cancel]")
+{
+    RunFixture f;
+    REQUIRE (f.destination.replaceWithText ("before the export"));
+    f.addSlot();
+    auto* holding = dynamic_cast<HoldingProcessor*> (f.fake.succeed (0, std::make_unique<HoldingProcessor>()));
+    f.startRendering();
+    const auto deadline = std::chrono::steady_clock::now() + 30s;
+    while (! holding->entered.load() && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for (1ms);
+    REQUIRE (holding->entered.load());
+    REQUIRE (f.folder.getNumberOfChildFiles (juce::File::findFiles | juce::File::ignoreHiddenFiles, "*") == 1);
+    REQUIRE (f.folder.getNumberOfChildFiles (juce::File::findFiles, "*") == 2); // the destination and the hidden partial file
+    overdub::core::ScopedLogCapture capture;
+
+    const auto end = f.run->cancel();
+
+    REQUIRE (end.error.has_value());
+    CHECK (end.error->code == "ui.export_cancelled");
+    CHECK (end.error->fields.at ("path") == f.destination.getFullPathName().toStdString());
+    CHECK_FALSE (end.file.has_value());
+    CHECK (f.destination.loadFileAsString() == "before the export");
+    CHECK (f.folder.getNumberOfChildFiles (juce::File::findFiles, "*") == 1);
+    const auto cancelled = eventsNamed (capture, "ui.export_cancelled");
+    REQUIRE (cancelled.size() == 1);
+    CHECK (cancelled[0]["path"] == f.destination.getFullPathName().toStdString());
+    CHECK (cancelled[0]["phase"] == "rendering");
+    CHECK (eventsNamed (capture, "ui.export_stopped").empty());
+}
+
+TEST_CASE ("cancelling an export that waits for the audio ends it before it renders", "[ui][export_run][cancel]")
+{
+    RunFixture f;
+    f.start();
+    overdub::core::ScopedLogCapture capture;
+
+    const auto end = f.run->cancel();
+
+    REQUIRE (end.error.has_value());
+    CHECK (end.error->code == "ui.export_cancelled");
+    CHECK_FALSE (f.destination.exists());
+    const auto cancelled = eventsNamed (capture, "ui.export_cancelled");
+    REQUIRE (cancelled.size() == 1);
+    CHECK (cancelled[0]["phase"] == "waiting_for_audio");
+}
+
+TEST_CASE ("a cancel that arrives after the file is written is too late: the export ends with its file", "[ui][export_run][cancel]")
+{
+    RunFixture f;
+    f.startRendering();
+    f.waitUntilFileWritten();
+    overdub::core::ScopedLogCapture capture;
+
+    const auto end = f.run->cancel();
+
+    CHECK_FALSE (end.error.has_value());
+    CHECK (end.file == f.destination);
+    CHECK (f.destination.existsAsFile());
+    CHECK (eventsNamed (capture, "ui.export_cancelled").empty());
 }

@@ -152,6 +152,11 @@ private:
     // Errors: export.folder_missing (the file's folder does not exist; nothing is stored).
     IntentResult setExportDestination (const juce::File& file);
     IntentResult setExportVideoTake (const song::Id& videoTakeId);
+    // Cancels the running export (issue #202): the ui.export_cancelled Notice, or, when the
+    // export had written its file already, the ui.export_finished Notice as a finished export's.
+    IntentResult cancelExport();
+    // The ui.export_finished Notice for the file the last export wrote.
+    void showExportFinished();
     IntentResult revealExport();
     void chooseExportFile (const juce::File& current);
     void chooseInsert (const song::Id& trackId);

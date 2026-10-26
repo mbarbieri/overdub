@@ -103,6 +103,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const SetExportDestination& i) { return setExportDestination (juce::File (i.path.value)); },
             [this] (const SetExportVideoTake& i) { return setExportVideoTake (i.videoTakeId); },
             [this] (const Export&) { return exportSong(); },
+            [this] (const CancelExport&) { return cancelExport(); },
             [this] (const RevealExport&) { return revealExport(); },
             [this] (const SelectClip& i) -> IntentResult { editPage.timeline.selectClip (i.clipId); return IntentDone {}; },
             [this] (const SelectVideoTake& i) -> IntentResult { editPage.timeline.selectVideoTake (i.videoTakeId); return IntentDone {}; },
@@ -541,6 +542,26 @@ IntentResult SongView::setExportVideoTake (const song::Id& videoTakeId)
     return IntentDone {};
 }
 
+IntentResult SongView::cancelExport()
+{
+    if (! openSong.isExporting())
+        return window.quietError (quiet ("ui.no_export_running", "no export is running"));
+    if (openSong.cancelExport())
+        window.showNotice ("ui.export_cancelled");
+    else
+        showExportFinished();
+    window.refresh();
+    return IntentDone {};
+}
+
+void SongView::showExportFinished()
+{
+    const auto& file = openSong.lastExportedFile();
+    if (! file.has_value())
+        return;
+    window.showNotice (exportFinishedCode, { { "file_name", file->getFileName().toStdString() }, { "path", file->getFullPathName().toStdString() } });
+}
+
 IntentResult SongView::revealExport()
 {
     const auto& file = openSong.lastExportedFile();
@@ -677,6 +698,7 @@ void SongView::refresh (TopBarState& state)
     state.canUndo = package.canUndo() && ! window.refusalOf (intent::Undo::op).has_value();
     state.canRedo = package.canRedo() && ! window.refusalOf (intent::Redo::op).has_value();
     state.canExport = ! window.refusalOf (intent::ShowExport::op).has_value();
+    state.canCancelExport = ! window.refusalOf (intent::CancelExport::op).has_value();
     if (openSong.isExporting())
     {
         state.exportStatus = exportStatusText (openSong.exportPhase() == ExportPhase::waitingForAudio, openSong.exportProgress());
@@ -740,11 +762,8 @@ void SongView::poll (song::SongPackage::Clock::time_point now)
     recordPage.mix.commitKeyBurstIfDue (now);
     const auto wasExporting = openSong.isExporting();
     handleErrors (openSong.poll (now));
-    if (wasExporting && ! openSong.isExporting() && openSong.lastExportedFile().has_value())
-    {
-        const auto& file = *openSong.lastExportedFile();
-        window.showNotice (exportFinishedCode, { { "file_name", file.getFileName().toStdString() }, { "path", file.getFullPathName().toStdString() } });
-    }
+    if (wasExporting && ! openSong.isExporting())
+        showExportFinished();
 }
 
 void SongView::showMeters()

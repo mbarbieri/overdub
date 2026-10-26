@@ -47,4 +47,5 @@ Overdub logs to its own JSON Lines file, one per app launch, in `~/Library/Logs/
 ## Amendment: a Notice that offers an action (issues #160, #200)
 
 - A Notice may carry one action button. Such a Notice stays until the action is clicked or another Notice replaces it. `ui.sample_rate_mismatch` offers to convert the Song (issue #160).
-- `ui.export_finished` is the one Notice that is not about a problem. An export runs in the background once the Export sheet closes, so the Notice is how the user learns that the file is written. It names the file (`file_name`) and offers Reveal in Finder (`reveal_export`).
+- `ui.export_finished` is not about a problem. An export runs in the background once the Export sheet closes, so the Notice is how the user learns that the file is written. It names the file (`file_name`) and offers Reveal in Finder (`reveal_export`).
+- `ui.export_cancelled` (issue #202) is the other Notice that is not about a problem: it confirms that `cancel_export` stopped the export and wrote no file. It offers no action.

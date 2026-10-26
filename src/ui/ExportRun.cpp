@@ -146,6 +146,22 @@ void ExportRun::followSong()
     inserts.sync (package.song(), plugin::RemovedSlots::keep);
 }
 
+ExportEnd ExportRun::cancel()
+{
+    const auto path = request.destination.getFullPathName().toStdString();
+    const auto phase = phaseName();
+    if (job != nullptr)
+    {
+        job->stop();
+        auto result = job->takeResult();
+        job.reset();
+        if (result.has_value() && result->has_value())
+            return ExportEnd { .file = (*result)->file };
+    }
+    core::logEvent (core::Level::info, "ui.export_cancelled", { { "path", path }, { "phase", phase } });
+    return ExportEnd { .error = core::Error { "ui.export_cancelled", "the export was cancelled", { { "path", path } } } };
+}
+
 void ExportRun::stop (const char* reason)
 {
     core::logEvent (core::Level::info, "ui.export_stopped", { { "reason", reason }, { "phase", phaseName() } });
