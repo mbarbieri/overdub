@@ -71,6 +71,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
         core::Overloaded {
             [this] (const Edit& plainEdit) { return edit (plainEdit); },
             [this] (const Record&) { return record(); },
+            [this] (const RecordAgain&) { return recordAgain(); },
             [this] (const PlayOrStop&) { return unlessRefused (openSong.playOrStop()); },
             [this] (const Rewind&) -> IntentResult { openSong.rewind(); return IntentDone {}; },
             [this] (const Undo&) { return undo(); },
@@ -139,6 +140,15 @@ IntentResult SongView::record()
 {
     const auto passWasRunning = openSong.isRecording();
     auto started = presented (openSong.record());
+    if (started.has_value() && ! passWasRunning)
+        recordPage.clearClipIndicators();
+    return started;
+}
+
+IntentResult SongView::recordAgain()
+{
+    const auto passWasRunning = openSong.isRecording();
+    auto started = presented (openSong.recordAgain());
     if (started.has_value() && ! passWasRunning)
         recordPage.clearClipIndicators();
     return started;
@@ -767,6 +777,12 @@ void SongView::poll (song::SongPackage::Clock::time_point now)
     recordPage.mix.commitKeyBurstIfDue (now);
     const auto wasExporting = openSong.isExporting();
     handleErrors (openSong.poll (now));
+    if (playAfterSpace.has_value() && now > *playAfterSpace)
+    {
+        playAfterSpace.reset();
+        if (! openSong.isRecording() && ! openSong.isPlaying())
+            window.run (SongIntent { intent::PlayOrStop {} });
+    }
     if (wasExporting && ! openSong.isExporting())
         showExportFinished();
 }
@@ -813,9 +829,33 @@ bool SongView::handleKey (const juce::KeyPress& key, song::SongPackage::Clock::t
         return true;
     }
     const auto mode = window.mode();
+    if (mode == Mode::record && key.isKeyCode (juce::KeyPress::spaceKey) && ! key.getModifiers().isAnyModifierKeyDown())
+    {
+        spaceInRecordMode (now);
+        return true;
+    }
     if (mode == Mode::edit && editPage.mixer.mix.handleKey (key, now))
         return true;
     return mode == Mode::record && recordPage.mix.handleKey (key, now);
+}
+
+void SongView::spaceInRecordMode (song::SongPackage::Clock::time_point now)
+{
+    const auto interval = window.doubleTapInterval();
+    // Another Intent between the two (R, a click) makes this Space a first one again.
+    if (lastSpace.has_value() && now - *lastSpace <= interval && window.intentsRun() == intentsRunAtLastSpace)
+    {
+        lastSpace.reset();
+        playAfterSpace.reset();
+        window.run (SongIntent { intent::RecordAgain {} });
+        return;
+    }
+    lastSpace = now;
+    if (openSong.isRecording() || openSong.isPlaying())
+        window.run (SongIntent { intent::PlayOrStop {} });
+    else
+        playAfterSpace = now + interval;
+    intentsRunAtLastSpace = window.intentsRun();
 }
 
 void SongView::releaseFocusOutside (const juce::Component* clicked)

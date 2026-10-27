@@ -69,7 +69,10 @@ public:
     // Shows the frame heard `refreshNs` after `nowHostNs` on the Edit page's Video Preview and the
     // Record stage, each while it shows playback in its mode.
     void refreshVideo (std::uint64_t nowHostNs, std::uint64_t refreshNs);
-    // Esc during a grip drag, and the focused fader's keys; true when the key was used.
+    // Esc during a grip drag, the focused fader's keys, and Space in Record mode; true when the key
+    // was used. In Record mode (issue #216) a Space stops a running Pass or playback at once, a second
+    // Space within the window's doubleTapInterval, with no other Intent run in between, runs record_again, and a single Space while
+    // stopped plays once that interval has passed (poll).
     bool handleKey (const juce::KeyPress& key, song::SongPackage::Clock::time_point now);
     // A mouse down on `clicked`: a focused fader or pan elsewhere loses its focus.
     void releaseFocusOutside (const juce::Component* clicked);
@@ -111,6 +114,9 @@ private:
     IntentResult presented (const core::Expected<void>& result);
 
     IntentResult record();
+    // A new Pass at the most recent Pass's record point (issue #216).
+    IntentResult recordAgain();
+    void spaceInRecordMode (song::SongPackage::Clock::time_point now);
     IntentResult undo();
     IntentResult redo();
     IntentResult seek (song::SampleCount sample);
@@ -174,6 +180,11 @@ private:
     std::optional<song::Id> pendingEditorSlot;
     bool exportSheetShown = false;
     engine::MeterPeaks shownPeaks;
+    // Record mode's double-Space: the last Space that may be the first of two, and when a single
+    // Space while stopped plays.
+    std::optional<song::SongPackage::Clock::time_point> lastSpace;
+    std::uint64_t intentsRunAtLastSpace = 0;
+    std::optional<song::SongPackage::Clock::time_point> playAfterSpace;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SongView)
 };

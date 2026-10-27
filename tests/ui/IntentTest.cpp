@@ -192,7 +192,13 @@ TEST_CASE ("R records, Space plays or stops, command-Z undoes and shift-command-
     CHECK (keyRuns (KeyChord { 'r', true, false }) == std::nullopt);
     CHECK (keyRuns (KeyChord { '1', true, false }) == std::nullopt);
     CHECK (keyRuns (KeyChord { ' ', false, true }) == std::nullopt);
-    CHECK (keyRuns (KeyChord { 'R', false, true }) == std::nullopt);
+}
+
+TEST_CASE ("shift-R records again", "[ui][intent][keys][record_again]")
+{
+    CHECK (keyRuns (KeyChord { 'R', false, true }) == songIntent (intent::RecordAgain {}));
+    CHECK (keyRuns (KeyChord { 'r', false, true }) == songIntent (intent::RecordAgain {}));
+    CHECK (keyRuns (KeyChord { 'R', true, true }) == std::nullopt);
 }
 
 TEST_CASE ("S splits the selected Clip, and backspace or forward delete deletes the selection", "[ui][intent][keys]")

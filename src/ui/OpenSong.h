@@ -190,6 +190,11 @@ public:
     // its record point: only from there on is input captured.
     // Errors: refusal()'s, audioProblem()'s, or PassRecorder::start's (capture.nothing_armed, ...).
     core::Expected<void> record();
+    // Record Again (issue #216): a new Pass, as record() starts one, at the record point of the
+    // Song's most recent Pass, with the transport stopped there first so pre-roll applies. During a
+    // Pass, stops it and starts the new one at its record point once poll() has finished it.
+    // Errors: record()'s. The Song has a Pass, or one runs (ui/Availability.h refuses it otherwise).
+    core::Expected<void> recordAgain();
     // The record point while a Pass waits for it during pre-roll; none otherwise.
     std::optional<song::SampleCount> preRollRecordPoint() const;
     // The running Pass's record point once its capture has begun; none otherwise.
@@ -352,6 +357,11 @@ private:
     // Every change of `activity` goes through these two, which count it in the ActivityLog.
     void beginActivity (Activity started);
     void endActivity (std::optional<std::string> errorCode);
+    // record() with its record point, and whether the transport plays on through it.
+    core::Expected<void> startPass (song::SampleCount recordPoint, bool playing);
+    // Stops the transport at `recordPoint` and starts a Pass there, logging ui.record_again with the
+    // Song's most recent Pass, which it follows. The Song has a Pass.
+    core::Expected<void> recordAgainFrom (song::SampleCount recordPoint);
     // Ends the running Pass (one must run) with what its recorder finished.
     std::vector<core::Error> finishPass (capture::FinishedPass finished);
     // The crashes the InsertHost heard since the last poll, as Notice errors (ui.plugin_crashed,
@@ -384,6 +394,8 @@ private:
     std::vector<capture::CameraDevice> cameras;
     // Set while a device at another rate than the Song's is attached (ui.sample_rate_mismatch).
     std::optional<core::Error> rateMismatch;
+    // Record Again ran during a Pass: poll() starts the next Pass once that one is finished.
+    bool recordAgainAfterPass = false;
     video::VideoPlayback playback;
     std::optional<juce::File> lastExport;
     // Last: destroyed first, so a running export stops rendering before the plugins and the package

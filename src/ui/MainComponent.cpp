@@ -222,6 +222,7 @@ Running MainComponent::running() const
     return Running {
         .song = songContent != nullptr ? std::optional (songContent->currentSong().activityKind()) : std::nullopt,
         .calibrating = calibrationRunning != nullptr && calibrationRunning(),
+        .songHasNoPass = songContent != nullptr && songContent->currentSong().song().passes.empty(),
     };
 }
 

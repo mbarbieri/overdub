@@ -344,6 +344,7 @@ TEST_CASE ("the Export sheet exports the open Song's mix to the chosen file, the
 
     // The engine plays the Song again.
     REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+    f.runBlocks (1); // Record mode plays at the next poll (issue #216)
     f.runBlocks (1);
     CHECK (f.engine.isPlaying());
 }

@@ -338,6 +338,7 @@ struct SongForEveryOp
             { "move_insert", { { "slot_id", slotId }, { "to_index", 0 } } },
             { "set_insert_bypassed", { { "slot_id", slotId }, { "bypassed", true } } },
             { "record", json::object() },
+            { "record_again", json::object() },
             { "play_or_stop", json::object() },
             { "undo", json::object() },
             { "redo", json::object() },
@@ -438,7 +439,7 @@ TEST_CASE ("during a latency calibration every op the refused section names answ
 
     const auto ran = every.runEveryRefusedOp();
 
-    CHECK (ran == 17); // the App group but quit, record, play_or_stop, set_monitoring, export, show_export and cancel_export
+    CHECK (ran == 18); // the App group but quit, record, record_again, play_or_stop, set_monitoring, export, show_export and cancel_export
     CHECK (refused["record"] == "ui.calibration_running");
     CHECK (refused["undo"] == nullptr);
     CHECK (f.content.run (ui::SongIntent { Undo {} }, ui::Origin::control).has_value());

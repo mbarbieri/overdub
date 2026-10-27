@@ -36,6 +36,7 @@ constexpr SongOpGesture songOpGestures[] {
     { "move_insert", Gesture::edit },
     { "set_insert_bypassed", Gesture::edit },
     { "record", Gesture::record },
+    { "record_again", Gesture::record },
     { "play_or_stop", Gesture::playOrStop },
     { "rewind", std::nullopt },
     { "undo", Gesture::undo },
@@ -93,7 +94,7 @@ static_assert (songOpGesturesNameEverySongOpOnce(), "songOpGestures must name ea
 
 // The Song ops whose refusal is presented as its Notice; the others' controls already show they
 // are unavailable (issue #145).
-constexpr std::array presentedSongOps { Record::op, Export::op, StartSeparation::op };
+constexpr std::array presentedSongOps { Record::op, RecordAgain::op, Export::op, StartSeparation::op };
 
 bool isAppOp (std::string_view op)
 {
@@ -137,6 +138,8 @@ std::optional<Refusal> refusalOfSongOp (std::string_view op, const Running& runn
 {
     if (op == CancelExport::op && running.song.has_value() && *running.song != ActivityKind::exportSong)
         return Refusal { core::Error { "ui.no_export_running", "no export is running", { { "op", std::string (op) } } }, false };
+    if (op == RecordAgain::op && running.songHasNoPass && running.song == ActivityKind::idle)
+        return Refusal { core::Error { "ui.no_pass_to_record_again", "the Song has no Pass to record again from", { { "op", std::string (op) } } }, false };
     const auto found = std::ranges::find (songOpGestures, op, &SongOpGesture::op);
     if (! running.song.has_value() || found == std::end (songOpGestures) || ! found->gesture.has_value())
         return std::nullopt;

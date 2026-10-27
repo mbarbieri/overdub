@@ -22,6 +22,10 @@ _Avoid_: Channel (when you mean the lane), lane
 One press of record through to stop. It produces one take on every armed track, plus a video take if the camera is armed.
 _Avoid_: Session, run
 
+**Record Again**:
+Starting a new Pass at the record point of the Song's most recent Pass, stopping a running Pass first. The earlier Takes stay underneath.
+_Avoid_: Retake, punch-in, resume, redo
+
 **Take**:
 The dry input one track captured during a pass. Effects are never baked into it.
 _Avoid_: Recording

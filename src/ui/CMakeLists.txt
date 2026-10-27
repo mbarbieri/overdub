@@ -13,6 +13,7 @@ target_sources(overdub_ui PRIVATE
     CameraStage.mm
     Colours.cpp
     DeviceSettingsPanel.cpp
+    DoubleClickInterval.mm
     EditPage.cpp
     ExportSheet.cpp
     ExportRun.cpp
