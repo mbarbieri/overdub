@@ -60,6 +60,9 @@ json transportSection (const ui::OpenSong* song)
         { "running_pass_start", orNull (song->runningPassStart()) },
         { "running_pass_number", song->recordingPassNumber() },
         { "saving_pass", song->isSavingPass() },
+        { "heard_transpose", song->heardTranspose() },
+        { "transposing", song->isTransposing() },
+        { "transpose_rendering", song->isTransposeRendering() },
     };
 }
 

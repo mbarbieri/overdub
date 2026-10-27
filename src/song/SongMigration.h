@@ -42,6 +42,7 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
 //           order, wrapping after the last (deterministic, no randomness).
 //   4 -> 5 (issue #201): the Song gains "exportFormat": "wav", "exportLength":
 //           "trim_to_video_take" and "exportDestination": "" (the export folder).
+//   5 -> 6 (issue #209): the Song gains "transpose": 0.
 std::span<const MigrationStep> songMigrationSteps();
 
 // migrateDocument with songMigrationSteps().

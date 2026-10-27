@@ -18,6 +18,7 @@ build/debug/tests/overdub_tests "[engine][pdc]"      # a subset by Catch2 tag
 - Configure applies `patches/*.patch` to `external/JUCE`; the submodule shows dirty on purpose. Never edit JUCE sources without regenerating the patch (see "Re-applying the JUCE patch" in `docs/building.md`). Patches keep CRLF bytes. If configure fails with `patch failed` after switching branches, the old patch is still applied: run `git -C external/JUCE checkout -- .` and configure again.
 - Link JUCE only through `overdub_core`, never `juce::juce_*` modules directly (duplicate symbols, second JUCE compile).
 - ONNX Runtime and pocketfft link only into `overdub-separate` (`src/separation/`), never `overdub_core` or the app; only `make app`'s bundle check catches a violation.
+- Signalsmith Stretch links only into `overdub_song`, privately, and only `song/TransposeRender.cpp` includes it: never on the audio thread's path (ADR 0009).
 - New test files must be added to `target_sources` in `tests/CMakeLists.txt`, under `tests/<area>/` mirroring `src/`. Tag `TEST_CASE`s `[area][subarea]`.
 - The full suite is the gate for every change.
 

@@ -33,6 +33,10 @@ struct Running
     // The open Song has no Pass: record_again has no record point while no Pass runs either
     // (ui.no_pass_to_record_again, field `op`, logged at debug, issue #216).
     bool songHasNoPass = false;
+    // The open Song's playback is not at its Transpose yet (OpenSong::isTransposing): record,
+    // record_again and export wait for it (ui.transposing, field `op`, presented as its Notice,
+    // issue #209).
+    bool transposing = false;
 };
 
 struct Refusal

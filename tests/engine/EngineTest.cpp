@@ -1,6 +1,7 @@
 #include "engine/Engine.h"
 #include "song/BackingTrackImport.h"
 #include "song/SongPackage.h"
+#include "song/Transpose.h"
 
 #include "EngineFixture.h"
 #include "TestProcessors.h"
@@ -277,6 +278,33 @@ TEST_CASE ("an imported Backing Track plays from sample 0, and plays silence onc
     silentEngine.play();
     DeviceDriver silentDevice { 2, 256 };
     CHECK (nonZeroSamples (silentDevice.render (silentEngine, 4).channels[0]).empty());
+}
+
+TEST_CASE ("a Backing Track plays its render at the Song's Transpose, and silence while that render is missing", "[engine][playback][transpose]")
+{
+    TempPackage folder;
+    const auto source = folder.root.getChildFile ("Click.wav");
+    writeFloatWav (source, { impulse (2000, 300) });
+    const auto location = folder.root.getChildFile ("Song.overdub");
+    auto created = overdub::song::SongPackage::create (location, overdub::song::makeEmptySong (testSampleRate));
+    REQUIRE (created.has_value());
+    REQUIRE ((*created)->importBackingTrack (source).has_value());
+    auto song = (*created)->song();
+    // A stand-in render, told apart from the derived WAV by where its impulse is.
+    writeFloatWav (overdub::song::transposedFileFor (location, song.backingTracks.at (0), 3), { impulse (2000, 500) });
+
+    const auto impulsesAt = [&] (int transpose) {
+        song.transpose = transpose;
+        Engine engine { stereoConfig() };
+        engine.loadSong (song, location);
+        engine.play();
+        DeviceDriver device { 2, 256 };
+        return nonZeroSamples (device.render (engine, 4).channels[0]);
+    };
+
+    CHECK (impulsesAt (0) == std::vector<std::int64_t> { 300 });
+    CHECK (impulsesAt (3) == std::vector<std::int64_t> { 500 });
+    CHECK (impulsesAt (-2).empty());
 }
 
 TEST_CASE ("a loaded plan is pending until the next callback takes it", "[engine][plan]")

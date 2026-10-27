@@ -40,15 +40,23 @@ TEST_CASE ("the top bar's controls fit side by side at the smallest window width
     const Rectangle<int> bar { 0, 0, minimumWindowWidth, topBarHeight };
     const auto layout = topBarLayout (bar);
 
-    checkInsideAndApart (bar, { layout.modeButtons[0], layout.modeButtons[1], layout.controlIndicator, layout.rewind, layout.playStop, layout.record, layout.clock, layout.undo, layout.redo, layout.exportSlot });
+    checkInsideAndApart (bar, { layout.modeButtons[0], layout.modeButtons[1], layout.controlIndicator, layout.rewind, layout.playStop, layout.record, layout.clock, layout.undo, layout.redo, layout.transpose, layout.exportSlot });
     CHECK (layout.modeButtons[0].getX() < layout.modeButtons[1].getX());
     CHECK (layout.modeButtons[1].getRight() < layout.controlIndicator.getX());
     CHECK (layout.controlIndicator.getRight() < layout.rewind.getX());
     CHECK (layout.controlIndicator.getWidth() == 130);
-    CHECK (layout.undo.getWidth() == 103);
+    CHECK (layout.undo.getWidth() == 70);
     CHECK (layout.clock.getRight() < layout.undo.getX());
+    // Transpose between Redo and Export... (issue #209): its caption over the field, "st" and the
+    // spinner.
+    CHECK (layout.redo.getRight() < layout.transpose.getX());
+    CHECK (layout.transpose.getWidth() == 60);
+    CHECK (layout.transposeCaption.getBottom() <= layout.transposeField.getY());
+    CHECK (layout.transposeField.getRight() < layout.transposeUnit.getX());
+    CHECK (layout.transposeUnit.getRight() <= layout.transposeSpinner.getX());
+    CHECK (layout.transpose.contains (layout.transposeSpinner));
     // Export... at the right end (issue #200).
-    CHECK (layout.redo.getRight() < layout.exportSlot.getX());
+    CHECK (layout.transpose.getRight() < layout.exportSlot.getX());
     CHECK (layout.exportSlot.getWidth() == 150);
     CHECK (layout.exportSlot.getRight() <= bar.getRight());
 }
@@ -58,7 +66,7 @@ TEST_CASE ("at the fixture width Undo and Redo keep their full width beside the 
     const Rectangle<int> bar { 0, 0, 1200, topBarHeight };
     const auto layout = topBarLayout (bar);
 
-    checkInsideAndApart (bar, { layout.modeButtons[1], layout.controlIndicator, layout.rewind, layout.clock, layout.undo, layout.redo, layout.exportSlot });
+    checkInsideAndApart (bar, { layout.modeButtons[1], layout.controlIndicator, layout.rewind, layout.clock, layout.undo, layout.redo, layout.transpose, layout.exportSlot });
     CHECK (layout.controlIndicator.getRight() < layout.rewind.getX());
     CHECK (layout.undo.getWidth() == 190);
     CHECK (layout.redo.getWidth() == 190);

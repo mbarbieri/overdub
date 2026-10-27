@@ -134,6 +134,9 @@ private:
     IntentResult setInputChannels (const song::Id& trackId, std::vector<int> channels);
     IntentResult setMonitoring (const song::Id& trackId, bool on);
     IntentResult setPreRoll (song::PreRoll preRoll);
+    // One undo step "Transpose +3"; the same value again changes nothing. Errors:
+    // song.transpose_out_of_range (presented), refusals.
+    IntentResult setTranspose (int semitones);
     IntentResult armCamera (bool armed);
     IntentResult cameraAccessAnswered (bool granted);
     IntentResult setCameraArmed (bool armed);

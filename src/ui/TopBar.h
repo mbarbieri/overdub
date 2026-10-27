@@ -13,7 +13,9 @@
 // The always-visible top bar (issue #9 resolution): Record · Edit, the transport (⏮ ▶/■ ●) with
 // the clock and its REC · PASS n line, Undo / Redo naming their steps, and Export..., which opens
 // the Export sheet (issue #200); while an export runs, its status and progress stand in its place,
-// with ✕, which cancels it (issue #202).
+// with ✕, which cancels it (issue #202). Before it, Transpose (issue #209): "TRANSPOSE" over the
+// field, "st" and a spinner while its renders run; the field is highlighted unless Transpose is 0,
+// and a whole number typed into it runs set_transpose.
 // While a control client is connected it names the controlling process (ADR 0008 Security, issue
 // #177). Thin: it shows a TopBarState and turns clicks into Intents.
 namespace overdub::ui
@@ -35,6 +37,9 @@ struct TopBarState
     // While an export runs: "Preparing…" or "Exporting… 42%" (exportStatusText), and its progress.
     std::optional<std::string> exportStatus;
     double exportProgress = 0.0;
+    int transpose = 0;               // the Song's
+    bool transposeRendering = false; // OpenSong::isTransposeRendering
+    bool canTranspose = false;       // set_transpose may run
     // The connected control clients' process names, oldest connection first.
     std::vector<std::string> controllingProcesses;
 };
@@ -42,6 +47,10 @@ struct TopBarState
 // The running export's status: "Preparing…" while it waits for the audio to let go of the
 // plugins, then "Exporting… 42%" (the fraction written, rounded down).
 std::string exportStatusText (bool waitingForAudio, double progress);
+
+// A whole number typed into the Transpose field (what song::transposeText shows), with one optional sign (+, - or U+2212 minus) and
+// spaces around it; none for anything else. The range is the handler's to check.
+std::optional<int> parseTranspose (const std::string& text);
 
 // The indicator's name line: "<first>", or "<first> +N" with N other processes; empty with none.
 std::string controlIndicatorName (const std::vector<std::string>& processes);
@@ -78,6 +87,19 @@ private:
     juce::String name;
 };
 
+// A small arc turning while it is visible: the Transpose renders run.
+class Spinner final : public juce::Component, private juce::Timer
+{
+public:
+    void visibilityChanged() override;
+    void paint (juce::Graphics& g) override;
+
+private:
+    void timerCallback() override;
+
+    int step = 0;
+};
+
 class TopBar final : public juce::Component
 {
 public:
@@ -98,6 +120,10 @@ public:
     ClockDisplay clock;
     juce::TextButton undoButton { "Undo" };
     juce::TextButton redoButton { "Redo" };
+    juce::Label transposeCaption { {}, "TRANSPOSE" };
+    juce::Label transposeField;
+    juce::Label transposeUnit { {}, "st" };
+    Spinner transposeSpinner;
     ControlIndicator controlIndicator;
     juce::TextButton exportButton { juce::String::fromUTF8 ("Export\xe2\x80\xa6") };
     juce::Label exportStatusLabel;
@@ -106,6 +132,9 @@ public:
 
 private:
     void send (const Intent& intent);
+    void transposeEntered();
+
+    std::string shownTranspose = "0";
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TopBar)
 };

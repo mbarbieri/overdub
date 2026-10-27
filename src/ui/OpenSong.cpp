@@ -4,6 +4,7 @@
 #include "core/Log.h"
 #include "song/InsertEdits.h"
 #include "song/MixEdits.h"
+#include "song/Transpose.h"
 #include "ui/TrackRowEdits.h"
 
 #include <algorithm>
@@ -24,11 +25,15 @@ OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding aud
                [this] (const std::string& hash) { return package_->loadPluginState (hash); },
                package_->song().sampleRate,
                blockSizeOf (audio)),
-      playback (package_->location())
+      playback (package_->location()),
+      // The derived audio plays until every render of the Song's Transpose is there.
+      heardSemitones (song::missingTransposeRenders (package_->location(), package_->song()).empty() ? package_->song().transpose : 0)
 {
     package_->setPluginStateCapture ([this] (song::Song& song) { capturePluginState (song); });
+    song::deleteTransposeRendersExcept (package_->location(), package_->song().transpose);
     inserts.sync (song());
     attachAudio (std::move (audio));
+    advanceTranspose (song::SongPackage::Clock::now()); // starts the missing renders; nothing has failed yet
 }
 
 OpenSong::~OpenSong()
@@ -563,6 +568,8 @@ std::optional<core::Error> OpenSong::advanceConversion (song::SongPackage::Clock
 std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point now)
 {
     auto errors = handleCrashes();
+    if (auto error = advanceTranspose (now))
+        errors.push_back (std::move (*error));
     for (auto& error : handleCameraChanges())
         errors.push_back (std::move (error));
     if (auto* exporting = std::get_if<ExportActivity> (&activity))
@@ -828,7 +835,60 @@ void OpenSong::reloadEngine()
     }
     inserts.sync (song());
     if (binding.engine != nullptr)
-        binding.engine->loadSong (song(), package_->location(), inserts.insertFactory(), monitored);
+        binding.engine->loadSong (heardSong(), package_->location(), inserts.insertFactory(), monitored);
+}
+
+song::Song OpenSong::heardSong() const
+{
+    auto heard = song();
+    heard.transpose = heardSemitones;
+    return heard;
+}
+
+std::optional<core::Error> OpenSong::advanceTranspose (song::SongPackage::Clock::time_point now)
+{
+    const auto target = song().transpose;
+    if (target != failedSemitones)
+        failedRenders.clear();
+    std::optional<core::Error> failure;
+    if (transposeRun != nullptr)
+    {
+        if (transposeRun->semitones() != target)
+        {
+            transposeRun->cancel (now);
+            transposeRun.reset();
+        }
+        else if (auto ended = transposeRun->advance (now))
+        {
+            transposeRun.reset();
+            if (! ended->has_value())
+            {
+                failure = ended->error();
+                failedSemitones = target;
+                failedRenders.insert (failure->fields.value ("backing_track_id", std::string()));
+            }
+            else if (heardSemitones == target)
+                reloadEngine(); // Backing Tracks added since: their renders play now
+        }
+        else
+            return std::nullopt;
+    }
+
+    auto missing = song::missingTransposeRenders (package_->location(), song());
+    std::erase_if (missing, [this] (const song::TransposeRenderJob& job) { return failedRenders.contains (job.backingTrackId); });
+    if (! missing.empty())
+    {
+        transposeRun = song::TransposeRun::start (song().sampleRate, target, std::move (missing), now);
+        return failure;
+    }
+    if (heardSemitones != target && failedRenders.empty())
+    {
+        core::logEvent (core::Level::info, "ui.transpose_heard", { { "from_semitones", heardSemitones }, { "to_semitones", target } });
+        heardSemitones = target;
+        song::deleteTransposeRendersExcept (package_->location(), target);
+        reloadEngine();
+    }
+    return failure;
 }
 
 core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, song::SongPackage::Clock::time_point now)

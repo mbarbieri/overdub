@@ -27,7 +27,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 5;
+inline constexpr int songFormatVersion = 6;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -235,6 +235,9 @@ struct Song
     std::vector<Take> takes;
     std::vector<BackingTrack> backingTracks;
     std::vector<VideoTake> videoTakes;
+    // Every Backing Track's pitch shift in whole semitones, -12..+12 (ADR 0009, song/Transpose.h).
+    // Undoable; Takes are never transposed. Format 6.
+    int transpose = 0;
 
     // Persisted settings outside undo history.
     PreRoll preRoll = PreRoll::off;

@@ -167,6 +167,7 @@ inline Song fullyPopulatedSong()
     song.exportFormat = ExportFormat::mp4;
     song.exportLength = VideoLength::fullSong;
     song.exportDestination = "/Users/someone/Music/Mixes/Band Mix.mp4";
+    song.transpose = -3;
     return song;
 }
 } // namespace overdub::song::testing

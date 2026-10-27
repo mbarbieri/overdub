@@ -37,6 +37,10 @@ constexpr std::array codeTable {
     CodeEntry { "capture.camera_unavailable", Tier::notice, "The camera could not be opened." },
     CodeEntry { "capture.video_frames_dropped", Tier::notice, "The camera dropped frames during this Pass." },
     CodeEntry { "ui.export_running", Tier::notice, "Wait for the export to finish." },
+    CodeEntry { "ui.transposing", Tier::notice, "Transposing\xe2\x80\xa6 Wait for the Backing Tracks to be transposed." },
+    CodeEntry { "song.transpose_out_of_range", Tier::notice, "Transpose is a whole number of semitones from \xe2\x88\x92"
+                                                             "12 to +12." },
+    CodeEntry { "song.transpose_render_failed", Tier::notice, "A Backing Track could not be transposed. Set Transpose again to try again." },
     CodeEntry { "ui.export_finished", Tier::notice, "The export is written." },
     CodeEntry { "ui.export_cancelled", Tier::notice, "The export was cancelled." },
     CodeEntry { "export.nothing_to_export", Tier::notice, "The Song has no Clips to export." },

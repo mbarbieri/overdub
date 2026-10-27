@@ -93,6 +93,7 @@ helper_runs_from_bundle ()
 notices_list_ort_and_pocketfft ()
 {
     grep -q "ONNX Runtime" "${notices}" && grep -q "MIT License" "${notices}" && grep -q "pocketfft" "${notices}" \
+        && grep -q "Signalsmith Stretch" "${notices}" && grep -q "Signalsmith Linear" "${notices}" \
         && test -s "${app}/Contents/Resources/onnxruntime-ThirdPartyNotices.txt"
 }
 
@@ -116,7 +117,7 @@ check "ONNX Runtime dylib's otool -L shows no build tree or repo paths" links_wi
 check "helper's rpaths are bundle-relative" rpaths_are_bundle_relative "${helper}"
 check "Overdub binary does not link ONNX Runtime" app_binary_does_not_link_ort
 check "helper runs from the bundle" helper_runs_from_bundle
-check "THIRD_PARTY_NOTICES lists ONNX Runtime and pocketfft" notices_list_ort_and_pocketfft
+check "THIRD_PARTY_NOTICES lists ONNX Runtime, pocketfft and Signalsmith Stretch" notices_list_ort_and_pocketfft
 check "codesign --verify --deep --strict passes" codesign --verify --deep --strict "${app}"
 
 if [ "${failures}" -ne 0 ]; then

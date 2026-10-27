@@ -223,6 +223,7 @@ Running MainComponent::running() const
         .song = songContent != nullptr ? std::optional (songContent->currentSong().activityKind()) : std::nullopt,
         .calibrating = calibrationRunning != nullptr && calibrationRunning(),
         .songHasNoPass = songContent != nullptr && songContent->currentSong().song().passes.empty(),
+        .transposing = songContent != nullptr && songContent->currentSong().isTransposing(),
     };
 }
 

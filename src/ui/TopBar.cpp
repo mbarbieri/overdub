@@ -3,6 +3,10 @@
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 
+#include "song/Transpose.h"
+
+#include <cctype>
+#include <charconv>
 #include <cmath>
 
 namespace overdub::ui
@@ -22,6 +26,51 @@ std::string exportStatusText (bool waitingForAudio, double progress)
     if (waitingForAudio)
         return "Preparing\xe2\x80\xa6";
     return "Exporting\xe2\x80\xa6 " + std::to_string ((int) std::floor (progress * 100.0)) + "%";
+}
+
+std::optional<int> parseTranspose (const std::string& text)
+{
+    auto trimmed = juce::String::fromUTF8 (text.c_str()).trim();
+    bool negative = false;
+    if (trimmed.startsWithChar ('+'))
+        trimmed = trimmed.substring (1);
+    else if (trimmed.startsWithChar ('-') || trimmed.startsWithChar ((juce::juce_wchar) 0x2212))
+    {
+        negative = true;
+        trimmed = trimmed.substring (1);
+    }
+    const auto digits = trimmed.toStdString();
+    if (digits.empty() || ! std::isdigit ((unsigned char) digits.front()))
+        return std::nullopt;
+    int value = 0;
+    const auto [end, error] = std::from_chars (digits.data(), digits.data() + digits.size(), value);
+    if (error != std::errc() || end != digits.data() + digits.size())
+        return std::nullopt;
+    return negative ? -value : value;
+}
+
+void Spinner::visibilityChanged()
+{
+    if (isVisible())
+        startTimerHz (20);
+    else
+        stopTimer();
+}
+
+void Spinner::timerCallback()
+{
+    step = (step + 1) % 20;
+    repaint();
+}
+
+void Spinner::paint (juce::Graphics& g)
+{
+    const auto area = getLocalBounds().toFloat().reduced (2.0f);
+    const auto start = juce::MathConstants<float>::twoPi * (float) step / 20.0f;
+    juce::Path arc;
+    arc.addCentredArc (area.getCentreX(), area.getCentreY(), area.getWidth() / 2.0f, area.getHeight() / 2.0f, 0.0f, start, start + 4.0f, true);
+    g.setColour (colours::accent);
+    g.strokePath (arc, juce::PathStrokeType (2.0f));
 }
 
 std::string controlIndicatorName (const std::vector<std::string>& processes)
@@ -118,6 +167,28 @@ TopBar::TopBar()
         addAndMakeVisible (button);
     }
     addAndMakeVisible (clock);
+
+    transposeCaption.setColour (juce::Label::textColourId, colours::dimText);
+    transposeCaption.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+    transposeCaption.setBorderSize ({});
+    transposeUnit.setColour (juce::Label::textColourId, colours::dimText);
+    transposeUnit.setFont (juce::FontOptions (11.0f));
+    transposeUnit.setBorderSize ({});
+    for (auto* label : { &transposeCaption, &transposeUnit })
+    {
+        label->setInterceptsMouseClicks (false, false);
+        addAndMakeVisible (label);
+    }
+    transposeField.setEditable (true, false, false);
+    transposeField.setFont (juce::FontOptions (12.0f));
+    transposeField.setJustificationType (juce::Justification::centred);
+    transposeField.setColour (juce::Label::textColourId, colours::text);
+    transposeField.setColour (juce::Label::outlineColourId, colours::line);
+    transposeField.setText (shownTranspose, juce::dontSendNotification);
+    transposeField.onTextChange = [this] { transposeEntered(); };
+    addAndMakeVisible (transposeField);
+    transposeSpinner.setInterceptsMouseClicks (false, false);
+    addChildComponent (transposeSpinner);
     exportStatusLabel.setColour (juce::Label::textColourId, colours::dimText);
     exportStatusLabel.setFont (juce::FontOptions (11.0f));
     exportStatusLabel.setInterceptsMouseClicks (false, false);
@@ -133,6 +204,15 @@ void TopBar::send (const Intent& intent)
 {
     if (onIntent)
         onIntent (intent);
+}
+
+void TopBar::transposeEntered()
+{
+    const auto typed = parseTranspose (transposeField.getText().toStdString());
+    // The field shows the Song's value until the handler has changed it (show() is called back).
+    transposeField.setText (juce::String::fromUTF8 (shownTranspose.c_str()), juce::dontSendNotification);
+    if (typed.has_value())
+        send (SongIntent { intent::SetTranspose { *typed } });
 }
 
 void TopBar::show (const TopBarState& state)
@@ -161,6 +241,13 @@ void TopBar::show (const TopBarState& state)
     exportStatusLabel.setText (juce::String::fromUTF8 (state.exportStatus.value_or ("").c_str()), juce::dontSendNotification);
     exportProgressBar.setFraction (state.exportProgress);
     controlIndicator.show (controlIndicatorName (state.controllingProcesses));
+
+    shownTranspose = song::transposeText (state.transpose);
+    if (! transposeField.isBeingEdited())
+        transposeField.setText (juce::String::fromUTF8 (shownTranspose.c_str()), juce::dontSendNotification);
+    transposeField.setColour (juce::Label::backgroundColourId, state.transpose != 0 ? colours::accent : colours::background);
+    transposeField.setEnabled (state.songOpen && state.canTranspose);
+    transposeSpinner.setVisible (state.songOpen && state.transposeRendering);
 }
 
 void TopBar::resized()
@@ -174,6 +261,10 @@ void TopBar::resized()
     clock.setBounds (layout.clock);
     undoButton.setBounds (layout.undo);
     redoButton.setBounds (layout.redo);
+    transposeCaption.setBounds (layout.transposeCaption);
+    transposeField.setBounds (layout.transposeField);
+    transposeUnit.setBounds (layout.transposeUnit);
+    transposeSpinner.setBounds (layout.transposeSpinner);
     exportButton.setBounds (layout.exportSlot);
     auto exportSlot = layout.exportSlot;
     cancelExportButton.setBounds (exportSlot.removeFromRight (cancelExportButtonWidth));
