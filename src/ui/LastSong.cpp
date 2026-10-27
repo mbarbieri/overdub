@@ -71,4 +71,11 @@ core::Expected<void> writeLastSong (const juce::File& file, const juce::File& pa
         return std::unexpected (core::Error { "ui.last_song_write_failed", "the Last Song file could not be written", { { "path", pathOf (file) } } });
     return {};
 }
+
+core::Expected<void> forgetLastSong (const juce::File& file)
+{
+    if (! file.deleteFile())
+        return std::unexpected (core::Error { "ui.last_song_remove_failed", "the Last Song file could not be removed", { { "path", pathOf (file) } } });
+    return {};
+}
 } // namespace overdub::ui

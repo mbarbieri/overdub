@@ -40,7 +40,9 @@ Tier tierFor (std::string_view code);
 // The sentence the user reads for a code; unknown codes get a generic sentence that names it.
 // ui.sample_rate_mismatch names song_rate and device_rate, and points to Settings only when
 // rate_offered (the device offers the Song's rate); ui.device_rate_substituted names
-// requested_rate and opened_rate; ui.export_finished names file_name.
+// requested_rate and opened_rate; ui.export_finished names file_name; ui.last_song_missing names
+// name and path, and ui.last_song_failed names name and gives the sentence of its fields code and
+// error_fields.
 std::string sentenceFor (std::string_view code, const core::Fields& fields = {});
 
 // The Notice an export that wrote its file posts (issue #200), with the fields file_name and path:

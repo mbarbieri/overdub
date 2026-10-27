@@ -3,7 +3,8 @@
 # Usage: .claude/skills/verify/scripts/journey-last-song.sh [run-dir]   (default: build/verify/latest)
 # Needs a launch.sh launch with no Song open. Creates a Song under $RUN_DIR/songs/, quits that launch
 # (cleanup.sh), launches again with LAST_SONG_FILE naming the first launch's file, checks the Song
-# is open and ui.last_song_reopened was logged, then quits the second launch. Evidence:
+# is open and ui.last_song_reopened was logged, then quits the second launch. A third launch, with
+# the Song moved away, shows ui.last_song_missing and keeps the Last Song. Evidence:
 # $RUN_DIR/journeys/last-song/ (the second launch's run dir is in relaunch.txt).
 RUN_DIR="${1:-}"
 source "$(dirname "$0")/journey-lib.sh"
@@ -43,4 +44,21 @@ check "ui.last_song_reopened was logged once with its path" \
     'length == 1 and .[0].lvl == "info" and .[0].path == $song' --arg song "$SONG"
 
 "$SCRIPTS/cleanup.sh" "$SECOND_RUN" >"$EVIDENCE/cleanup-second.txt" 2>&1 || journey_fail "cleanup of the second launch failed"
+
+# Issue #207: a missing Last Song is named in a Notice and stays remembered.
+mv "$SONG" "$RUN_DIR/songs/Away.overdub" || journey_fail "could not move $SONG away"
+relaunched="$(LAST_SONG_FILE="$LAST_SONG" "$SCRIPTS/launch.sh" last-song-missing 2>&1)" \
+    || journey_fail "the third launch failed: $relaunched"
+echo "$relaunched" >"$EVIDENCE/relaunch-missing.txt"
+THIRD_RUN="$(grep '^RUN_DIR=' <<<"$relaunched" | cut -d= -f2-)"
+SOCKET="$(cat "$THIRD_RUN/socket")"
+LOG="$(cat "$THIRD_RUN/log-path")"
+snapshot missing song messages
+check "the third launch opened no Song and shows ui.last_song_missing" "$(state song messages)" \
+    '.song == null and .messages.notice.code == "ui.last_song_missing"'
+check "ui.last_song_missing was logged at warn with its path" \
+    "$(jq -c 'select(.event == "ui.last_song_missing")' "$LOG" | jq -s .)" \
+    'length == 1 and .[0].lvl == "warn" and .[0].path == $song' --arg song "$SONG"
+check "the Last Song is still remembered" "$(cat "$LAST_SONG" 2>/dev/null || echo null)" '.path == $song' --arg song "$SONG"
+"$SCRIPTS/cleanup.sh" "$THIRD_RUN" >"$EVIDENCE/cleanup-third.txt" 2>&1 || journey_fail "cleanup of the third launch failed"
 journey_end

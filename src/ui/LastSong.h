@@ -24,4 +24,6 @@ juce::File lastSongFileFor (const char* overrideVariable, bool scriptedLaunch);
 core::Expected<std::optional<juce::File>> readLastSong (const juce::File& file);
 // ui.last_song_write_failed (path).
 core::Expected<void> writeLastSong (const juce::File& file, const juce::File& package);
+// Removes the record: no Last Song. ui.last_song_remove_failed (path).
+core::Expected<void> forgetLastSong (const juce::File& file);
 } // namespace overdub::ui

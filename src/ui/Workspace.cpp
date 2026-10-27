@@ -180,13 +180,18 @@ IntentResult Workspace::newSongAt (const juce::File& chosen)
 IntentResult Workspace::openSongFrom (const juce::File& chosen)
 {
     // A package is never open twice: opening the open Song again changes nothing.
-    if (song != nullptr && song->package().location() == packageLocationOpened (chosen))
+    if (isOpenSong (chosen))
         return IntentDone {};
     auto opened = openSongAt (chosen);
     if (! opened.has_value())
         return presented (opened.error());
     showSong (std::move (opened->package), opened->notices);
     return IntentDone {};
+}
+
+bool Workspace::isOpenSong (const juce::File& chosen) const
+{
+    return song != nullptr && song->package().location() == packageLocationOpened (chosen);
 }
 
 IntentResult Workspace::reopenLastSong()
@@ -197,22 +202,38 @@ IntentResult Workspace::reopenLastSong()
     if (files.lastSong == juce::File())
         return content.quietError (noLastSong ("not_recorded_here"));
     const auto recorded = readLastSong (files.lastSong);
-    // Logged once, never presented: the no-Song page shows as with no Last Song.
+    // Treated as no Last Song, logged once as itself and never presented.
     if (! recorded.has_value())
     {
         core::logError (recorded.error(), core::Level::warn);
-        return std::unexpected (recorded.error());
+        return std::unexpected (noLastSong ("unreadable"));
     }
     if (! recorded->has_value())
         return content.quietError (noLastSong ("none_recorded"));
 
-    // The open Song again changes nothing (openSongFrom), and nothing was reopened.
+    // The open Song again changes nothing, and nothing was reopened.
     const auto& package = **recorded;
-    const auto* before = song.get();
-    auto opened = openSongFrom (package);
-    if (opened.has_value() && song.get() != before)
-        core::logEvent (core::Level::info, "ui.last_song_reopened", { { "path", package.getFullPathName().toStdString() } });
-    return opened;
+    if (isOpenSong (package))
+        return IntentDone {};
+
+    // Issue #207: a missing package (an unmounted drive) stays the Last Song and comes back by
+    // itself; one that fails to open is forgotten, so it stops failing on every launch.
+    const auto fields = core::Fields { { "path", package.getFullPathName().toStdString() }, { "name", package.getFileNameWithoutExtension().toStdString() } };
+    if (! package.exists())
+        return presented (core::Error { "ui.last_song_missing", "the Last Song is not where it was", fields });
+    auto opened = openSongAt (package);
+    if (! opened.has_value())
+    {
+        if (auto forgotten = forgetLastSong (files.lastSong); ! forgotten.has_value())
+            core::logError (forgotten.error(), core::Level::warn);
+        auto failedFields = fields;
+        failedFields["code"] = opened.error().code;
+        failedFields["error_fields"] = opened.error().fields;
+        return presented (core::Error { "ui.last_song_failed", "the Last Song could not be opened: " + opened.error().message, std::move (failedFields) });
+    }
+    showSong (std::move (opened->package), opened->notices);
+    core::logEvent (core::Level::info, "ui.last_song_reopened", { { "path", fields["path"] } });
+    return IntentDone {};
 }
 
 IntentResult Workspace::duplicateSongTo (const juce::File& chosen)
