@@ -22,5 +22,8 @@ inline const std::array songMenuItems {
                                 "E",
                    SongIntent { intent::ShowExport { true } } },
     SongMenuItem { "Cancel Export", "", SongIntent { intent::CancelExport {} } },
+    SongMenuItem { "Record Again", "\xe2\x87\xa7"
+                                   "R",
+                   SongIntent { intent::RecordAgain {} } },
 };
 } // namespace overdub::ui

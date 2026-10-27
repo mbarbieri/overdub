@@ -110,6 +110,7 @@ target_sources(overdub_tests PRIVATE
     ui/AddTrackTest.cpp
     ui/RecordFaderUiTest.cpp
     ui/RecordMeterUiTest.cpp
+    ui/RecordAgainTest.cpp
     ui/RecordPageTest.cpp
     ui/RecordViewTest.cpp
     ui/SeparateTest.cpp

@@ -82,6 +82,7 @@ TEST_CASE ("the top bar's ✕ cancels the running export: the Song is idle, a No
 
     // The engine plays the Song again.
     REQUIRE (pressKey (window, juce::KeyPress::spaceKey));
+    f.runBlocks (1); // Record mode plays at the next poll (issue #216)
     f.runBlocks (1);
     CHECK (f.engine.isPlaying());
 }

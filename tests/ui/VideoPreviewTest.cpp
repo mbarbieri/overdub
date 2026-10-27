@@ -264,6 +264,7 @@ TEST_CASE ("the Record stage shows playback when not recording, and the camera's
 
     // Armed and playing: playback.
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1); // Record mode plays at the next poll (issue #216)
     f.runBlocks (1);
     CHECK (page.showsStagePlayback());
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));

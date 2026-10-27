@@ -67,7 +67,7 @@ std::optional<Intent> intentForKey (KeyChord key)
         return std::nullopt;
     }
     if (key.shift)
-        return std::nullopt;
+        return character == U'r' ? std::optional<Intent> (SongIntent { intent::RecordAgain {} }) : std::nullopt;
 
     switch (character)
     {

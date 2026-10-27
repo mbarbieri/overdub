@@ -8,6 +8,7 @@
 #include "song/FixtureSongBuilder.h"
 #include "ui/UiHarness.h"
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <string>
@@ -66,6 +67,9 @@ struct MainWindowFixture
         };
         window->askCameraAccess = [this] (std::function<void (bool)> done) { done (cameraAccessGranted); };
         window->showPluginWindowsOnDesktop = false; // editor windows are built, never shown
+        // In Record mode a Space while stopped plays at the next poll, and two Spaces are a
+        // double-Space only at the same instant (tests/ui/RecordAgainTest.cpp sets its own).
+        window->doubleTapInterval = [] { return std::chrono::milliseconds (0); };
         layOut (*window, windowWidth, windowHeight);
         window->setOpenSong (openSong.get());
     }

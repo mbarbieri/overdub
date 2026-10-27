@@ -289,6 +289,7 @@ TEST_CASE ("while a Record fader has focus the arrows do not move the playhead; 
     // Other keys still reach the window while it has focus.
     clickAt (fader, fader.thumbCentre());
     CHECK (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1); // Record mode plays at the next poll (issue #216)
     f.runBlocks (1);
     CHECK (f.openSong->isPlaying());
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));

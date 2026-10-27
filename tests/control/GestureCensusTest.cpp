@@ -226,6 +226,11 @@ std::vector<Probe> keyProbes()
     addKey ("escape", juce::KeyPress (juce::KeyPress::escapeKey));
     addKey ("return", juce::KeyPress (juce::KeyPress::returnKey));
     addKey ("home", juce::KeyPress (juce::KeyPress::homeKey));
+    // Record mode's double-Space (issue #216): two Spaces at once are within any double-click interval.
+    probes.push_back ({ "key:space,space", ComponentPath::windowContent(), [] (juce::Component& window) {
+        window.keyPressed (juce::KeyPress (juce::KeyPress::spaceKey));
+        window.keyPressed (juce::KeyPress (juce::KeyPress::spaceKey));
+    } });
     return probes;
 }
 

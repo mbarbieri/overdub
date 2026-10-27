@@ -7,6 +7,7 @@
 #include "ui/TrackRowEdits.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace overdub::ui
 {
@@ -165,11 +166,14 @@ core::Expected<void> OpenSong::record()
         return std::unexpected (std::move (*refused));
     if (binding.engine == nullptr)
         return std::unexpected (*audioProblem());
+    return startPass (binding.engine->position(), binding.engine->isPlaying());
+}
 
+core::Expected<void> OpenSong::startPass (song::SampleCount recordPoint, bool playing)
+{
     const auto passNumber = nextPassNumber (song());
     const auto preRollSamples = (song::SampleCount) song::preRollSeconds (song().preRoll) * song().sampleRate;
-    const auto usePreRoll = ! binding.engine->isPlaying() && preRollSamples > 0;
-    const auto recordPoint = binding.engine->position();
+    const auto usePreRoll = ! playing && preRollSamples > 0;
 
     capture::PassRecorderOptions options;
     if (usePreRoll)
@@ -193,9 +197,41 @@ core::Expected<void> OpenSong::record()
         binding.engine->seek (playFrom);
         core::logEvent (core::Level::info, "ui.pre_roll_started", { { "record_point", recordPoint }, { "play_from", playFrom }, { "pre_roll_seconds", song::preRollSeconds (song().preRoll) } });
     }
-    if (! binding.engine->isPlaying())
+    if (! playing)
         binding.engine->play();
     return {};
+}
+
+core::Expected<void> OpenSong::recordAgain()
+{
+    if (auto refused = refusal (activity, Gesture::record))
+        return std::unexpected (std::move (*refused));
+    if (binding.engine == nullptr)
+        return std::unexpected (*audioProblem());
+    if (isRecording())
+    {
+        // The Pass may already have ended on the audio thread, its start gone with it: poll() reads
+        // the record point from the Pass once it is finished.
+        recordAgainAfterPass = true;
+        stop();
+        return {};
+    }
+    // MainComponent::run refuses record_again while the Song has no Pass (ui/Availability.h).
+    if (! OVERDUB_CHECK (! song().passes.empty(), "ui.record_again_without_pass"))
+        return {};
+    return recordAgainFrom (song().passes.back().startSample);
+}
+
+core::Expected<void> OpenSong::recordAgainFrom (song::SampleCount recordPoint)
+{
+    binding.engine->stop();
+    binding.engine->seek (recordPoint);
+    const core::Fields fields { { "record_point", recordPoint }, { "pass_id", song().passes.back().id } };
+    // The engine still reports playing until its next block: the transport is stopped all the same.
+    auto started = startPass (recordPoint, false);
+    if (started.has_value())
+        core::logEvent (core::Level::info, "ui.record_again", fields);
+    return started;
 }
 
 std::optional<song::SampleCount> OpenSong::preRollRecordPoint() const
@@ -275,6 +311,7 @@ core::Expected<void> OpenSong::playOrStop()
         return std::unexpected (std::move (*refused));
     if (binding.engine == nullptr)
         return {};
+    recordAgainAfterPass = false; // Space after Record Again stops for good
     if (isRecording() || binding.engine->isPlaying())
         stop();
     else
@@ -535,6 +572,14 @@ std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point no
         if (auto finished = pass->recorder->poll (now))
             for (auto& error : finishPass (std::move (*finished)))
                 errors.push_back (std::move (error));
+    if (recordAgainAfterPass && ! isRecording())
+    {
+        recordAgainAfterPass = false;
+        // A Pass that captured nothing added none: the one before it is the most recent.
+        if (! song().passes.empty())
+            if (auto started = recordAgainFrom (song().passes.back().startSample); ! started.has_value())
+                errors.push_back (started.error());
+    }
     if (auto error = advanceSeparation (now))
         errors.push_back (std::move (*error));
     if (auto error = advanceConversion (now))

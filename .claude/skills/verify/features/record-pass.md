@@ -8,6 +8,7 @@ The user Arms one or more Tracks (and optionally the camera) and presses record.
 - `record-import`: Record mode → **Import...** (or dropping files on the window) adds Backing Tracks.
 - `record-arm`: the arm button on a Record row. The input picker and Monitoring are on the same row.
 - `record-pass`: **R** (or ●) starts a Pass; Space (or ■) stops it. The clock reads `REC · PASS n`.
+- `record-again`: **⇧R**, File → Record Again, or double-Space in Record mode starts a new Pass at the most recent Pass's record point (op `record_again`), stopping a running Pass first. In Record mode a single Space while stopped plays only after the macOS double-click interval. Not driven by the journey.
 - `record-video`: the camera arm in the stage bar, or the Camera lane header's A in Edit mode, records a Video Take with the Pass. While the camera is Armed, Edit mode shows the Video Preview at the Mixer region's right end (`state window` has `video_preview_shown`).
 
 ## How to get to it (user POV)

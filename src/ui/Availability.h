@@ -30,6 +30,9 @@ struct Running
     std::optional<ActivityKind> song;
     // A loopback latency calibration (the Workspace's), which runs beside an export only.
     bool calibrating = false;
+    // The open Song has no Pass: record_again has no record point while no Pass runs either
+    // (ui.no_pass_to_record_again, field `op`, logged at debug, issue #216).
+    bool songHasNoPass = false;
 };
 
 struct Refusal

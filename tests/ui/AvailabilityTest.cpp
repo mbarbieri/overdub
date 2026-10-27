@@ -65,6 +65,18 @@ TEST_CASE ("cancel_export may run only while an export runs, beside a calibratio
     }
 }
 
+TEST_CASE ("record_again is refused, quietly, while the Song has no Pass and none runs", "[ui][availability][record_again]")
+{
+    const auto refused = refusalOf ("record_again", Running { .song = ActivityKind::idle, .songHasNoPass = true });
+    REQUIRE (refused.has_value());
+    CHECK (refused->error.code == "ui.no_pass_to_record_again");
+    CHECK (refused->error.fields == core::Fields { { "op", "record_again" } });
+    CHECK_FALSE (refused->presented);
+    CHECK (refusedCodes (Running { .song = ActivityKind::idle, .songHasNoPass = true }) == std::map<std::string, std::string> { { "cancel_export", "ui.no_export_running" }, { "record_again", "ui.no_pass_to_record_again" } });
+    CHECK_FALSE (refusalOf ("record_again", Running { .song = ActivityKind::pass, .songHasNoPass = true }).has_value());
+    CHECK_FALSE (refusalOf ("record_again", Running { .song = ActivityKind::idle }).has_value());
+}
+
 TEST_CASE ("with no Song open a latency calibration refuses only the App group but quit", "[ui][availability][calibration]")
 {
     std::map<std::string, std::string> expected;
@@ -78,7 +90,7 @@ TEST_CASE ("with no Song open a latency calibration refuses only the App group b
 TEST_CASE ("during a Pass only transport, view and plugin window ops, the Window group and quit may run", "[ui][availability][record]")
 {
     const std::set<std::string> allowed {
-        "record", "play_or_stop", "rewind", "cancel_run", "open_insert_editor", "close_plugin_window",
+        "record", "record_again", "play_or_stop", "rewind", "cancel_run", "open_insert_editor", "close_plugin_window",
         "set_export_format", "set_export_length", "set_export_destination", "set_export_video_take", "reveal_export",
         "select_clip", "select_video_take", "set_timeline_view", "set_vertical_scroll", "set_take_lanes_unfolded",
         "set_mixer_visible", "set_mixer_height", "set_passes_panel_open", "clear_clip_indicator",
@@ -90,10 +102,11 @@ TEST_CASE ("during a Pass only transport, view and plugin window ops, the Window
     CHECK (refusedCodes (Running { .song = ActivityKind::pass }) == expected);
 }
 
-TEST_CASE ("during an export only record, play, import, Track delete, Separation, conversion and opening the Export sheet are refused", "[ui][availability][export]")
+TEST_CASE ("during an export only record, record again, play, import, Track delete, Separation, conversion and opening the Export sheet are refused", "[ui][availability][export]")
 {
     const std::map<std::string, std::string> refused {
         { "record", "ui.export_running" },
+        { "record_again", "ui.export_running" },
         { "play_or_stop", "ui.export_running" },
         { "import_files", "ui.export_running" },
         { "delete_track", "ui.export_running" },
@@ -129,7 +142,7 @@ TEST_CASE ("a latency calibration refuses the App group but quit, and the Song o
     for (const auto& op : appOps)
         if (op != "quit")
             expected[op] = "ui.calibration_running";
-    for (const auto* op : { "record", "play_or_stop", "set_monitoring", "export", "show_export" })
+    for (const auto* op : { "record", "record_again", "play_or_stop", "set_monitoring", "export", "show_export" })
         expected[op] = "ui.calibration_running";
     expected["cancel_export"] = "ui.no_export_running";
 

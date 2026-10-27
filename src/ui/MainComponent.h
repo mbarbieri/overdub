@@ -2,6 +2,7 @@
 
 #include "core/Error.h"
 #include "ui/Availability.h"
+#include "ui/DoubleClickInterval.h"
 #include "ui/Intent.h"
 #include "ui/OpenSong.h"
 #include "ui/Pages.h"
@@ -12,6 +13,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -211,6 +213,8 @@ public:
     juce::File exportFolder = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Overdub");
     // The time a key press happens (the Mixer's arrow-key bursts); tests set a fixed one.
     std::function<song::SongPackage::Clock::time_point()> clock = [] { return song::SongPackage::Clock::now(); };
+    // How soon a second Space makes a double-Space in Record mode (issue #216); tests set a fixed one.
+    std::function<std::chrono::milliseconds()> doubleTapInterval = systemDoubleClickInterval;
     // The App group's owner (the ui::Workspace): runs every AppIntent that run is given, and says
     // whether its loopback latency calibration runs.
     std::function<IntentResult (const AppIntent&)> runAppIntent;

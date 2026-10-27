@@ -349,6 +349,13 @@ struct Record // R, the ● button
     static constexpr auto fields = std::tuple {};
 };
 
+struct RecordAgain // ⇧R, File ▸ Record Again, double-Space in Record mode
+{
+    static constexpr std::string_view op = "record_again";
+    bool operator== (const RecordAgain&) const = default;
+    static constexpr auto fields = std::tuple {};
+};
+
 struct PlayOrStop // Space, the ▶/■ button
 {
     static constexpr std::string_view op = "play_or_stop";
@@ -730,7 +737,7 @@ using AppIntent = std::variant<intent::NewSongAt, intent::OpenSongAt, intent::Re
 using WindowIntent = std::variant<intent::ShowMode, intent::DismissAlerts>;
 
 using SongIntent = std::variant<intent::Edit,
-                                intent::Record, intent::PlayOrStop, intent::Rewind, intent::Undo, intent::Redo,
+                                intent::Record, intent::RecordAgain, intent::PlayOrStop, intent::Rewind, intent::Undo, intent::Redo,
                                 intent::Seek, intent::JumpToPass, intent::Nudge,
                                 intent::AddTrack, intent::ImportFiles, intent::DeleteTrack, intent::MoveTrack,
                                 intent::SetArmed, intent::SetInputChannels, intent::SetMonitoring,
