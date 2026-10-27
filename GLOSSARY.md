@@ -42,6 +42,14 @@ _Avoid_: Loop, accompaniment, stem
 Splitting one Backing Track into new Backing Tracks, one per instrument (vocals, drums, bass, guitar, piano, other), each on its own new Track. The new Backing Tracks behave like any other; they only remember which Backing Track they came from.
 _Avoid_: Stem split, demix, unmix
 
+**Transpose**:
+The Song's lasting pitch shift of every Backing Track, in whole semitones (0 by default). Takes are never transposed: they are recorded in the key you hear. Export plays it as heard.
+_Avoid_: Key shift, pitch shift, key change
+
+**Practice Speed**:
+The speed the whole Song plays at while rehearsing, as a percentage (100% by default). Pitch is unchanged. It never applies to a Pass or an Export, and the Song always opens at 100%.
+_Avoid_: Speed, tempo, playback rate
+
 **Video Take**:
 Camera footage captured during a pass, which stays aligned with that pass's takes on the timeline. A song has at most one camera armed at a time.
 _Avoid_: Video track, camera clip
