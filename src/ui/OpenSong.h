@@ -8,6 +8,7 @@
 #include "export/MovieExport.h"
 #include "plugin/AudioUnitLoader.h"
 #include "plugin/InsertHost.h"
+#include "song/PracticeSpeed.h"
 #include "song/SeparationRun.h"
 #include "song/SongPackage.h"
 #include "song/TransposeRender.h"
@@ -127,6 +128,21 @@
 // Backing Track the Song no longer has (an undone import or Separation) is deleted once no render
 // runs (ui.transpose_renders_deleted: count); a run rendering one is cancelled at once and started
 // again for the renders still missing.
+//
+// Practice Speed (issue #212, ADR 0009): held here, outside the Song and its history; a Song always
+// opens at 100%. At any other value, every source some Clip plays is rendered by a
+// song::PracticeSpeedRun into practiceRenderFolder(), a temp folder outside the package deleted with
+// the OpenSong, with the Song's Transpose applied to its Backing Tracks. The engine plays at
+// heardPracticeSpeed() (engine::PracticePlayback): poll() starts the renders the Song's Practice
+// Speed and Transpose lack (cancelling a run for another value), and once none is missing switches
+// playback to them at the same Song time (ui.practice_speed_heard), reloads the engine and deletes
+// every other render. Until then the previous audio plays. At the heard value, a source with no
+// render yet (a Clip of a Take just brought back) plays silence, and plays its render once the run
+// that makes it ends. 100% plays the Song's own audio at once. A failed render keeps the previous
+// audio and is handed back by poll() once (song.practice_render_failed, a Notice); its source is not
+// rendered again until the Practice Speed or Transpose changes, or the same Practice Speed is set
+// again. Edits, undo, redo, import and a
+// finished Separation start the renders they need at once.
 //
 // Message thread only.
 namespace overdub::ui
@@ -355,7 +371,18 @@ public:
     // Playback is not at the Song's Transpose yet, or renders for it are being made.
     bool isTransposing() const { return isTransposeRendering() || heardSemitones != song().transpose; }
 
-    // Call regularly (window timer): advances Transpose renders (see the header comment), an export (starts it once the audio has let go of
+    // Sets the Practice Speed (see the header comment). The same value again changes nothing.
+    // Errors: refusal()'s, song.practice_speed_out_of_range.
+    core::Expected<void> setPracticeSpeed (int speedPercent);
+    int practiceSpeed() const { return practiceTarget; }
+    // The Practice Speed playback uses.
+    int heardPracticeSpeed() const { return heardPractice.speedPercent; }
+    // A Practice Speed render runs (the top bar's spinner).
+    bool isPracticeRendering() const { return practiceRun != nullptr; }
+    // Where the Practice Speed renders are: a temp folder outside the package, deleted with this.
+    const juce::File& practiceRenderFolder() const { return practiceFolder; }
+
+    // Call regularly (window timer): advances Transpose and Practice Speed renders (see the header comment), an export (starts it once the audio has let go of
     // the plugins, or gives it up after ExportRun::audioTimeout; once it ends, reloads the engine and
     // returns its Error), finishes a Pass the audio thread has ended, rebuilds the plan when a
     // plugin loaded or changed its latency (not during a Pass), schedules a write when a plugin
@@ -381,6 +408,16 @@ private:
     void followTranspose();
     // The Song as the engine plays it: at heardTranspose().
     song::Song heardSong() const;
+    // What the engine plays at heardPracticeSpeed(): the renders there are of the heard key.
+    engine::PracticePlayback heardPracticePlayback() const;
+    // The key the Practice Speed renders are wanted for: the Practice Speed and the Song's Transpose
+    // ({} at 100%).
+    song::PracticeRenderKey practiceKey() const;
+    // Starts, finishes or cancels Practice Speed renders and switches what plays (see the header
+    // comment). Returns a failed render's Error.
+    std::optional<core::Error> advancePracticeSpeed (song::SongPackage::Clock::time_point now);
+    // advancePracticeSpeed now, unless a run for the wanted key runs (poll() hands back how it ends).
+    void followPracticeSpeed();
     // Advances a running conversion; once it ends, updates the engine and returns its Error.
     std::optional<core::Error> advanceConversion (song::SongPackage::Clock::time_point now);
     // After a history change: detaches the audio when the rate changed since `before`, else setMix
@@ -440,6 +477,14 @@ private:
     std::optional<std::vector<song::Id>> sweptBackingTracks;
     // Before `activity`: a run reads only its own files, never the package.
     std::unique_ptr<song::TransposeRun> transposeRun;
+    int practiceTarget = song::normalPracticeSpeed;
+    song::PracticeRenderKey heardPractice;
+    // The sources whose render of failedPracticeKey failed: not rendered again until the key changes.
+    song::PracticeRenderKey failedPracticeKey;
+    std::set<song::ClipSource> failedPracticeRenders;
+    juce::File practiceFolder;
+    // After practiceFolder: its run writes there, and is cancelled before the folder is deleted.
+    std::unique_ptr<song::PracticeSpeedRun> practiceRun;
     // Last: destroyed first, so a running export stops rendering before the plugins and the package
     // go, and a running Separation (its helper killed, its output folder deleted) or conversion (its
     // files deleted) is cancelled before the package.

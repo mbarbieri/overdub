@@ -220,3 +220,12 @@ TEST_CASE ("while Transposing only record, record_again, show_export and export 
     CHECK (refusalOf ("set_transpose", Running { .song = ActivityKind::pass }).has_value());
     CHECK_FALSE (refusalOf ("set_transpose", Running { .song = ActivityKind::idle, .transposing = true }).has_value());
 }
+
+TEST_CASE ("set_practice_speed is refused while a Pass, a Separation or a conversion runs, and allowed during an export", "[ui][availability][practice_speed]")
+{
+    CHECK (refusalOf ("set_practice_speed", Running { .song = ActivityKind::pass })->error.code == "ui.stop_recording_first");
+    CHECK (refusalOf ("set_practice_speed", Running { .song = ActivityKind::separation }).has_value());
+    CHECK (refusalOf ("set_practice_speed", Running { .song = ActivityKind::conversion }).has_value());
+    CHECK_FALSE (refusalOf ("set_practice_speed", Running { .song = ActivityKind::exportSong }).has_value());
+    CHECK_FALSE (refusalOf ("set_practice_speed", Running { .song = ActivityKind::idle, .transposing = true }).has_value());
+}

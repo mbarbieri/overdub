@@ -5,6 +5,7 @@
 #include "engine/ClipSchedule.h"
 #include "engine/SharedInsertNode.h"
 #include "engine/TrackPlayer.h"
+#include "song/PracticeSpeed.h"
 #include "song/Transpose.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -25,6 +26,16 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PlanPlayHead::getPosition() co
     info.setTimeInSamples (renderSample);
     info.setIsPlaying (playing);
     return info;
+}
+
+std::int64_t songToPlanSample (std::int64_t songSample, int speedPercent)
+{
+    return speedPercent == song::normalPracticeSpeed ? songSample : (std::int64_t) std::llround ((double) songSample * 100.0 / speedPercent);
+}
+
+std::int64_t planToSongSample (std::int64_t planSample, int speedPercent)
+{
+    return speedPercent == song::normalPracticeSpeed ? planSample : (std::int64_t) std::llround ((double) planSample * speedPercent / 100.0);
 }
 
 namespace
@@ -87,15 +98,18 @@ SourceAudio loadSource (const song::ClipSource& source, const juce::File& file, 
 }
 
     // Loads each distinct source file once per plan, keyed by its full path (empty when the Song
-    // lacks the source).
+    // lacks the source, or it has no render at a Practice Speed).
 class SourceLoader
 {
 public:
-    SourceLoader (const song::Song& s, const juce::File& root) : song (s), packageRoot (root) {}
+    SourceLoader (const song::Song& s, const juce::File& root, const PracticePlayback& p) : song (s), packageRoot (root), practice (p) {}
 
     SourceAudio load (const song::ClipSource& source)
     {
-        const auto mediaFile = song::playedFileFor (packageRoot, song, source);
+        const auto atPracticeSpeed = practice.speedPercent != song::normalPracticeSpeed;
+        if (atPracticeSpeed && ! practice.renders.contains (source))
+            return nullptr;
+        const auto mediaFile = atPracticeSpeed ? std::optional (practice.renders.at (source)) : song::playedFileFor (packageRoot, song, source);
         const auto path = mediaFile.has_value() ? mediaFile->getFullPathName().toStdString() : std::string {};
         if (const auto cached = loaded.find (path); cached != loaded.end())
             return cached->second;
@@ -109,17 +123,38 @@ public:
 private:
     const song::Song& song;
     juce::File packageRoot;
+    const PracticePlayback& practice;
     std::map<std::string, SourceAudio> loaded;
 };
 
-std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLoader& loader, const LiveInput& liveInput, bool monitored)
+// The Clip in plan time at `speedPercent`: every Song time and length × 100 / speedPercent, so its
+// render plays it where the Clip is and its fades span the same Song samples.
+LayeredClip layeredAt (const song::Clip& clip, int speedPercent, SourceAudio audio)
+{
+    const auto toPlan = [speedPercent] (SampleCount songSample) { return songToPlanSample (songSample, speedPercent); };
+    const auto start = toPlan (clip.timelineStart);
+    const auto length = toPlan (clip.timelineStart + clip.length) - start;
+    // Rounding must not let the fades overlap (Clip invariant: fade-in + fade-out <= length).
+    const auto fadeIn = std::min (toPlan (clip.fadeInLength), length);
+    return {
+        .timelineStart = start,
+        .sourceOffset = toPlan (clip.sourceOffset),
+        .length = length,
+        .gainDb = clip.gainDb,
+        .fadeInLength = fadeIn,
+        .fadeOutLength = std::min (toPlan (clip.fadeOutLength), length - fadeIn),
+        .source = std::move (audio),
+    };
+}
+
+std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLoader& loader, const LiveInput& liveInput, bool monitored, int speedPercent)
 {
     std::vector<LayeredClip> layered;
     std::vector<SourceAudio> sources;
     for (const auto& clip : track.clips)
     {
         auto audio = loader.load (clip.source);
-        layered.push_back ({ .timelineStart = clip.timelineStart, .sourceOffset = clip.sourceOffset, .length = clip.length, .gainDb = clip.gainDb, .fadeInLength = clip.fadeInLength, .fadeOutLength = clip.fadeOutLength, .source = audio });
+        layered.push_back (layeredAt (clip, speedPercent, audio));
         if (audio != nullptr)
             sources.push_back (std::move (audio));
     }
@@ -167,8 +202,8 @@ std::vector<std::unique_ptr<juce::AudioProcessor>> makeChain (const InsertFactor
 }
 } // namespace
 
-RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& engineConfig, const InsertFactory& makeInserts, const MonitoredTracks& monitoredTracks)
-    : config (engineConfig), songSampleRate (song.sampleRate), trackCount ((int) song.tracks.size())
+RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& engineConfig, const InsertFactory& makeInserts, const MonitoredTracks& monitoredTracks, const PracticePlayback& practice)
+    : config (engineConfig), songSampleRate (song.sampleRate), practiceSpeedPercent (practice.speedPercent), trackCount ((int) song.tracks.size())
 {
     for (const auto& track : song.tracks)
     {
@@ -196,7 +231,7 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
     if (masterChain.last.has_value())
         connectStereo (graph, *masterChain.last, master);
 
-    SourceLoader loader { song, packageRoot };
+    SourceLoader loader { song, packageRoot, practice };
     int clipCount = 0;
     int insertCount = masterChain.count;
     double longestTrackTailSeconds = 0.0;
@@ -205,7 +240,7 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
         const auto& track = song.tracks[trackIndex];
         clipCount += (int) track.clips.size();
         const auto monitored = ! monitoredTracks.has_value() || monitoredTracks->contains (track.id);
-        const auto player = graph.addNode (makeTrackPlayer (track, loader, liveInput, monitored), {}, Graph::UpdateKind::none)->nodeID;
+        const auto player = graph.addNode (makeTrackPlayer (track, loader, liveInput, monitored, practiceSpeedPercent), {}, Graph::UpdateKind::none)->nodeID;
 
         const auto chain = addChain (graph, makeChain (makeInserts, track.id, track.insertChain));
         insertCount += chain.count;
@@ -249,6 +284,7 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
                       { "latency_samples", graphLatency },
                       { "tail_samples", graphTail },
                       { "sample_rate", songSampleRate },
+                      { "practice_speed_percent", practiceSpeedPercent },
                       { "output_channels", config.numOutputChannels },
                       { "max_block_size", config.maxBlockSize } });
 }

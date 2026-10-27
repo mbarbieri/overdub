@@ -1,16 +1,15 @@
 #pragma once
 
 #include "core/Error.h"
+#include "song/RenderWorker.h"
 #include "song/Transpose.h"
 
 #include <juce_core/juce_core.h>
 
-#include <atomic>
 #include <chrono>
 #include <memory>
 #include <optional>
 #include <stop_token>
-#include <thread>
 #include <vector>
 
 // The Transpose render (ADR 0009, issue #209): a Backing Track's derived WAV pitch-shifted by whole
@@ -25,6 +24,14 @@ namespace overdub::song
 // Errors: song.transpose_render_failed (path, semitones, step read|write, cause: the read or
 // write Error's code), song.transpose_render_cancelled (path, semitones).
 core::Expected<void> renderTransposed (const juce::File& source, const juce::File& destination, int sampleRate, int semitones, std::stop_token stop);
+
+// The Practice Speed render (ADR 0009, issue #212): `source` played at `speedPercent` of its speed
+// at its own pitch, shifted by `semitones` (a Backing Track's Transpose; 0 for a Take), in one pass.
+// Written to `destination` as a float WAV at `sampleRate` (temp + rename), llround (length × 100 /
+// speedPercent) samples long: source sample s sounds at about s × 100 / speedPercent. As
+// renderTransposed otherwise. Errors: song.practice_render_failed (path, semitones, speed_percent,
+// step read|write, cause), song.practice_render_cancelled (path, semitones, speed_percent).
+core::Expected<void> renderAtPracticeSpeed (const juce::File& source, const juce::File& destination, int sampleRate, int semitones, int speedPercent, std::stop_token stop);
 
 // The renders of one Transpose (missingTransposeRenders' jobs), made one after another by
 // renderTransposed on a worker thread; advance() (message thread) hands back how it ended. It
@@ -66,10 +73,6 @@ private:
     int target;
     std::vector<TransposeRenderJob> jobs;
     Clock::time_point startedAt;
-    bool over = false;
-    std::atomic<int> rendersDone { 0 };
-    std::optional<core::Expected<void>> outcome; // written by the worker before `done`
-    std::atomic<bool> done { false };
-    std::jthread worker; // last: joined first
+    std::unique_ptr<RenderWorker> worker;
 };
 } // namespace overdub::song

@@ -23,7 +23,8 @@ class Workspace;
 //   history      null, or {"can_undo", "undo_label", "can_redo", "redo_label"}
 //   transport    null, or {"playing", "position", "pre_roll_record_point", "running_pass_start",
 //                "running_pass_number" (0 when none), "saving_pass",
-//                "heard_transpose", "transposing", "transpose_rendering" (issue #209)}
+//                "heard_transpose", "transposing", "transpose_rendering" (issue #209),
+//                "practice_speed", "heard_practice_speed", "practice_rendering" (issue #212)}
 //   activity     {"kind", "progress" 0..1, "counter", "last_finish": null | {"kind", "counter",
 //                "error_code"}}; kind is ui::activityKindNames'; counter counts the activities
 //                started, so it names the running or last one

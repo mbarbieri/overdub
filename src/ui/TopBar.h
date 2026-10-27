@@ -15,7 +15,9 @@
 // the Export sheet (issue #200); while an export runs, its status and progress stand in its place,
 // with ✕, which cancels it (issue #202). Before it, Transpose (issue #209): "TRANSPOSE" over the
 // field, "st" and a spinner while its renders run; the field is highlighted unless Transpose is 0,
-// and a whole number typed into it runs set_transpose.
+// and a whole number typed into it runs set_transpose. Before that, Practice Speed (issue #212) the
+// same way: "PRACTICE SPEED" over the field, "%" and a spinner; highlighted unless 100, and a whole
+// number typed into it runs set_practice_speed.
 // While a control client is connected it names the controlling process (ADR 0008 Security, issue
 // #177). Thin: it shows a TopBarState and turns clicks into Intents.
 namespace overdub::ui
@@ -43,6 +45,9 @@ struct TopBarState
     int transpose = 0;               // the Song's
     bool transposeRendering = false; // OpenSong::isTransposeRendering
     bool canTranspose = false;       // set_transpose may run
+    int practiceSpeed = 100;            // OpenSong::practiceSpeed
+    bool practiceRendering = false;     // OpenSong::isPracticeRendering
+    bool canSetPracticeSpeed = false;   // set_practice_speed may run
     // The connected control clients' process names, oldest connection first.
     std::vector<std::string> controllingProcesses;
 };
@@ -54,6 +59,10 @@ std::string exportStatusText (bool waitingForAudio, double progress);
 // A whole number typed into the Transpose field (what song::transposeText shows), with one optional sign (+, - or U+2212 minus) and
 // spaces around it; none for anything else. The range is the handler's to check.
 std::optional<int> parseTranspose (const std::string& text);
+
+// A whole percent typed into the Practice Speed field: digits, an optional "%" after them, and
+// spaces around; none for anything else. The range is the handler's to check.
+std::optional<int> parsePracticeSpeed (const std::string& text);
 
 // The indicator's name line: "<first>", or "<first> +N" with N other processes; empty with none.
 std::string controlIndicatorName (const std::vector<std::string>& processes);
@@ -90,7 +99,7 @@ private:
     juce::String name;
 };
 
-// A small arc turning while it is visible: the Transpose renders run.
+// A small arc turning while it is visible: the Transpose or Practice Speed renders run.
 class Spinner final : public juce::Component, private juce::Timer
 {
 public:
@@ -127,6 +136,10 @@ public:
     juce::Label transposeField;
     juce::Label transposeUnit { {}, "st" };
     Spinner transposeSpinner;
+    juce::Label practiceSpeedCaption { {}, "PRACTICE SPEED" };
+    juce::Label practiceSpeedField;
+    juce::Label practiceSpeedUnit { {}, "%" };
+    Spinner practiceSpeedSpinner;
     ControlIndicator controlIndicator;
     juce::TextButton exportButton { juce::String::fromUTF8 ("Export\xe2\x80\xa6") };
     juce::Label exportStatusLabel;
@@ -136,8 +149,10 @@ public:
 private:
     void send (const Intent& intent);
     void transposeEntered();
+    void practiceSpeedEntered();
 
     std::string shownTranspose = "0";
+    int shownPracticeSpeed = 100;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TopBar)
 };

@@ -455,6 +455,13 @@ TEST_CASE ("no gesture changes the app state without running an Intent", "[contr
             ++cancelOrdinal;
     CHECK (fired ("exporting/TopBar#0/TextButton#" + std::to_string (cancelOrdinal), ":click"));
     CHECK (fired ("exporting/menu:Cancel Export", ""));
+    // The top bar's Practice Speed field (issue #212) is clicked and double-clicked (its editor).
+    int practiceSpeedOrdinal = 0;
+    for (int i = 0; bar.getChildComponent (i) != &bar.practiceSpeedField; ++i)
+        if (dynamic_cast<const juce::Label*> (bar.getChildComponent (i)) != nullptr)
+            ++practiceSpeedOrdinal;
+    CHECK (fired ("record/TopBar#0/Label#" + std::to_string (practiceSpeedOrdinal), ":double_click"));
+    CHECK (fired ("edit/TopBar#0/Label#" + std::to_string (practiceSpeedOrdinal), ":click"));
     CHECK (fired ("record/menu:Export...", ""));
 }
 

@@ -4,6 +4,7 @@
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 
+#include "song/PracticeSpeed.h"
 #include "song/Transpose.h"
 
 #include <cctype>
@@ -29,6 +30,29 @@ std::string exportStatusText (bool waitingForAudio, double progress)
     return "Exporting\xe2\x80\xa6 " + std::to_string ((int) std::floor (progress * 100.0)) + "%";
 }
 
+namespace
+{
+// Digits only, as an int; none for anything else (empty, a sign, too large).
+std::optional<int> parseDigits (const std::string& digits)
+{
+    if (digits.empty() || ! std::isdigit ((unsigned char) digits.front()))
+        return std::nullopt;
+    int value = 0;
+    const auto [end, error] = std::from_chars (digits.data(), digits.data() + digits.size(), value);
+    if (error != std::errc() || end != digits.data() + digits.size())
+        return std::nullopt;
+    return value;
+}
+} // namespace
+
+std::optional<int> parsePracticeSpeed (const std::string& text)
+{
+    auto trimmed = juce::String::fromUTF8 (text.c_str()).trim();
+    if (trimmed.endsWithChar ('%'))
+        trimmed = trimmed.dropLastCharacters (1).trimEnd();
+    return parseDigits (trimmed.toStdString());
+}
+
 std::optional<int> parseTranspose (const std::string& text)
 {
     auto trimmed = juce::String::fromUTF8 (text.c_str()).trim();
@@ -40,14 +64,10 @@ std::optional<int> parseTranspose (const std::string& text)
         negative = true;
         trimmed = trimmed.substring (1);
     }
-    const auto digits = trimmed.toStdString();
-    if (digits.empty() || ! std::isdigit ((unsigned char) digits.front()))
+    const auto value = parseDigits (trimmed.toStdString());
+    if (! value.has_value())
         return std::nullopt;
-    int value = 0;
-    const auto [end, error] = std::from_chars (digits.data(), digits.data() + digits.size(), value);
-    if (error != std::errc() || end != digits.data() + digits.size())
-        return std::nullopt;
-    return negative ? -value : value;
+    return negative ? -*value : *value;
 }
 
 void Spinner::visibilityChanged()
@@ -169,27 +189,41 @@ TopBar::TopBar()
     }
     addAndMakeVisible (clock);
 
-    transposeCaption.setColour (juce::Label::textColourId, colours::dimText);
-    transposeCaption.setFont (juce::FontOptions (9.5f, juce::Font::bold));
-    transposeCaption.setBorderSize ({});
-    transposeUnit.setColour (juce::Label::textColourId, colours::dimText);
-    transposeUnit.setFont (juce::FontOptions (11.0f));
-    transposeUnit.setBorderSize ({});
-    for (auto* label : { &transposeCaption, &transposeUnit })
+    for (auto* caption : { &transposeCaption, &practiceSpeedCaption })
+    {
+        caption->setColour (juce::Label::textColourId, colours::dimText);
+        caption->setFont (juce::FontOptions (9.5f, juce::Font::bold));
+        caption->setBorderSize ({});
+    }
+    for (auto* unit : { &transposeUnit, &practiceSpeedUnit })
+    {
+        unit->setColour (juce::Label::textColourId, colours::dimText);
+        unit->setFont (juce::FontOptions (11.0f));
+        unit->setBorderSize ({});
+    }
+    for (auto* label : { &practiceSpeedCaption, &practiceSpeedUnit, &transposeCaption, &transposeUnit })
     {
         label->setInterceptsMouseClicks (false, false);
         addAndMakeVisible (label);
     }
-    transposeField.setEditable (true, false, false);
-    transposeField.setFont (juce::FontOptions (12.0f));
-    transposeField.setJustificationType (juce::Justification::centred);
-    transposeField.setColour (juce::Label::textColourId, colours::text);
-    transposeField.setColour (juce::Label::outlineColourId, colours::line);
+    for (auto* field : { &practiceSpeedField, &transposeField })
+    {
+        field->setEditable (true, false, false);
+        field->setFont (juce::FontOptions (12.0f));
+        field->setJustificationType (juce::Justification::centred);
+        field->setColour (juce::Label::textColourId, colours::text);
+        field->setColour (juce::Label::outlineColourId, colours::line);
+        addAndMakeVisible (field);
+    }
+    practiceSpeedField.setText (juce::String (shownPracticeSpeed), juce::dontSendNotification);
+    practiceSpeedField.onTextChange = [this] { practiceSpeedEntered(); };
     transposeField.setText (shownTranspose, juce::dontSendNotification);
     transposeField.onTextChange = [this] { transposeEntered(); };
-    addAndMakeVisible (transposeField);
-    transposeSpinner.setInterceptsMouseClicks (false, false);
-    addChildComponent (transposeSpinner);
+    for (auto* spinner : { &practiceSpeedSpinner, &transposeSpinner })
+    {
+        spinner->setInterceptsMouseClicks (false, false);
+        addChildComponent (spinner);
+    }
     exportStatusLabel.setColour (juce::Label::textColourId, colours::dimText);
     exportStatusLabel.setFont (juce::FontOptions (11.0f));
     exportStatusLabel.setInterceptsMouseClicks (false, false);
@@ -214,6 +248,15 @@ void TopBar::transposeEntered()
     transposeField.setText (juce::String::fromUTF8 (shownTranspose.c_str()), juce::dontSendNotification);
     if (typed.has_value())
         send (SongIntent { intent::SetTranspose { *typed } });
+}
+
+void TopBar::practiceSpeedEntered()
+{
+    const auto typed = parsePracticeSpeed (practiceSpeedField.getText().toStdString());
+    // The field shows the open Song's value until the handler has changed it (show() is called back).
+    practiceSpeedField.setText (juce::String (shownPracticeSpeed), juce::dontSendNotification);
+    if (typed.has_value())
+        send (SongIntent { intent::SetPracticeSpeed { *typed } });
 }
 
 void TopBar::show (const TopBarState& state)
@@ -252,6 +295,13 @@ void TopBar::show (const TopBarState& state)
     transposeField.setColour (juce::Label::backgroundColourId, state.transpose != 0 ? colours::accent : colours::background);
     transposeField.setEnabled (state.songOpen && state.canTranspose);
     transposeSpinner.setVisible (state.songOpen && state.transposeRendering);
+
+    shownPracticeSpeed = state.practiceSpeed;
+    if (! practiceSpeedField.isBeingEdited())
+        practiceSpeedField.setText (juce::String (shownPracticeSpeed), juce::dontSendNotification);
+    practiceSpeedField.setColour (juce::Label::backgroundColourId, state.practiceSpeed != song::normalPracticeSpeed ? colours::accent : colours::background);
+    practiceSpeedField.setEnabled (state.songOpen && state.canSetPracticeSpeed);
+    practiceSpeedSpinner.setVisible (state.songOpen && state.practiceRendering);
 }
 
 void TopBar::resized()
@@ -269,6 +319,10 @@ void TopBar::resized()
     transposeField.setBounds (layout.transposeField);
     transposeUnit.setBounds (layout.transposeUnit);
     transposeSpinner.setBounds (layout.transposeSpinner);
+    practiceSpeedCaption.setBounds (layout.practiceSpeedCaption);
+    practiceSpeedField.setBounds (layout.practiceSpeedField);
+    practiceSpeedUnit.setBounds (layout.practiceSpeedUnit);
+    practiceSpeedSpinner.setBounds (layout.practiceSpeedSpinner);
     exportButton.setBounds (layout.exportSlot);
     auto exportSlot = layout.exportSlot;
     cancelExportButton.setBounds (exportSlot.removeFromRight (cancelExportButtonWidth));

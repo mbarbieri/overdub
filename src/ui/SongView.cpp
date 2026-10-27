@@ -90,6 +90,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const StartSeparation& i) { return startSeparation (i.trackId); },
             [this] (const CancelRun&) { return cancelRun(); },
             [this] (const SetTranspose& i) { return setTranspose (i.semitones); },
+            [this] (const SetPracticeSpeed& i) { return setPracticeSpeed (i.speedPercent); },
             [this] (const SetPreRoll& i) { return setPreRoll (i.preRoll); },
             [this] (const SetCameraArmed& i) { return armCamera (i.armed); },
             [this] (const SetCameraDevice& i) { return setCameraDevice (i.cameraId); },
@@ -275,6 +276,11 @@ IntentResult SongView::setTranspose (int semitones)
     if (semitones == openSong.song().transpose)
         return IntentDone {};
     return applyEdit (song::setTranspose (openSong.song(), semitones), song::transposeLabel (semitones));
+}
+
+IntentResult SongView::setPracticeSpeed (int speedPercent)
+{
+    return unlessRefused (openSong.setPracticeSpeed (speedPercent));
 }
 
 IntentResult SongView::setCameraDevice (const std::string& cameraId)
@@ -728,6 +734,9 @@ void SongView::refresh (TopBarState& state)
     state.transpose = song.transpose;
     state.transposeRendering = openSong.isTransposeRendering();
     state.canTranspose = ! window.refusalOf (intent::SetTranspose::op).has_value();
+    state.practiceSpeed = openSong.practiceSpeed();
+    state.practiceRendering = openSong.isPracticeRendering();
+    state.canSetPracticeSpeed = ! window.refusalOf (intent::SetPracticeSpeed::op).has_value();
     if (openSong.isExporting())
     {
         state.exportStatus = exportStatusText (openSong.exportPhase() == ExportPhase::waitingForAudio, openSong.exportProgress());

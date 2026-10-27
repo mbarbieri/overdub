@@ -39,3 +39,4 @@ Each feature file starts with an H1 title and one paragraph that describes the u
 | [Edit Clips](./edit.md) | yes: `journey-edit.sh` (split, move, trim, fade, undo, redo; proven 2026-10-23) |
 | [Export](./export.md) | yes: `journey-export.sh` (WAV and M4A through the Export sheet, proven 2026-10-26); MP4: no |
 | [Transpose](./transpose.md) | yes: `journey-transpose.sh` (set, render, undo, out of range, back to 0; proven 2026-10-27); a failed render and the refusals while Transposing: no |
+| [Practice Speed](./practice-speed.md) | yes: `journey-practice-speed.sh` (set, render, playhead rate, out of range, back to 100; proven 2026-10-27); the silent-until-rendered source, a failed render and the Transpose interplay: no |
