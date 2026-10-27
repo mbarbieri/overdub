@@ -369,3 +369,20 @@ TEST_CASE ("set_transpose takes a whole number from -12 to +12 as one undo step,
     CHECK (socket.f.song().transpose == 0);
     CHECK (socket.f.openSong->package().undoLabel() == "Add Tracks");
 }
+
+TEST_CASE ("record and export over the socket while Transposing are refused with ui.transposing", "[control][intent_ops][transpose]")
+{
+    SocketToWindow socket;
+    REQUIRE (socket.request (R"({"id": 1, "op": "set_transpose", "semitones": 2})").at ("ok") == true);
+    REQUIRE (socket.f.openSong->isTransposing());
+
+    for (const std::string op : { "record", "export" })
+    {
+        const auto refused = socket.request (R"({"id": 2, "op": ")" + op + R"("})");
+        CHECK (refused.at ("ok") == false);
+        CHECK (refused.at ("error").at ("code") == "ui.transposing");
+        CHECK (refused.at ("error").at ("fields").at ("op") == op);
+    }
+    CHECK_FALSE (socket.f.openSong->isRecording());
+    CHECK_FALSE (socket.f.openSong->isExporting());
+}

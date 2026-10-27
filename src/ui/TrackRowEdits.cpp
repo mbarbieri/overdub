@@ -1,6 +1,7 @@
 #include "ui/TrackRowEdits.h"
 
 #include "song/Separation.h"
+#include "ui/Availability.h"
 
 #include <algorithm>
 
@@ -25,12 +26,8 @@ std::string notSeparableTooltip (const core::Error& error)
 
 std::string separateTooltip (const song::Song& song, const song::Id& trackId, TrackMenuState state)
 {
-    if (state.separationRefusal == "ui.stop_recording_first")
-        return "Stop recording first";
-    if (state.separationRefusal == "ui.export_running")
-        return "Wait for the export to finish";
     if (state.separationRefusal.has_value())
-        return "Wait for what runs to finish";
+        return unavailableReason (*state.separationRefusal);
     const auto separable = song::separableBackingTrack (song, trackId);
     return separable.has_value() ? std::string() : notSeparableTooltip (separable.error());
 }

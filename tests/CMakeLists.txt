@@ -125,6 +125,7 @@ target_sources(overdub_tests PRIVATE
     ui/TimelineScrollTest.cpp
     ui/TimelineGeometryTest.cpp
     ui/TopBarTransposeTest.cpp
+    ui/TransposeRecordExportTest.cpp
     ui/TrackColoursUiTest.cpp
     ui/TrackReorderUiTest.cpp
     ui/TrackRowEditsTest.cpp

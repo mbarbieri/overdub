@@ -1,6 +1,6 @@
 # Transpose
 
-Transpose takes every Backing Track of the Song up or down by whole semitones (−12…+12) and leaves its timing alone, so the user can play along in a key that suits them. Takes are never transposed. Each change is one undo step ("Transpose −1"), saved in `song.json` (`transpose`, format 6). Each Backing Track is rendered off the audio thread into `backing/<id>.transpose<±n>.wav`. Until every render of the new value is ready, playback keeps the previous audio, the top bar's field shows a spinner, and Record and Export are unavailable (`ui.transposing`). The package keeps only the current value's renders.
+Transpose takes every Backing Track of the Song up or down by whole semitones (−12…+12) and leaves its timing alone, so the user can play along in a key that suits them. Takes are never transposed. Each change is one undo step ("Transpose −1"), saved in `song.json` (`transpose`, format 6). Each Backing Track is rendered off the audio thread into `backing/<id>.transpose<±n>.wav`. Until every render of the new value is ready, playback keeps the previous audio, the top bar's field shows a spinner, and Record, Export... and the sheet's Export are unavailable with the tooltip "Transposing…" (`ui.transposing`; `record`, `record_again` and `export` over the socket are refused with it). An export plays the Backing Tracks at the Song's Transpose. The package keeps only the current value's renders.
 
 ## Sub-features
 
@@ -34,5 +34,5 @@ Run `.claude/skills/verify/scripts/journey-transpose.sh`. It exits 0 when every 
 - Watch `/transport/transposing`, not `/activity`: a Transpose render is not an activity, and the transport plays on while it runs.
 - `transposing` stays true after a render fails, until Transpose changes: Record and Export stay refused.
 - A Song opened at a Transpose whose renders are missing plays its derived audio (`heard_transpose` 0) until they are there. A Backing Track imported while a Transpose other than 0 is heard plays silence until its render is there.
-- The `failed-render` and `refused while transposing` sub-features are **unverified** in the real app: no journey drives them. Tests cover them (`tests/ui/OpenSongTransposeTest.cpp`, `tests/ui/AvailabilityTest.cpp`).
+- The `failed-render` and `refused while transposing` sub-features are **unverified** in the real app: no journey drives them. Tests cover them (`tests/ui/OpenSongTransposeTest.cpp`, `tests/ui/AvailabilityTest.cpp`, `tests/ui/TransposeRecordExportTest.cpp`).
 - What a render sounds like is not checked here. `tests/song/TransposeRenderTest.cpp` measures a sine (ADR 0005).

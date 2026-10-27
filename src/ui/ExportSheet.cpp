@@ -1,5 +1,6 @@
 #include "ui/ExportSheet.h"
 
+#include "ui/Availability.h"
 #include "ui/Colours.h"
 
 #include <algorithm>
@@ -305,11 +306,12 @@ void ExportSheet::updateControls()
     fullSongButton.setVisible (mp4 && hasVideoTakes);
     replacesLabel.setVisible (shown.replacesExisting);
     exportButton.setEnabled (canExport());
+    exportButton.setTooltip (shown.exportRefusal.has_value() ? juce::String::fromUTF8 (unavailableReason (*shown.exportRefusal).c_str()) : juce::String());
 }
 
 bool ExportSheet::canExport() const
 {
-    return shown.request.destination != juce::File() && (shown.request.format != exporting::ExportFormat::mp4 || ! shown.videoTakes.empty());
+    return ! shown.exportRefusal.has_value() && shown.request.destination != juce::File() && (shown.request.format != exporting::ExportFormat::mp4 || ! shown.videoTakes.empty());
 }
 
 juce::Rectangle<int> ExportSheet::panelBounds() const

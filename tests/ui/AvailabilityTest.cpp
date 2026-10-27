@@ -204,15 +204,19 @@ TEST_CASE ("hiding the Settings window is never refused, showing it waits", "[ui
     CHECK (refusalOf (Intent { AppIntent { intent::ShowSettings { true } } }, calibrating)->error.code == "ui.calibration_running");
 }
 
-TEST_CASE ("while Transposing only record, record_again and export wait for it, presented as its Notice", "[ui][availability][transpose]")
+TEST_CASE ("while Transposing only record, record_again, show_export and export wait for it, the gestures presented as its Notice", "[ui][availability][transpose]")
 {
-    auto codes = refusedCodes (Running { .song = ActivityKind::idle, .transposing = true });
+    const Running transposing { .song = ActivityKind::idle, .transposing = true };
+    auto codes = refusedCodes (transposing);
     codes.erase ("cancel_export");
-    CHECK (codes == std::map<std::string, std::string> { { "record", "ui.transposing" }, { "record_again", "ui.transposing" }, { "export", "ui.transposing" } });
-    const auto refused = refusalOf ("record", Running { .song = ActivityKind::idle, .transposing = true });
+    CHECK (codes == std::map<std::string, std::string> { { "record", "ui.transposing" }, { "record_again", "ui.transposing" }, { "show_export", "ui.transposing" }, { "export", "ui.transposing" } });
+    const auto refused = refusalOf ("record", transposing);
     REQUIRE (refused.has_value());
     CHECK (refused->presented);
     CHECK (refused->error.fields.at ("op") == "record");
+    CHECK (refusalOf ("export", transposing)->presented);
+    CHECK_FALSE (refusalOf ("show_export", transposing)->presented);
+    CHECK (unavailableReason ("ui.transposing") == "Transposing\xe2\x80\xa6");
     CHECK (refusalOf ("set_transpose", Running { .song = ActivityKind::pass }).has_value());
     CHECK_FALSE (refusalOf ("set_transpose", Running { .song = ActivityKind::idle, .transposing = true }).has_value());
 }

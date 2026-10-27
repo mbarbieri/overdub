@@ -5,6 +5,7 @@
 #include "ui/Intent.h"
 
 #include <optional>
+#include <string>
 #include <string_view>
 
 // Which Intents may run now (issue #195): the one answer MainComponent::run checks before it
@@ -34,8 +35,8 @@ struct Running
     // (ui.no_pass_to_record_again, field `op`, logged at debug, issue #216).
     bool songHasNoPass = false;
     // The open Song's playback is not at its Transpose yet (OpenSong::isTransposing): record,
-    // record_again and export wait for it (ui.transposing, field `op`, presented as its Notice,
-    // issue #209).
+    // record_again and export wait for it (ui.transposing, field `op`, presented as its Notice), and
+    // so does show_export (logged at debug) (issues #209, #210).
     bool transposing = false;
 };
 
@@ -51,4 +52,7 @@ struct Refusal
 std::optional<Refusal> refusalOf (std::string_view op, const Running& running);
 // The refusal of this very Intent: hiding the Settings window or the Export sheet is never refused.
 std::optional<Refusal> refusalOf (const Intent& intent, const Running& running);
+
+// Why a control is unavailable (its tooltip), from the code its op is refused with.
+std::string unavailableReason (std::string_view code);
 } // namespace overdub::ui
