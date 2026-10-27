@@ -32,7 +32,10 @@ struct TopBarState
     std::string redoText = "Redo";
     bool canUndo = false;
     bool canRedo = false;
-    bool canExport = false;       // show_export may run
+    // The codes record and show_export are refused with now (ui/Availability.h), none when they
+    // may run; the button is unavailable with unavailableReason as its tooltip.
+    std::optional<std::string> recordRefusal;
+    std::optional<std::string> exportRefusal;
     bool canCancelExport = false; // cancel_export may run
     // While an export runs: "Preparing…" or "Exporting… 42%" (exportStatusText), and its progress.
     std::optional<std::string> exportStatus;

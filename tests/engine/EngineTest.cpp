@@ -307,6 +307,28 @@ TEST_CASE ("a Backing Track plays its render at the Song's Transpose, and silenc
     CHECK (impulsesAt (-2).empty());
 }
 
+TEST_CASE ("a Take plays its own file at every Transpose", "[engine][playback][transpose]")
+{
+    TempPackage package;
+    auto song = overdub::song::makeEmptySong (testSampleRate);
+    const auto take = addTake (song, package, "take-a", impulse (2000, 300));
+    song.tracks.push_back (trackWith ("track-a", { clipOf ("clip-a", take, 0, 0, 2000) }));
+
+    const auto renderedAt = [&] (int transpose) {
+        song.transpose = transpose;
+        Engine engine { stereoConfig() };
+        engine.loadSong (song, package.root);
+        engine.play();
+        DeviceDriver device { 2, 256 };
+        return device.render (engine, 4).channels;
+    };
+
+    const auto atZero = renderedAt (0);
+    CHECK (nonZeroSamples (atZero[0]) == std::vector<std::int64_t> { 300 });
+    CHECK (renderedAt (-1) == atZero);
+    CHECK (renderedAt (7) == atZero);
+}
+
 TEST_CASE ("a loaded plan is pending until the next callback takes it", "[engine][plan]")
 {
     TempPackage package;

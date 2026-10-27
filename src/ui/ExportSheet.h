@@ -35,6 +35,9 @@ struct ExportSheetState
     std::vector<video::VideoTakeSpan> videoTakes; // the Song's, in its order
     exporting::ExportRequest request;             // what Export writes (exportRequestFor)
     bool replacesExisting = false;                // a file is at request.destination
+    // The code export is refused with now (ui/Availability.h), none when it may run: Export is
+    // unavailable with unavailableReason as its tooltip.
+    std::optional<std::string> exportRefusal;
 };
 
 // What the span bar shows, in Song samples.
@@ -99,8 +102,8 @@ public:
     // The request the form shows.
     const exporting::ExportRequest& request() const { return shown.request; }
     bool replacesExisting() const { return shown.replacesExisting; }
-    // Whether Export (the button, and Return) is offered: a destination is set, and an MP4 has a
-    // Video Take to show.
+    // Whether Export (the button, and Return) is offered: export may run now, a destination is
+    // set, and an MP4 has a Video Take to show.
     bool canExport() const;
 
     void resized() override;

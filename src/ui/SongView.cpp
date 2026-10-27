@@ -721,7 +721,9 @@ void SongView::refresh (TopBarState& state)
     state.redoText = redoButtonText (package.canRedo() ? package.redoLabel() : "");
     state.canUndo = package.canUndo() && ! window.refusalOf (intent::Undo::op).has_value();
     state.canRedo = package.canRedo() && ! window.refusalOf (intent::Redo::op).has_value();
-    state.canExport = ! window.refusalOf (intent::ShowExport::op).has_value();
+    const auto codeOf = [] (const std::optional<Refusal>& refusal) { return refusal.has_value() ? std::optional (refusal->error.code) : std::nullopt; };
+    state.recordRefusal = codeOf (window.refusalOf (intent::Record::op));
+    state.exportRefusal = codeOf (window.refusalOf (intent::ShowExport::op));
     state.canCancelExport = ! window.refusalOf (intent::CancelExport::op).has_value();
     state.transpose = song.transpose;
     state.transposeRendering = openSong.isTransposeRendering();
@@ -775,6 +777,7 @@ void SongView::refresh (TopBarState& state)
         .videoTakes = openSong.videoPlayback().spans (song),
         .request = request,
         .replacesExisting = exportSheetShown && request.destination.existsAsFile(),
+        .exportRefusal = codeOf (window.refusalOf (intent::Export::op)),
     });
     syncPluginWindows();
 

@@ -98,7 +98,7 @@ static_assert (songOpGesturesNameEverySongOpOnce(), "songOpGestures must name ea
 constexpr std::array presentedSongOps { Record::op, RecordAgain::op, Export::op, StartSeparation::op };
 
 // What plays while Transposing is not the Song's Transpose: a Pass or an export would not match it.
-constexpr std::array waitForTranspose { Record::op, RecordAgain::op, Export::op };
+constexpr std::array waitForTranspose { Record::op, RecordAgain::op, ShowExport::op, Export::op };
 
 bool isAppOp (std::string_view op)
 {
@@ -154,7 +154,7 @@ std::optional<Refusal> refusalOfSongOp (std::string_view op, const Running& runn
     if (auto refused = refusal (*running.song, *found->gesture))
         return Refusal { std::move (*refused), presented };
     if (running.transposing && std::ranges::contains (waitForTranspose, op))
-        return Refusal { core::Error { "ui.transposing", "waits until the Backing Tracks are transposed", { { "op", std::string (op) } } }, true };
+        return Refusal { core::Error { "ui.transposing", "waits until the Backing Tracks are transposed", { { "op", std::string (op) } } }, presented };
     return std::nullopt;
 }
 } // namespace
@@ -178,5 +178,16 @@ std::optional<Refusal> refusalOf (const Intent& intent, const Running& running)
         if (const auto* sheet = std::get_if<ShowExport> (song); sheet != nullptr && ! sheet->shown)
             return std::nullopt;
     return refusalOf (opName (intent), running);
+}
+
+std::string unavailableReason (std::string_view code)
+{
+    if (code == "ui.transposing")
+        return "Transposing\xe2\x80\xa6";
+    if (code == "ui.stop_recording_first")
+        return "Stop recording first";
+    if (code == "ui.export_running")
+        return "Wait for the export to finish";
+    return "Wait for what runs to finish";
 }
 } // namespace overdub::ui

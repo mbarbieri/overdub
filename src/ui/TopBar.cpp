@@ -1,5 +1,6 @@
 #include "ui/TopBar.h"
 
+#include "ui/Availability.h"
 #include "ui/Colours.h"
 #include "ui/Layout.h"
 
@@ -220,8 +221,10 @@ void TopBar::show (const TopBarState& state)
     recordModeButton.setToggleState (state.mode == Mode::record, juce::dontSendNotification);
     editModeButton.setToggleState (state.mode == Mode::edit, juce::dontSendNotification);
 
-    for (auto* transport : { &rewindButton, &playStopButton, &recordButton })
+    for (auto* transport : { &rewindButton, &playStopButton })
         transport->setEnabled (state.songOpen);
+    recordButton.setEnabled (state.songOpen && ! state.recordRefusal.has_value());
+    recordButton.setTooltip (state.recordRefusal.has_value() ? juce::String::fromUTF8 (unavailableReason (*state.recordRefusal).c_str()) : juce::String());
     playStopButton.setButtonText (state.playing || state.recording ? stopGlyph : playGlyph);
     recordButton.setToggleState (state.recording, juce::dontSendNotification);
     clock.show (state.clock, state.status, state.recording);
@@ -233,7 +236,8 @@ void TopBar::show (const TopBarState& state)
 
     const auto exporting = state.exportStatus.has_value();
     exportButton.setVisible (! exporting);
-    exportButton.setEnabled (state.canExport);
+    exportButton.setEnabled (state.songOpen && ! state.exportRefusal.has_value());
+    exportButton.setTooltip (state.exportRefusal.has_value() ? juce::String::fromUTF8 (unavailableReason (*state.exportRefusal).c_str()) : juce::String());
     exportStatusLabel.setVisible (exporting);
     exportProgressBar.setVisible (exporting);
     cancelExportButton.setVisible (exporting);
