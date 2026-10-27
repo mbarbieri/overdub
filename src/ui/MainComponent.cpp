@@ -453,4 +453,14 @@ void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (colours::background);
 }
+
+void reopenLastSongAtLaunch (MainComponent& content, bool skipLastSong)
+{
+    if (skipLastSong)
+    {
+        core::logEvent (core::Level::info, "ui.last_song_skipped", { { "reason", "shift_held" } });
+        return;
+    }
+    content.run (AppIntent { intent::ReopenLastSong {} });
+}
 } // namespace overdub::ui

@@ -13,6 +13,7 @@ using overdub::core::ScopedLogCapture;
 using overdub::ui::AppIntent;
 using overdub::ui::lastSongFileFor;
 using overdub::ui::readLastSong;
+using overdub::ui::reopenLastSongAtLaunch;
 using overdub::ui::writeLastSong;
 using overdub::ui::testing::contains;
 using overdub::ui::testing::eventsNamed;
@@ -281,6 +282,59 @@ TEST_CASE ("an unreadable Last Song file is treated as no Last Song, logged once
     CHECK (logged[0]["path"] == f.files.lastSong.getFullPathName().toStdString());
     CHECK (messageCodes (capture).empty());
     CHECK (f.content.currentSong() == nullptr);
+}
+
+TEST_CASE ("a launch with Shift held skips reopening the Last Song: the no-Song page, no Notice, ui.last_song_skipped", "[ui][workspace][last_song]")
+{
+    LastSongFixture f;
+    f.launch();
+    f.openAndTick (AppIntent { NewSongAt { pathIn (f, "First.overdub") } });
+    f.relaunch();
+    ScopedLogCapture capture;
+
+    reopenLastSongAtLaunch (f.content, true);
+
+    CHECK (f.content.currentSong() == nullptr);
+    CHECK (overdub::ui::testing::isShown (f.content.noSongPage));
+    CHECK (messageCodes (capture).empty());
+    CHECK (eventsNamed (capture, "ui.intent_run").empty());
+    const auto skipped = eventsNamed (capture, "ui.last_song_skipped");
+    REQUIRE (skipped.size() == 1);
+    CHECK (skipped[0]["lvl"] == "info");
+    CHECK (skipped[0]["reason"] == "shift_held");
+    CHECK (f.recorded() == fileOf (pathIn (f, "First.overdub")));
+}
+
+TEST_CASE ("after a launch that skipped it, the next launch reopens the Last Song", "[ui][workspace][last_song]")
+{
+    LastSongFixture f;
+    f.launch();
+    f.openAndTick (AppIntent { NewSongAt { pathIn (f, "First.overdub") } });
+    f.relaunch();
+    reopenLastSongAtLaunch (f.content, true);
+    f.relaunch();
+    ScopedLogCapture capture;
+
+    reopenLastSongAtLaunch (f.content, false);
+
+    CHECK (f.shown() == fileOf (pathIn (f, "First.overdub")));
+    CHECK (eventsNamed (capture, "ui.last_song_reopened").size() == 1);
+    CHECK (eventsNamed (capture, "ui.last_song_skipped").empty());
+}
+
+TEST_CASE ("a Song opened after a launch that skipped the Last Song becomes the Last Song", "[ui][workspace][last_song]")
+{
+    LastSongFixture f;
+    f.launch();
+    f.openAndTick (AppIntent { NewSongAt { pathIn (f, "First.overdub") } });
+    f.relaunch();
+    reopenLastSongAtLaunch (f.content, true);
+    f.openAndTick (AppIntent { NewSongAt { pathIn (f, "Second.overdub") } });
+    f.relaunch();
+
+    reopenLastSongAtLaunch (f.content, false);
+
+    CHECK (f.shown() == fileOf (pathIn (f, "Second.overdub")));
 }
 
 TEST_CASE ("readLastSong names an unreadable file; writeLastSong records a package it reads back", "[ui][last_song]")
