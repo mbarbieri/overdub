@@ -19,4 +19,5 @@ A Song has one Transpose (whole semitones, −12…+12, default 0) applied to ev
 - **The timeline stays in Song time** at any Practice Speed: Clips, the ruler and loop points don't move, and the playhead moves slower. When a new Practice Speed's renders are ready, playback switches to them during play at the same Song time. The Video Preview pauses with a note while Practice Speed is not 100%.
 - **Takes are never transposed.** Changing Transpose after Takes exist is allowed without confirmation, because undo is the safety net.
 - **Separation always separates the original Backing Track.** The new Backing Tracks then get the Song's Transpose like any other.
+- **Window 0.24 s, hop 15 ms** (`song/TransposeRender.cpp`), not Signalsmith's `presetDefault` (0.12 s, 30 ms), which put a sine up to 17 cents off its shifted pitch, past ADR 0005's 5. The cost is about 2.7 times the render time (about 35 s per 5-minute stereo Backing Track, one after another).
 - **Signalsmith Stretch** is a submodule in `external/`. It links only into the code that renders, never into the audio thread's path, and it is listed in `THIRD_PARTY_NOTICES`.

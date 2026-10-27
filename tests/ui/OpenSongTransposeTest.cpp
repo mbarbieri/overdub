@@ -2,13 +2,18 @@
 
 #include "engine/EngineFixture.h"
 #include "song/AtomicWrite.h"
+#include "song/AudioFileDecode.h"
+#include "song/AudioMeasurements.h"
 #include "song/BackingTrackImport.h"
 #include "song/FixtureSongBuilder.h"
 #include "song/Transpose.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <thread>
@@ -67,6 +72,15 @@ struct TransposeFixture
             if (! overdub::song::transposedFileFor (root, backingTrack, semitones).existsAsFile())
                 return false;
         return true;
+    }
+
+    // Imports a 2 s sine at `frequency` as a new Backing Track and returns it.
+    overdub::song::BackingTrack importSine (double frequency)
+    {
+        const auto imported = openSong->importFiles ({ fixture->writeSineFile ("Keys.wav", 2.0, frequency) });
+        REQUIRE (imported.size() == 1);
+        REQUIRE (imported[0].has_value());
+        return song().backingTracks.back();
     }
 
     int rendersInPackage() const
@@ -181,4 +195,54 @@ TEST_CASE ("a Song opened at a Transpose plays its derived audio until what is m
         CHECK (openSong.heardTranspose() == -1);
         CHECK (overdub::song::transposedFileFor (root, openSong.song().backingTracks.at (0), -1).existsAsFile());
     }
+}
+
+TEST_CASE ("a Backing Track imported into a transposed Song is rendered at its Transpose, Transposing from the import on", "[ui][open_song][transpose][import]")
+{
+    constexpr double sineFrequency = 440.0;
+    constexpr int semitones = -3;
+    TransposeFixture f;
+    f.setTranspose (semitones);
+    f.pollUntilRendered();
+
+    const auto keys = f.importSine (sineFrequency);
+
+    // Record and Export read isTransposing() (ui/Availability.h): they wait from the import on.
+    CHECK (f.openSong->isTransposing());
+    CHECK (f.openSong->isTransposeRendering());
+    CHECK (f.openSong->heardTranspose() == semitones);
+    CHECK (f.pollUntilRendered().empty());
+    CHECK_FALSE (f.openSong->isTransposing());
+
+    const auto rendered = overdub::song::readWavFile (overdub::song::transposedFileFor (f.root, keys, semitones));
+    REQUIRE (rendered.has_value());
+    const auto sampleRate = f.song().sampleRate;
+    const auto expected = sineFrequency * std::pow (2.0, semitones / 12.0); // 369.99 Hz
+    // ADR 0005: within 5 cents, away from both ends.
+    const auto measured = measuredFrequency (rendered->getReadPointer (0), sampleRate / 4, sampleRate * 7 / 4, sampleRate);
+    CHECK_THAT (1200.0 * std::log2 (measured / expected), Catch::Matchers::WithinAbs (0.0, 5.0));
+}
+
+TEST_CASE ("undoing an import leaves no render of its Backing Track, whether or not the render had finished", "[ui][open_song][transpose][import]")
+{
+    const auto renderFinishedFirst = GENERATE (true, false);
+    TransposeFixture f;
+    f.setTranspose (2);
+    f.pollUntilRendered();
+    const auto keys = f.importSine (440.0);
+    if (renderFinishedFirst)
+    {
+        f.pollUntilRendered();
+        REQUIRE (overdub::song::transposedFileFor (f.root, keys, 2).existsAsFile());
+    }
+
+    REQUIRE (f.openSong->undo().has_value());
+    // A render of the removed Backing Track is cancelled: Record and Export wait for nothing.
+    CHECK_FALSE (f.openSong->isTransposing());
+    f.pollUntilRendered();
+
+    CHECK_FALSE (overdub::song::transposedFileFor (f.root, keys, 2).exists());
+    CHECK (f.hasRenders (2));
+    CHECK (f.rendersInPackage() == 2);
+    CHECK_FALSE (f.openSong->isTransposing());
 }

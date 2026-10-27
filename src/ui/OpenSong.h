@@ -121,8 +121,12 @@
 // are unavailable (ui/Availability.h); after a failed render they stay so until the Transpose
 // changes, since a Pass or an export would not match what is heard. Opening the Song deletes renders
 // of other values, and plays the derived audio until the Song's Transpose is fully rendered. A
-// Backing Track added while a Transpose other than 0 is heard plays silence until its render is
-// there.
+// Backing Track added while a Transpose other than 0 is heard (an import or a Separation, issue
+// #211) plays silence until its render is there. An edit, undo, redo, import or finished Separation
+// starts the renders it needs at once, so isTransposing() holds from that change on. A render of a
+// Backing Track the Song no longer has (an undone import or Separation) is deleted once no render
+// runs (ui.transpose_renders_deleted: count); a run rendering one is cancelled at once and started
+// again for the renders still missing.
 //
 // Message thread only.
 namespace overdub::ui
@@ -373,6 +377,8 @@ private:
     // Starts, finishes or cancels Transpose renders and switches what plays (see the header comment).
     // Returns a failed render's Error.
     std::optional<core::Error> advanceTranspose (song::SongPackage::Clock::time_point now);
+    // advanceTranspose now, unless a render runs (poll() hands back how it ends).
+    void followTranspose();
     // The Song as the engine plays it: at heardTranspose().
     song::Song heardSong() const;
     // Advances a running conversion; once it ends, updates the engine and returns its Error.
@@ -429,6 +435,9 @@ private:
     // Song's Transpose changes.
     int failedSemitones = 0;
     std::set<song::Id> failedRenders;
+    // The Song's Backing Tracks when the renders of removed ones were last deleted; none after a
+    // render ended or was cancelled, which deletes them again.
+    std::optional<std::vector<song::Id>> sweptBackingTracks;
     // Before `activity`: a run reads only its own files, never the package.
     std::unique_ptr<song::TransposeRun> transposeRun;
     // Last: destroyed first, so a running export stops rendering before the plugins and the package

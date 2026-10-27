@@ -3,8 +3,10 @@
 #include "core/LogEvents.h"
 #include "export/MixRender.h"
 #include "separation/OnnxTestModel.h"
+#include "song/AudioMeasurements.h"
 #include "song/BackingTrackImport.h"
 #include "song/FakeSeparationHelper.h"
+#include "song/Transpose.h"
 #include "ui/MainWindowFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -15,6 +17,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 // Separate... on a Track (issue #114) through the real window, with a fake helper that writes six
@@ -119,6 +122,17 @@ std::vector<std::vector<float>> renderSoloed (const song::Song& songToRender, co
     return out;
 }
 
+// Ticks the window, as its timer does, until playback is at the Song's Transpose.
+void tickUntilTransposed (MainWindowFixture& f)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (30);
+    while (f.openSong->isTransposing() && std::chrono::steady_clock::now() < deadline)
+    {
+        f.window->tick();
+        std::this_thread::sleep_for (std::chrono::milliseconds (5));
+    }
+    REQUIRE_FALSE (f.openSong->isTransposing());
+}
 } // namespace
 
 TEST_CASE ("Separate... on a Backing Track's row opens a modal dialog whose progress bar follows the helper", "[ui][separation]")
@@ -555,4 +569,61 @@ TEST_CASE ("the Edit Timeline scrolls to show the Tracks a Separation adds below
     auto& bass = s.f.editHeaderNamed (bassTrackName);
     CHECK (timeline.getLocalArea (&bass, bass.getLocalBounds()).getY() == timeline.tracksViewportBounds().getY());
     CHECK (timeline.verticalScroll() == trackLaneHeight);
+}
+
+TEST_CASE ("a Separation in a transposed Song splits the original audio and renders each new Backing Track at the Song's Transpose; undo leaves none of their renders", "[ui][separation][transpose]")
+{
+    constexpr int semitones = -2;
+    SeparateFixture s;
+    REQUIRE (s.f.window->run (SongIntent { intent::SetTranspose { semitones } }, Origin::control).has_value());
+    tickUntilTransposed (s.f);
+    const auto root = s.f.openSong->package().location();
+    const auto source = s.f.song().backingTracks.front();
+
+    s.separate ("Band Mix");
+
+    REQUIRE (s.log->starts.size() == 1);
+    CHECK (s.log->starts[0].input == song::originalFileFor (root, source));
+    CHECK (s.f.openSong->isTransposing());
+    tickUntilTransposed (s.f);
+    CHECK (s.f.openSong->heardTranspose() == semitones);
+
+    std::vector<song::BackingTrack> parts;
+    for (std::size_t part = 0; part < 6; ++part)
+    {
+        const auto& track = s.f.song().tracks.at (part + 1);
+        INFO ("Track " << track.name);
+        const auto& backingTrack = s.backingTrackOf (track);
+        parts.push_back (backingTrack);
+        const auto rendered = song::readWavFile (song::transposedFileFor (root, backingTrack, semitones));
+        REQUIRE (rendered.has_value());
+        const auto expected = partFrequencies[part] * std::pow (2.0, semitones / 12.0);
+        // ADR 0005: within 5 cents, away from both ends.
+        const auto measured = measuredFrequency (rendered->getReadPointer (0), helperSampleRate / 4, helperSampleRate * 7 / 4, helperSampleRate);
+        CHECK_THAT (1200.0 * std::log2 (measured / expected), Catch::Matchers::WithinAbs (0.0, 5.0));
+    }
+
+    REQUIRE (s.f.window->run (SongIntent { intent::Undo {} }, Origin::control).has_value());
+    tickUntilTransposed (s.f);
+
+    for (const auto& part : parts)
+        CHECK_FALSE (song::transposedFileFor (root, part, semitones).exists());
+    CHECK (song::transposedFileFor (root, source, semitones).existsAsFile());
+}
+
+TEST_CASE ("undoing a Separation while its new Backing Tracks render cancels their renders and leaves none", "[ui][separation][transpose]")
+{
+    SeparateFixture s;
+    REQUIRE (s.f.window->run (SongIntent { intent::SetTranspose { 3 } }, Origin::control).has_value());
+    tickUntilTransposed (s.f);
+    s.separate ("Band Mix");
+    REQUIRE (s.f.openSong->isTransposeRendering());
+    const auto root = s.f.openSong->package().location();
+    const auto separated = s.f.song().backingTracks;
+
+    REQUIRE (s.f.window->run (SongIntent { intent::Undo {} }, Origin::control).has_value());
+
+    CHECK_FALSE (s.f.openSong->isTransposing());
+    for (const auto& backingTrack : separated)
+        CHECK (song::transposedFileFor (root, backingTrack, 3).existsAsFile() == (backingTrack.id == s.f.song().backingTracks.front().id));
 }

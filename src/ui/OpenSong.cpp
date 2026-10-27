@@ -8,12 +8,19 @@
 #include "ui/TrackRowEdits.h"
 
 #include <algorithm>
+#include <ranges>
 #include <utility>
 
 namespace overdub::ui
 {
 namespace
 {
+// The run renders a Backing Track the Song no longer has (an undone import or Separation).
+bool rendersRemovedBackingTrack (const song::TransposeRun& run, const song::Song& song)
+{
+    return std::ranges::any_of (run.renderJobs(), [&song] (const song::TransposeRenderJob& job) { return ! std::ranges::contains (song.backingTracks, job.backingTrackId, &song::BackingTrack::id); });
+}
+
 // Plugins are prepared for this block size when no device is open.
 constexpr int blockSizeWithoutDevice = 512;
 } // namespace
@@ -458,6 +465,7 @@ std::vector<core::Expected<song::Id>> OpenSong::importFiles (const std::vector<j
         return std::vector<core::Expected<song::Id>> (files.size(), std::unexpected (*refused));
     auto results = package_->importBackingTracks (files);
     reloadEngine();
+    followTranspose();
     return results;
 }
 
@@ -510,6 +518,7 @@ std::optional<core::Error> OpenSong::advanceSeparation (song::SongPackage::Clock
     reloadEngine();
     if (! ended->has_value())
         return ended->error();
+    followTranspose();
     return std::nullopt;
 }
 
@@ -824,6 +833,7 @@ void OpenSong::updateEngine (const song::Song& before)
     if (binding.engine != nullptr && song::differsOnlyInMix (before, song()) && binding.engine->setMix (song()))
         return;
     reloadEngine();
+    followTranspose();
 }
 
 void OpenSong::reloadEngine()
@@ -853,14 +863,16 @@ std::optional<core::Error> OpenSong::advanceTranspose (song::SongPackage::Clock:
     std::optional<core::Error> failure;
     if (transposeRun != nullptr)
     {
-        if (transposeRun->semitones() != target)
+        if (transposeRun->semitones() != target || rendersRemovedBackingTrack (*transposeRun, song()))
         {
             transposeRun->cancel (now);
             transposeRun.reset();
+            sweptBackingTracks.reset();
         }
         else if (auto ended = transposeRun->advance (now))
         {
             transposeRun.reset();
+            sweptBackingTracks.reset(); // it may have rendered a Backing Track an undo removed since
             if (! ended->has_value())
             {
                 failure = ended->error();
@@ -872,6 +884,14 @@ std::optional<core::Error> OpenSong::advanceTranspose (song::SongPackage::Clock:
         }
         else
             return std::nullopt;
+    }
+
+    auto backingTrackIds = song().backingTracks | std::views::transform (&song::BackingTrack::id) | std::ranges::to<std::vector>();
+    if (backingTrackIds != sweptBackingTracks)
+    {
+        if (const auto deleted = song::deleteTransposeRendersOfRemovedBackingTracks (package_->location(), song()); deleted > 0)
+            core::logEvent (core::Level::info, "ui.transpose_renders_deleted", { { "count", deleted } });
+        sweptBackingTracks = std::move (backingTrackIds);
     }
 
     auto missing = song::missingTransposeRenders (package_->location(), song());
@@ -889,6 +909,15 @@ std::optional<core::Error> OpenSong::advanceTranspose (song::SongPackage::Clock:
         reloadEngine();
     }
     return failure;
+}
+
+void OpenSong::followTranspose()
+{
+    if (transposeRun != nullptr && ! rendersRemovedBackingTrack (*transposeRun, song()))
+        return;
+    // Only a run that ends fails: here none runs, or advanceTranspose cancels it.
+    const auto failure = advanceTranspose (song::SongPackage::Clock::now());
+    OVERDUB_CHECK (! failure.has_value(), "ui.transpose_failed_without_run");
 }
 
 core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, song::SongPackage::Clock::time_point now)

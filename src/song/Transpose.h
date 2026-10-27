@@ -54,4 +54,8 @@ std::vector<TransposeRenderJob> missingTransposeRenders (const juce::File& packa
 // Deletes every render in backing/ but those at `keptSemitones` (all of them at 0), whichever
 // Backing Track it belongs to. Returns how many it deleted.
 int deleteTransposeRendersExcept (const juce::File& packageRoot, int keptSemitones);
+
+// Deletes every render in backing/ of a Backing Track `song` does not have (one an undo removed),
+// at any Transpose. Returns how many it deleted.
+int deleteTransposeRendersOfRemovedBackingTracks (const juce::File& packageRoot, const Song& song);
 } // namespace overdub::song
