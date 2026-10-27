@@ -1,6 +1,8 @@
 #include "ui/LastSong.h"
 
+#include "core/Log.h"
 #include "engine/DeviceSettings.h"
+#include "ui/MainComponent.h"
 
 #include <nlohmann/json.hpp>
 
@@ -77,5 +79,14 @@ core::Expected<void> forgetLastSong (const juce::File& file)
     if (! file.deleteFile())
         return std::unexpected (core::Error { "ui.last_song_remove_failed", "the Last Song file could not be removed", { { "path", pathOf (file) } } });
     return {};
+}
+void reopenLastSongAtLaunch (MainComponent& content, bool skipLastSong)
+{
+    if (skipLastSong)
+    {
+        core::logEvent (core::Level::info, "ui.last_song_skipped", { { "reason", "shift_held" } });
+        return;
+    }
+    content.run (AppIntent { intent::ReopenLastSong {} });
 }
 } // namespace overdub::ui

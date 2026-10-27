@@ -7,7 +7,7 @@ On launch, Overdub asks for microphone access the first time, opens the saved au
 - `startup-ready`: the window comes up and an audio device opens.
 - `startup-device-fallback`: a saved device that is missing falls back to the default device instead of leaving the app silent.
 - `startup-notices`: Notices for the state at startup (for example `ui.latency_not_calibrated`).
-- `startup-last-song`: the Song that last finished opening (New Song…, Open…, Duplicate…) is reopened at the next launch through the `reopen_last_song` Intent, logging `ui.last_song_reopened` (`path`). A Last Song that is missing shows the `ui.last_song_missing` Notice and stays remembered; one that fails to open shows `ui.last_song_failed` (with the open's `code`) and is forgotten.
+- `startup-last-song`: the Song that last finished opening (New Song…, Open…, Duplicate…) is reopened at the next launch through the `reopen_last_song` Intent, logging `ui.last_song_reopened` (`path`). A Last Song that is missing shows the `ui.last_song_missing` Notice and stays remembered; one that fails to open shows `ui.last_song_failed` (with the open's `code`) and is forgotten. Holding Shift while the window opens skips it: the no-Song page with no Notice, `ui.last_song_skipped` (info), and the Last Song stays remembered (issue #208).
 - `startup-quit`: a normal quit logs `app.stopped`.
 
 ## How to get to it (user POV)
@@ -26,7 +26,7 @@ Preconditions:
 - **Health.** Run `.claude/skills/verify/scripts/doctor.sh`. Every line reads `ok`. The trailing event list shows the opened device's name and sample rate.
 - **Fallback.** Run `jq -c 'select(.event|test("^app.device_|^engine.device_opened"))' "$LOG"`. When the saved device is unplugged, you see `app.device_open_failed` with `"reason":"No such device: …"`, then `engine.device_opened` with the built-in device.
 - **Notices.** Run `jq -c 'select(.event=="ui.notice_shown")' "$LOG"`. Each Notice code is listed. Its wording is in `src/ui/UserMessages.h`.
-- **Last Song.** Run `.claude/skills/verify/scripts/journey-last-song.sh` on a fresh launch (or `journeys-all.sh last-song`). It creates a Song, quits, launches again with `LAST_SONG_FILE` naming the first launch's `last-song.json`, and checks the Song is open in Record mode and `ui.last_song_reopened` was logged. A third launch, with the Song moved away, shows `ui.last_song_missing` and keeps the Last Song. The failed-open case (`ui.last_song_failed`) is **unverified** on the real app: only `tests/ui/LastSongTest.cpp` covers it. The journey quits all three launches itself.
+- **Last Song.** Run `.claude/skills/verify/scripts/journey-last-song.sh` on a fresh launch (or `journeys-all.sh last-song`). It creates a Song, quits, launches again with `LAST_SONG_FILE` naming the first launch's `last-song.json`, and checks the Song is open in Record mode and `ui.last_song_reopened` was logged. A third launch, with the Song moved away, shows `ui.last_song_missing` and keeps the Last Song. The failed-open case (`ui.last_song_failed`) is **unverified** on the real app: only `tests/ui/LastSongTest.cpp` covers it. So is Shift skipping the Last Song: no script holds Shift at launch, so `reopenLastSongAtLaunch` is covered in the same test file and the window's modifier read is not. The journey quits all three launches itself.
 - **Quit.** Run `.claude/skills/verify/scripts/cleanup.sh`. It prints `cleanup: stopped Overdub pid N`, and the last line of `$RUN_DIR/overdub.jsonl` has `"event":"app.stopped"`.
 
 ## Gotchas

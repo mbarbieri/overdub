@@ -135,7 +135,8 @@ MainWindow::MainWindow (const juce::String& name,
 
     setVisible (true);
     content.grabKeyboardFocus();
-    content.run (ui::AppIntent { ui::intent::ReopenLastSong {} });
+    // Holding Shift at launch skips the Last Song, as macOS apps skip restoring windows (issue #208).
+    ui::reopenLastSongAtLaunch (content, juce::ModifierKeys::getCurrentModifiersRealtime().isShiftDown());
     workspaceTick.startTimer (workspaceTickIntervalMs);
 
     controlServer = control::Server::start (controlConfig, control::Controller { std::move (eventTap), control::intentOps (content), control::appStateReader (content, *workspace) });

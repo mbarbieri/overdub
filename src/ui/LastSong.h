@@ -8,9 +8,12 @@
 
 // The Last Song (issue #206, GLOSSARY.md): the Song most recently opened successfully on this Mac,
 // recorded in a per-machine JSON file beside the device settings ({"version":1,"path":...}). The
-// Workspace records it once a Song has finished opening and reopens it for reopen_last_song.
+// Workspace records it once a Song has finished opening and reopens it for reopen_last_song,
+// which launch runs unless Shift is held (issue #208).
 namespace overdub::ui
 {
+class MainComponent;
+
 // ~/Library/Application Support/Overdub/last-song.json
 juce::File defaultLastSongFile();
 
@@ -26,4 +29,9 @@ core::Expected<std::optional<juce::File>> readLastSong (const juce::File& file);
 core::Expected<void> writeLastSong (const juce::File& file, const juce::File& package);
 // Removes the record: no Last Song. ui.last_song_remove_failed (path).
 core::Expected<void> forgetLastSong (const juce::File& file);
+
+// What the window runs once it opens: reopen_last_song, unless `skipLastSong` (Shift held at
+// launch, issue #208), which runs nothing, keeps the Last Song recorded and logs
+// ui.last_song_skipped. The caller reads the modifier.
+void reopenLastSongAtLaunch (MainComponent& content, bool skipLastSong);
 } // namespace overdub::ui
