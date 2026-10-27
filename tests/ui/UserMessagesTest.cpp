@@ -113,3 +113,16 @@ TEST_CASE ("a mismatch Notice offers converting the Song to the device's rate on
     CHECK_FALSE (conversionOfferedBy (userMessageFor ("ui.sample_rate_mismatch")).has_value());
     CHECK_FALSE (conversionOfferedBy (userMessageFor ("ui.no_audio_device")).has_value());
 }
+
+TEST_CASE ("a Last Song that cannot be reopened is a Notice naming it, and why, in File > Open's words", "[ui][messages][last_song]")
+{
+    CHECK (tierFor ("ui.last_song_missing") == Tier::notice);
+    CHECK (tierFor ("ui.last_song_failed") == Tier::notice);
+    CHECK (sentenceFor ("ui.last_song_missing", { { "name", "Demo" }, { "path", "/Volumes/Gig/Demo.overdub" } })
+           == "Couldn't reopen \u201cDemo\u201d: it isn't at /Volumes/Gig/Demo.overdub. It will reopen once it's back there.");
+    CHECK (sentenceFor ("ui.last_song_failed", { { "name", "Demo" }, { "path", "/Songs/Demo.overdub" }, { "code", "song.format_too_new" } })
+           == "Couldn't reopen \u201cDemo\u201d: " + sentenceFor ("song.format_too_new"));
+    const auto rateFields = overdub::core::Fields { { "song_rate", 44100 }, { "device_rate", 48000 } };
+    CHECK (sentenceFor ("ui.last_song_failed", { { "name", "Demo" }, { "code", "ui.sample_rate_mismatch" }, { "error_fields", rateFields } })
+           == "Couldn't reopen \u201cDemo\u201d: " + sentenceFor ("ui.sample_rate_mismatch", rateFields));
+}

@@ -140,9 +140,14 @@ public:
 
 private:
     IntentResult newSongAt (const juce::File& chosen);
+    // A package is never open twice: the chosen location is the open Song's.
+    bool isOpenSong (const juce::File& chosen) const;
     // The open Song again changes nothing.
     IntentResult openSongFrom (const juce::File& chosen);
-    // ui.no_last_song (quiet) when none is recorded; logs ui.last_song_reopened once it opens.
+    // ui.no_last_song (quiet) when none is recorded, also for an unreadable file, which is logged
+    // once as ui.last_song_unreadable. A package that is not there is ui.last_song_missing and one that fails to
+    // open ui.last_song_failed (the open's code), both Notices; only the second forgets it. Logs
+    // ui.last_song_reopened once it opens.
     IntentResult reopenLastSong();
     IntentResult duplicateSongTo (const juce::File& chosen);
     IntentResult convertSampleRate (int toRate);

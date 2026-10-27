@@ -55,6 +55,8 @@ constexpr std::array codeTable {
     CodeEntry { "ui.conversion_running", Tier::notice, "Wait for the sample rate conversion to finish, or cancel it." },
     CodeEntry { "song.sample_rate_unchanged", Tier::notice, "The Song is at that sample rate already." },
     CodeEntry { "song.track_not_separable", Tier::notice, "Only a Track whose Clips all play one Backing Track can be separated." },
+    CodeEntry { "ui.last_song_missing", Tier::notice, "Couldn't reopen the Last Song: it isn't where it was." },
+    CodeEntry { "ui.last_song_failed", Tier::notice, "Couldn't reopen the Last Song." },
 
     // Alerts: an action failed or data may be lost.
     CodeEntry { "capture.take_write_failed", Tier::alert, "A Take could not be written to disk; this Pass was not added." },
@@ -120,6 +122,27 @@ std::optional<std::string> exportFinishedSentence (const core::Fields& fields)
         return std::nullopt;
     return "Exported to " + fields["file_name"].get<std::string>() + ".";
 }
+// "Couldn't reopen “Name”: ", the start of both Last Song Notices (issue #207).
+std::string couldNotReopen (const core::Fields& fields)
+{
+    return "Couldn't reopen \u201c" + fields["name"].get<std::string>() + "\u201d: ";
+}
+
+std::optional<std::string> lastSongMissingSentence (const core::Fields& fields)
+{
+    if (! fields.is_object() || ! fields.contains ("name") || ! fields.contains ("path"))
+        return std::nullopt;
+    return couldNotReopen (fields) + "it isn't at " + fields["path"].get<std::string>() + ". It will reopen once it's back there.";
+}
+
+// The reason is the sentence File > Open... shows for the open's own Error (code, error_fields).
+std::optional<std::string> lastSongFailedSentence (const core::Fields& fields)
+{
+    if (! fields.is_object() || ! fields.contains ("name") || ! fields.contains ("code"))
+        return std::nullopt;
+    return couldNotReopen (fields) + sentenceFor (fields["code"].get<std::string>(), fields.value ("error_fields", core::Fields::object()));
+}
+
 std::optional<std::string> rateSubstitutedSentence (const core::Fields& fields)
 {
     if (! fields.is_object() || ! fields.contains ("requested_rate") || ! fields.contains ("opened_rate"))
@@ -149,6 +172,12 @@ std::string sentenceFor (std::string_view code, const core::Fields& fields)
             return *sentence;
     if (code == exportFinishedCode)
         if (auto sentence = exportFinishedSentence (fields))
+            return *sentence;
+    if (code == "ui.last_song_missing")
+        if (auto sentence = lastSongMissingSentence (fields))
+            return *sentence;
+    if (code == "ui.last_song_failed")
+        if (auto sentence = lastSongFailedSentence (fields))
             return *sentence;
     if (const auto* entry = entryFor (code))
         return std::string (entry->sentence);

@@ -3,8 +3,10 @@
 #include "ui/WorkspaceFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <nlohmann/json.hpp>
 
 #include <string>
+#include <vector>
 
 using overdub::core::AbsolutePath;
 using overdub::core::ScopedLogCapture;
@@ -144,22 +146,74 @@ TEST_CASE ("with no Last Song recorded, reopen_last_song opens nothing and prese
     CHECK (eventsNamed (capture, "ui.last_song_reopened").empty());
 }
 
-TEST_CASE ("a Last Song that is gone presents song.package_not_found, as open_song_at does", "[ui][workspace][last_song]")
+TEST_CASE ("a Last Song that is missing says where it was, stays the Last Song and reopens once it is back", "[ui][workspace][last_song]")
 {
     LastSongFixture f;
     f.launch();
+    const auto package = fileOf (pathIn (f, "First.overdub"));
     f.openAndTick (AppIntent { NewSongAt { pathIn (f, "First.overdub") } });
     f.relaunch();
-    REQUIRE (fileOf (pathIn (f, "First.overdub")).deleteRecursively());
+    const auto elsewhere = f.folder.getChildFile ("Unmounted.overdub");
+    REQUIRE (package.moveFileTo (elsewhere));
     ScopedLogCapture capture;
 
     const auto result = f.run (AppIntent { ReopenLastSong {} });
 
     REQUIRE_FALSE (result.has_value());
-    CHECK (result.error().code == "song.package_not_found");
-    CHECK (contains (messageCodes (capture), "song.package_not_found"));
+    CHECK (result.error().code == "ui.last_song_missing");
+    CHECK (result.error().fields.at ("path") == package.getFullPathName().toStdString());
+    CHECK (result.error().fields.at ("name") == "First");
+    const auto missing = eventsNamed (capture, "ui.last_song_missing");
+    REQUIRE (missing.size() == 1);
+    CHECK (missing[0]["lvl"] == "warn");
+    CHECK (missing[0]["path"] == package.getFullPathName().toStdString());
+    CHECK (messageCodes (capture) == std::vector<std::string> { "ui.last_song_missing" });
     CHECK (f.content.currentSong() == nullptr);
-    CHECK (eventsNamed (capture, "ui.last_song_reopened").empty());
+    CHECK (overdub::ui::testing::isShown (f.content.noSongPage));
+    CHECK (f.recorded() == package);
+
+    f.relaunch();
+    REQUIRE (elsewhere.moveFileTo (package));
+    REQUIRE (f.run (AppIntent { ReopenLastSong {} }).has_value());
+    CHECK (f.shown() == package);
+}
+
+TEST_CASE ("a Last Song that fails to open says why, as File > Open would, and is forgotten", "[ui][workspace][last_song]")
+{
+    LastSongFixture f;
+    f.launch();
+    const auto package = fileOf (pathIn (f, "First.overdub"));
+    f.openAndTick (AppIntent { NewSongAt { pathIn (f, "First.overdub") } });
+    f.relaunch();
+    // Saved by a newer Overdub.
+    const auto songJson = package.getChildFile ("song.json");
+    auto document = nlohmann::json::parse (songJson.loadFileAsString().toStdString());
+    document["formatVersion"] = 9999;
+    REQUIRE (songJson.replaceWithText (document.dump()));
+    ScopedLogCapture capture;
+
+    const auto result = f.run (AppIntent { ReopenLastSong {} });
+
+    REQUIRE_FALSE (result.has_value());
+    CHECK (result.error().code == "ui.last_song_failed");
+    CHECK (result.error().fields.at ("code") == "song.format_too_new");
+    CHECK (result.error().fields.at ("name") == "First");
+    const auto failed = eventsNamed (capture, "ui.last_song_failed");
+    REQUIRE (failed.size() == 1);
+    CHECK (failed[0]["lvl"] == "warn");
+    CHECK (failed[0]["path"] == package.getFullPathName().toStdString());
+    CHECK (failed[0]["code"] == "song.format_too_new");
+    CHECK (messageCodes (capture) == std::vector<std::string> { "ui.last_song_failed" });
+    CHECK (f.content.currentSong() == nullptr);
+    CHECK_FALSE (f.recorded().has_value());
+
+    f.relaunch();
+    ScopedLogCapture next;
+    const auto again = f.run (AppIntent { ReopenLastSong {} });
+    REQUIRE_FALSE (again.has_value());
+    CHECK (again.error().code == "ui.no_last_song");
+    CHECK (messageCodes (next).empty());
+    CHECK (overdub::ui::testing::isShown (f.content.noSongPage));
 }
 
 TEST_CASE ("a Last Song at a rate the device does not offer opens without audio and says so, as open_song_at does", "[ui][workspace][last_song]")
@@ -209,7 +263,7 @@ TEST_CASE ("with no Last Song file (a scripted launch), opening a Song records n
     CHECK (result.error().code == "ui.no_last_song");
 }
 
-TEST_CASE ("an unreadable Last Song file is logged once at warn, presents nothing and opens nothing", "[ui][workspace][last_song]")
+TEST_CASE ("an unreadable Last Song file is treated as no Last Song, logged once at warn, presenting nothing", "[ui][workspace][last_song]")
 {
     LastSongFixture f;
     REQUIRE (f.files.lastSong.replaceWithText ("not json"));
@@ -219,7 +273,8 @@ TEST_CASE ("an unreadable Last Song file is logged once at warn, presents nothin
     const auto result = f.run (AppIntent { ReopenLastSong {} });
 
     REQUIRE_FALSE (result.has_value());
-    CHECK (result.error().code == "ui.last_song_unreadable");
+    CHECK (result.error().code == "ui.no_last_song");
+    CHECK (eventsNamed (capture, "ui.no_last_song").empty());
     const auto logged = eventsNamed (capture, "ui.last_song_unreadable");
     REQUIRE (logged.size() == 1);
     CHECK (logged[0]["lvl"] == "warn");

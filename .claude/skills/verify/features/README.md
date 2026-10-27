@@ -32,7 +32,7 @@ Each feature file starts with an H1 title and one paragraph that describes the u
 
 | Feature | Drivable today |
 | --- | --- |
-| [App startup and audio device](./app-startup.md) | yes: launch, doctor, log; the Last Song: `journey-last-song.sh` (proven 2026-10-26) |
+| [App startup and audio device](./app-startup.md) | yes: launch, doctor, log; the Last Song: `journey-last-song.sh` (reopen and missing, proven 2026-10-26); a Last Song that fails to open: no |
 | [Separation](./separation.md) | yes: `separation-proof.sh` (helper) and `journey-separation.sh` (in a Song, proven 2026-10-23); cancel: no |
 | [Selftests](./selftests.md) | yes, with conditions (loopback plays sound; clap needs a clap Pass) |
 | [Record a Pass](./record-pass.md) | yes: `journey-record-pass.sh` (proven 2026-10-23); the camera: no |
