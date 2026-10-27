@@ -98,7 +98,7 @@ TEST_CASE ("a v4 Song migrates to v5 exporting WAV, trimmed to the Video Take, i
 
     REQUIRE (migrated.has_value());
     CHECK (migrated->fromVersion == 4);
-    CHECK (migrated->document.at ("formatVersion") == 5);
+    CHECK (migrated->document.at ("formatVersion") == overdub::song::songFormatVersion);
     CHECK (migrated->document.at ("exportFormat") == "wav");
     CHECK (migrated->document.at ("exportLength") == "trim_to_video_take");
     CHECK (migrated->document.at ("exportDestination") == "");
@@ -145,4 +145,16 @@ TEST_CASE ("a failing step stops migration with an Error naming the version it s
     CHECK (migrated.error().code == "song.migration_failed");
     CHECK (migrated.error().fields.at ("from_version") == 1);
     CHECK (migrated.error().fields.at ("step_error") == "song.test_step_failed");
+}
+
+TEST_CASE ("a v5 Song migrates to v6 untransposed", "[song][migration][transpose]")
+{
+    const json document = { { "formatVersion", 5 }, { "sampleRate", 48000 } };
+
+    const auto migrated = overdub::song::migrateSongDocument (document);
+
+    REQUIRE (migrated.has_value());
+    CHECK (migrated->fromVersion == 5);
+    CHECK (migrated->document.at ("formatVersion") == 6);
+    CHECK (migrated->document.at ("transpose") == 0);
 }

@@ -8,6 +8,7 @@
 #include "song/MixEdits.h"
 #include "song/TakeEdits.h"
 #include "song/TrackEdits.h"
+#include "song/Transpose.h"
 #include "song/VideoTakeEdits.h"
 
 #include "ui/MainComponent.h"
@@ -88,6 +89,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const SetMonitoring& i) { return setMonitoring (i.trackId, i.on); },
             [this] (const StartSeparation& i) { return startSeparation (i.trackId); },
             [this] (const CancelRun&) { return cancelRun(); },
+            [this] (const SetTranspose& i) { return setTranspose (i.semitones); },
             [this] (const SetPreRoll& i) { return setPreRoll (i.preRoll); },
             [this] (const SetCameraArmed& i) { return armCamera (i.armed); },
             [this] (const SetCameraDevice& i) { return setCameraDevice (i.cameraId); },
@@ -266,6 +268,13 @@ IntentResult SongView::setPreRoll (song::PreRoll preRoll)
     auto result = unlessRefused (openSong.setPreRoll (preRoll));
     window.refresh();
     return result;
+}
+
+IntentResult SongView::setTranspose (int semitones)
+{
+    if (semitones == openSong.song().transpose)
+        return IntentDone {};
+    return applyEdit (song::setTranspose (openSong.song(), semitones), song::transposeLabel (semitones));
 }
 
 IntentResult SongView::setCameraDevice (const std::string& cameraId)
@@ -714,6 +723,9 @@ void SongView::refresh (TopBarState& state)
     state.canRedo = package.canRedo() && ! window.refusalOf (intent::Redo::op).has_value();
     state.canExport = ! window.refusalOf (intent::ShowExport::op).has_value();
     state.canCancelExport = ! window.refusalOf (intent::CancelExport::op).has_value();
+    state.transpose = song.transpose;
+    state.transposeRendering = openSong.isTransposeRendering();
+    state.canTranspose = ! window.refusalOf (intent::SetTranspose::op).has_value();
     if (openSong.isExporting())
     {
         state.exportStatus = exportStatusText (openSong.exportPhase() == ExportPhase::waitingForAudio, openSong.exportProgress());

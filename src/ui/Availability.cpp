@@ -53,6 +53,7 @@ constexpr SongOpGesture songOpGestures[] {
     { "set_monitoring", Gesture::setMonitoring },
     { "start_separation", Gesture::startSeparation },
     { "cancel_run", std::nullopt },
+    { "set_transpose", Gesture::edit },
     { "set_pre_roll", Gesture::setPreRoll },
     { "set_camera_armed", Gesture::setCameraArmed },
     { "set_camera_device", Gesture::setCameraDevice },
@@ -95,6 +96,9 @@ static_assert (songOpGesturesNameEverySongOpOnce(), "songOpGestures must name ea
 // The Song ops whose refusal is presented as its Notice; the others' controls already show they
 // are unavailable (issue #145).
 constexpr std::array presentedSongOps { Record::op, RecordAgain::op, Export::op, StartSeparation::op };
+
+// What plays while Transposing is not the Song's Transpose: a Pass or an export would not match it.
+constexpr std::array waitForTranspose { Record::op, RecordAgain::op, Export::op };
 
 bool isAppOp (std::string_view op)
 {
@@ -149,6 +153,8 @@ std::optional<Refusal> refusalOfSongOp (std::string_view op, const Running& runn
             return Refusal { std::move (*refused), presented };
     if (auto refused = refusal (*running.song, *found->gesture))
         return Refusal { std::move (*refused), presented };
+    if (running.transposing && std::ranges::contains (waitForTranspose, op))
+        return Refusal { core::Error { "ui.transposing", "waits until the Backing Tracks are transposed", { { "op", std::string (op) } } }, true };
     return std::nullopt;
 }
 } // namespace

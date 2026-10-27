@@ -12,7 +12,8 @@ set(OVERDUB_JUCE_PATCHES
     "${PROJECT_SOURCE_DIR}/patches/juce-graph-realtime-safe.patch")
 
 # One file each submodule must have once checked out.
-foreach(submodule_file JUCE/CMakeLists.txt Catch2/CMakeLists.txt json/CMakeLists.txt pocketfft/pocketfft_hdronly.h)
+foreach(submodule_file JUCE/CMakeLists.txt Catch2/CMakeLists.txt json/CMakeLists.txt pocketfft/pocketfft_hdronly.h
+        signalsmith-stretch/signalsmith-stretch.h signalsmith-linear/stft.h)
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${submodule_file}")
         cmake_path(GET submodule_file PARENT_PATH submodule)
         message(FATAL_ERROR "overdub: external/${submodule} is empty. Run 'git submodule update --init --recursive'.")
@@ -93,6 +94,15 @@ add_library(overdub_pocketfft INTERFACE)
 target_include_directories(overdub_pocketfft SYSTEM INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/pocketfft")
 # The helper's parallelism is ONNX Runtime's; pocketfft's own thread pool is not needed.
 target_compile_definitions(overdub_pocketfft INTERFACE POCKETFFT_NO_MULTITHREADING)
+
+# Signalsmith Stretch 1.4.0 and its Signalsmith Linear 0.6.4 (both MIT, header-only): the
+# Transpose render (ADR 0009). Only overdub_song links it, privately, and only song/TransposeRender.cpp
+# includes it: it never runs on the audio thread. Its own CMakeLists fetches Linear over the network,
+# so the submodules' headers are used directly instead.
+add_library(overdub_signalsmith_stretch INTERFACE)
+target_include_directories(overdub_signalsmith_stretch SYSTEM INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/signalsmith-stretch/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/signalsmith-linear/include")
 
 # ONNX Runtime 1.23.2, prebuilt for osx-x86_64 (MIT; ADR 0007): the last release with Intel-macOS
 # binaries. Fetched at configure time from a pinned URL and checked against its SHA-256 (the same

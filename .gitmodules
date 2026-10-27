@@ -12,3 +12,9 @@
 	path = external/pocketfft
 	url = https://github.com/mreineck/pocketfft.git
 	branch = cpp
+[submodule "external/signalsmith-stretch"]
+	path = external/signalsmith-stretch
+	url = https://github.com/Signalsmith-Audio/signalsmith-stretch.git
+[submodule "external/signalsmith-linear"]
+	path = external/signalsmith-linear
+	url = https://github.com/Signalsmith-Audio/linear.git

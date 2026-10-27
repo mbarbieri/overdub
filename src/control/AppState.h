@@ -22,7 +22,8 @@ class Workspace;
 //   song         null, or {"path": the package folder, "song": song::songToJson}
 //   history      null, or {"can_undo", "undo_label", "can_redo", "redo_label"}
 //   transport    null, or {"playing", "position", "pre_roll_record_point", "running_pass_start",
-//                "running_pass_number" (0 when none), "saving_pass"}
+//                "running_pass_number" (0 when none), "saving_pass",
+//                "heard_transpose", "transposing", "transpose_rendering" (issue #209)}
 //   activity     {"kind", "progress" 0..1, "counter", "last_finish": null | {"kind", "counter",
 //                "error_code"}}; kind is ui::activityKindNames'; counter counts the activities
 //                started, so it names the running or last one

@@ -89,12 +89,18 @@ core::Expected<nlohmann::json> addExportChoices (nlohmann::json document)
     document["exportDestination"] = "";
     return document;
 }
+
+core::Expected<nlohmann::json> addTranspose (nlohmann::json document)
+{
+    document["transpose"] = 0;
+    return document;
+}
 } // namespace
 
 std::span<const MigrationStep> songMigrationSteps()
 {
     // songFormatVersion must equal songMigrationSteps().size() + 1.
-    static const std::array<MigrationStep, 4> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours, addExportChoices };
+    static const std::array<MigrationStep, 5> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours, addExportChoices, addTranspose };
     static_assert (std::tuple_size_v<decltype (steps)> + 1 == songFormatVersion);
     return steps;
 }

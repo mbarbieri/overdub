@@ -487,6 +487,17 @@ struct CancelRun // the run dialog's Cancel (a Separation or a conversion)
 };
 
 //==============================================================================
+// Song: Transpose (issue #209): one undo step, then renders that playback switches to once ready.
+
+struct SetTranspose // the top bar's Transpose field, on Return
+{
+    static constexpr std::string_view op = "set_transpose";
+    int semitones = 0;
+    bool operator== (const SetTranspose&) const = default;
+    static constexpr auto fields = std::tuple { field ("semitones", &SetTranspose::semitones) };
+};
+
+//==============================================================================
 // Song: Record settings.
 
 struct SetPreRoll
@@ -741,7 +752,7 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::Seek, intent::JumpToPass, intent::Nudge,
                                 intent::AddTrack, intent::ImportFiles, intent::DeleteTrack, intent::MoveTrack,
                                 intent::SetArmed, intent::SetInputChannels, intent::SetMonitoring,
-                                intent::StartSeparation, intent::CancelRun,
+                                intent::StartSeparation, intent::CancelRun, intent::SetTranspose,
                                 intent::SetPreRoll, intent::SetCameraArmed, intent::SetCameraDevice,
                                 intent::SplitSelectedClip, intent::DeleteSelection, intent::TakeLaneClick, intent::PreviewMix,
                                 intent::AddInsert, intent::OpenInsertEditor, intent::ClosePluginWindow,

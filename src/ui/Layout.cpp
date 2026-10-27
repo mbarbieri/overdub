@@ -15,6 +15,11 @@ constexpr int clockWidth = 130;
 constexpr int undoButtonWidth = 190;
 constexpr int controlIndicatorWidth = 130;
 constexpr int exportSlotWidth = 150;
+constexpr int transposeFieldWidth = 30;
+constexpr int transposeUnitWidth = 12;
+constexpr int transposeSpinnerWidth = 14;
+constexpr int transposeSlotWidth = transposeFieldWidth + 2 + transposeUnitWidth + 2 + transposeSpinnerWidth;
+constexpr int transposeCaptionHeight = 12;
 constexpr int importButtonHeight = 30;
 } // namespace
 
@@ -43,6 +48,15 @@ TopBarLayout topBarLayout (juce::Rectangle<int> bar)
 
     layout.exportSlot = area.removeFromRight (exportSlotWidth);
     area.removeFromRight (gap);
+    layout.transpose = area.removeFromRight (transposeSlotWidth);
+    area.removeFromRight (gap);
+    auto transpose = layout.transpose;
+    layout.transposeCaption = transpose.removeFromTop (transposeCaptionHeight);
+    layout.transposeField = transpose.removeFromLeft (transposeFieldWidth);
+    transpose.removeFromLeft (2);
+    layout.transposeUnit = transpose.removeFromLeft (transposeUnitWidth);
+    transpose.removeFromLeft (2);
+    layout.transposeSpinner = transpose.withSizeKeepingCentre (transposeSpinnerWidth, transposeSpinnerWidth);
 
     const auto groupWidth = 3 * transportButtonWidth + 3 * gap + clockWidth;
     const auto undoWidth = std::min (undoButtonWidth, (area.getWidth() - groupWidth - 2 * gap) / 2);

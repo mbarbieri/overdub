@@ -5,7 +5,7 @@
 #include "engine/ClipSchedule.h"
 #include "engine/SharedInsertNode.h"
 #include "engine/TrackPlayer.h"
-#include "song/BackingTrackImport.h"
+#include "song/Transpose.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -95,7 +95,7 @@ public:
 
     SourceAudio load (const song::ClipSource& source)
     {
-        const auto mediaFile = song::mediaFileFor (packageRoot, song, source);
+        const auto mediaFile = song::playedFileFor (packageRoot, song, source);
         const auto path = mediaFile.has_value() ? mediaFile->getFullPathName().toStdString() : std::string {};
         if (const auto cached = loaded.find (path); cached != loaded.end())
             return cached->second;

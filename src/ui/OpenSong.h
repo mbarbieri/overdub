@@ -10,6 +10,7 @@
 #include "plugin/InsertHost.h"
 #include "song/SeparationRun.h"
 #include "song/SongPackage.h"
+#include "song/TransposeRender.h"
 #include "ui/Activity.h"
 #include "ui/ExportRun.h"
 #include "video/FrameSelection.h"
@@ -109,6 +110,19 @@
 // Song's rate changes (the conversion, or an undo or redo across one), the audio is detached at once
 // (nothing plays the Song at the wrong speed) and takeSampleRateChanged() tells the owner to open
 // the device at the new rate (logged as ui.song_rate_changed: from_rate, to_rate).
+//
+// Transpose (issue #209, ADR 0009): the engine plays the Song at heardTranspose(), which follows the
+// Song's Transpose only once every Backing Track's render of it is in the package. poll() starts a
+// song::TransposeRun for the renders the Song's Transpose lacks (cancelling one for another value),
+// and once none is missing switches playback to it, reloads the engine and deletes every other
+// value's renders. At Transpose 0 the derived audio plays at once. A failed render keeps the previous
+// audio and is handed back by poll() once (song.transpose_render_failed, a Notice); its Backing
+// Track is not rendered again until the Transpose changes. While isTransposing(), Record and Export
+// are unavailable (ui/Availability.h); after a failed render they stay so until the Transpose
+// changes, since a Pass or an export would not match what is heard. Opening the Song deletes renders
+// of other values, and plays the derived audio until the Song's Transpose is fully rendered. A
+// Backing Track added while a Transpose other than 0 is heard plays silence until its render is
+// there.
 //
 // Message thread only.
 namespace overdub::ui
@@ -330,7 +344,14 @@ public:
     // the Song's rate.
     bool takeSampleRateChanged() { return std::exchange (sampleRateChanged, false); }
 
-    // Call regularly (window timer): advances an export (starts it once the audio has let go of
+    // The Transpose playback uses (see the header comment).
+    int heardTranspose() const { return heardSemitones; }
+    // A Transpose render runs (the top bar's spinner).
+    bool isTransposeRendering() const { return transposeRun != nullptr; }
+    // Playback is not at the Song's Transpose yet, or renders for it are being made.
+    bool isTransposing() const { return isTransposeRendering() || heardSemitones != song().transpose; }
+
+    // Call regularly (window timer): advances Transpose renders (see the header comment), an export (starts it once the audio has let go of
     // the plugins, or gives it up after ExportRun::audioTimeout; once it ends, reloads the engine and
     // returns its Error), finishes a Pass the audio thread has ended, rebuilds the plan when a
     // plugin loaded or changed its latency (not during a Pass), schedules a write when a plugin
@@ -349,6 +370,11 @@ private:
     std::optional<core::Error> endExportIfEnded (std::optional<ExportEnd> end);
     // Advances a running Separation; once it ends, reloads the engine and returns its Error.
     std::optional<core::Error> advanceSeparation (song::SongPackage::Clock::time_point now);
+    // Starts, finishes or cancels Transpose renders and switches what plays (see the header comment).
+    // Returns a failed render's Error.
+    std::optional<core::Error> advanceTranspose (song::SongPackage::Clock::time_point now);
+    // The Song as the engine plays it: at heardTranspose().
+    song::Song heardSong() const;
     // Advances a running conversion; once it ends, updates the engine and returns its Error.
     std::optional<core::Error> advanceConversion (song::SongPackage::Clock::time_point now);
     // After a history change: detaches the audio when the rate changed since `before`, else setMix
@@ -398,6 +424,13 @@ private:
     bool recordAgainAfterPass = false;
     video::VideoPlayback playback;
     std::optional<juce::File> lastExport;
+    int heardSemitones = 0;
+    // The Backing Tracks whose render of failedSemitones failed: not rendered again until the
+    // Song's Transpose changes.
+    int failedSemitones = 0;
+    std::set<song::Id> failedRenders;
+    // Before `activity`: a run reads only its own files, never the package.
+    std::unique_ptr<song::TransposeRun> transposeRun;
     // Last: destroyed first, so a running export stops rendering before the plugins and the package
     // go, and a running Separation (its helper killed, its output folder deleted) or conversion (its
     // files deleted) is cancelled before the package.

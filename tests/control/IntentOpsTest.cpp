@@ -336,3 +336,36 @@ TEST_CASE ("a camera arm waiting for the camera access prompt replies awaiting_a
     CHECK (reply == json { { "id", 1 }, { "ok", true }, { "seq", reply["seq"] }, { "created_id", nullptr }, { "awaiting_answer", true } });
     CHECK (pendingCameraAccess != nullptr);
 }
+
+TEST_CASE ("set_transpose takes a whole number from -12 to +12 as one undo step, and any other value is an explicit Error", "[control][intent_ops][transpose]")
+{
+    SocketToWindow socket;
+
+    const auto done = socket.request (R"({"id": 1, "op": "set_transpose", "semitones": -1})");
+    CHECK (done.at ("ok") == true);
+    CHECK (socket.f.song().transpose == -1);
+    CHECK (socket.f.openSong->package().undoLabel() == "Transpose \xe2\x88\x92"
+                                                       "1");
+
+    const auto outOfRange = socket.request (R"({"id": 2, "op": "set_transpose", "semitones": 13})");
+    CHECK (outOfRange.at ("ok") == false);
+    CHECK (outOfRange.at ("error").at ("code") == "song.transpose_out_of_range");
+    CHECK (outOfRange.at ("error").at ("fields").at ("semitones") == 13);
+
+    for (const auto* notWhole : { R"({"id": 3, "op": "set_transpose", "semitones": 1.5})", R"({"id": 4, "op": "set_transpose", "semitones": "+2"})", R"({"id": 5, "op": "set_transpose"})" })
+    {
+        const auto refused = socket.request (notWhole);
+        CHECK (refused.at ("ok") == false);
+        CHECK (refused.at ("error").at ("code") == "control.bad_field");
+        CHECK (refused.at ("error").at ("fields").at ("key") == "semitones");
+    }
+    CHECK (socket.f.song().transpose == -1);
+    CHECK (socket.f.openSong->package().undoLabel() == "Transpose \xe2\x88\x92"
+                                                       "1");
+
+    // The same value again is no new step.
+    CHECK (socket.request (R"({"id": 6, "op": "set_transpose", "semitones": -1})").at ("ok") == true);
+    REQUIRE (socket.f.openSong->undo().has_value());
+    CHECK (socket.f.song().transpose == 0);
+    CHECK (socket.f.openSong->package().undoLabel() == "Add Tracks");
+}

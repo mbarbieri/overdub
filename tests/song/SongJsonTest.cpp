@@ -106,11 +106,13 @@ TEST_CASE ("the fully populated test Song sets every field away from its default
     checkListsHoldTwoOrMore (document, "$");
 }
 
-TEST_CASE ("song.json carries formatVersion 5 and the key names fixed by issues #8, #14, #68, #114, #137 and #201", "[song][json]")
+TEST_CASE ("song.json carries formatVersion 6 and the key names fixed by issues #8, #14, #68, #114, #137, #201 and #209", "[song][json]")
 {
     const auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
 
-    CHECK (document.at ("formatVersion") == 5);
+    CHECK (document.at ("formatVersion") == 6);
+    CHECK (document.at ("transpose") == -3);
+    CHECK (songToJson (overdub::song::Song {}).at ("transpose") == 0);
     CHECK (document.at ("exportFormat") == "mp4");
     CHECK (document.at ("exportLength") == "full_song");
     CHECK (document.at ("exportDestination") == "/Users/someone/Music/Mixes/Band Mix.mp4");

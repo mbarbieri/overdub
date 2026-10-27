@@ -41,6 +41,13 @@ struct TopBarLayout
     juce::Rectangle<int> clock;
     juce::Rectangle<int> undo;
     juce::Rectangle<int> redo;
+    // Transpose (issue #209): the whole slot, and in it the caption over the field, "st" and the
+    // spinner.
+    juce::Rectangle<int> transpose;
+    juce::Rectangle<int> transposeCaption;
+    juce::Rectangle<int> transposeField;
+    juce::Rectangle<int> transposeUnit;
+    juce::Rectangle<int> transposeSpinner;
     juce::Rectangle<int> exportSlot;
 };
 

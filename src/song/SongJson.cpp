@@ -457,6 +457,7 @@ Song readSong (const Reader& reader)
     song.takes = reader.objects<Take> ("takes", readTake);
     song.backingTracks = reader.objects<BackingTrack> ("backingTracks", readBackingTrack);
     song.videoTakes = reader.objects<VideoTake> ("videoTakes", readVideoTake);
+    song.transpose = reader.smallInteger ("transpose");
 
     song.preRoll = readPreRoll (reader, "preRollSeconds");
     song.cameraArmed = reader.boolean ("cameraArmed");
@@ -481,6 +482,7 @@ nlohmann::json songToJson (const Song& song)
         { "takes", arrayToJson (song.takes, takeToJson) },
         { "backingTracks", arrayToJson (song.backingTracks, backingTrackToJson) },
         { "videoTakes", arrayToJson (song.videoTakes, videoTakeToJson) },
+        { "transpose", song.transpose },
         { "preRollSeconds", preRollToSeconds (song.preRoll) },
         { "cameraArmed", song.cameraArmed },
         { "cameraDeviceId", song.cameraDeviceId },
