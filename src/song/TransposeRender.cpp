@@ -19,6 +19,11 @@ namespace
 constexpr long stretchSeed = 209;
 // How many samples are processed between two looks at the stop request.
 constexpr int blockSamples = 1 << 16;
+// The stretcher's spectral window and hop, in seconds. Twice presetDefault's window and half its
+// hop: presetDefault puts a sine up to 17 cents off its shifted pitch, these within ADR 0005's 5
+// (issue #211), at about 2.7 times the render time.
+constexpr double stretchWindowSeconds = 0.24;
+constexpr double stretchHopSeconds = 0.015;
 
 core::Error renderFailed (const juce::File& file, int semitones, const char* step, const core::Error& cause)
 {
@@ -49,7 +54,7 @@ bool shiftPitch (juce::AudioBuffer<float>& input, juce::AudioBuffer<float>& outp
 {
     output.clear();
     signalsmith::stretch::SignalsmithStretch<float> stretch (stretchSeed);
-    stretch.presetDefault (input.getNumChannels(), (float) sampleRate);
+    stretch.configure (input.getNumChannels(), (int) (sampleRate * stretchWindowSeconds), (int) (sampleRate * stretchHopSeconds));
     stretch.setTransposeSemitones ((float) semitones);
 
     const auto length = input.getNumSamples();

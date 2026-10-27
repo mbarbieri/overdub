@@ -85,4 +85,17 @@ int deleteTransposeRendersExcept (const juce::File& packageRoot, int keptSemiton
                 ++deleted;
     return deleted;
 }
+
+int deleteTransposeRendersOfRemovedBackingTracks (const juce::File& packageRoot, const Song& song)
+{
+    int deleted = 0;
+    for (const auto& file : packageRoot.getChildFile (backingFolderName).findChildFiles (juce::File::findFiles, false, juce::String ("*") + renderInfix + "*.wav"))
+    {
+        const auto backingTrackId = file.getFileName().upToFirstOccurrenceOf (renderInfix, false, false).toStdString();
+        if (! std::ranges::contains (song.backingTracks, backingTrackId, &BackingTrack::id))
+            if (file.deleteFile())
+                ++deleted;
+    }
+    return deleted;
+}
 } // namespace overdub::song

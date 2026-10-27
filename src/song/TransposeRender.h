@@ -48,6 +48,7 @@ public:
     TransposeRun& operator= (const TransposeRun&) = delete;
 
     int semitones() const { return target; }
+    const std::vector<TransposeRenderJob>& renderJobs() const { return jobs; }
 
     // Once the worker is done: none on success, or the failed render's Error
     // (song.transpose_render_failed, with its backing_track_id). Nothing while it runs. The run is

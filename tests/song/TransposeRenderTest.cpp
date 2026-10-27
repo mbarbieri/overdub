@@ -44,6 +44,15 @@ struct RenderFixture
     }
     ~RenderFixture() { folder.deleteRecursively(); }
 };
+
+// A temp folder, deleted with everything in it.
+struct ScratchFolder
+{
+    juce::File folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("overdub-transpose-" + juce::Uuid().toString());
+
+    ScratchFolder() { REQUIRE (folder.createDirectory().wasOk()); }
+    ~ScratchFolder() { folder.deleteRecursively(); }
+};
 } // namespace
 
 TEST_CASE ("a sine rendered at a Transpose comes out at the computed frequency and the same length", "[song][transpose][render]")
@@ -66,6 +75,35 @@ TEST_CASE ("a sine rendered at a Transpose comes out at the computed frequency a
         const auto measured = measuredFrequency (rendered->getReadPointer (channel), sampleRate / 4, sampleRate * 7 / 4, sampleRate);
         CHECK_THAT (1200.0 * std::log2 (measured / expected), WithinAbs (0.0, 5.0));
     }
+}
+
+TEST_CASE ("a sine is rendered within 5 cents of its shifted pitch across the bass and mid range, at 44.1 and 48 kHz", "[song][transpose][render]")
+{
+    struct Case
+    {
+        int rate;
+        double frequency;
+        int semitones;
+    };
+    // The cases presetDefault's window put furthest off (up to 17 cents).
+    const auto c = GENERATE (Case { 48000, 110.0, 3 }, Case { 48000, 110.0, -2 }, Case { 44100, 220.0, -2 }, Case { 48000, 330.0, -1 });
+    INFO (c.frequency << " Hz at " << c.rate << " Hz, " << c.semitones << " semitones");
+    const ScratchFolder scratch;
+    const auto& folder = scratch.folder;
+    juce::AudioBuffer<float> sine { 1, 2 * c.rate };
+    for (int i = 0; i < sine.getNumSamples(); ++i)
+        sine.setSample (0, i, 0.25f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * c.frequency * i / c.rate));
+    const auto source = folder.getChildFile ("backing.wav");
+    const auto destination = folder.getChildFile ("backing.transpose.wav");
+    REQUIRE (overdub::song::writeFloatWavAtomically (source, sine, c.rate, {}).has_value());
+
+    REQUIRE (overdub::song::renderTransposed (source, destination, c.rate, c.semitones, {}).has_value());
+
+    const auto rendered = overdub::song::readWavFile (destination);
+    REQUIRE (rendered.has_value());
+    const auto expected = c.frequency * std::pow (2.0, c.semitones / 12.0);
+    const auto measured = measuredFrequency (rendered->getReadPointer (0), c.rate / 4, c.rate * 7 / 4, c.rate);
+    CHECK_THAT (1200.0 * std::log2 (measured / expected), WithinAbs (0.0, 5.0));
 }
 
 TEST_CASE ("a render that cannot read its source writes nothing and names the source", "[song][transpose][render]")
