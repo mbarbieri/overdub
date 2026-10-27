@@ -301,6 +301,7 @@ TEST_CASE ("a launch with Shift held skips reopening the Last Song: the no-Song 
     const auto skipped = eventsNamed (capture, "ui.last_song_skipped");
     REQUIRE (skipped.size() == 1);
     CHECK (skipped[0]["lvl"] == "info");
+    CHECK (skipped[0]["reason"] == "shift_held");
     CHECK (f.recorded() == fileOf (pathIn (f, "First.overdub")));
 }
 

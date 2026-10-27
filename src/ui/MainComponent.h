@@ -278,4 +278,9 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };
+
+// What the window runs once it opens: reopen_last_song, unless `skipLastSong` (Shift held at
+// launch, issue #208), which runs nothing, keeps the Last Song recorded and logs
+// ui.last_song_skipped (reason). The caller reads the modifier.
+void reopenLastSongAtLaunch (MainComponent& content, bool skipLastSong);
 } // namespace overdub::ui
