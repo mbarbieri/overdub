@@ -104,7 +104,7 @@ struct ClipSource
     ClipSourceKind kind = ClipSourceKind::take;
     Id id; // a Take id or a Backing Track id
 
-    bool operator== (const ClipSource&) const = default;
+    auto operator<=> (const ClipSource&) const = default;
 };
 
 // A window onto a Take or Backing Track. The one fade curve in v1 is linear in amplitude (issue #29,

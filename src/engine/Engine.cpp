@@ -28,11 +28,11 @@ Engine::~Engine()
 //==============================================================================
 // Non-audio threads
 
-void Engine::loadSong (const song::Song& song, const juce::File& packageRoot, const InsertFactory& makeInserts, const MonitoredTracks& monitoredTracks)
+void Engine::loadSong (const song::Song& song, const juce::File& packageRoot, const InsertFactory& makeInserts, const MonitoredTracks& monitoredTracks, const PracticePlayback& practice)
 {
     const std::scoped_lock lock { nonRealtimeMutex };
 
-    auto* plan = new RenderPlan (song, packageRoot, config, makeInserts, monitoredTracks);
+    auto* plan = new RenderPlan (song, packageRoot, config, makeInserts, monitoredTracks, practice);
     // Right before publishing, so the audio thread has a free slot for the plan it replaces
     // (see the progress invariant in Engine.h).
     freeRetiredPlans();
@@ -246,12 +246,13 @@ void Engine::process (const float* const* inputs,
     if (fitsPlan)
     {
         // Render-ahead (ADR 0003 amendment): the graph delays every path by its latency L, so the
-        // Track nodes read L samples ahead and output sample n of the block is Song sample
-        // playPosition + n. Song samples 0..L-1 after a start are never heard.
+        // Track nodes read L samples ahead and output sample n of the block is plan sample
+        // planPosition + n (Song sample playPosition + n at 100%). Plan samples 0..L-1 after a
+        // start are never heard.
         const auto silencedNodes = currentPlan->render (outputs,
                                                         LiveInput { inputs, numInputChannels, monitoringOn.load (std::memory_order_relaxed) },
                                                         numSamples,
-                                                        playPosition + currentPlan->latencySamples(),
+                                                        planPosition + currentPlan->latencySamples(),
                                                         playing);
         reportSilencedNodes (silencedNodes, hostTimeNs);
         silenceStaleOutput (outputs, numOutputChannels, numSamples);
@@ -267,7 +268,10 @@ void Engine::process (const float* const* inputs,
     }
 
     if (playing)
-        playPosition += numSamples;
+    {
+        planPosition += numSamples;
+        playPosition = planToSongSample (planPosition, currentSpeedPercent());
+    }
     publishedPosition.store (playPosition);
 
     recordLoad (core::hostTimeNowNs() - callbackStartNs, numSamples);
@@ -285,6 +289,9 @@ void Engine::takePendingPlan (std::uint64_t hostTimeNs) noexcept
     if (next == nullptr)
         return;
 
+    // A plan at another Practice Speed plays on from the same Song sample.
+    if (next->speedPercent() != currentSpeedPercent())
+        planPosition = songToPlanSample (playPosition, next->speedPercent());
     emptySlot->store (currentPlan, std::memory_order_release);
     currentPlan = next;
     staleOutputSamples = next->latencySamples();
@@ -301,6 +308,7 @@ bool Engine::applyTransportCommands (std::uint64_t hostTimeNs) noexcept
     {
         const auto from = playPosition;
         playPosition = seekTarget;
+        planPosition = songToPlanSample (seekTarget, currentSpeedPercent());
         restartStaleOutput();
         pushEvent (seeked, hostTimeNs, (double) from);
     }
@@ -368,6 +376,11 @@ int Engine::updateRecording (bool seekedThisBlock, int numSamples, std::uint64_t
     publishedRecording.store (true);
     pushEvent (recordingStarted, hostTimeNs, (double) activeRecord->inputs().size(), latency);
     return firstFrame;
+}
+
+int Engine::currentSpeedPercent() const noexcept
+{
+    return currentPlan != nullptr ? currentPlan->speedPercent() : song::normalPracticeSpeed;
 }
 
 void Engine::restartStaleOutput() noexcept

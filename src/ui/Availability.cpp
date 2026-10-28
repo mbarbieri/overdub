@@ -54,6 +54,7 @@ constexpr SongOpGesture songOpGestures[] {
     { "start_separation", Gesture::startSeparation },
     { "cancel_run", std::nullopt },
     { "set_transpose", Gesture::edit },
+    { "set_practice_speed", Gesture::setPracticeSpeed },
     { "set_pre_roll", Gesture::setPreRoll },
     { "set_camera_armed", Gesture::setCameraArmed },
     { "set_camera_device", Gesture::setCameraDevice },

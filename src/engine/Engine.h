@@ -41,7 +41,10 @@ public:
     // Non-audio thread. Builds a plan from this Song snapshot (media read from packageRoot) and
     // hands it to the audio thread, which plays it from the next callback at the current position.
     // monitoredTracks: the Armed Tracks that hear their input while Monitoring is on.
-    void loadSong (const song::Song& song, const juce::File& packageRoot, const InsertFactory& makeInserts = {}, const MonitoredTracks& monitoredTracks = std::nullopt);
+    // practice: the Practice Speed and its renders (issue #212). The position stays in Song samples
+    // at any speed: while playing it advances speedPercent / 100 Song samples per output sample, and
+    // a plan at another speed takes over at the same Song sample.
+    void loadSong (const song::Song& song, const juce::File& packageRoot, const InsertFactory& makeInserts = {}, const MonitoredTracks& monitoredTracks = std::nullopt, const PracticePlayback& practice = {});
 
     // The Mixer (issue #31), any non-audio thread. Applies the Song's Track volumes, pans, mutes and
     // solos and its Master volume (engine/MixLaw.h) to the most recently loaded plan without
@@ -141,6 +144,7 @@ private:
     // Pass begins at a record point inside this block).
     int updateRecording (bool seekedThisBlock, int numSamples, std::uint64_t hostTimeNs) noexcept;
     void restartStaleOutput() noexcept;
+    int currentSpeedPercent() const noexcept;
     void silenceStaleOutput (float* const* outputs, int numOutputChannels, int numSamples) noexcept;
     void reportSilencedNodes (std::uint64_t silencedNodes, std::uint64_t hostTimeNs) noexcept;
     void reportRejectedBlock (int numSamples, int numOutputChannels, std::uint64_t hostTimeNs) noexcept;
@@ -191,6 +195,9 @@ private:
     std::atomic<SampleCount> seekRequest { noSeek };
     bool playing = false;        // audio thread only
     SampleCount playPosition = 0; // audio thread only: Song sample of the next block start
+    // Audio thread only: the current plan's sample of the next block start (RenderPlan::speedPercent);
+    // playPosition is planToSongSample of it, and equals it at 100%.
+    SampleCount planPosition = 0;
     // Audio thread only. Output samples still to silence because the graph's delay lines hold
     // audio rendered before the last seek, play, stop or plan swap: set to the plan's latency
     // at each of those, counted down as blocks render.

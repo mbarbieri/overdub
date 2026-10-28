@@ -386,3 +386,30 @@ TEST_CASE ("record and export over the socket while Transposing are refused with
     CHECK_FALSE (socket.f.openSong->isRecording());
     CHECK_FALSE (socket.f.openSong->isExporting());
 }
+
+TEST_CASE ("set_practice_speed takes a whole percent from 50 to 125, outside history, and any other value is an explicit Error", "[control][intent_ops][practice_speed]")
+{
+    SocketToWindow socket;
+    const auto undoLabel = socket.f.openSong->package().undoLabel();
+
+    const auto done = socket.request (R"({"id": 1, "op": "set_practice_speed", "speed_percent": 80})");
+    CHECK (done.at ("ok") == true);
+    CHECK (socket.f.openSong->practiceSpeed() == 80);
+    CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
+
+    for (const auto* outside : { R"({"id": 2, "op": "set_practice_speed", "speed_percent": 49})", R"({"id": 3, "op": "set_practice_speed", "speed_percent": 126})" })
+    {
+        const auto outOfRange = socket.request (outside);
+        CHECK (outOfRange.at ("ok") == false);
+        CHECK (outOfRange.at ("error").at ("code") == "song.practice_speed_out_of_range");
+    }
+
+    for (const auto* notWhole : { R"({"id": 4, "op": "set_practice_speed", "speed_percent": 80.5})", R"({"id": 5, "op": "set_practice_speed", "speed_percent": "80%"})", R"({"id": 6, "op": "set_practice_speed"})" })
+    {
+        const auto refused = socket.request (notWhole);
+        CHECK (refused.at ("ok") == false);
+        CHECK (refused.at ("error").at ("code") == "control.bad_field");
+        CHECK (refused.at ("error").at ("fields").at ("key") == "speed_percent");
+    }
+    CHECK (socket.f.openSong->practiceSpeed() == 80);
+}

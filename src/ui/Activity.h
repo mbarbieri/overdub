@@ -74,6 +74,7 @@ enum class Gesture
     startExport,
     startSeparation,
     startSampleRateConversion,
+    setPracticeSpeed,
 };
 
 // The Error the running activity refuses the gesture with: ui.stop_recording_first (a Pass),

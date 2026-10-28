@@ -2,6 +2,7 @@
 
 #include "engine/LiveInput.h"
 #include "engine/MixStrip.h"
+#include "song/PracticeSpeed.h"
 #include "song/Song.h"
 
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
@@ -39,6 +40,22 @@ using InsertFactory = std::function<std::vector<std::unique_ptr<juce::AudioProce
 // Track and transient, not in the Song. nullopt: every Armed Track.
 using MonitoredTracks = std::optional<std::set<song::Id>>;
 
+// How a plan plays the Song at a Practice Speed (ADR 0009, issue #212), a whole percent. At 100
+// every source plays its own file (song::playedFileFor) and `renders` is ignored. At any other
+// speed the plan runs in plan time, Song time × 100 / speedPercent: each Clip source plays its
+// render listed here (a float WAV at the Song's rate, about length × 100 / speedPercent long), and a
+// source without one plays silence. Clips, fades and gains keep their Song times.
+struct PracticePlayback
+{
+    int speedPercent = song::normalPracticeSpeed;
+    std::map<song::ClipSource, juce::File> renders;
+};
+
+// The plan sample that plays Song sample `songSample` at `speedPercent`, and back (rounded to the
+// nearest). Identities at 100.
+std::int64_t songToPlanSample (std::int64_t songSample, int speedPercent);
+std::int64_t planToSongSample (std::int64_t planSample, int speedPercent);
+
 // Tells every Track node where the render is: time in samples = render position of the block's
 // first sample, playing = transport running. Written and read on the audio thread only.
 class PlanPlayHead final : public juce::AudioPlayHead
@@ -66,8 +83,9 @@ class RenderPlan
 public:
     // Builds and prepares the graph; logs `engine.plan_built` and one warning per Clip source it
     // cannot play (`engine.clip_source_missing`, `engine.clip_source_unusable`). Never fails:
-    // an unplayable source plays silence (ADR 0004).
-    RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& config, const InsertFactory& makeInserts, const MonitoredTracks& monitoredTracks = std::nullopt);
+    // an unplayable source plays silence (ADR 0004), and so does one without a render at a
+    // Practice Speed (not logged: it is expected while renders are made).
+    RenderPlan (const song::Song& song, const juce::File& packageRoot, const EngineConfig& config, const InsertFactory& makeInserts, const MonitoredTracks& monitoredTracks = std::nullopt, const PracticePlayback& practice = {});
 
     RenderPlan (const RenderPlan&) = delete;
     RenderPlan& operator= (const RenderPlan&) = delete;
@@ -75,12 +93,14 @@ public:
     // Audio thread. outputs has config.numOutputChannels channels of numSamples <= maxBlockSize.
     // input is the device input of the block, which the monitored Armed Tracks hear while
     // input.monitoring, and whose peaks every Armed Track's input meter takes.
-    // renderSample is the render position of the first sample (song position + latency).
+    // renderSample is the render position of the first sample (plan position + latency).
     // Returns how many nodes rendered silence this block because another thread held their
     // callback lock (the patched graph never waits for it, ADR 0001 amendment).
     std::uint64_t render (float* const* outputs, const LiveInput& input, int numSamples, std::int64_t renderSample, bool playing) noexcept;
 
     int sampleRate() const { return songSampleRate; }
+    // The Practice Speed it plays at: render() takes plan samples (see PracticePlayback).
+    int speedPercent() const { return practiceSpeedPercent; }
     int numOutputChannels() const { return config.numOutputChannels; }
     int maxBlockSize() const { return config.maxBlockSize; }
     // The graph's total latency: the longest Track path, which PDC delays every other path to.
@@ -115,6 +135,7 @@ private:
 
     EngineConfig config;
     int songSampleRate = 0;
+    int practiceSpeedPercent = song::normalPracticeSpeed;
     int graphLatency = 0;
     int graphTail = 0;
     int trackCount = 0;

@@ -1,0 +1,107 @@
+#pragma once
+
+#include "core/Error.h"
+#include "song/RenderWorker.h"
+#include "song/Song.h"
+
+#include <juce_core/juce_core.h>
+
+#include <chrono>
+#include <map>
+#include <memory>
+#include <optional>
+#include <vector>
+
+// Practice Speed (ADR 0009, issue #212): the whole Song played slower or faster at its own pitch,
+// for rehearsing. It is not part of the Song: not saved, not an undo step (ui::OpenSong holds it).
+//
+// At a Practice Speed other than 100, each source some Clip plays is heard through a render made in
+// one pass from its derived audio (song/TransposeRender.h renderAtPracticeSpeed), with the Song's
+// Transpose applied to a Backing Track. Renders are temporary files in a folder outside the package:
+//   take-<id>.speed80.wav                  a Take's (every Transpose)
+//   backing-<id>.transpose+3.speed80.wav   a Backing Track's at Transpose +3
+namespace overdub::song
+{
+inline constexpr int normalPracticeSpeed = 100; // the Song's own speed: nothing is rendered
+inline constexpr int minPracticeSpeed = 50;
+inline constexpr int maxPracticeSpeed = 125;
+
+// The Practice Speed, when it is a whole percent from 50 to 125.
+// Errors: song.practice_speed_out_of_range (speed_percent, min, max).
+core::Expected<int> checkPracticeSpeed (int speedPercent);
+
+// What a set of renders is made for: a Practice Speed, and the Transpose its Backing Tracks are at.
+// The default (100%) needs no render.
+struct PracticeRenderKey
+{
+    int speedPercent = normalPracticeSpeed;
+    int semitones = 0;
+
+    bool operator== (const PracticeRenderKey&) const = default;
+};
+
+// A source's render at `key` in `folder` (see the header comment).
+juce::File practiceRenderFileFor (const juce::File& folder, const ClipSource& source, PracticeRenderKey key);
+
+// One render to make: a source's derived audio into its render.
+struct PracticeRenderJob
+{
+    ClipSource source;
+    juce::File from;   // the Take's file, or the Backing Track's derived WAV
+    juce::File to;     // practiceRenderFileFor
+    int semitones = 0; // the key's for a Backing Track, 0 for a Take
+};
+
+// The renders `song` lacks at `key`, in Track and Clip order: one per distinct source some Clip
+// plays whose file is there and whose render is not. None at 100%.
+std::vector<PracticeRenderJob> missingPracticeRenders (const juce::File& packageRoot, const juce::File& folder, const Song& song, PracticeRenderKey key);
+
+// The renders at `key` that are there, of the sources some Clip of `song` plays.
+std::map<ClipSource, juce::File> practiceRendersOf (const juce::File& folder, const Song& song, PracticeRenderKey key);
+
+// Deletes every file in `folder` but practiceRendersOf (folder, song, key). Returns how many.
+int deletePracticeRendersExcept (const juce::File& folder, const Song& song, PracticeRenderKey key);
+
+// The renders of one key, made one after another by renderAtPracticeSpeed on a worker thread;
+// advance() (message thread) hands back how it ended. It reads and writes only its jobs' files, so
+// the Song may change while it runs. Logs song.practice_speed_started (info: speed_percent,
+// semitones, renders) and, once every render is written, song.practice_speed_rendered (info: the
+// same and duration_ms). The first failed render ends the run (its Error with source_kind and
+// source_id). cancel() stops the worker after its current block, logging
+// song.practice_speed_cancelled (info: the same, renders_done, duration_ms) unless every render
+// was written. Destroying a running run cancels it.
+class PracticeSpeedRun
+{
+public:
+    using Clock = std::chrono::steady_clock;
+
+    static std::unique_ptr<PracticeSpeedRun> start (int sampleRate, PracticeRenderKey key, std::vector<PracticeRenderJob> jobs, Clock::time_point now);
+
+    ~PracticeSpeedRun();
+
+    PracticeSpeedRun (const PracticeSpeedRun&) = delete;
+    PracticeSpeedRun& operator= (const PracticeSpeedRun&) = delete;
+
+    PracticeRenderKey key() const { return target; }
+
+    // Once the worker is done: none on success, or the failed render's Error. Nothing while it
+    // runs. The run is over once it returns.
+    std::optional<core::Expected<void>> advance (Clock::time_point now);
+    // The source whose render failed, once advance() has handed back a failure; none otherwise.
+    std::optional<ClipSource> failedSource() const;
+
+    // Stops the worker and waits for it. Nothing once the run is over.
+    void cancel (Clock::time_point now);
+
+private:
+    PracticeSpeedRun (PracticeRenderKey key, std::vector<PracticeRenderJob> jobs, Clock::time_point startedAt);
+
+    core::Fields fields (Clock::time_point now) const;
+
+    PracticeRenderKey target;
+    std::vector<PracticeRenderJob> jobs;
+    Clock::time_point startedAt;
+    bool failed = false;
+    std::unique_ptr<RenderWorker> worker;
+};
+} // namespace overdub::song

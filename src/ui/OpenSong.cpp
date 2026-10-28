@@ -36,6 +36,7 @@ OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding aud
       // The derived audio plays until every render of the Song's Transpose is there.
       heardSemitones (song::missingTransposeRenders (package_->location(), package_->song()).empty() ? package_->song().transpose : 0)
 {
+    practiceFolder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("overdub-practice-" + juce::Uuid().toString());
     package_->setPluginStateCapture ([this] (song::Song& song) { capturePluginState (song); });
     song::deleteTransposeRendersExcept (package_->location(), package_->song().transpose);
     inserts.sync (song());
@@ -47,6 +48,8 @@ OpenSong::~OpenSong()
 {
     for (const auto& error : detachAudio())
         core::logError (error);
+    practiceRun.reset();
+    practiceFolder.deleteRecursively();
     // Closing the Song waits for a movie still completing (ADR 0003, issue #90 amendment).
     if (auto* pass = std::get_if<PassActivity> (&activity))
         for (const auto& error : finishPass (pass->recorder->finish()))
@@ -272,6 +275,21 @@ core::Expected<void> OpenSong::setPreRoll (song::PreRoll preRoll)
     return {};
 }
 
+core::Expected<void> OpenSong::setPracticeSpeed (int speedPercent)
+{
+    if (auto refused = refusal (activity, Gesture::setPracticeSpeed))
+        return std::unexpected (std::move (*refused));
+    if (auto checked = song::checkPracticeSpeed (speedPercent); ! checked.has_value())
+        return std::unexpected (std::move (checked.error()));
+    if (speedPercent != practiceTarget)
+        core::logEvent (core::Level::info, "ui.practice_speed_set", { { "from_percent", practiceTarget }, { "to_percent", speedPercent } });
+    practiceTarget = speedPercent;
+    // The same value again tries the renders that failed again.
+    failedPracticeRenders.clear();
+    followPracticeSpeed();
+    return {};
+}
+
 void OpenSong::setExportVideoTake (const song::Id& videoTakeId)
 {
     if (song().exportVideoTakeId == videoTakeId || ! std::ranges::contains (song().videoTakes, videoTakeId, &song::VideoTake::id))
@@ -466,6 +484,7 @@ std::vector<core::Expected<song::Id>> OpenSong::importFiles (const std::vector<j
     auto results = package_->importBackingTracks (files);
     reloadEngine();
     followTranspose();
+    followPracticeSpeed();
     return results;
 }
 
@@ -519,6 +538,7 @@ std::optional<core::Error> OpenSong::advanceSeparation (song::SongPackage::Clock
     if (! ended->has_value())
         return ended->error();
     followTranspose();
+    followPracticeSpeed();
     return std::nullopt;
 }
 
@@ -578,6 +598,8 @@ std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point no
 {
     auto errors = handleCrashes();
     if (auto error = advanceTranspose (now))
+        errors.push_back (std::move (*error));
+    if (auto error = advancePracticeSpeed (now))
         errors.push_back (std::move (*error));
     for (auto& error : handleCameraChanges())
         errors.push_back (std::move (error));
@@ -834,6 +856,7 @@ void OpenSong::updateEngine (const song::Song& before)
         return;
     reloadEngine();
     followTranspose();
+    followPracticeSpeed();
 }
 
 void OpenSong::reloadEngine()
@@ -845,7 +868,7 @@ void OpenSong::reloadEngine()
     }
     inserts.sync (song());
     if (binding.engine != nullptr)
-        binding.engine->loadSong (heardSong(), package_->location(), inserts.insertFactory(), monitored);
+        binding.engine->loadSong (heardSong(), package_->location(), inserts.insertFactory(), monitored, heardPracticePlayback());
 }
 
 song::Song OpenSong::heardSong() const
@@ -909,6 +932,79 @@ std::optional<core::Error> OpenSong::advanceTranspose (song::SongPackage::Clock:
         reloadEngine();
     }
     return failure;
+}
+
+engine::PracticePlayback OpenSong::heardPracticePlayback() const
+{
+    return { .speedPercent = heardPractice.speedPercent, .renders = song::practiceRendersOf (practiceFolder, song(), heardPractice) };
+}
+
+song::PracticeRenderKey OpenSong::practiceKey() const
+{
+    if (practiceTarget == song::normalPracticeSpeed)
+        return {};
+    return { .speedPercent = practiceTarget, .semitones = song().transpose };
+}
+
+std::optional<core::Error> OpenSong::advancePracticeSpeed (song::SongPackage::Clock::time_point now)
+{
+    const auto target = practiceKey();
+    if (target != failedPracticeKey)
+        failedPracticeRenders.clear();
+    std::optional<core::Error> failure;
+    if (practiceRun != nullptr)
+    {
+        if (practiceRun->key() != target)
+        {
+            practiceRun->cancel (now);
+            practiceRun.reset();
+        }
+        else if (auto ended = practiceRun->advance (now))
+        {
+            const auto failedSource = practiceRun->failedSource();
+            practiceRun.reset();
+            if (! ended->has_value())
+            {
+                failure = ended->error();
+                failedPracticeKey = target;
+                failedPracticeRenders.insert (*failedSource);
+            }
+            else if (heardPractice == target)
+                reloadEngine(); // sources that had no render play theirs now
+        }
+        else
+            return std::nullopt;
+    }
+
+    auto missing = song::missingPracticeRenders (package_->location(), practiceFolder, song(), target);
+    std::erase_if (missing, [this] (const song::PracticeRenderJob& job) { return failedPracticeRenders.contains (job.source); });
+    if (! missing.empty())
+    {
+        // A folder that cannot be made fails the render's write, handed back by the run.
+        practiceFolder.createDirectory();
+        practiceRun = song::PracticeSpeedRun::start (song().sampleRate, target, std::move (missing), now);
+        return failure;
+    }
+    if (heardPractice != target && failedPracticeRenders.empty())
+    {
+        core::logEvent (core::Level::info,
+                        "ui.practice_speed_heard",
+                        { { "from_percent", heardPractice.speedPercent }, { "to_percent", target.speedPercent }, { "semitones", target.semitones } });
+        heardPractice = target;
+        reloadEngine();
+        if (const auto deleted = song::deletePracticeRendersExcept (practiceFolder, song(), target); deleted > 0)
+            core::logEvent (core::Level::info, "ui.practice_renders_deleted", { { "count", deleted } });
+    }
+    return failure;
+}
+
+void OpenSong::followPracticeSpeed()
+{
+    if (practiceRun != nullptr && practiceRun->key() == practiceKey())
+        return;
+    // Only a run that ends fails: here none runs, or advancePracticeSpeed cancels it.
+    const auto failure = advancePracticeSpeed (song::SongPackage::Clock::now());
+    OVERDUB_CHECK (! failure.has_value(), "ui.practice_speed_failed_without_run");
 }
 
 void OpenSong::followTranspose()

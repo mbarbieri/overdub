@@ -498,6 +498,18 @@ struct SetTranspose // the top bar's Transpose field, on Return
 };
 
 //==============================================================================
+// Song: Practice Speed (issue #212): rehearsal only, never an undo step nor saved; renders that
+// playback switches to once ready.
+
+struct SetPracticeSpeed // the top bar's Practice Speed field, on Return
+{
+    static constexpr std::string_view op = "set_practice_speed";
+    int speedPercent = 100;
+    bool operator== (const SetPracticeSpeed&) const = default;
+    static constexpr auto fields = std::tuple { field ("speed_percent", &SetPracticeSpeed::speedPercent) };
+};
+
+//==============================================================================
 // Song: Record settings.
 
 struct SetPreRoll
@@ -752,7 +764,7 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::Seek, intent::JumpToPass, intent::Nudge,
                                 intent::AddTrack, intent::ImportFiles, intent::DeleteTrack, intent::MoveTrack,
                                 intent::SetArmed, intent::SetInputChannels, intent::SetMonitoring,
-                                intent::StartSeparation, intent::CancelRun, intent::SetTranspose,
+                                intent::StartSeparation, intent::CancelRun, intent::SetTranspose, intent::SetPracticeSpeed,
                                 intent::SetPreRoll, intent::SetCameraArmed, intent::SetCameraDevice,
                                 intent::SplitSelectedClip, intent::DeleteSelection, intent::TakeLaneClick, intent::PreviewMix,
                                 intent::AddInsert, intent::OpenInsertEditor, intent::ClosePluginWindow,

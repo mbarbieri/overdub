@@ -10,7 +10,7 @@
 // child rectangles, so Components only call setBounds with what these return. Sizes in points.
 namespace overdub::ui
 {
-inline constexpr int minimumWindowWidth = 960;
+inline constexpr int minimumWindowWidth = 1040;
 inline constexpr int minimumWindowHeight = 600;
 inline constexpr int topBarHeight = 52;
 inline constexpr int noticeLineHeight = 28;
@@ -48,6 +48,12 @@ struct TopBarLayout
     juce::Rectangle<int> transposeField;
     juce::Rectangle<int> transposeUnit;
     juce::Rectangle<int> transposeSpinner;
+    // Practice Speed (issue #212), before Transpose, laid out the same way with "%".
+    juce::Rectangle<int> practiceSpeed;
+    juce::Rectangle<int> practiceSpeedCaption;
+    juce::Rectangle<int> practiceSpeedField;
+    juce::Rectangle<int> practiceSpeedUnit;
+    juce::Rectangle<int> practiceSpeedSpinner;
     juce::Rectangle<int> exportSlot;
 };
 

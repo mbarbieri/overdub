@@ -43,6 +43,7 @@ target_sources(overdub_tests PRIVATE
     engine/MixLawTest.cpp
     engine/EngineTakeLanesTest.cpp
     engine/EngineTest.cpp
+    engine/EnginePracticeSpeedTest.cpp
     export/MixExportTest.cpp
     export/MixRenderTest.cpp
     export/MovieExportTest.cpp
@@ -74,6 +75,8 @@ target_sources(overdub_tests PRIVATE
     song/TrackColoursTest.cpp
     song/TransposeTest.cpp
     song/TransposeRenderTest.cpp
+    song/PracticeSpeedRenderTest.cpp
+    song/PracticeSpeedTest.cpp
     song/TrackEditsTest.cpp
     song/VideoTakeEditsTest.cpp
     support/RealtimeGuardTest.cpp
@@ -104,7 +107,7 @@ target_sources(overdub_tests PRIVATE
     ui/OpenSongCameraTest.cpp
     ui/OpenSongDeviceChangeTest.cpp
     ui/OpenSongInsertsTest.cpp
-    ui/OpenSongTest.cpp ui/OpenSongTransposeTest.cpp
+    ui/OpenSongTest.cpp ui/OpenSongTransposeTest.cpp ui/OpenSongPracticeSpeedTest.cpp
     ui/PreRollTest.cpp
     ui/RecordCameraTest.cpp
     ui/RecordInsertsTest.cpp
@@ -125,6 +128,7 @@ target_sources(overdub_tests PRIVATE
     ui/TimelineScrollTest.cpp
     ui/TimelineGeometryTest.cpp
     ui/TopBarTransposeTest.cpp
+    ui/TopBarPracticeSpeedTest.cpp
     ui/TransposeRecordExportTest.cpp
     ui/TrackColoursUiTest.cpp
     ui/TrackReorderUiTest.cpp

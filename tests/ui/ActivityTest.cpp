@@ -144,6 +144,7 @@ std::vector<GestureCase> gestureCases()
         { "startSampleRateConversion",
           [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->startSampleRateConversion (otherSampleRate)); },
           { "ok", pass, separation, "ok", exportRunning } },
+        { "setPracticeSpeed", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setPracticeSpeed (80)); }, { "ok", pass, separation, conversion, "ok" } },
     };
 }
 

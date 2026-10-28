@@ -16,10 +16,34 @@ constexpr int undoButtonWidth = 190;
 constexpr int controlIndicatorWidth = 130;
 constexpr int exportSlotWidth = 150;
 constexpr int transposeFieldWidth = 30;
-constexpr int transposeUnitWidth = 12;
-constexpr int transposeSpinnerWidth = 14;
-constexpr int transposeSlotWidth = transposeFieldWidth + 2 + transposeUnitWidth + 2 + transposeSpinnerWidth;
-constexpr int transposeCaptionHeight = 12;
+constexpr int practiceSpeedFieldWidth = 40;
+constexpr int fieldUnitWidth = 12;
+constexpr int fieldSpinnerWidth = 14;
+constexpr int transposeSlotWidth = transposeFieldWidth + 2 + fieldUnitWidth + 2 + fieldSpinnerWidth;
+// Wider than its field row: "PRACTICE SPEED" needs it.
+constexpr int practiceSpeedSlotWidth = 74;
+constexpr int fieldCaptionHeight = 12;
+
+// A captioned field's parts in `slot`: the caption over the field, its unit and its spinner.
+struct FieldSlot
+{
+    juce::Rectangle<int> caption;
+    juce::Rectangle<int> field;
+    juce::Rectangle<int> unit;
+    juce::Rectangle<int> spinner;
+};
+
+FieldSlot fieldSlot (juce::Rectangle<int> slot, int fieldWidth)
+{
+    FieldSlot parts;
+    parts.caption = slot.removeFromTop (fieldCaptionHeight);
+    parts.field = slot.removeFromLeft (fieldWidth);
+    slot.removeFromLeft (2);
+    parts.unit = slot.removeFromLeft (fieldUnitWidth);
+    slot.removeFromLeft (2);
+    parts.spinner = slot.removeFromLeft (fieldSpinnerWidth).withSizeKeepingCentre (fieldSpinnerWidth, fieldSpinnerWidth);
+    return parts;
+}
 constexpr int importButtonHeight = 30;
 } // namespace
 
@@ -50,13 +74,18 @@ TopBarLayout topBarLayout (juce::Rectangle<int> bar)
     area.removeFromRight (gap);
     layout.transpose = area.removeFromRight (transposeSlotWidth);
     area.removeFromRight (gap);
-    auto transpose = layout.transpose;
-    layout.transposeCaption = transpose.removeFromTop (transposeCaptionHeight);
-    layout.transposeField = transpose.removeFromLeft (transposeFieldWidth);
-    transpose.removeFromLeft (2);
-    layout.transposeUnit = transpose.removeFromLeft (transposeUnitWidth);
-    transpose.removeFromLeft (2);
-    layout.transposeSpinner = transpose.withSizeKeepingCentre (transposeSpinnerWidth, transposeSpinnerWidth);
+    const auto transpose = fieldSlot (layout.transpose, transposeFieldWidth);
+    layout.transposeCaption = transpose.caption;
+    layout.transposeField = transpose.field;
+    layout.transposeUnit = transpose.unit;
+    layout.transposeSpinner = transpose.spinner;
+    layout.practiceSpeed = area.removeFromRight (practiceSpeedSlotWidth);
+    area.removeFromRight (gap);
+    const auto practiceSpeed = fieldSlot (layout.practiceSpeed, practiceSpeedFieldWidth);
+    layout.practiceSpeedCaption = practiceSpeed.caption;
+    layout.practiceSpeedField = practiceSpeed.field;
+    layout.practiceSpeedUnit = practiceSpeed.unit;
+    layout.practiceSpeedSpinner = practiceSpeed.spinner;
 
     const auto groupWidth = 3 * transportButtonWidth + 3 * gap + clockWidth;
     const auto undoWidth = std::min (undoButtonWidth, (area.getWidth() - groupWidth - 2 * gap) / 2);

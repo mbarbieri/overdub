@@ -137,6 +137,9 @@ private:
     // One undo step "Transpose +3"; the same value again changes nothing. Errors:
     // song.transpose_out_of_range (presented), refusals.
     IntentResult setTranspose (int semitones);
+    // Not an undo step; the same value again tries failed renders again. Errors:
+    // song.practice_speed_out_of_range (presented), refusals.
+    IntentResult setPracticeSpeed (int speedPercent);
     IntentResult armCamera (bool armed);
     IntentResult cameraAccessAnswered (bool granted);
     IntentResult setCameraArmed (bool armed);
