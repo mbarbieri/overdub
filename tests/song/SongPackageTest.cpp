@@ -682,7 +682,7 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
     expected.exportFormat = overdub::song::ExportFormat::wav;
     expected.exportLength = overdub::song::VideoLength::trimToVideoTake;
     expected.exportDestination = "";
-    expected.transpose = 0;
+    expected.transpose = {};
     expected.focusTrackId.reset();
     expected.markers.clear();
     expected.loops.clear();
@@ -763,7 +763,7 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
     expected.exportFormat = overdub::song::ExportFormat::wav;
     expected.exportLength = overdub::song::VideoLength::trimToVideoTake;
     expected.exportDestination = "";
-    expected.transpose = 0;
+    expected.transpose = {};
     expected.focusTrackId.reset();
     expected.markers.clear();
     expected.loops.clear();

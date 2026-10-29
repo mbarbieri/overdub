@@ -108,11 +108,11 @@ TEST_CASE ("the fully populated test Song sets every field away from its default
     checkListsHoldTwoOrMore (document, "$");
 }
 
-TEST_CASE ("song.json carries formatVersion 10 and the key names fixed by issues #8, #14, #68, #114, #137, #201, #209, #226, #227, #228 and #230", "[song][json]")
+TEST_CASE ("song.json carries formatVersion 11 and the key names fixed by issues #8, #14, #68, #114, #137, #201, #209, #226, #227, #228, #230 and #232", "[song][json]")
 {
     const auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
 
-    CHECK (document.at ("formatVersion") == 10);
+    CHECK (document.at ("formatVersion") == 11);
     CHECK (document.at ("loops").at (0) == nlohmann::json { { "id", "loop-1" }, { "name", "Intro riff" }, { "start", 24000 }, { "end", 72000 }, { "practiceSpeedPercent", 40 } });
     CHECK (document.at ("loops").size() == 2);
     CHECK (document.at ("activeLoopId") == "loop-2");
@@ -130,6 +130,8 @@ TEST_CASE ("song.json carries formatVersion 10 and the key names fixed by issues
     CHECK (document.at ("tracks").at (1).at ("transcribeSolo") == true);
     CHECK (document.at ("transpose") == -3);
     CHECK (songToJson (overdub::song::Song {}).at ("transpose") == 0);
+    CHECK (document.at ("transposeCents") == 25);
+    CHECK (songToJson (overdub::song::Song {}).at ("transposeCents") == 0);
     CHECK (document.at ("exportFormat") == "mp4");
     CHECK (document.at ("exportLength") == "full_song");
     CHECK (document.at ("exportDestination") == "/Users/someone/Music/Mixes/Band Mix.mp4");

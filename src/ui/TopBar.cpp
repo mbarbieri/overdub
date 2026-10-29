@@ -218,7 +218,7 @@ TopBar::TopBar()
     }
     practiceSpeedField.setText (juce::String (shownPracticeSpeed), juce::dontSendNotification);
     practiceSpeedField.onTextChange = [this] { practiceSpeedEntered(); };
-    transposeField.setText (shownTranspose, juce::dontSendNotification);
+    transposeField.setText (juce::String::fromUTF8 (song::signedText (shownTranspose.semitones).c_str()), juce::dontSendNotification);
     transposeField.onTextChange = [this] { transposeEntered(); };
     for (auto* spinner : { &practiceSpeedSpinner, &transposeSpinner })
     {
@@ -246,9 +246,9 @@ void TopBar::transposeEntered()
 {
     const auto typed = parseTranspose (transposeField.getText().toStdString());
     // The field shows the Song's value until the handler has changed it (show() is called back).
-    transposeField.setText (juce::String::fromUTF8 (shownTranspose.c_str()), juce::dontSendNotification);
+    transposeField.setText (juce::String::fromUTF8 (song::signedText (shownTranspose.semitones).c_str()), juce::dontSendNotification);
     if (typed.has_value())
-        send (SongIntent { intent::SetTranspose { *typed } });
+        send (SongIntent { intent::SetTranspose { .semitones = *typed, .cents = shownTranspose.cents } });
 }
 
 void TopBar::practiceSpeedEntered()
@@ -291,10 +291,11 @@ void TopBar::show (const TopBarState& state)
     exportProgressBar.setFraction (state.exportProgress);
     controlIndicator.show (controlIndicatorName (state.controllingProcesses));
 
-    shownTranspose = song::transposeText (state.transpose);
+    shownTranspose = state.transpose;
     if (! transposeField.isBeingEdited())
-        transposeField.setText (juce::String::fromUTF8 (shownTranspose.c_str()), juce::dontSendNotification);
-    transposeField.setColour (juce::Label::backgroundColourId, state.transpose != 0 ? colours::accent : colours::background);
+        transposeField.setText (juce::String::fromUTF8 (song::signedText (shownTranspose.semitones).c_str()), juce::dontSendNotification);
+    transposeField.setColour (juce::Label::backgroundColourId, ! state.transpose.isNone() ? colours::accent : colours::background);
+    transposeField.setTooltip (state.transpose.cents != 0 ? juce::String::fromUTF8 (song::transposeLabel (state.transpose).c_str()) : juce::String());
     transposeField.setEnabled (state.songOpen && state.canTranspose);
     transposeSpinner.setVisible (state.songOpen && state.transposeRendering);
 

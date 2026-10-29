@@ -57,17 +57,23 @@ struct ScratchFolder
 
 TEST_CASE ("a sine rendered at a Transpose comes out at the computed frequency and the same length", "[song][transpose][render]")
 {
-    const auto semitones = GENERATE (12, -1);
+    // Whole semitones (issue #209), and semitones with cents in one pass (issue #232).
+    const auto transpose = GENERATE (overdub::song::Transpose { .semitones = 12 },
+                                     overdub::song::Transpose { .semitones = -1 },
+                                     overdub::song::Transpose { .semitones = 0, .cents = 30 },
+                                     overdub::song::Transpose { .semitones = -12, .cents = -50 });
+    INFO (transpose.semitones << " semitones " << transpose.cents << " cents");
     RenderFixture fixture;
     const auto destination = fixture.folder.getChildFile ("backing.transpose.wav");
 
-    REQUIRE (overdub::song::renderTransposed (fixture.source, destination, sampleRate, semitones, {}).has_value());
+    REQUIRE (overdub::song::renderTransposed (fixture.source, destination, sampleRate, transpose, {}).has_value());
 
     const auto rendered = overdub::song::readWavFile (destination);
     REQUIRE (rendered.has_value());
     CHECK (rendered->getNumChannels() == 2);
     CHECK (rendered->getNumSamples() == fixture.sine.getNumSamples());
-    const auto expected = sineFrequency * std::pow (2.0, semitones / 12.0); // 880 Hz, 415.30 Hz
+    // 880 Hz, 415.30 Hz, 447.69 Hz, 213.74 Hz
+    const auto expected = sineFrequency * std::pow (2.0, (transpose.semitones + transpose.cents / 100.0) / 12.0);
     // Measured away from both ends, where the stretcher has the whole spectral window. ADR 0005:
     // within 5 cents.
     for (int channel = 0; channel < 2; ++channel)
@@ -97,7 +103,7 @@ TEST_CASE ("a sine is rendered within 5 cents of its shifted pitch across the ba
     const auto destination = folder.getChildFile ("backing.transpose.wav");
     REQUIRE (overdub::song::writeFloatWavAtomically (source, sine, c.rate, {}).has_value());
 
-    REQUIRE (overdub::song::renderTransposed (source, destination, c.rate, c.semitones, {}).has_value());
+    REQUIRE (overdub::song::renderTransposed (source, destination, c.rate, { .semitones = c.semitones }, {}).has_value());
 
     const auto rendered = overdub::song::readWavFile (destination);
     REQUIRE (rendered.has_value());
@@ -111,7 +117,7 @@ TEST_CASE ("a render that cannot read its source writes nothing and names the so
     RenderFixture fixture;
     const auto destination = fixture.folder.getChildFile ("backing.transpose.wav");
 
-    const auto failed = overdub::song::renderTransposed (fixture.folder.getChildFile ("missing.wav"), destination, sampleRate, 3, {});
+    const auto failed = overdub::song::renderTransposed (fixture.folder.getChildFile ("missing.wav"), destination, sampleRate, { .semitones = 3 }, {});
 
     REQUIRE_FALSE (failed.has_value());
     CHECK (failed.error().code == "song.transpose_render_failed");
@@ -127,7 +133,7 @@ TEST_CASE ("a render asked to stop writes nothing", "[song][transpose][render]")
     std::stop_source stop;
     stop.request_stop();
 
-    const auto cancelled = overdub::song::renderTransposed (fixture.source, destination, sampleRate, 3, stop.get_token());
+    const auto cancelled = overdub::song::renderTransposed (fixture.source, destination, sampleRate, { .semitones = 3 }, stop.get_token());
 
     REQUIRE_FALSE (cancelled.has_value());
     CHECK (cancelled.error().code == "song.transpose_render_cancelled");
@@ -169,12 +175,12 @@ TEST_CASE ("a Song at Transpose 0 needs no render, and at +2 one per Backing Tra
 
     CHECK (overdub::song::missingTransposeRenders (root, song).empty());
 
-    song.transpose = 2;
+    song.transpose = { .semitones = 2 };
     const auto missing = overdub::song::missingTransposeRenders (root, song);
     REQUIRE (missing.size() == 2);
     CHECK (missing[0].backingTrackId == song.backingTracks[0].id);
     CHECK (missing[0].source == overdub::song::derivedFileFor (root, song.backingTracks[0]));
-    CHECK (missing[0].destination == overdub::song::transposedFileFor (root, song.backingTracks[0], 2));
+    CHECK (missing[0].destination == overdub::song::transposedFileFor (root, song.backingTracks[0], { .semitones = 2 }));
 
     REQUIRE (missing[0].destination.replaceWithText ("rendered"));
     const auto stillMissing = overdub::song::missingTransposeRenders (root, song);
@@ -187,14 +193,17 @@ TEST_CASE ("only the renders of the kept Transpose stay in the package", "[song]
     auto fixture = FixtureSongBuilder().backingTrack ("Band").build();
     const auto root = fixture->package->location();
     const auto& backingTrack = fixture->song().backingTracks[0];
-    for (const int semitones : { -1, 2, 12 })
-        REQUIRE (overdub::song::transposedFileFor (root, backingTrack, semitones).replaceWithText ("rendered"));
+    using overdub::song::Transpose;
+    for (const auto transpose : { Transpose { .semitones = -1 }, Transpose { .semitones = 2 }, Transpose { .semitones = 12 }, Transpose { .semitones = 2, .cents = 20 }, Transpose { .semitones = 0, .cents = 2 } })
+        REQUIRE (overdub::song::transposedFileFor (root, backingTrack, transpose).replaceWithText ("rendered"));
 
-    CHECK (overdub::song::deleteTransposeRendersExcept (root, 2) == 2);
+    CHECK (overdub::song::deleteTransposeRendersExcept (root, { .semitones = 2 }) == 4);
 
-    CHECK (overdub::song::transposedFileFor (root, backingTrack, 2).existsAsFile());
-    CHECK_FALSE (overdub::song::transposedFileFor (root, backingTrack, -1).exists());
-    CHECK_FALSE (overdub::song::transposedFileFor (root, backingTrack, 12).exists());
+    CHECK (overdub::song::transposedFileFor (root, backingTrack, { .semitones = 2 }).existsAsFile());
+    CHECK_FALSE (overdub::song::transposedFileFor (root, backingTrack, { .semitones = -1 }).exists());
+    CHECK_FALSE (overdub::song::transposedFileFor (root, backingTrack, { .semitones = 12 }).exists());
+    CHECK_FALSE (overdub::song::transposedFileFor (root, backingTrack, { .semitones = 2, .cents = 20 }).exists());
+    CHECK_FALSE (overdub::song::transposedFileFor (root, backingTrack, { .semitones = 0, .cents = 2 }).exists());
     CHECK (overdub::song::derivedFileFor (root, backingTrack).existsAsFile());
     CHECK (overdub::song::originalFileFor (root, backingTrack).existsAsFile());
 }
@@ -204,11 +213,11 @@ TEST_CASE ("a Transpose run renders every missing render on a worker and logs it
     auto fixture = FixtureSongBuilder().backingTrack ("Band", 1.0).backingTrack ("Click", 1.0).build();
     const auto root = fixture->package->location();
     auto song = fixture->song();
-    song.transpose = -1;
+    song.transpose = { .semitones = -1, .cents = 25 };
     overdub::core::ScopedLogCapture capture;
 
     auto run = overdub::song::TransposeRun::start (song.sampleRate, song.transpose, overdub::song::missingTransposeRenders (root, song), overdub::song::TransposeRun::Clock::now());
-    CHECK (run->semitones() == -1);
+    CHECK (run->transpose() == overdub::song::Transpose { .semitones = -1, .cents = 25 });
     const auto ended = runToEnd (*run);
 
     REQUIRE (ended.has_value());
@@ -217,6 +226,7 @@ TEST_CASE ("a Transpose run renders every missing render on a worker and logs it
     const auto started = eventsNamed (capture, "song.transpose_started");
     REQUIRE (started.size() == 1);
     CHECK (started[0].at ("semitones") == -1);
+    CHECK (started[0].at ("cents") == 25);
     CHECK (started[0].at ("renders") == 2);
     const auto rendered = eventsNamed (capture, "song.transpose_rendered");
     REQUIRE (rendered.size() == 1);
@@ -229,7 +239,7 @@ TEST_CASE ("a Transpose run that cannot render names the Backing Track", "[song]
     auto fixture = FixtureSongBuilder().backingTrack ("Band", 1.0).build();
     const auto root = fixture->package->location();
     auto song = fixture->song();
-    song.transpose = 4;
+    song.transpose = { .semitones = 4 };
     auto jobs = overdub::song::missingTransposeRenders (root, song);
     REQUIRE (overdub::song::derivedFileFor (root, song.backingTracks[0]).deleteFile());
 

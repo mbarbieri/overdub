@@ -136,12 +136,29 @@ core::Expected<nlohmann::json> addLoopPracticeSpeeds (nlohmann::json document)
             loop["practiceSpeedPercent"] = 100;
     return document;
 }
+
+core::Expected<nlohmann::json> addTransposeCents (nlohmann::json document)
+{
+    document["transposeCents"] = 0;
+    return document;
+}
 } // namespace
 
 std::span<const MigrationStep> songMigrationSteps()
 {
     // songFormatVersion must equal songMigrationSteps().size() + 1.
-    static const std::array<MigrationStep, 9> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours, addExportChoices, addTranspose, addTranscribeMix, addMarkers, addLoops, addLoopPracticeSpeeds };
+    static const std::array<MigrationStep, 10> steps {
+        addVideoTakeOutputDevice,
+        addBackingTrackSeparatedFrom,
+        addTrackColours,
+        addExportChoices,
+        addTranspose,
+        addTranscribeMix,
+        addMarkers,
+        addLoops,
+        addLoopPracticeSpeeds,
+        addTransposeCents,
+    };
     static_assert (std::tuple_size_v<decltype (steps)> + 1 == songFormatVersion);
     return steps;
 }

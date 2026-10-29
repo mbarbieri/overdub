@@ -398,11 +398,11 @@ public:
     bool takeSampleRateChanged() { return std::exchange (sampleRateChanged, false); }
 
     // The Transpose playback uses (see the header comment).
-    int heardTranspose() const { return heardSemitones; }
+    song::Transpose heardTranspose() const { return heardShift; }
     // A Transpose render runs (the top bar's spinner).
     bool isTransposeRendering() const { return transposeRun != nullptr; }
     // Playback is not at the Song's Transpose yet, or renders for it are being made.
-    bool isTransposing() const { return isTransposeRendering() || heardSemitones != song().transpose; }
+    bool isTransposing() const { return isTransposeRendering() || heardShift != song().transpose; }
 
     // Sets the Practice Speed (see the header comment). The same value again changes nothing.
     // While a Loop is heard (heardLoop()) it is also that Loop's Practice Speed, outside history
@@ -526,11 +526,11 @@ private:
     bool recordAgainAfterPass = false;
     video::VideoPlayback playback;
     std::optional<juce::File> lastExport;
-    int heardSemitones = 0;
+    song::Transpose heardShift;
     bool transcribing = false;
-    // The Backing Tracks whose render of failedSemitones failed: not rendered again until the
+    // The Backing Tracks whose render of failedShift failed: not rendered again until the
     // Song's Transpose changes.
-    int failedSemitones = 0;
+    song::Transpose failedShift;
     std::set<song::Id> failedRenders;
     // The Song's Backing Tracks when the renders of removed ones were last deleted; none after a
     // render ended or was cancelled, which deletes them again.

@@ -636,6 +636,13 @@ TEST_CASE ("Transcribe mode stacks the overview over the ruler and the waveform,
     CHECK (column.practiceSpeedCaption.getBottom() <= column.practiceSpeedField.getY());
     CHECK (column.practiceSpeedField.getBottom() < column.transposeCaption.getY());
     CHECK (column.transposeCaption.getBottom() <= column.transposeField.getY());
+    // The fine tune (issue #232): its cents field and "ct" after "st", then the spinner.
+    checkInsideAndApart (shown.column.withZeroOrigin(), { column.transposeField, column.transposeUnit, column.transposeCentsField, column.transposeCentsUnit, column.transposeSpinner });
+    CHECK (column.transposeUnit.getRight() < column.transposeCentsField.getX());
+    CHECK (column.transposeCentsField.getY() == column.transposeField.getY());
+    CHECK (column.transposeCentsField.getWidth() == column.transposeField.getWidth());
+    CHECK (column.transposeCentsField.getRight() < column.transposeCentsUnit.getX());
+    CHECK (column.transposeCentsUnit.getRight() <= column.transposeSpinner.getX());
 }
 
 TEST_CASE ("the Loop/Marker strip sits right above the ruler in Edit and Transcribe, and right above the overview in Record", "[ui][layout][markers]")

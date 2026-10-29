@@ -15,7 +15,9 @@
 // the Export sheet (issue #200); while an export runs, its status and progress stand in its place,
 // with ✕, which cancels it (issue #202). Before it, Transpose (issue #209): "TRANSPOSE" over the
 // field, "st" and a spinner while its renders run; the field is highlighted unless Transpose is 0,
-// and a whole number typed into it runs set_transpose. Before that, Practice Speed (issue #212) the
+// and a whole number typed into it runs set_transpose with the Song's cents kept. The fine tune in
+// cents is set in the Transcribe column (issue #232); while it is not 0 the field's tooltip names
+// the whole Transpose ("+3 +20 ct"). Before that, Practice Speed (issue #212) the
 // same way: "PRACTICE SPEED" over the field, "%" and a spinner; highlighted unless 100, and a whole
 // number typed into it runs set_practice_speed.
 // While a control client is connected it names the controlling process (ADR 0008 Security, issue
@@ -42,7 +44,7 @@ struct TopBarState
     // While an export runs: "Preparing…" or "Exporting… 42%" (exportStatusText), and its progress.
     std::optional<std::string> exportStatus;
     double exportProgress = 0.0;
-    int transpose = 0;               // the Song's
+    song::Transpose transpose;       // the Song's
     bool transposeRendering = false; // OpenSong::isTransposeRendering
     bool canTranspose = false;       // set_transpose may run
     int practiceSpeed = 100;            // OpenSong::practiceSpeed
@@ -56,8 +58,9 @@ struct TopBarState
 // plugins, then "Exporting… 42%" (the fraction written, rounded down).
 std::string exportStatusText (bool waitingForAudio, double progress);
 
-// A whole number typed into the Transpose field (what song::transposeText shows), with one optional sign (+, - or U+2212 minus) and
-// spaces around it; none for anything else. The range is the handler's to check.
+// A whole number typed into a Transpose field, semitones or cents (what song::signedText shows),
+// with one optional sign (+, - or U+2212 minus) and spaces around it; none for anything else. The
+// range is the handler's to check.
 std::optional<int> parseTranspose (const std::string& text);
 
 // A whole percent typed into the Practice Speed field: digits, an optional "%" after them, and
@@ -152,7 +155,7 @@ private:
     void transposeEntered();
     void practiceSpeedEntered();
 
-    std::string shownTranspose = "0";
+    song::Transpose shownTranspose;
     int shownPracticeSpeed = 100;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TopBar)

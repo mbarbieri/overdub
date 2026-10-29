@@ -148,9 +148,10 @@ private:
     IntentResult setInputChannels (const song::Id& trackId, std::vector<int> channels);
     IntentResult setMonitoring (const song::Id& trackId, bool on);
     IntentResult setPreRoll (song::PreRoll preRoll);
-    // One undo step "Transpose +3"; the same value again changes nothing. Errors:
-    // song.transpose_out_of_range (presented), refusals.
-    IntentResult setTranspose (int semitones);
+    // One undo step "Transpose +3" (or "Transpose +3 −20 ct"); the same value again changes
+    // nothing. Errors: song.transpose_out_of_range, song.transpose_cents_out_of_range (presented),
+    // refusals.
+    IntentResult setTranspose (song::Transpose transpose);
     // Not an undo step; the same value again tries failed renders again. Errors:
     // song.practice_speed_out_of_range (presented), refusals.
     IntentResult setPracticeSpeed (int speedPercent);

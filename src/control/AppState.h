@@ -24,6 +24,7 @@ class Workspace;
 //   transport    null, or {"playing", "position", "pre_roll_record_point", "running_pass_start",
 //                "running_pass_number" (0 when none), "saving_pass",
 //                "heard_transpose", "transposing", "transpose_rendering" (issue #209),
+//                "heard_transpose_cents" (issue #232),
 //                "practice_speed", "heard_practice_speed", "practice_rendering" (issue #212),
 //                "transcribe_mix_heard" (issue #226: the engine plays the Transcribe Mix),
 //                "heard_loop": null | {"start", "end"} (issue #228: the range the engine loops)}

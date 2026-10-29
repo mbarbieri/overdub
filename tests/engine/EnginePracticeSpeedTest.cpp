@@ -163,7 +163,7 @@ TEST_CASE ("at 80% a rendered sine Backing Track keeps its frequency and an impu
     samples[(std::size_t) testSampleRate] = 1.0f; // an impulse at Song time 1 s, over the sine
     const auto song = songWithTake (package, samples);
     const auto render = package.root.getChildFile ("take-a.speed80.wav");
-    REQUIRE (overdub::song::renderAtPracticeSpeed (package.root.getChildFile ("audio/take-a.wav"), render, testSampleRate, 0, 80, {}).has_value());
+    REQUIRE (overdub::song::renderAtPracticeSpeed (package.root.getChildFile ("audio/take-a.wav"), render, testSampleRate, {}, 80, {}).has_value());
 
     Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
     engine.loadSong (song, package.root, {}, std::nullopt, practiceWith (80, render));

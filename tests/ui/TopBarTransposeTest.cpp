@@ -32,23 +32,29 @@ struct TopBarHarness
         bar.onIntent = [this] (const Intent& intent) { sent.push_back (intent); };
     }
 
-    void show (int transpose, bool rendering = false, bool canTranspose = true)
+    void show (int semitones, bool rendering = false, bool canTranspose = true, int cents = 0)
     {
         TopBarState state;
         state.songOpen = true;
-        state.transpose = transpose;
+        state.transpose = { .semitones = semitones, .cents = cents };
         state.transposeRendering = rendering;
         state.canTranspose = canTranspose;
         bar.show (state);
     }
 
-    std::optional<int> sentSemitones() const
+    std::optional<intent::SetTranspose> sentTranspose() const
     {
         if (sent.empty())
             return std::nullopt;
         const auto* song = std::get_if<SongIntent> (&sent.back());
         const auto* setTranspose = song != nullptr ? std::get_if<intent::SetTranspose> (song) : nullptr;
-        return setTranspose != nullptr ? std::optional (setTranspose->semitones) : std::nullopt;
+        return setTranspose != nullptr ? std::optional (*setTranspose) : std::nullopt;
+    }
+
+    std::optional<int> sentSemitones() const
+    {
+        const auto transpose = sentTranspose();
+        return transpose.has_value() ? std::optional (transpose->semitones) : std::nullopt;
     }
 };
 } // namespace
@@ -71,9 +77,9 @@ TEST_CASE ("Transpose is typed as a whole number with an optional sign", "[ui][t
     CHECK_FALSE (parseTranspose ("+-3").has_value());
     CHECK_FALSE (parseTranspose ("- 3").has_value());
 
-    CHECK (song::transposeText (0) == "0");
-    CHECK (song::transposeText (5) == "+5");
-    CHECK (song::transposeText (-1) == minusOne);
+    CHECK (song::signedText (0) == "0");
+    CHECK (song::signedText (5) == "+5");
+    CHECK (song::signedText (-1) == minusOne);
 }
 
 TEST_CASE ("the Transpose field shows the Song's value, highlighted unless 0, with a spinner while renders run", "[ui][top_bar][transpose]")
@@ -111,20 +117,38 @@ TEST_CASE ("a whole number typed into the Transpose field runs set_transpose, an
     CHECK (h.bar.transposeField.getText() == "0");
 }
 
+TEST_CASE ("the top bar's Transpose field keeps the Song's cents, highlights a fine tune alone and names it in its tooltip", "[ui][top_bar][transpose]")
+{
+    TopBarHarness h;
+    h.show (0, false, true, 30);
+
+    CHECK (h.bar.transposeField.getText() == "0");
+    CHECK (h.bar.transposeField.findColour (juce::Label::backgroundColourId) == colours::accent);
+    CHECK (h.bar.transposeField.getTooltip() == "Transpose 0 +30 ct");
+
+    h.bar.transposeField.setText ("-2", juce::sendNotificationSync);
+    REQUIRE (h.sentTranspose().has_value());
+    CHECK (h.sentTranspose()->semitones == -2);
+    CHECK (h.sentTranspose()->cents == 30);
+
+    h.show (-2);
+    CHECK (h.bar.transposeField.getTooltip().isEmpty());
+}
+
 TEST_CASE ("Transpose typed in the window's top bar is one undo step, and an out-of-range value a Notice", "[ui][top_bar][transpose]")
 {
     MainWindowFixture f;
     auto& field = f.window->topBar.transposeField;
 
     field.setText ("-1", juce::sendNotificationSync);
-    CHECK (f.song().transpose == -1);
+    CHECK (f.song().transpose == song::Transpose { .semitones = -1 });
     CHECK (f.openSong->package().undoLabel() == "Transpose " + minusOne);
     CHECK (field.getText() == juce::String::fromUTF8 (minusOne.c_str()));
     CHECK (f.window->topBar.transposeField.findColour (juce::Label::backgroundColourId) == colours::accent);
 
     core::ScopedLogCapture capture;
     field.setText ("13", juce::sendNotificationSync);
-    CHECK (f.song().transpose == -1);
+    CHECK (f.song().transpose == song::Transpose { .semitones = -1 });
     CHECK (field.getText() == juce::String::fromUTF8 (minusOne.c_str()));
     bool noticeShown = false;
     for (const auto& event : capture.events())

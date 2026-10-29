@@ -509,7 +509,7 @@ Song readSong (const Reader& reader)
     song.takes = reader.objects<Take> ("takes", readTake);
     song.backingTracks = reader.objects<BackingTrack> ("backingTracks", readBackingTrack);
     song.videoTakes = reader.objects<VideoTake> ("videoTakes", readVideoTake);
-    song.transpose = reader.smallInteger ("transpose");
+    song.transpose = Transpose { .semitones = reader.smallInteger ("transpose"), .cents = reader.smallInteger ("transposeCents") };
     song.markers = reader.objects<Marker> ("markers", readMarker);
     song.loops = reader.objects<Loop> ("loops", readLoop);
 
@@ -539,7 +539,8 @@ nlohmann::json songToJson (const Song& song)
         { "takes", arrayToJson (song.takes, takeToJson) },
         { "backingTracks", arrayToJson (song.backingTracks, backingTrackToJson) },
         { "videoTakes", arrayToJson (song.videoTakes, videoTakeToJson) },
-        { "transpose", song.transpose },
+        { "transpose", song.transpose.semitones },
+        { "transposeCents", song.transpose.cents },
         { "markers", arrayToJson (song.markers, markerToJson) },
         { "loops", arrayToJson (song.loops, loopToJson) },
         { "preRollSeconds", preRollToSeconds (song.preRoll) },

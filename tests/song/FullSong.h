@@ -169,7 +169,7 @@ inline Song fullyPopulatedSong()
     song.exportFormat = ExportFormat::mp4;
     song.exportLength = VideoLength::fullSong;
     song.exportDestination = "/Users/someone/Music/Mixes/Band Mix.mp4";
-    song.transpose = -3;
+    song.transpose = { .semitones = -3, .cents = 25 };
     song.markers = { Marker { .id = "marker-1", .name = "Verse", .position = 48000 }, Marker { .id = "marker-2", .name = "Chorus", .position = 96000 } };
     song.loops = { Loop { .id = "loop-1", .name = "Intro riff", .start = 24000, .end = 72000, .practiceSpeedPercent = 40 }, Loop { .id = "loop-2", .name = "Solo", .start = 96000, .end = 144000, .practiceSpeedPercent = 75 } };
     song.focusTrackId = "track-backing";

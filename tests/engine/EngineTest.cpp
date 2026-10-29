@@ -291,10 +291,10 @@ TEST_CASE ("a Backing Track plays its render at the Song's Transpose, and silenc
     REQUIRE ((*created)->importBackingTrack (source).has_value());
     auto song = (*created)->song();
     // A stand-in render, told apart from the derived WAV by where its impulse is.
-    writeFloatWav (overdub::song::transposedFileFor (location, song.backingTracks.at (0), 3), { impulse (2000, 500) });
+    writeFloatWav (overdub::song::transposedFileFor (location, song.backingTracks.at (0), { .semitones = 3 }), { impulse (2000, 500) });
 
-    const auto impulsesAt = [&] (int transpose) {
-        song.transpose = transpose;
+    const auto impulsesAt = [&] (int semitones) {
+        song.transpose = { .semitones = semitones };
         Engine engine { stereoConfig() };
         engine.loadSong (song, location);
         engine.play();
@@ -314,8 +314,8 @@ TEST_CASE ("a Take plays its own file at every Transpose", "[engine][playback][t
     const auto take = addTake (song, package, "take-a", impulse (2000, 300));
     song.tracks.push_back (trackWith ("track-a", { clipOf ("clip-a", take, 0, 0, 2000) }));
 
-    const auto renderedAt = [&] (int transpose) {
-        song.transpose = transpose;
+    const auto renderedAt = [&] (int semitones) {
+        song.transpose = { .semitones = semitones, .cents = 30 };
         Engine engine { stereoConfig() };
         engine.loadSong (song, package.root);
         engine.play();

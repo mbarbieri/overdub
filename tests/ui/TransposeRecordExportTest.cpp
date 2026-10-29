@@ -7,6 +7,7 @@
 #include "ui/MainWindowFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <chrono>
@@ -69,7 +70,7 @@ TEST_CASE ("while Transposing, Record and Export are unavailable with the reason
     setExportDestination (*f.window, folder.root.getChildFile ("Song.wav"));
     REQUIRE (sheet.exportButton.isEnabled());
 
-    REQUIRE (runFromSocket (f, intent::SetTranspose { 2 }).has_value());
+    REQUIRE (runFromSocket (f, intent::SetTranspose { .semitones = 2 }).has_value());
     f.window->refresh();
 
     REQUIRE (f.openSong->isTransposing());
@@ -94,11 +95,13 @@ TEST_CASE ("while Transposing, Record and Export are unavailable with the reason
 TEST_CASE ("an export plays the Backing Tracks at the Song's Transpose", "[ui][transpose][export]")
 {
     constexpr double sineFrequency = 440.0;
-    constexpr int semitones = 3;
+    // Whole semitones (issue #209), and a fine tune in cents alone or with semitones (issue #232).
+    const auto transpose = GENERATE (intent::SetTranspose { .semitones = 3 }, intent::SetTranspose { .semitones = 0, .cents = 30 }, intent::SetTranspose { .semitones = -12, .cents = -50 });
+    INFO (transpose.semitones << " semitones " << transpose.cents.value_or (0) << " cents");
     ExportFolder folder;
     MainWindowFixture f { song::testing::FixtureSongBuilder().backingTrack ("Band", 2.0, sineFrequency).build() };
     const auto destination = folder.root.getChildFile ("Song.wav");
-    REQUIRE (runFromSocket (f, intent::SetTranspose { semitones }).has_value());
+    REQUIRE (runFromSocket (f, transpose).has_value());
     tickUntilTransposed (f);
 
     setExportDestination (*f.window, destination);
@@ -108,17 +111,18 @@ TEST_CASE ("an export plays the Backing Tracks at the Song's Transpose", "[ui][t
     const auto sampleRate = f.song().sampleRate;
     const auto exported = song::decodeAudioFile (destination, sampleRate);
     REQUIRE (exported.has_value());
-    const auto expected = sineFrequency * std::pow (2.0, semitones / 12.0); // 523.25 Hz
+    // 523.25 Hz, 447.69 Hz, 213.74 Hz
+    const auto expected = sineFrequency * std::pow (2.0, (transpose.semitones + transpose.cents.value_or (0) / 100.0) / 12.0);
     // Measured away from both ends, where the stretcher has the whole spectral window. ADR 0005:
     // within 5 cents.
     const auto measured = song::testing::measuredFrequency (exported->audio.getReadPointer (0), sampleRate / 4, sampleRate * 7 / 4, sampleRate);
     CHECK_THAT (1200.0 * std::log2 (measured / expected), WithinAbs (0.0, 5.0));
 }
 
-TEST_CASE ("a Take recorded at Transpose -1 plays its own file once Transpose is back at 0, which needs no confirmation", "[ui][transpose][record]")
+TEST_CASE ("a Take recorded at Transpose -1 +20 cents plays its own file once Transpose is back at 0, which needs no confirmation", "[ui][transpose][record]")
 {
     MainWindowFixture f;
-    REQUIRE (runFromSocket (f, intent::SetTranspose { -1 }).has_value());
+    REQUIRE (runFromSocket (f, intent::SetTranspose { .semitones = -1, .cents = 20 }).has_value());
     tickUntilTransposed (f);
     REQUIRE (runFromSocket (f, intent::Record {}).has_value());
     f.runBlocks (20);
@@ -136,7 +140,7 @@ TEST_CASE ("a Take recorded at Transpose -1 plays its own file once Transpose is
     REQUIRE (runFromSocket (f, intent::SetTranspose { 0 }).has_value());
     tickUntilTransposed (f);
 
-    CHECK (f.song().transpose == 0);
+    CHECK (f.song().transpose == song::Transpose {});
     CHECK (f.alertsShown.empty());
     CHECK (f.deleteQuestionsAsked.empty());
     CHECK (song::playedFileFor (root, f.song(), takeSource) == takeFile);

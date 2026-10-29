@@ -220,7 +220,7 @@ TEST_CASE ("a v9 Song migrates to v10 with every Loop drilled at 100%", "[song][
 
     REQUIRE (migrated.has_value());
     CHECK (migrated->fromVersion == 9);
-    CHECK (migrated->document.at ("formatVersion") == 10);
+    CHECK (migrated->document.at ("formatVersion") == overdub::song::songFormatVersion);
     REQUIRE (migrated->document.at ("loops").size() == 2);
     for (const auto& migratedLoop : migrated->document.at ("loops"))
     {
@@ -229,4 +229,17 @@ TEST_CASE ("a v9 Song migrates to v10 with every Loop drilled at 100%", "[song][
     }
     CHECK (migrated->document.at ("activeLoopId") == "loop-1");
     CHECK (migrated->document.at ("looping") == true);
+}
+
+TEST_CASE ("a v10 Song migrates to v11 with no fine tune, its semitones kept", "[song][migration][transpose]")
+{
+    const json document = { { "formatVersion", 10 }, { "sampleRate", 48000 }, { "transpose", -3 } };
+
+    const auto migrated = overdub::song::migrateSongDocument (document);
+
+    REQUIRE (migrated.has_value());
+    CHECK (migrated->fromVersion == 10);
+    CHECK (migrated->document.at ("formatVersion") == 11);
+    CHECK (migrated->document.at ("transpose") == -3);
+    CHECK (migrated->document.at ("transposeCents") == 0);
 }

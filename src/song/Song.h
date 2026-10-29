@@ -27,7 +27,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 10;
+inline constexpr int songFormatVersion = 11;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -256,6 +256,16 @@ struct Loop
     bool operator== (const Loop&) const = default;
 };
 
+// The Song's pitch shift of every Backing Track (ADR 0009, song/Transpose.h): whole semitones,
+// -12..+12 (format 6), plus a fine tune in whole cents, -50..+50 (format 11, issue #232).
+struct Transpose
+{
+    int semitones = 0;
+    int cents = 0;
+    bool isNone() const { return semitones == 0 && cents == 0; }
+    bool operator== (const Transpose&) const = default;
+};
+
 struct Song
 {
     int sampleRate = 48000; // fixed from the device at creation
@@ -265,9 +275,8 @@ struct Song
     std::vector<Take> takes;
     std::vector<BackingTrack> backingTracks;
     std::vector<VideoTake> videoTakes;
-    // Every Backing Track's pitch shift in whole semitones, -12..+12 (ADR 0009, song/Transpose.h).
-    // Undoable; Takes are never transposed. Format 6.
-    int transpose = 0;
+    // Every Backing Track's pitch shift. Undoable; Takes are never transposed.
+    Transpose transpose;
     // In time order (song/MarkerEdits.h keeps it); Markers at one position keep the order they
     // were placed in. Format 8.
     std::vector<Marker> markers;

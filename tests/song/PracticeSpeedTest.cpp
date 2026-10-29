@@ -90,7 +90,7 @@ TEST_CASE ("Practice Speed is a whole percent from 25 to 125", "[song][practice_
 TEST_CASE ("each source a Clip plays needs one render at a Practice Speed, a Backing Track's at the Song's Transpose", "[song][practice_speed]")
 {
     PracticeFixture f;
-    const PracticeRenderKey key { .speedPercent = 80, .semitones = 2 };
+    const PracticeRenderKey key { .speedPercent = 80, .transpose = { .semitones = 2 } };
 
     const auto missing = missingPracticeRenders (f.root, f.folder, f.song(), key);
 
@@ -98,11 +98,11 @@ TEST_CASE ("each source a Clip plays needs one render at a Practice Speed, a Bac
     CHECK (missing[0].source == f.band());
     CHECK (missing[0].from == derivedFileFor (f.root, f.song().backingTracks[0]));
     CHECK (missing[0].to == f.folder.getChildFile ("backing-" + f.band().id + ".transpose+2.speed80.wav"));
-    CHECK (missing[0].semitones == 2);
+    CHECK (missing[0].transpose == overdub::song::Transpose { .semitones = 2 });
     CHECK (missing[1].source == PracticeFixture::takeA());
     CHECK (missing[1].from == f.root.getChildFile ("audio/take-a.wav"));
     CHECK (missing[1].to == f.folder.getChildFile ("take-take-a.speed80.wav"));
-    CHECK (missing[1].semitones == 0);
+    CHECK (missing[1].transpose == overdub::song::Transpose { .semitones = 0 });
 
     REQUIRE (missing[1].to.replaceWithText ("rendered"));
     const auto stillMissing = missingPracticeRenders (f.root, f.folder, f.song(), key);
@@ -116,10 +116,10 @@ TEST_CASE ("each source a Clip plays needs one render at a Practice Speed, a Bac
 TEST_CASE ("a Take's render serves every Transpose, a Backing Track's only its own", "[song][practice_speed]")
 {
     PracticeFixture f;
-    for (const auto& job : missingPracticeRenders (f.root, f.folder, f.song(), { .speedPercent = 80, .semitones = 0 }))
+    for (const auto& job : missingPracticeRenders (f.root, f.folder, f.song(), { .speedPercent = 80, .transpose = { .semitones = 0 } }))
         REQUIRE (job.to.replaceWithText ("rendered"));
 
-    const auto missing = missingPracticeRenders (f.root, f.folder, f.song(), { .speedPercent = 80, .semitones = -1 });
+    const auto missing = missingPracticeRenders (f.root, f.folder, f.song(), { .speedPercent = 80, .transpose = { .semitones = -1 } });
 
     REQUIRE (missing.size() == 1);
     CHECK (missing[0].source == f.band());
@@ -138,9 +138,9 @@ TEST_CASE ("only the renders the Song plays at the kept Practice Speed and Trans
         }
     REQUIRE (written.size() == 5); // the Take's render at 80 serves both Transposes
 
-    CHECK (deletePracticeRendersExcept (f.folder, f.song(), { .speedPercent = 80, .semitones = 3 }) == 3);
+    CHECK (deletePracticeRendersExcept (f.folder, f.song(), { .speedPercent = 80, .transpose = { .semitones = 3 } }) == 3);
 
-    CHECK (practiceRendersOf (f.folder, f.song(), { .speedPercent = 80, .semitones = 3 }).size() == 2);
+    CHECK (practiceRendersOf (f.folder, f.song(), { .speedPercent = 80, .transpose = { .semitones = 3 } }).size() == 2);
     CHECK (f.folder.findChildFiles (juce::File::findFiles, false).size() == 2);
     CHECK (deletePracticeRendersExcept (f.folder, f.song(), {}) == 2);
 }
@@ -148,7 +148,7 @@ TEST_CASE ("only the renders the Song plays at the kept Practice Speed and Trans
 TEST_CASE ("a Practice Speed run renders every job on a worker and logs its start and end", "[song][practice_speed]")
 {
     PracticeFixture f;
-    const PracticeRenderKey key { .speedPercent = 80, .semitones = 1 };
+    const PracticeRenderKey key { .speedPercent = 80, .transpose = { .semitones = 1 } };
     overdub::core::ScopedLogCapture capture;
 
     auto run = PracticeSpeedRun::start (f.song().sampleRate, key, std::nullopt, missingPracticeRenders (f.root, f.folder, f.song(), key), PracticeSpeedRun::Clock::now());
@@ -174,7 +174,7 @@ TEST_CASE ("a Practice Speed run renders every job on a worker and logs its star
 TEST_CASE ("a Practice Speed run that cannot render names the source", "[song][practice_speed]")
 {
     PracticeFixture f;
-    const PracticeRenderKey key { .speedPercent = 120, .semitones = 0 };
+    const PracticeRenderKey key { .speedPercent = 120, .transpose = { .semitones = 0 } };
     const auto jobs = missingPracticeRenders (f.root, f.folder, f.song(), key);
     REQUIRE (f.root.getChildFile ("audio/take-a.wav").deleteFile());
 
@@ -221,7 +221,7 @@ TEST_CASE ("a source's range in a Loop's window spans the source samples its Cli
 TEST_CASE ("in a Loop's window each source a Clip plays there needs a render of only its range there", "[song][practice_speed][loop]")
 {
     PracticeFixture f;
-    const PracticeRenderKey key { .speedPercent = 80, .semitones = 2 };
+    const PracticeRenderKey key { .speedPercent = 80, .transpose = { .semitones = 2 } };
     // The Band Clip plays 0..1 s, the take-a Clip 0..1 s: a window of 0.25..0.5 s.
     const SampleRange window { 12000, 24000 };
 
@@ -231,7 +231,7 @@ TEST_CASE ("in a Loop's window each source a Clip plays there needs a render of 
     CHECK (missing[0].source == f.band());
     CHECK (missing[0].sourceRange == SampleRange { 12000, 24000 });
     CHECK (missing[0].to == f.folder.getChildFile ("backing-" + f.band().id + ".transpose+2.speed80.range12000-24000.wav"));
-    CHECK (missing[0].semitones == 2);
+    CHECK (missing[0].transpose == overdub::song::Transpose { .semitones = 2 });
     CHECK (missing[1].source == PracticeFixture::takeA());
     CHECK (missing[1].to == f.folder.getChildFile ("take-take-a.speed80.range12000-24000.wav"));
     // The whole Song's jobs have no range.
@@ -255,7 +255,7 @@ TEST_CASE ("in a Loop's window each source a Clip plays there needs a render of 
 TEST_CASE ("a Practice Speed run of a Loop's range renders logs its scope and window", "[song][practice_speed][loop]")
 {
     PracticeFixture f;
-    const PracticeRenderKey key { .speedPercent = 80, .semitones = 0 };
+    const PracticeRenderKey key { .speedPercent = 80, .transpose = { .semitones = 0 } };
     const SampleRange window { 12000, 36000 };
     overdub::core::ScopedLogCapture capture;
 
