@@ -204,9 +204,29 @@ TEST_CASE ("a v8 Song migrates to v9 with no Loops, none active and not looping"
 
     REQUIRE (migrated.has_value());
     CHECK (migrated->fromVersion == 8);
-    CHECK (migrated->document.at ("formatVersion") == 9);
+    CHECK (migrated->document.at ("formatVersion") == overdub::song::songFormatVersion);
     CHECK (migrated->document.at ("loops") == json::array());
     CHECK (migrated->document.at ("activeLoopId").is_null());
     CHECK (migrated->document.at ("looping") == false);
     CHECK (migrated->document.at ("markers") == json::array());
+}
+
+TEST_CASE ("a v9 Song migrates to v10 with every Loop drilled at 100%", "[song][migration][loops]")
+{
+    const json loop = { { "id", "loop-1" }, { "name", "Solo" }, { "start", 0 }, { "end", 48000 } };
+    const json document = { { "formatVersion", 9 }, { "sampleRate", 48000 }, { "loops", json::array ({ loop, loop }) }, { "activeLoopId", "loop-1" }, { "looping", true } };
+
+    const auto migrated = overdub::song::migrateSongDocument (document);
+
+    REQUIRE (migrated.has_value());
+    CHECK (migrated->fromVersion == 9);
+    CHECK (migrated->document.at ("formatVersion") == 10);
+    REQUIRE (migrated->document.at ("loops").size() == 2);
+    for (const auto& migratedLoop : migrated->document.at ("loops"))
+    {
+        CHECK (migratedLoop.at ("practiceSpeedPercent") == 100);
+        CHECK (migratedLoop.at ("name") == "Solo");
+    }
+    CHECK (migrated->document.at ("activeLoopId") == "loop-1");
+    CHECK (migrated->document.at ("looping") == true);
 }

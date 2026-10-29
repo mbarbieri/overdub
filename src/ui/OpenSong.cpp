@@ -283,13 +283,47 @@ core::Expected<void> OpenSong::setPracticeSpeed (int speedPercent)
         return std::unexpected (std::move (*refused));
     if (auto checked = song::checkPracticeSpeed (speedPercent); ! checked.has_value())
         return std::unexpected (std::move (checked.error()));
+    // The same value again tries the renders that failed again.
+    changePracticeTarget (speedPercent);
+    if (heardLoop().has_value())
+        storeActiveLoopPracticeSpeed();
+    return {};
+}
+
+void OpenSong::changePracticeTarget (int speedPercent)
+{
     if (speedPercent != practiceTarget)
         core::logEvent (core::Level::info, "ui.practice_speed_set", { { "from_percent", practiceTarget }, { "to_percent", speedPercent } });
     practiceTarget = speedPercent;
-    // The same value again tries the renders that failed again.
     failedPracticeRenders.clear();
     followPracticeSpeed();
-    return {};
+}
+
+void OpenSong::storeActiveLoopPracticeSpeed()
+{
+    const auto* loop = song::activeLoop (song());
+    OVERDUB_CHECK (loop != nullptr, "ui.no_active_loop_for_practice_speed");
+    if (loop->practiceSpeedPercent == practiceTarget)
+        return;
+    const auto loopId = loop->id;
+    auto changed = song::setLoopPracticeSpeed (song(), loopId, practiceTarget);
+    OVERDUB_CHECK (changed.has_value(), "ui.loop_practice_speed_unset");
+    package_->changeWithoutHistory (std::move (*changed));
+    core::logEvent (core::Level::info, "ui.loop_practice_speed_set", { { "loop_id", loopId }, { "speed_percent", practiceTarget } });
+}
+
+void OpenSong::applyHeardLoopPracticeSpeed()
+{
+    const auto* loop = heardLoop().has_value() ? song::activeLoop (song()) : nullptr;
+    if (loop == nullptr || ! practiceSpeedMayChange())
+        return;
+    if (loop->practiceSpeedPercent != practiceTarget)
+        changePracticeTarget (loop->practiceSpeedPercent);
+}
+
+bool OpenSong::practiceSpeedMayChange() const
+{
+    return ! refusal (activity, Gesture::setPracticeSpeed).has_value();
 }
 
 void OpenSong::setExportVideoTake (const song::Id& videoTakeId)
@@ -337,6 +371,10 @@ void OpenSong::setTranscribing (bool on)
     if (binding.engine != nullptr && ! binding.engine->setMix (heardSong()))
         reloadEngine();
     syncEngineLoop();
+    // Record and Edit play at 100%; Transcribe brings back the looping Loop's speed (ADR 0010).
+    if (! on && practiceTarget != song::normalPracticeSpeed && practiceSpeedMayChange())
+        changePracticeTarget (song::normalPracticeSpeed);
+    applyHeardLoopPracticeSpeed();
 }
 
 core::Expected<void> OpenSong::setActiveLoop (const std::optional<song::Id>& loopId, bool looping)
@@ -344,8 +382,10 @@ core::Expected<void> OpenSong::setActiveLoop (const std::optional<song::Id>& loo
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
     auto changed = changeTranscribeMix (song::setActiveLoop (song(), loopId, looping));
-    if (changed.has_value())
-        core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().looping } });
+    if (! changed.has_value())
+        return changed;
+    core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().looping } });
+    applyHeardLoopPracticeSpeed();
     return changed;
 }
 
@@ -354,8 +394,10 @@ core::Expected<void> OpenSong::setLooping (bool looping)
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
     auto changed = changeTranscribeMix (song::setLooping (song(), looping));
-    if (changed.has_value())
-        core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
+    if (! changed.has_value())
+        return changed;
+    core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
+    applyHeardLoopPracticeSpeed();
     return changed;
 }
 

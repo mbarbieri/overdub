@@ -1,5 +1,6 @@
 #include "ui/LoopViews.h"
 
+#include "song/PracticeSpeed.h"
 #include "ui/Colours.h"
 #include "ui/TransportText.h"
 
@@ -36,6 +37,11 @@ std::string loopRangeText (const song::Loop& loop, int sampleRate)
 std::string loopLengthText (const song::Loop& loop, int sampleRate)
 {
     return clockText (loop.length(), sampleRate);
+}
+
+std::string loopSpeedText (const song::Loop& loop)
+{
+    return std::to_string (loop.practiceSpeedPercent) + "%";
 }
 
 std::string loopKeyText (std::size_t index)
@@ -146,12 +152,16 @@ void LoopCard::show (const song::Loop& loop, int sampleRate, std::size_t index, 
     const auto newName = fromUtf8 (loop.name);
     const auto newRange = fromUtf8 (loopRangeText (loop, sampleRate));
     const auto newLength = fromUtf8 (loopLengthText (loop, sampleRate));
+    const auto newSpeed = fromUtf8 (loopSpeedText (loop));
     const auto newKey = fromUtf8 (loopKeyText (index));
-    if (newName == name && newRange == range && newLength == length && newKey == key && isActive == active)
+    const bool newAtNormalSpeed = loop.practiceSpeedPercent == song::normalPracticeSpeed;
+    if (newName == name && newRange == range && newLength == length && newSpeed == speed && newKey == key && isActive == active)
         return;
+    atNormalSpeed = newAtNormalSpeed;
     name = newName;
     range = newRange;
     length = newLength;
+    speed = newSpeed;
     key = newKey;
     active = isActive;
     repaint();
@@ -172,6 +182,9 @@ void LoopCard::paint (juce::Graphics& g)
     g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
     g.setColour (colours::dimText);
     g.drawText (key, top.removeFromRight (24), juce::Justification::centredRight, false);
+    // A Loop drilled at the Song's own speed shows it dimmed.
+    g.setColour (atNormalSpeed ? colours::dimText : loopColour);
+    g.drawText (speed, top.removeFromRight (36), juce::Justification::centredRight, false);
     g.setFont (juce::FontOptions (11.5f, juce::Font::bold));
     g.setColour (active ? colours::text : loopColour);
     g.drawText (name, top, juce::Justification::centredLeft, true);

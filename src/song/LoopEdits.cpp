@@ -1,5 +1,7 @@
 #include "song/LoopEdits.h"
 
+#include "song/PracticeSpeed.h"
+
 #include <algorithm>
 #include <cctype>
 
@@ -59,13 +61,15 @@ const Loop* activeLoop (const Song& song)
     return song.activeLoopId.has_value() ? findLoop (song, *song.activeLoopId) : nullptr;
 }
 
-core::Expected<Song> addLoop (Song song, SampleCount from, SampleCount to, const Id& loopId)
+core::Expected<Song> addLoop (Song song, SampleCount from, SampleCount to, const Id& loopId, int practiceSpeedPercent)
 {
     const auto range = rangeBetween (from, to);
     if (! range.has_value())
         return std::unexpected (range.error());
+    if (auto checked = checkPracticeSpeed (practiceSpeedPercent); ! checked.has_value())
+        return std::unexpected (std::move (checked.error()));
     auto name = nextLoopName (song);
-    insertInTimeOrder (song.loops, Loop { .id = loopId, .name = std::move (name), .start = range->first, .end = range->second });
+    insertInTimeOrder (song.loops, Loop { .id = loopId, .name = std::move (name), .start = range->first, .end = range->second, .practiceSpeedPercent = practiceSpeedPercent });
     return song;
 }
 
@@ -125,6 +129,17 @@ core::Expected<Song> setLooping (Song song, bool looping)
     if (looping && activeLoop (song) == nullptr)
         return std::unexpected (core::Error { "song.no_active_loop", "looping needs an active Loop", {} });
     song.looping = looping;
+    return song;
+}
+
+core::Expected<Song> setLoopPracticeSpeed (Song song, const Id& loopId, int practiceSpeedPercent)
+{
+    const auto found = std::ranges::find (song.loops, loopId, &Loop::id);
+    if (found == song.loops.end())
+        return std::unexpected (loopNotFound (loopId));
+    if (auto checked = checkPracticeSpeed (practiceSpeedPercent); ! checked.has_value())
+        return std::unexpected (std::move (checked.error()));
+    found->practiceSpeedPercent = practiceSpeedPercent;
     return song;
 }
 

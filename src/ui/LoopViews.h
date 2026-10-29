@@ -17,12 +17,15 @@
 // A bar is the Loop's range across the strip's height, its name inside. A click runs select_loop
 // (the strip wires it). While its strip is editable, dragging either edge resizes the Loop on
 // release (resize_loop) and double-clicking opens the strip's name field (rename_loop). A card
-// shows the Loop's name, range, length and its option-key number; a click runs select_loop.
+// shows the Loop's name, Practice Speed, range, length and its option-key number; a click runs
+// select_loop.
 namespace overdub::ui
 {
 // The text of a Loop's range ("1.5 s – 3.0 s") and length ("1.5 s").
 std::string loopRangeText (const song::Loop& loop, int sampleRate);
 std::string loopLengthText (const song::Loop& loop, int sampleRate);
+// The Practice Speed it is drilled at ("40%", issue #230).
+std::string loopSpeedText (const song::Loop& loop);
 // "⌥1" .. "⌥9" for the first nine Loops in time order (index from 0); "" for the rest.
 std::string loopKeyText (std::size_t index);
 
@@ -67,7 +70,7 @@ private:
     bool dragging = false;
 };
 
-// One card of the Loops list: name, range, length and its option-key number.
+// One card of the Loops list: name, Practice Speed, range, length and its option-key number.
 class LoopCard final : public juce::Component
 {
 public:
@@ -76,6 +79,7 @@ public:
     const song::Id& loopId() const { return id; }
     bool isActive() const { return active; }
     const juce::String& keyText() const { return key; }
+    const juce::String& speedText() const { return speed; }
     void show (const song::Loop& loop, int sampleRate, std::size_t index, bool isActive);
     void paint (juce::Graphics& g) override;
     void mouseUp (const juce::MouseEvent& event) override;
@@ -87,6 +91,8 @@ private:
     juce::String name;
     juce::String range;
     juce::String length;
+    juce::String speed;
+    bool atNormalSpeed = true;
     juce::String key;
     bool active = false;
 };

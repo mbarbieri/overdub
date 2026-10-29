@@ -116,6 +116,9 @@ Song keepStateOutsideHistory (Song snapshot, const Song& current)
                                && std::ranges::contains (snapshot.loops, *current.activeLoopId, &Loop::id);
     snapshot.activeLoopId = activeLoopExists ? current.activeLoopId : std::nullopt;
     snapshot.looping = activeLoopExists && current.looping;
+    for (auto& loop : snapshot.loops)
+        if (const auto found = std::ranges::find (current.loops, loop.id, &Loop::id); found != current.loops.end())
+            loop.practiceSpeedPercent = found->practiceSpeedPercent;
 
     for (auto& track : snapshot.tracks)
     {

@@ -102,6 +102,7 @@ target_sources(overdub_tests PRIVATE
     ui/InsertChainUiTest.cpp
     ui/IntentRunTest.cpp
     ui/IntentTest.cpp
+    ui/LoopPracticeSpeedTest.cpp
     ui/LoopsTest.cpp
     ui/MarkersTest.cpp
     ui/KeyBurstCommitTest.cpp

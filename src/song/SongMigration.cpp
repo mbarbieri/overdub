@@ -125,12 +125,23 @@ core::Expected<nlohmann::json> addLoops (nlohmann::json document)
     document["looping"] = false;
     return document;
 }
+
+core::Expected<nlohmann::json> addLoopPracticeSpeeds (nlohmann::json document)
+{
+    const auto loops = document.find ("loops");
+    if (loops == document.end() || ! loops->is_array())
+        return document; // reading the migrated document reports what is missing
+    for (auto& loop : *loops)
+        if (loop.is_object())
+            loop["practiceSpeedPercent"] = 100;
+    return document;
+}
 } // namespace
 
 std::span<const MigrationStep> songMigrationSteps()
 {
     // songFormatVersion must equal songMigrationSteps().size() + 1.
-    static const std::array<MigrationStep, 8> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours, addExportChoices, addTranspose, addTranscribeMix, addMarkers, addLoops };
+    static const std::array<MigrationStep, 9> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours, addExportChoices, addTranspose, addTranscribeMix, addMarkers, addLoops, addLoopPracticeSpeeds };
     static_assert (std::tuple_size_v<decltype (steps)> + 1 == songFormatVersion);
     return steps;
 }

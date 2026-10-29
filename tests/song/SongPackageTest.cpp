@@ -604,7 +604,7 @@ TEST_CASE ("a missing history folder or index drops history without blocking the
     }
     SECTION ("snapshot from a newer format")
     {
-        REQUIRE (temp.package().getChildFile ("history/000000.json").replaceWithText (R"({"label": "", "song": {"formatVersion": 10}})"));
+        REQUIRE (temp.package().getChildFile ("history/000000.json").replaceWithText (R"({"label": "", "song": {"formatVersion": )" + std::to_string (overdub::song::songFormatVersion + 1) + "}}"));
         expectedCause = "song.format_too_new";
         expectedPath = temp.package().getChildFile ("history/000000.json");
     }
