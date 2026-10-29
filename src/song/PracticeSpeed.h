@@ -25,8 +25,8 @@ namespace overdub::song
 inline constexpr int normalPracticeSpeed = 100; // the Song's own speed: nothing is rendered
 inline constexpr int minPracticeSpeed = 25;
 inline constexpr int maxPracticeSpeed = 125;
-inline constexpr int halfPracticeSpeed = 50;  // what H sets (issue #229)
-inline constexpr int practiceSpeedStep = 5;   // what - and = step by, clamped to min..max
+inline constexpr int halfPracticeSpeed = 50;
+inline constexpr int practiceSpeedStep = 5; // clamped to min..max
 
 // The Practice Speed, when it is a whole percent from 25 to 125.
 // Errors: song.practice_speed_out_of_range (speed_percent, min, max).

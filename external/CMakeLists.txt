@@ -46,7 +46,7 @@ function(overdub_apply_patch OVERDUB_PATCH_DIR OVERDUB_PATCH)
         RESULT_VARIABLE apply_result
         ERROR_VARIABLE apply_error)
     if(NOT apply_result EQUAL 0)
-        message(FATAL_ERROR "overdub: could not apply ${OVERDUB_PATCH} to ${OVERDUB_PATCH_DIR}:\n${apply_error}\nSee docs/building.md, 'Re-applying the JUCE patch'.")
+        message(FATAL_ERROR "overdub: could not apply ${OVERDUB_PATCH} to ${OVERDUB_PATCH_DIR}:\n${apply_error}\nSee docs/building.md, 'The JUCE patches' and 'The Signalsmith Stretch patch'.")
     endif()
     message(STATUS "overdub: applied patch: ${OVERDUB_PATCH}")
 endfunction()
