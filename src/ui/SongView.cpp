@@ -5,6 +5,7 @@
 #include "plugin/PluginKind.h"
 #include "song/ClipEdits.h"
 #include "song/InsertEdits.h"
+#include "song/LoopEdits.h"
 #include "song/MarkerEdits.h"
 #include "song/MixEdits.h"
 #include "song/TakeEdits.h"
@@ -100,6 +101,13 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const SetTranscribeSolo& i) { return unlessRefused (openSong.setTranscribeSolo (i.trackId, i.solo)); },
             [this] (const AddMarker&) { return addMarker(); },
             [this] (const SelectMarker& i) { return selectMarker (i.markerId); },
+            [this] (const AddLoop& i) { return addLoop (i.start, i.end); },
+            [this] (const MarkLoopStart&) { return markLoopStart(); },
+            [this] (const MarkLoopEnd&) { return markLoopEnd(); },
+            [this] (const CancelLoopStart&) -> IntentResult { pendingLoopStart.reset(); window.refresh(); return IntentDone {}; },
+            [this] (const SelectLoop& i) { return selectLoop (i.loopId); },
+            [this] (const SelectAdjacentLoop& i) { return selectAdjacentLoop (i.direction); },
+            [this] (const SetLooping& i) { return presented (openSong.setLooping (i.looping)); },
             [this] (const SetPreRoll& i) { return setPreRoll (i.preRoll); },
             [this] (const SetCameraArmed& i) { return armCamera (i.armed); },
             [this] (const SetCameraDevice& i) { return setCameraDevice (i.cameraId); },
@@ -118,8 +126,8 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const Export&) { return exportSong(); },
             [this] (const CancelExport&) { return cancelExport(); },
             [this] (const RevealExport&) { return revealExport(); },
-            [this] (const SelectClip& i) -> IntentResult { selectedMarkerId.reset(); editPage.timeline.selectClip (i.clipId); return IntentDone {}; },
-            [this] (const SelectVideoTake& i) -> IntentResult { selectedMarkerId.reset(); editPage.timeline.selectVideoTake (i.videoTakeId); return IntentDone {}; },
+            [this] (const SelectClip& i) -> IntentResult { selectedMarkerId.reset(); selectedLoopId.reset(); editPage.timeline.selectClip (i.clipId); return IntentDone {}; },
+            [this] (const SelectVideoTake& i) -> IntentResult { selectedMarkerId.reset(); selectedLoopId.reset(); editPage.timeline.selectVideoTake (i.videoTakeId); return IntentDone {}; },
             [this] (const SetTimelineView& i) -> IntentResult { editPage.timeline.setView (i.firstSample, i.samplesPerPixel); return IntentDone {}; },
             [this] (const SetTranscribeView& i) -> IntentResult { transcribePage.setView (i.firstSample, i.samplesPerPixel); return IntentDone {}; },
             [this] (const SetVerticalScroll& i) -> IntentResult { editPage.timeline.setVerticalScroll (i.pixels); return IntentDone {}; },
@@ -309,6 +317,7 @@ IntentResult SongView::selectMarker (const std::optional<song::Id>& markerId)
     if (! markerId.has_value())
     {
         selectedMarkerId.reset();
+        selectedLoopId.reset();
         return IntentDone {};
     }
     const auto* marker = song::findMarker (openSong.song(), *markerId);
@@ -319,9 +328,112 @@ IntentResult SongView::selectMarker (const std::optional<song::Id>& markerId)
     if (window.mode() != Mode::record)
     {
         selectedMarkerId = *markerId;
+        selectedLoopId.reset();
         editPage.timeline.selectClip (std::nullopt);
     }
     return IntentDone {};
+}
+
+IntentResult SongView::addLoop (song::SampleCount start, song::SampleCount end)
+{
+    const auto loopId = song::makeId();
+    if (auto added = applyEdit (song::addLoop (openSong.song(), start, end, loopId), song::addLoopLabel); ! added.has_value())
+        return added;
+    pendingLoopStart.reset();
+    // Transcribe's selectLoop activates it; Edit's only selects it.
+    if (window.mode() != Mode::transcribe)
+        if (auto activated = unlessRefused (openSong.setActiveLoop (loopId, true)); ! activated.has_value())
+            return activated;
+    const auto* loop = song::findLoop (openSong.song(), loopId);
+    core::logEvent (core::Level::info,
+                    "ui.loop_added",
+                    { { "loop_id", loopId }, { "start", loop != nullptr ? loop->start : 0 }, { "end", loop != nullptr ? loop->end : 0 }, { "name", loop != nullptr ? loop->name : std::string {} } });
+    // Creating a Loop activates it; selectLoop also zooms to it in Transcribe and selects it in Edit.
+    if (auto activated = selectLoop (loopId); ! activated.has_value())
+        return activated;
+    return IntentDone { .createdId = loopId };
+}
+
+IntentResult SongView::markLoopStart()
+{
+    pendingLoopStart = openSong.position();
+    core::logEvent (core::Level::info, "ui.loop_start_marked", { { "position", *pendingLoopStart } });
+    window.refresh();
+    return IntentDone {};
+}
+
+IntentResult SongView::markLoopEnd()
+{
+    if (! pendingLoopStart.has_value())
+        return std::unexpected (handleOperationError (core::Error { "ui.no_loop_start", "] makes a Loop from the start [ marked", { { "op", std::string (intent::MarkLoopEnd::op) } } }));
+    return addLoop (*pendingLoopStart, openSong.position());
+}
+
+IntentResult SongView::selectLoop (const std::optional<song::Id>& loopId)
+{
+    if (! loopId.has_value())
+    {
+        selectedLoopId.reset();
+        selectedMarkerId.reset();
+        window.refresh();
+        return IntentDone {};
+    }
+    const auto* loop = song::findLoop (openSong.song(), *loopId);
+    if (loop == nullptr)
+        return window.quietError (song::loopNotFound (*loopId));
+    const auto start = loop->start;
+    const auto end = loop->end;
+    const auto mode = window.mode();
+    if (mode == Mode::record)
+        return seek (start); // the record point; Record never loops
+    if (mode == Mode::edit)
+    {
+        selectedLoopId = *loopId;
+        selectedMarkerId.reset();
+        editPage.timeline.selectClip (std::nullopt);
+        return seek (start);
+    }
+    // Transcribe: activate it, looping on, zoomed to fit with a margin of a twentieth of its length.
+    if (auto activated = unlessRefused (openSong.setActiveLoop (*loopId, true)); ! activated.has_value())
+        return activated;
+    const auto margin = std::max<song::SampleCount> (1, (end - start) / 20);
+    const auto width = std::max (1, transcribePage.wave.getWidth());
+    const auto samplesPerPixel = std::max<song::SampleCount> (1, (end - start + 2 * margin + width - 1) / width);
+    transcribePage.setView (start - margin, samplesPerPixel);
+    // A Loop shorter than the finest zoom shows centred.
+    if (const auto zoomed = transcribePage.view().samplesPerPixel; zoomed > samplesPerPixel)
+        transcribePage.setView ((start + end) / 2 - zoomed * width / 2, zoomed);
+    const auto position = openSong.position();
+    if (position < start || position >= end)
+        return seek (start);
+    window.refresh();
+    return IntentDone {};
+}
+
+IntentResult SongView::selectAdjacentLoop (Direction direction)
+{
+    const auto from = window.mode() == Mode::edit ? selectedLoop() : openSong.song().activeLoopId;
+    const auto next = song::adjacentLoop (openSong.song(), from, direction == Direction::back ? song::LoopDirection::previous : song::LoopDirection::next);
+    if (! next.has_value())
+        return IntentDone {};
+    return selectLoop (*next);
+}
+
+std::optional<song::Id> SongView::selectedLoop() const
+{
+    if (selectedLoopId.has_value() && song::findLoop (openSong.song(), *selectedLoopId) != nullptr)
+        return selectedLoopId;
+    return std::nullopt;
+}
+
+std::optional<song::Id> SongView::loopToDelete() const
+{
+    const auto mode = window.mode();
+    if (mode == Mode::edit)
+        return selectedLoop();
+    if (mode == Mode::transcribe && song::activeLoop (openSong.song()) != nullptr)
+        return openSong.song().activeLoopId;
+    return std::nullopt;
 }
 
 std::optional<song::Id> SongView::selectedMarker() const
@@ -828,6 +940,8 @@ void SongView::refresh (TopBarState& state)
             .canArmCamera = cameraControls.canArm && ! window.refusalOf (intent::SetCameraArmed::op).has_value(),
             .selectedMarker = selectedMarker(),
             .markersEditable = ! window.refusalOf (intent::MoveMarker::op).has_value(),
+            .selectedLoop = selectedLoop(),
+            .pendingLoopStart = pendingLoopStart,
         });
     if (mode == Mode::transcribe)
         transcribePage.show (TranscribePageState {
@@ -843,6 +957,7 @@ void SongView::refresh (TopBarState& state)
             .canSetTranscribeMix = ! window.refusalOf (intent::SetFocusTrack::op).has_value(),
             .selectedMarker = selectedMarker(),
             .markersEditable = ! window.refusalOf (intent::MoveMarker::op).has_value(),
+            .pendingLoopStart = pendingLoopStart,
         });
     const auto request = exportRequest();
     exportSheet.show (ExportSheetState {

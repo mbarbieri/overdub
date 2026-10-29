@@ -338,8 +338,9 @@ struct PassRowLayout
 PassRowLayout passRowLayout (juce::Rectangle<int> row);
 
 // Transcribe mode (issue #225): the whole-Song overview strip on top, under it the Loop/Marker
-// strip (issue #227) over the ruler over the one tall waveform; at the left, full height, the
-// Markers list of transcribeMarkersWidth (issue #227), and at the right, full height, the
+// strip (issue #227) over the ruler over the one tall waveform; at the left, full height and
+// transcribeMarkersWidth wide, the Loop cards (issue #228) in its top half over the Markers list
+// (issue #227), and at the right, full height, the
 // Transcribe column of transcribeColumnWidth while it shows (empty while hidden: the rest takes its
 // width).
 inline constexpr int transcribeOverviewHeight = 56;
@@ -349,6 +350,7 @@ inline constexpr int transcribeMarkersWidth = 180;
 
 struct TranscribePageLayout
 {
+    juce::Rectangle<int> loops;
     juce::Rectangle<int> markers;
     juce::Rectangle<int> overview;
     juce::Rectangle<int> markerStrip;

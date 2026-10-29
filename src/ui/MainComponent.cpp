@@ -448,6 +448,21 @@ void MainComponent::refresh()
         noticeLine.dismiss();
 }
 
+KeyContext MainComponent::keyContext() const
+{
+    KeyContext context { .transcribeColumnVisible = windowSettings.transcribeColumnVisible };
+    if (songContent == nullptr)
+        return context;
+    const auto& song = songContent->currentSong().song();
+    context.selectedMarker = currentMode != Mode::record ? songContent->selectedMarker() : std::nullopt;
+    context.loopToDelete = songContent->loopToDelete();
+    context.looping = song.looping;
+    for (const auto& loop : song.loops)
+        context.loopIds.push_back (loop.id);
+    context.loopStartPending = songContent->loopStartPending().has_value();
+    return context;
+}
+
 bool MainComponent::keyPressed (const juce::KeyPress& key)
 {
     const auto modifiers = key.getModifiers();
@@ -455,11 +470,9 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
                                           .character = (char32_t) key.getKeyCode(),
                                           .command = modifiers.isCommandDown(),
                                           .shift = modifiers.isShiftDown(),
+                                          .option = modifiers.isAltDown(),
                                       },
-                                      KeyContext {
-                                          .transcribeColumnVisible = windowSettings.transcribeColumnVisible,
-                                          .selectedMarker = songContent != nullptr && currentMode != Mode::record ? songContent->selectedMarker() : std::nullopt,
-                                      });
+                                      keyContext());
     // The run dialog is modal: it swallows every key while it shows.
     if (runShowing())
         return true;

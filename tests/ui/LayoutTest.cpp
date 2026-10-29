@@ -663,14 +663,21 @@ TEST_CASE ("the Loop/Marker strip sits right above the ruler in Edit and Transcr
     CHECK (record.lookAhead.getBottom() < record.markerStrip.getY());
 
     const auto transcribe = transcribePageLayout (page, true);
-    checkInsideAndApart (page, { transcribe.markers, transcribe.overview, transcribe.markerStrip, transcribe.ruler, transcribe.column });
+    checkInsideAndApart (page, { transcribe.loops, transcribe.markers, transcribe.overview, transcribe.markerStrip, transcribe.ruler, transcribe.column });
     CHECK (transcribe.markerStrip.getBottom() == transcribe.ruler.getY());
     CHECK (transcribe.markerStrip.getX() == transcribe.ruler.getX());
     CHECK (transcribe.markerStrip.getWidth() == transcribe.ruler.getWidth());
     CHECK (transcribe.overview.getBottom() < transcribe.markerStrip.getY());
     CHECK (transcribe.markers.getWidth() == transcribeMarkersWidth);
     CHECK (transcribe.markers.getX() == page.getX() + 10);
-    CHECK (transcribe.markers.getHeight() == page.getHeight() - 20);
+    // The Loop cards (issue #228) above the Markers, sharing the column's height.
+    CHECK (transcribe.loops.getX() == transcribe.markers.getX());
+    CHECK (transcribe.loops.getWidth() == transcribeMarkersWidth);
+    CHECK (transcribe.loops.getY() == page.getY() + 10);
+    CHECK (transcribe.loops.getBottom() < transcribe.markers.getY());
+    CHECK (transcribe.markers.getBottom() == page.getBottom() - 10);
+    CHECK (transcribe.loops.getHeight() + transcribe.markers.getHeight() > page.getHeight() - 40);
     CHECK (transcribe.markers.getRight() < transcribe.overview.getX());
     CHECK (transcribePageLayout (page, false).markers == transcribe.markers);
+    CHECK (transcribePageLayout (page, false).loops == transcribe.loops);
 }

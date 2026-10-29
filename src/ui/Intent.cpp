@@ -67,6 +67,21 @@ std::optional<Intent> intentForKey (KeyChord key, KeyContext context)
             return SongIntent { intent::ShowExport { true } };
         return std::nullopt;
     }
+    if (key.option)
+    {
+        if (key.shift)
+            return std::nullopt;
+        if (character == leftArrowCharacter || character == rightArrowCharacter)
+            return SongIntent { intent::SelectAdjacentLoop { character == leftArrowCharacter ? Direction::back : Direction::forward } };
+        if (character >= U'1' && character <= U'9')
+        {
+            const auto index = (std::size_t) (character - U'1');
+            if (index >= context.loopIds.size())
+                return std::nullopt;
+            return SongIntent { intent::SelectLoop { context.loopIds[index] } };
+        }
+        return std::nullopt;
+    }
     if (key.shift)
         return character == U'r' ? std::optional<Intent> (SongIntent { intent::RecordAgain {} }) : std::nullopt;
 
@@ -77,6 +92,13 @@ std::optional<Intent> intentForKey (KeyChord key, KeyContext context)
         case U'3': return WindowIntent { intent::ShowMode { Mode::transcribe } };
         case U'i': return WindowIntent { intent::SetTranscribeColumnVisible { ! context.transcribeColumnVisible } };
         case U'k': return SongIntent { intent::AddMarker {} };
+        case U'l': return SongIntent { intent::SetLooping { ! context.looping } };
+        case U'[': return SongIntent { intent::MarkLoopStart {} };
+        case U']': return SongIntent { intent::MarkLoopEnd {} };
+        case escapeCharacter:
+            if (context.loopStartPending)
+                return SongIntent { intent::CancelLoopStart {} };
+            return std::nullopt;
         case U'r': return SongIntent { intent::Record {} };
         case U' ': return SongIntent { intent::PlayOrStop {} };
         case U's': return SongIntent { intent::SplitSelectedClip {} };
@@ -84,6 +106,8 @@ std::optional<Intent> intentForKey (KeyChord key, KeyContext context)
         case forwardDeleteCharacter:
             if (context.selectedMarker.has_value())
                 return SongIntent { intent::Edit { intent::DeleteMarker { *context.selectedMarker } } };
+            if (context.loopToDelete.has_value())
+                return SongIntent { intent::Edit { intent::DeleteLoop { *context.loopToDelete } } };
             return SongIntent { intent::DeleteSelection {} };
         case leftArrowCharacter: return SongIntent { intent::Nudge { Direction::back } };
         case rightArrowCharacter: return SongIntent { intent::Nudge { Direction::forward } };

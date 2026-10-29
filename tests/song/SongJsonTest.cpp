@@ -83,6 +83,7 @@ Song songOfDefaults()
     song.backingTracks = { BackingTrack {} };
     song.videoTakes = { VideoTake {} };
     song.markers = { Marker {} };
+    song.loops = { Loop { .end = 1 } };
     return song;
 }
 } // namespace
@@ -107,11 +108,18 @@ TEST_CASE ("the fully populated test Song sets every field away from its default
     checkListsHoldTwoOrMore (document, "$");
 }
 
-TEST_CASE ("song.json carries formatVersion 8 and the key names fixed by issues #8, #14, #68, #114, #137, #201, #209, #226 and #227", "[song][json]")
+TEST_CASE ("song.json carries formatVersion 9 and the key names fixed by issues #8, #14, #68, #114, #137, #201, #209, #226, #227 and #228", "[song][json]")
 {
     const auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
 
-    CHECK (document.at ("formatVersion") == 8);
+    CHECK (document.at ("formatVersion") == 9);
+    CHECK (document.at ("loops").at (0) == nlohmann::json { { "id", "loop-1" }, { "name", "Intro riff" }, { "start", 24000 }, { "end", 72000 } });
+    CHECK (document.at ("loops").size() == 2);
+    CHECK (document.at ("activeLoopId") == "loop-2");
+    CHECK (document.at ("looping") == true);
+    CHECK (songToJson (overdub::song::Song {}).at ("loops") == nlohmann::json::array());
+    CHECK (songToJson (overdub::song::Song {}).at ("activeLoopId").is_null());
+    CHECK (songToJson (overdub::song::Song {}).at ("looping") == false);
     CHECK (document.at ("markers") == nlohmann::json::array ({ { { "id", "marker-1" }, { "name", "Verse" }, { "position", 48000 } }, { { "id", "marker-2" }, { "name", "Chorus" }, { "position", 96000 } } }));
     CHECK (songToJson (overdub::song::Song {}).at ("markers") == nlohmann::json::array());
     CHECK (document.at ("focusTrackId") == "track-backing");

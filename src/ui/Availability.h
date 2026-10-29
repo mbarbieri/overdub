@@ -22,8 +22,9 @@
 // nothing runs (issue #200), and cancel_export waits for an export (ui.no_export_running, field
 // `op`, issue #202). In Transcribe mode the Clip edits and nudge are refused (ui.transcribing, field
 // `op`, logged at debug, issue #225): Transcribe mode is for listening and never changes a Clip.
-// In Record mode adding, moving, renaming and deleting a Marker are refused (ui.record_mode, field
-// `op`, presented as its Notice, issue #227): Record shows the Markers read-only.
+// In Record mode adding, moving, renaming and deleting a Marker, and making, resizing, renaming and
+// deleting a Loop, are refused (ui.record_mode, field `op`, presented as its Notice, issues #227,
+// #228): Record shows the Markers and Loops read-only.
 // Window ops other than under the run dialog are never refused.
 namespace overdub::ui
 {

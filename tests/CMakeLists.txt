@@ -44,6 +44,7 @@ target_sources(overdub_tests PRIVATE
     engine/EngineTakeLanesTest.cpp
     engine/EngineTest.cpp
     engine/EnginePracticeSpeedTest.cpp
+    engine/EngineLoopTest.cpp
     export/MixExportTest.cpp
     export/MixRenderTest.cpp
     export/MovieExportTest.cpp
@@ -62,6 +63,7 @@ target_sources(overdub_tests PRIVATE
     song/BackingTrackImportTest.cpp
     song/ClipEditsTest.cpp
     song/InsertEditsTest.cpp
+    song/LoopEditsTest.cpp
     song/MarkerEditsTest.cpp
     song/MixEditsTest.cpp
     song/SongJsonTest.cpp
@@ -100,6 +102,7 @@ target_sources(overdub_tests PRIVATE
     ui/InsertChainUiTest.cpp
     ui/IntentRunTest.cpp
     ui/IntentTest.cpp
+    ui/LoopsTest.cpp
     ui/MarkersTest.cpp
     ui/KeyBurstCommitTest.cpp
     ui/LastSongTest.cpp

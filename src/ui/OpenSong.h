@@ -235,7 +235,8 @@ public:
     std::optional<song::SampleCount> runningPassStart() const;
     // Stops the transport and asks the audio thread to end a running Pass.
     void stop();
-    // Plays, or stops (as stop()) when playing or recording. Does nothing without audio.
+    // Plays, or stops (as stop()) when playing or recording. Does nothing without audio. While a
+    // Loop is heard (heardLoop()), playing starts at its start unless the playhead is inside it.
     // Errors: refusal()'s.
     core::Expected<void> playOrStop();
     // To the start of the Song; ends a running Pass (as stop()).
@@ -318,6 +319,16 @@ public:
     core::Expected<void> setFocusTrack (const std::optional<song::Id>& trackId);
     core::Expected<void> setTranscribeMute (const song::Id& trackId, bool mute);
     core::Expected<void> setTranscribeSolo (const song::Id& trackId, bool solo);
+
+    // Loops (issue #228, ADR 0010). The active Loop and looping are Song settings outside history
+    // (song.json, no undo step, song/LoopEdits.h). The engine loops (Engine::setLoop) only while
+    // transcribing, looping and with an active Loop: heardLoop(). Every change of these, an edit, an
+    // undo or redo, and the mode, sets it. Logs ui.active_loop_set (info: loop_id, "" for none,
+    // looping) and ui.looping_set (info: looping).
+    // Errors: refusal()'s, song.loop_not_found; setLooping: song.no_active_loop.
+    core::Expected<void> setActiveLoop (const std::optional<song::Id>& loopId, bool looping);
+    core::Expected<void> setLooping (bool looping);
+    std::optional<engine::LoopRange> heardLoop() const;
 
     // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
     // Errors: refusal()'s.
@@ -425,8 +436,10 @@ private:
     song::Song heardSong() const;
     // `song` with the Transcribe Mix's mute and solo while transcribing; as it is otherwise.
     song::Song withHeardMix (song::Song song) const;
-    // Stores a Transcribe Mix or Focus Track change outside history and plays it.
+    // Stores a Transcribe Mix, Focus Track, active Loop or looping change outside history and plays it.
     core::Expected<void> changeTranscribeMix (core::Expected<song::Song> changed);
+    // Hands the engine heardLoop() (none without audio).
+    void syncEngineLoop();
     // What the engine plays at heardPracticeSpeed(): the renders there are of the heard key.
     engine::PracticePlayback heardPracticePlayback() const;
     // The key the Practice Speed renders are wanted for: the Practice Speed and the Song's Transpose

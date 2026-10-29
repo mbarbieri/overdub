@@ -2,6 +2,7 @@
 
 #include "song/Song.h"
 #include "ui/Intent.h"
+#include "ui/LoopViews.h"
 #include "ui/TimelineGeometry.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -11,16 +12,19 @@
 #include <optional>
 #include <vector>
 
-// The Loop/Marker strip (issue #227, ADR 0010): a thin strip above the ruler in every mode that
-// shows each Marker as a flag (a line at its position and its name), and the Markers list of
-// Transcribe mode's left column.
+// The Loop/Marker strip (issues #227, #228, ADR 0010): a thin strip above the ruler in every mode
+// that shows each Loop as a bar over its range (ui/LoopViews.h) and each Marker as a flag (a line
+// at its position and its name) over the bars, and the Markers list of Transcribe mode's left
+// column.
 //
 // Gestures, each an Intent through onIntent (ADR 0008): clicking a flag runs select_marker, which
-// seeks to it (and selects it outside Record mode). While the strip is editable (Transcribe and
-// Edit), dragging a flag runs move_marker on release, double-clicking it opens the name field,
-// whose typed name runs rename_marker, and clicking the strip's empty space runs select_marker
-// with none. Read-only (Record mode), a drag moves nothing and there is no name field. A row of
-// the list runs select_marker.
+// seeks to it (and selects it outside Record mode); clicking a bar runs select_loop. While the strip
+// is editable (Transcribe and Edit), dragging a flag runs move_marker on release, dragging a bar's
+// edge runs resize_loop on release, double-clicking a flag or a bar opens the name field, whose
+// typed name runs rename_marker or rename_loop, dragging across the strip's empty space runs
+// add_loop over that range on release, and clicking it runs select_marker with none. Read-only
+// (Record mode), a drag changes nothing and there is no name field. A pending Loop start ([) shows
+// as a line. A row of the list runs select_marker.
 namespace overdub::ui
 {
 // The width of a flag beyond its name's: the line and the padding.
@@ -47,6 +51,26 @@ StripScale stripScaleFitting (song::SampleCount length, int width);
 int stripX (const StripScale& scale, song::SampleCount sample);
 // Where a flag dragged by `deltaX` pixels from `position` lands: 0 or later.
 song::SampleCount draggedMarkerPosition (const StripScale& scale, song::SampleCount position, int deltaX);
+// The Song sample at the strip's x: 0 or later.
+song::SampleCount stripSample (const StripScale& scale, int x);
+// The range a Loop's edge dragged by deltaX pixels gives it, as {start, end} in either order.
+std::pair<song::SampleCount, song::SampleCount> resizedLoopRange (const StripScale& scale, const song::Loop& loop, LoopEdge edge, int deltaX);
+
+// What the strip shows: the Song's Markers and Loops (time order) at a scale, whether it edits
+// them, and the highlights.
+struct StripState
+{
+    std::vector<song::Marker> markers;
+    std::vector<song::Loop> loops;
+    StripScale scale;
+    bool editable = false;
+    std::optional<song::Id> selectedMarker;
+    std::optional<song::Id> selectedLoop;
+    std::optional<song::Id> activeLoop;
+    std::optional<song::SampleCount> pendingLoopStart;
+
+    bool operator== (const StripState&) const = default;
+};
 
 // One Marker on the strip. Its left edge is the Marker's position.
 class MarkerFlag final : public juce::Component
@@ -82,32 +106,47 @@ class MarkerStrip final : public juce::Component
 public:
     MarkerStrip();
 
-    // The Markers in Song order (time order), at this scale; `selected` is highlighted.
-    void show (const std::vector<song::Marker>& markers, StripScale scale, bool editable, std::optional<song::Id> selected);
-    bool isEditable() const { return editable; }
+    void show (const StripState& state);
+    bool isEditable() const { return shown.editable; }
+    // The range an empty-space drag in progress would make a Loop of; none otherwise.
+    std::optional<std::pair<song::SampleCount, song::SampleCount>> draggedRange() const;
     void paint (juce::Graphics& g) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent& event) override;
+    void mouseDrag (const juce::MouseEvent& event) override;
+    void mouseUp (const juce::MouseEvent& event) override;
 
     IntentSink onIntent;
 
     // Children are public so tests can click them (ADR 0005 UI amendment).
+    std::vector<std::unique_ptr<LoopBar>> bars;
     std::vector<std::unique_ptr<MarkerFlag>> flags;
-    // Over the double-clicked flag while its name is edited; hidden otherwise.
+    // Over the double-clicked flag or bar while its name is edited; hidden otherwise.
     juce::Label nameField;
 
 private:
+    // What the name field renames.
+    struct Renaming
+    {
+        song::Id id;
+        bool isLoop = false;
+    };
+
     void emit (const Intent& intent) const;
     void showFlags();
+    void showBars();
     void placeFlag (MarkerFlag& flag, song::SampleCount position);
-    void startRenaming (const song::Id& markerId);
+    void placeBar (LoopBar& bar, song::SampleCount start, song::SampleCount end);
+    void startRenaming (Renaming target, juce::Rectangle<int> over, const std::string& name);
     const song::Marker* markerWithId (const song::Id& markerId) const;
+    const song::Loop* loopWithId (const song::Id& loopId) const;
 
-    std::vector<song::Marker> markers;
-    StripScale scale;
-    bool editable = false;
-    std::optional<song::Id> selected;
-    std::optional<song::Id> renaming;
+    StripState shown;
+    std::optional<Renaming> renaming;
+    // An empty-space drag: where it went down and where it is now (strip x).
+    std::optional<int> dragDownX;
+    int dragX = 0;
+    bool draggingRange = false;
 };
 
 // One row of the Markers list: the Marker's name and its time.

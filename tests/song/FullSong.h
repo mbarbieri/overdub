@@ -171,7 +171,10 @@ inline Song fullyPopulatedSong()
     song.exportDestination = "/Users/someone/Music/Mixes/Band Mix.mp4";
     song.transpose = -3;
     song.markers = { Marker { .id = "marker-1", .name = "Verse", .position = 48000 }, Marker { .id = "marker-2", .name = "Chorus", .position = 96000 } };
+    song.loops = { Loop { .id = "loop-1", .name = "Intro riff", .start = 24000, .end = 72000 }, Loop { .id = "loop-2", .name = "Solo", .start = 96000, .end = 144000 } };
     song.focusTrackId = "track-backing";
+    song.activeLoopId = "loop-2";
+    song.looping = true;
     return song;
 }
 } // namespace overdub::song::testing

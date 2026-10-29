@@ -2,6 +2,7 @@
 
 #include "song/ClipEdits.h"
 #include "song/InsertEdits.h"
+#include "song/LoopEdits.h"
 #include "song/MarkerEdits.h"
 #include "song/MixEdits.h"
 #include "song/TakeEdits.h"
@@ -42,6 +43,9 @@ core::Expected<EditedSong> editedSong (const song::Song& before, const intent::E
             [&] (const MoveMarker& e) { return edited (song::moveMarker (before, e.markerId, e.position), song::moveMarkerLabel); },
             [&] (const RenameMarker& e) { return edited (song::renameMarker (before, e.markerId, e.name), song::renameMarkerLabel); },
             [&] (const DeleteMarker& e) { return edited (song::deleteMarker (before, e.markerId), song::deleteMarkerLabel); },
+            [&] (const ResizeLoop& e) { return edited (song::resizeLoop (before, e.loopId, e.start, e.end), song::resizeLoopLabel); },
+            [&] (const RenameLoop& e) { return edited (song::renameLoop (before, e.loopId, e.name), song::renameLoopLabel); },
+            [&] (const DeleteLoop& e) { return edited (song::deleteLoop (before, e.loopId), song::deleteLoopLabel); },
         });
 }
 

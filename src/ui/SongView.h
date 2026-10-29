@@ -93,6 +93,14 @@ public:
     // eyes too (MainComponent passes it to backspace only outside Record mode). Selecting a Clip or
     // a Video Take clears it, and selecting a Marker clears theirs.
     std::optional<song::Id> selectedMarker() const;
+    // The Loop select_loop selected in Edit mode (issue #228), while the Song has it. Selecting a
+    // Clip, a Video Take or a Marker clears it, and selecting it clears theirs.
+    std::optional<song::Id> selectedLoop() const;
+    // What backspace deletes when no Marker is selected: the active Loop in Transcribe mode, the
+    // selected one in Edit; none in Record.
+    std::optional<song::Id> loopToDelete() const;
+    // The Loop start [ marked at the playhead, until ] makes the Loop or Esc cancels it.
+    std::optional<song::SampleCount> loopStartPending() const { return pendingLoopStart; }
 
     void resized() override;
 
@@ -151,6 +159,17 @@ private:
     // Seeks to the Marker; outside Record mode it also becomes the selected Marker. None clears
     // the selection. Errors: song.marker_not_found (quiet), seek's refusals.
     IntentResult selectMarker (const std::optional<song::Id>& markerId);
+    // "Loop N" over the range, one undo step, without stopping playback; then selectLoop on it.
+    // Errors: song.loop_empty (presented), refusals.
+    IntentResult addLoop (song::SampleCount start, song::SampleCount end);
+    IntentResult markLoopStart();
+    // addLoop from the pending start to the playhead. Errors: ui.no_loop_start (presented).
+    IntentResult markLoopEnd();
+    // By mode (intent::SelectLoop). None clears the selected Loop and Marker.
+    // Errors: song.loop_not_found (quiet), seek's and setActiveLoop's refusals.
+    IntentResult selectLoop (const std::optional<song::Id>& loopId);
+    // selectLoop on the previous or next Loop after the selected one (Edit) or the active one.
+    IntentResult selectAdjacentLoop (Direction direction);
     IntentResult armCamera (bool armed);
     IntentResult cameraAccessAnswered (bool granted);
     IntentResult setCameraArmed (bool armed);
@@ -196,6 +215,8 @@ private:
     // A slot whose editor opens once its plugin is ready (just added, or clicked while loading).
     std::optional<song::Id> pendingEditorSlot;
     std::optional<song::Id> selectedMarkerId;
+    std::optional<song::Id> selectedLoopId;
+    std::optional<song::SampleCount> pendingLoopStart;
     bool exportSheetShown = false;
     engine::MeterPeaks shownPeaks;
     // Record mode's double-Space: the last Space that may be the first of two, and when a single

@@ -27,7 +27,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 8;
+inline constexpr int songFormatVersion = 9;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -241,6 +241,19 @@ struct Marker
     bool operator== (const Marker&) const = default;
 };
 
+// A named range of the Song (ADR 0010, issue #228), [start, end) with 0 <= start < end, shown in
+// every mode and played over and over in Transcribe mode. Undoable. Format 9.
+struct Loop
+{
+    Id id;
+    std::string name; // "Loop 1" when made, never empty
+    SampleCount start = 0;
+    SampleCount end = 0;
+
+    SampleCount length() const { return end - start; }
+    bool operator== (const Loop&) const = default;
+};
+
 struct Song
 {
     int sampleRate = 48000; // fixed from the device at creation
@@ -256,6 +269,9 @@ struct Song
     // In time order (song/MarkerEdits.h keeps it); Markers at one position keep the order they
     // were placed in. Format 8.
     std::vector<Marker> markers;
+    // In time order by start (song/LoopEdits.h keeps it); Loops with one start keep the order they
+    // were made or moved there. Format 9.
+    std::vector<Loop> loops;
 
     // Persisted settings outside undo history.
     PreRoll preRoll = PreRoll::off;
@@ -269,6 +285,10 @@ struct Song
     std::string exportDestination; // an absolute path; empty = <export folder>/<Song name>.<ext>
     // Transcribe mode's Focus Track (ADR 0010, issue #226); none = no Focus Track. Format 7.
     std::optional<Id> focusTrackId;
+    // The active Loop and whether Transcribe mode loops it (issue #228); looping needs an active
+    // Loop. Format 9.
+    std::optional<Id> activeLoopId;
+    bool looping = false;
 
     bool operator== (const Song&) const = default;
 };
@@ -294,7 +314,8 @@ core::Expected<Track*> lookupTrack (Song& song, const Id& trackId);
 // Undo and redo restore a snapshot's undoable content but keep the current state that lives
 // outside history: pre-roll, camera arm and device, playhead (converted to the snapshot's rate), the
 // export format, length and destination, the export's Video Take (unless the snapshot does not
-// have it), the Focus Track (unless the snapshot does not have it), per Track id Armed, input
+// have it), the Focus Track (unless the snapshot does not have it), the active Loop and looping
+// (unless the snapshot does not have that Loop: then none, not looping), per Track id Armed, input
 // channels and the Transcribe Mix's mute and solo, and per
 // Insert Chain slot id (Master's included) the plugin state hash: plugin parameters are outside
 // history. A slot only the snapshot has keeps the snapshot's hash.

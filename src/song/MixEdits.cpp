@@ -38,6 +38,10 @@ Song withMixOf (Song song, const Song& from)
     song.master.volumeDb = from.master.volumeDb;
     song.focusTrackId = from.focusTrackId;
     song.markers = from.markers; // the engine never hears a Marker
+    // Loops and looping reach the engine through Engine::setLoop, never its plan.
+    song.loops = from.loops;
+    song.activeLoopId = from.activeLoopId;
+    song.looping = from.looping;
     return song;
 }
 } // namespace

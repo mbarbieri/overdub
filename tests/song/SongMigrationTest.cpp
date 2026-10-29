@@ -191,7 +191,22 @@ TEST_CASE ("a v7 Song migrates to v8 with no Markers", "[song][migration][marker
 
     REQUIRE (migrated.has_value());
     CHECK (migrated->fromVersion == 7);
-    CHECK (migrated->document.at ("formatVersion") == 8);
+    CHECK (migrated->document.at ("formatVersion") == overdub::song::songFormatVersion);
     CHECK (migrated->document.at ("markers") == json::array());
     CHECK (migrated->document.at ("transpose") == 2);
+}
+
+TEST_CASE ("a v8 Song migrates to v9 with no Loops, none active and not looping", "[song][migration][loops]")
+{
+    const json document = { { "formatVersion", 8 }, { "sampleRate", 48000 }, { "markers", json::array() } };
+
+    const auto migrated = overdub::song::migrateSongDocument (document);
+
+    REQUIRE (migrated.has_value());
+    CHECK (migrated->fromVersion == 8);
+    CHECK (migrated->document.at ("formatVersion") == 9);
+    CHECK (migrated->document.at ("loops") == json::array());
+    CHECK (migrated->document.at ("activeLoopId").is_null());
+    CHECK (migrated->document.at ("looping") == false);
+    CHECK (migrated->document.at ("markers") == json::array());
 }

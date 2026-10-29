@@ -324,14 +324,14 @@ void RenderPlan::tapInputs (const LiveInput& input, int numSamples) noexcept
         {
             if (input.channels == nullptr || channel < 0 || channel >= input.numChannels || input.channels[channel] == nullptr)
                 continue;
-            const auto range = juce::FloatVectorOperations::findMinAndMax (input.channels[channel], numSamples);
+            const auto range = juce::FloatVectorOperations::findMinAndMax (input.channels[channel] + input.firstFrame, numSamples);
             blockPeak = std::max ({ blockPeak, range.getEnd(), -range.getStart() });
         }
         tap->peak.raise (blockPeak);
     }
 }
 
-std::uint64_t RenderPlan::render (float* const* outputs, const LiveInput& input, int numSamples, std::int64_t renderSample, bool playing) noexcept
+std::uint64_t RenderPlan::render (float* const* outputs, const LiveInput& input, int startFrame, int numSamples, std::int64_t renderSample, bool playing) noexcept
 {
     liveInput = input;
     tapInputs (input, numSamples);
@@ -343,7 +343,7 @@ std::uint64_t RenderPlan::render (float* const* outputs, const LiveInput& input,
     const auto busyBefore = juce::getAudioProcessorGraphBusyNodeBlockCount();
 
     // References the device's buffers (no allocation for fewer than 32 channels).
-    juce::AudioBuffer<float> block { outputs, config.numOutputChannels, numSamples };
+    juce::AudioBuffer<float> block { outputs, config.numOutputChannels, startFrame, numSamples };
     graph.processBlock (block, midi);
 
     return juce::getAudioProcessorGraphBusyNodeBlockCount() - busyBefore;

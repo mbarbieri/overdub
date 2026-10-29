@@ -65,6 +65,18 @@ song::SampleCount draggedMarkerPosition (const StripScale& scale, song::SampleCo
     return std::max<song::SampleCount> (0, (song::SampleCount) std::llround (moved));
 }
 
+song::SampleCount stripSample (const StripScale& scale, int x)
+{
+    return std::max<song::SampleCount> (0, (song::SampleCount) std::llround (scale.firstSample + (double) x * scale.samplesPerPixel));
+}
+
+std::pair<song::SampleCount, song::SampleCount> resizedLoopRange (const StripScale& scale, const song::Loop& loop, LoopEdge edge, int deltaX)
+{
+    if (edge == LoopEdge::start)
+        return { draggedMarkerPosition (scale, loop.start, deltaX), loop.end };
+    return { loop.start, draggedMarkerPosition (scale, loop.end, deltaX) };
+}
+
 //==============================================================================
 MarkerFlag::MarkerFlag (song::Id markerId)
     : id (std::move (markerId))
@@ -146,83 +158,139 @@ MarkerStrip::MarkerStrip()
     nameField.onTextChange = [this] {
         if (! renaming.has_value())
             return;
-        const auto* marker = markerWithId (*renaming);
         const auto typed = nameField.getText().toStdString();
-        if (marker != nullptr && typed != marker->name)
-            emit (SongIntent { intent::Edit { intent::RenameMarker { *renaming, typed } } });
+        if (renaming->isLoop)
+        {
+            if (const auto* loop = loopWithId (renaming->id); loop != nullptr && typed != loop->name)
+                emit (SongIntent { intent::Edit { intent::RenameLoop { renaming->id, typed } } });
+            return;
+        }
+        if (const auto* marker = markerWithId (renaming->id); marker != nullptr && typed != marker->name)
+            emit (SongIntent { intent::Edit { intent::RenameMarker { renaming->id, typed } } });
     };
     // Label::setText hides the editor before it reports the new text, so `renaming` outlives
-    // the editor: it names the Marker the last double-click opened the field for.
+    // the editor: it names what the last double-click opened the field for.
     nameField.onEditorHide = [this] { nameField.setVisible (false); };
     addChildComponent (nameField);
 }
 
-void MarkerStrip::show (const std::vector<song::Marker>& newMarkers, StripScale newScale, bool isEditable, std::optional<song::Id> newSelected)
+void MarkerStrip::show (const StripState& state)
 {
-    if (newMarkers == markers && newScale == scale && isEditable == editable && newSelected == selected)
+    if (state == shown)
         return;
-    const auto idsChanged = idsOf (newMarkers) != idsOf (markers);
-    markers = newMarkers;
-    scale = newScale;
-    editable = isEditable;
-    selected = std::move (newSelected);
-    if (idsChanged)
+    const auto markerIdsChanged = idsOf (state.markers) != idsOf (shown.markers);
+    const auto loopIdsChanged = ! std::ranges::equal (state.loops, shown.loops, {}, &song::Loop::id, &song::Loop::id);
+    shown = state;
+    if (markerIdsChanged)
         flags.clear();
+    if (loopIdsChanged)
+        bars.clear();
+    showBars();
     showFlags();
-    if (! editable && nameField.isBeingEdited())
+    if (! shown.editable && nameField.isBeingEdited())
         nameField.hideEditor (true);
+    if (! shown.editable)
+        dragDownX.reset();
     repaint();
+}
+
+void MarkerStrip::showBars()
+{
+    if (bars.empty())
+        for (const auto& loop : shown.loops)
+        {
+            auto& bar = *bars.emplace_back (std::make_unique<LoopBar> (loop.id));
+            const auto loopId = loop.id;
+            bar.onClick = [this, loopId] { emit (SongIntent { intent::SelectLoop { loopId } }); };
+            bar.onEdgeDrag = [this, &bar] (LoopEdge edge, int deltaX) {
+                if (const auto* found = loopWithId (bar.loopId()); found != nullptr && shown.editable)
+                {
+                    const auto [from, to] = resizedLoopRange (shown.scale, *found, edge, deltaX);
+                    placeBar (bar, std::min (from, to), std::max (from, to));
+                }
+            };
+            bar.onEdgeDragEnd = [this, loopId] (LoopEdge edge, int deltaX) {
+                const auto* found = loopWithId (loopId);
+                if (found == nullptr || ! shown.editable)
+                    return;
+                const auto [from, to] = resizedLoopRange (shown.scale, *found, edge, deltaX);
+                if (std::min (from, to) != found->start || std::max (from, to) != found->end)
+                    emit (SongIntent { intent::Edit { intent::ResizeLoop { loopId, std::min (from, to), std::max (from, to) } } });
+                // Every bar back where its Loop is now: resized, refused or not resized at all.
+                showBars();
+            };
+            bar.onDoubleClick = [this, &bar, loopId] {
+                if (const auto* found = loopWithId (loopId); found != nullptr)
+                    startRenaming ({ loopId, true }, bar.getBounds(), found->name);
+            };
+            addAndMakeVisible (bar);
+            // Under every flag: a Marker inside a Loop stays clickable.
+            bar.toBack();
+        }
+    for (std::size_t i = 0; i < bars.size() && i < shown.loops.size(); ++i)
+    {
+        const auto& loop = shown.loops[i];
+        bars[i]->show (loop, shown.activeLoop == loop.id, shown.selectedLoop == loop.id, shown.editable);
+        placeBar (*bars[i], loop.start, loop.end);
+    }
 }
 
 void MarkerStrip::showFlags()
 {
     if (flags.empty())
-        for (const auto& marker : markers)
+        for (const auto& marker : shown.markers)
         {
             auto& flag = *flags.emplace_back (std::make_unique<MarkerFlag> (marker.id));
             const auto markerId = marker.id;
             flag.onClick = [this, markerId] { emit (SongIntent { intent::SelectMarker { markerId } }); };
             flag.onDrag = [this, &flag] (int deltaX) {
-                if (const auto* found = markerWithId (flag.markerId()); found != nullptr && editable)
-                    placeFlag (flag, draggedMarkerPosition (scale, found->position, deltaX));
+                if (const auto* found = markerWithId (flag.markerId()); found != nullptr && shown.editable)
+                    placeFlag (flag, draggedMarkerPosition (shown.scale, found->position, deltaX));
             };
             flag.onDragEnd = [this, markerId] (int deltaX) {
                 const auto* found = markerWithId (markerId);
-                if (found == nullptr || ! editable)
+                if (found == nullptr || ! shown.editable)
                     return;
-                const auto position = draggedMarkerPosition (scale, found->position, deltaX);
+                const auto position = draggedMarkerPosition (shown.scale, found->position, deltaX);
                 if (position != found->position)
                     emit (SongIntent { intent::Edit { intent::MoveMarker { markerId, position } } });
                 // Every flag back where its Marker is now: moved, refused or not moved at all.
                 showFlags();
             };
-            flag.onDoubleClick = [this, markerId] { startRenaming (markerId); };
+            flag.onDoubleClick = [this, &flag, markerId] {
+                if (const auto* found = markerWithId (markerId); found != nullptr)
+                    startRenaming ({ markerId, false }, flag.getBounds(), found->name);
+            };
             addAndMakeVisible (flag);
         }
-    for (std::size_t i = 0; i < flags.size() && i < markers.size(); ++i)
+    for (std::size_t i = 0; i < flags.size() && i < shown.markers.size(); ++i)
     {
-        flags[i]->show (markers[i], selected == markers[i].id);
-        placeFlag (*flags[i], markers[i].position);
+        flags[i]->show (shown.markers[i], shown.selectedMarker == shown.markers[i].id);
+        placeFlag (*flags[i], shown.markers[i].position);
     }
     nameField.toFront (false);
 }
 
 void MarkerStrip::placeFlag (MarkerFlag& flag, song::SampleCount position)
 {
-    flag.setBounds (stripX (scale, position), 0, flagWidth (flag.name()), getHeight());
+    flag.setBounds (stripX (shown.scale, position), 0, flagWidth (flag.name()), getHeight());
 }
 
-void MarkerStrip::startRenaming (const song::Id& markerId)
+void MarkerStrip::placeBar (LoopBar& bar, song::SampleCount start, song::SampleCount end)
 {
-    const auto* marker = markerWithId (markerId);
-    if (! editable || marker == nullptr)
+    const auto left = stripX (shown.scale, start);
+    const auto right = std::max (left + 4, stripX (shown.scale, end));
+    bar.setBounds (left, 0, right - left, getHeight());
+}
+
+void MarkerStrip::startRenaming (Renaming target, juce::Rectangle<int> over, const std::string& name)
+{
+    if (! shown.editable)
         return;
-    const auto flag = std::ranges::find (flags, markerId, [] (const auto& f) { return f->markerId(); });
-    if (flag == flags.end())
-        return;
-    renaming = markerId;
-    nameField.setText (juce::String::fromUTF8 (marker->name.c_str()), juce::dontSendNotification);
-    nameField.setBounds ((*flag)->getBounds().withWidth (std::max (120, (*flag)->getWidth() + 40)));
+    renaming = std::move (target);
+    nameField.setText (juce::String::fromUTF8 (name.c_str()), juce::dontSendNotification);
+    const auto left = std::max (0, over.getX());
+    nameField.setBounds (over.withX (left).withWidth (std::max (120, std::min (over.getWidth(), 240) + 40)));
     nameField.setVisible (true);
     nameField.toFront (false);
     nameField.showEditor();
@@ -230,8 +298,23 @@ void MarkerStrip::startRenaming (const song::Id& markerId)
 
 const song::Marker* MarkerStrip::markerWithId (const song::Id& markerId) const
 {
-    const auto found = std::ranges::find (markers, markerId, &song::Marker::id);
-    return found == markers.end() ? nullptr : &*found;
+    const auto found = std::ranges::find (shown.markers, markerId, &song::Marker::id);
+    return found == shown.markers.end() ? nullptr : &*found;
+}
+
+const song::Loop* MarkerStrip::loopWithId (const song::Id& loopId) const
+{
+    const auto found = std::ranges::find (shown.loops, loopId, &song::Loop::id);
+    return found == shown.loops.end() ? nullptr : &*found;
+}
+
+std::optional<std::pair<song::SampleCount, song::SampleCount>> MarkerStrip::draggedRange() const
+{
+    if (! dragDownX.has_value() || ! draggingRange)
+        return std::nullopt;
+    const auto from = stripSample (shown.scale, *dragDownX);
+    const auto to = stripSample (shown.scale, dragX);
+    return std::pair { std::min (from, to), std::max (from, to) };
 }
 
 void MarkerStrip::paint (juce::Graphics& g)
@@ -240,17 +323,61 @@ void MarkerStrip::paint (juce::Graphics& g)
     g.fillRect (getLocalBounds());
     g.setColour (colours::line);
     g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
+    if (const auto range = draggedRange(); range.has_value())
+    {
+        const auto left = stripX (shown.scale, range->first);
+        g.setColour (colours::text.withAlpha (0.2f));
+        g.fillRect (left, 0, std::max (1, stripX (shown.scale, range->second) - left), getHeight());
+    }
+    if (shown.pendingLoopStart.has_value())
+    {
+        g.setColour (colours::text);
+        const auto x = stripX (shown.scale, *shown.pendingLoopStart);
+        g.fillRect (x, 0, 2, getHeight());
+        g.fillRect (x, 0, 6, 2);
+        g.fillRect (x, getHeight() - 3, 6, 2);
+    }
 }
 
 void MarkerStrip::resized()
 {
+    showBars();
     showFlags();
 }
 
-void MarkerStrip::mouseDown (const juce::MouseEvent&)
+void MarkerStrip::mouseDown (const juce::MouseEvent& event)
 {
-    if (editable)
-        emit (SongIntent { intent::SelectMarker { std::nullopt } });
+    dragDownX = event.x;
+    dragX = event.x;
+    draggingRange = false;
+}
+
+void MarkerStrip::mouseDrag (const juce::MouseEvent& event)
+{
+    if (! dragDownX.has_value() || ! shown.editable)
+        return;
+    dragX = event.x;
+    if (! draggingRange && std::abs (dragX - *dragDownX) < dragThreshold)
+        return;
+    draggingRange = true;
+    repaint();
+}
+
+void MarkerStrip::mouseUp (const juce::MouseEvent& event)
+{
+    dragX = event.x;
+    const auto range = draggedRange();
+    dragDownX.reset();
+    draggingRange = false;
+    repaint();
+    if (! shown.editable)
+        return;
+    if (range.has_value() && range->second > range->first)
+    {
+        emit (SongIntent { intent::AddLoop { range->first, range->second } });
+        return;
+    }
+    emit (SongIntent { intent::SelectMarker { std::nullopt } });
 }
 
 void MarkerStrip::emit (const Intent& intent) const

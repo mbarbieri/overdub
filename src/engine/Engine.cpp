@@ -127,6 +127,19 @@ void Engine::deviceStopped()
                     { { "was_playing", wasPlaying }, { "pass_ended", passEnded }, { "captured_frames", capturedFrames }, { "position", position() } });
 }
 
+void Engine::setLoop (std::optional<LoopRange> range)
+{
+    const std::scoped_lock lock { loopWriteMutex };
+    const auto valid = range.has_value() && range->start >= 0 && range->start < range->end;
+    const auto sequence = loopSequence.load (std::memory_order_relaxed);
+    loopSequence.store (sequence + 1, std::memory_order_relaxed);
+    std::atomic_thread_fence (std::memory_order_release);
+    loopStartRequest.store (valid ? range->start : 0, std::memory_order_relaxed);
+    loopEndRequest.store (valid ? range->end : 0, std::memory_order_relaxed);
+    loopSequence.store (sequence + 2, std::memory_order_release);
+    core::logEvent (core::Level::debug, "engine.loop_set", { { "looping", valid }, { "start", valid ? range->start : 0 }, { "end", valid ? range->end : 0 } });
+}
+
 bool Engine::isRecording() const
 {
     return publishedRecording.load();
@@ -233,6 +246,7 @@ void Engine::process (const float* const* inputs,
     const auto callbackStartNs = core::hostTimeNowNs();
 
     takePendingPlan (hostTimeNs);
+    takeLoop();
     const auto seekedThisBlock = applyTransportCommands (hostTimeNs);
     publishAnchor (hostTimeNs);
     const auto firstRecordedFrame = updateRecording (seekedThisBlock, numSamples, hostTimeNs);
@@ -249,11 +263,7 @@ void Engine::process (const float* const* inputs,
         // Track nodes read L samples ahead and output sample n of the block is plan sample
         // planPosition + n (Song sample playPosition + n at 100%). Plan samples 0..L-1 after a
         // start are never heard.
-        const auto silencedNodes = currentPlan->render (outputs,
-                                                        LiveInput { inputs, numInputChannels, monitoringOn.load (std::memory_order_relaxed) },
-                                                        numSamples,
-                                                        planPosition + currentPlan->latencySamples(),
-                                                        playing);
+        const auto silencedNodes = renderLooped (outputs, LiveInput { inputs, numInputChannels, monitoringOn.load (std::memory_order_relaxed) }, numSamples);
         reportSilencedNodes (silencedNodes, hostTimeNs);
         silenceStaleOutput (outputs, numOutputChannels, numSamples);
         rejectedShape = {};
@@ -269,12 +279,68 @@ void Engine::process (const float* const* inputs,
 
     if (playing)
     {
-        planPosition += numSamples;
+        planPosition = loopedPlanSample (planPosition, numSamples);
         playPosition = planToSongSample (planPosition, currentSpeedPercent());
     }
     publishedPosition.store (playPosition);
 
     recordLoad (core::hostTimeNowNs() - callbackStartNs, numSamples);
+}
+
+void Engine::takeLoop() noexcept
+{
+    const auto before = loopSequence.load (std::memory_order_acquire);
+    if ((before & 1u) != 0)
+        return;
+    const auto start = loopStartRequest.load (std::memory_order_relaxed);
+    const auto end = loopEndRequest.load (std::memory_order_relaxed);
+    std::atomic_thread_fence (std::memory_order_acquire);
+    if (loopSequence.load (std::memory_order_relaxed) != before)
+        return;
+    heardLoop = end > start ? std::optional (LoopRange { start, end }) : std::nullopt;
+}
+
+std::optional<Engine::PlanLoop> Engine::wrappingLoop (SampleCount planBase) const noexcept
+{
+    if (! heardLoop.has_value() || ! playing)
+        return std::nullopt;
+    const auto speed = currentSpeedPercent();
+    const PlanLoop loop { songToPlanSample (heardLoop->start, speed), songToPlanSample (heardLoop->end, speed) };
+    if (loop.end <= loop.start || planBase >= loop.end)
+        return std::nullopt;
+    return loop;
+}
+
+SampleCount Engine::loopedPlanSample (SampleCount planBase, SampleCount offset) const noexcept
+{
+    const auto sample = planBase + offset;
+    const auto loop = wrappingLoop (planBase);
+    if (! loop.has_value() || sample < loop->end)
+        return sample;
+    return loop->start + (sample - loop->end) % (loop->end - loop->start);
+}
+
+std::uint64_t Engine::renderLooped (float* const* outputs, const LiveInput& input, int numSamples) noexcept
+{
+    const auto latency = (SampleCount) currentPlan->latencySamples();
+    std::uint64_t silencedNodes = 0;
+    int frame = 0;
+    while (frame < numSamples)
+    {
+        // Render-ahead (ADR 0003 amendment): the graph delays every path by its latency L, so the
+        // Track nodes read L samples ahead: output sample n of the block is the plan sample
+        // planPosition + n (through the Loop), and is rendered at planPosition + L + n.
+        const auto renderSample = loopedPlanSample (planPosition, latency + frame);
+        auto count = numSamples - frame;
+        // The span ends where the render position wraps: at the Loop's end in plan samples.
+        if (const auto loop = wrappingLoop (planPosition); loop.has_value())
+            count = (int) std::min<SampleCount> (count, loop->end - renderSample);
+        auto spanInput = input;
+        spanInput.firstFrame = frame;
+        silencedNodes += currentPlan->render (outputs, spanInput, frame, count, renderSample, playing);
+        frame += count;
+    }
+    return silencedNodes;
 }
 
 void Engine::takePendingPlan (std::uint64_t hostTimeNs) noexcept

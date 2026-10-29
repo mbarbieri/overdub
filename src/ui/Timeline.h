@@ -94,6 +94,9 @@ struct TimelineState
     // The Loop/Marker strip (issue #227): the selected Marker, and whether the strip edits Markers.
     std::optional<song::Id> selectedMarker;
     bool markersEditable = true;
+    // The Loop selected in Edit mode and the pending Loop start ([), issue #228.
+    std::optional<song::Id> selectedLoop;
+    std::optional<song::SampleCount> pendingLoopStart;
 };
 
 // The name a Clip shows: "Pass n" for a Take (its Pass's number), the file name for a Backing

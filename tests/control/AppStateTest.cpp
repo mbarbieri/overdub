@@ -114,10 +114,11 @@ TEST_CASE ("the app state has every section, each with its keys, over a Song wit
 
     CHECK (state["history"] == json { { "can_undo", true }, { "undo_label", "Record Pass 1" }, { "can_redo", false }, { "redo_label", "" } });
 
-    CHECK (keysOf (state["transport"]) == std::set<std::string> { "playing", "position", "pre_roll_record_point", "running_pass_start", "running_pass_number", "saving_pass", "heard_transpose", "transposing", "transpose_rendering", "practice_speed", "heard_practice_speed", "practice_rendering", "transcribe_mix_heard" });
+    CHECK (keysOf (state["transport"]) == std::set<std::string> { "playing", "position", "pre_roll_record_point", "running_pass_start", "running_pass_number", "saving_pass", "heard_transpose", "transposing", "transpose_rendering", "practice_speed", "heard_practice_speed", "practice_rendering", "transcribe_mix_heard", "heard_loop" });
     CHECK (state["transport"]["playing"] == false);
     CHECK (state["transport"]["running_pass_number"] == 0);
     CHECK (state["transport"]["pre_roll_record_point"] == nullptr);
+    CHECK (state["transport"]["heard_loop"] == nullptr);
 
     CHECK (state["activity"] == finishedActivity ("pass", 1, nullptr));
     CHECK (state["idle"] == true);
@@ -126,6 +127,8 @@ TEST_CASE ("the app state has every section, each with its keys, over a Song wit
     CHECK (view["mode"] == "record");
     CHECK (view["selected_clip"] == fixture.bandClip);
     CHECK (view["selected_video_take"] == nullptr);
+    CHECK (view["selected_loop"] == nullptr);
+    CHECK (view["loop_start_pending"] == nullptr);
     CHECK (keysOf (view["timeline"]) == std::set<std::string> { "first_sample", "samples_per_pixel", "vertical_scroll", "take_lanes_unfolded" });
     CHECK (view["timeline"]["take_lanes_unfolded"] == json::array());
     CHECK (keysOf (view["transcribe"]) == std::set<std::string> { "first_sample", "samples_per_pixel" });
@@ -281,6 +284,7 @@ struct SongForEveryOp
     song::SampleCount firstTakeOrigin = 0;
     song::Id slotId;
     song::Id markerId;
+    song::Id loopId;
 
     SongForEveryOp()
     {
@@ -306,6 +310,7 @@ struct SongForEveryOp
         run (f, ui::SongIntent { SelectClip { bandClip } });
         run (f, ui::WindowIntent { ShowMode { ui::Mode::edit } });
         markerId = *f.content.run (ui::SongIntent { AddMarker {} }, ui::Origin::control)->createdId;
+        loopId = *f.content.run (ui::SongIntent { AddLoop { 0, 4800 } }, ui::Origin::control)->createdId;
     }
 
     core::AbsolutePath pathIn (const std::string& name) const { return core::AbsolutePath { f.folder.getChildFile (name).getFullPathName().toStdString() }; }
@@ -367,6 +372,16 @@ struct SongForEveryOp
             { "move_marker", { { "marker_id", markerId }, { "position", 100 } } },
             { "rename_marker", { { "marker_id", markerId }, { "name", "Solo" } } },
             { "delete_marker", { { "marker_id", markerId } } },
+            { "add_loop", { { "start", 100 }, { "end", 200 } } },
+            { "mark_loop_start", json::object() },
+            { "mark_loop_end", json::object() },
+            { "cancel_loop_start", json::object() },
+            { "select_loop", { { "loop_id", loopId } } },
+            { "select_adjacent_loop", { { "direction", "forward" } } },
+            { "set_looping", { { "looping", true } } },
+            { "resize_loop", { { "loop_id", loopId }, { "start", 0 }, { "end", 9600 } } },
+            { "rename_loop", { { "loop_id", loopId }, { "name", "Riff" } } },
+            { "delete_loop", { { "loop_id", loopId } } },
             { "set_pre_roll", { { "pre_roll", "one_second" } } },
             { "set_camera_armed", { { "armed", true } } },
             { "set_camera_device", { { "camera_id", "camera" } } },

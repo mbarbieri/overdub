@@ -139,6 +139,8 @@ public:
     // What runs now, and the refusal run would answer the op with (its default fields), none when
     // it may run: what a control reads to show itself unavailable.
     Running running() const;
+    // What the keys' Intents depend on now (intentForKey).
+    KeyContext keyContext() const;
     std::optional<Refusal> refusalOf (std::string_view op) const { return ui::refusalOf (op, running()); }
     // Before opening a dialog whose answer runs the op: false after presenting or logging its
     // refusal as run would.

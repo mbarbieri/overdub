@@ -112,6 +112,10 @@ Song keepStateOutsideHistory (Song snapshot, const Song& current)
     snapshot.focusTrackId.reset();
     if (current.focusTrackId.has_value() && findTrack (snapshot, *current.focusTrackId) != nullptr)
         snapshot.focusTrackId = current.focusTrackId;
+    const auto activeLoopExists = current.activeLoopId.has_value()
+                               && std::ranges::contains (snapshot.loops, *current.activeLoopId, &Loop::id);
+    snapshot.activeLoopId = activeLoopExists ? current.activeLoopId : std::nullopt;
+    snapshot.looping = activeLoopExists && current.looping;
 
     for (auto& track : snapshot.tracks)
     {

@@ -41,7 +41,7 @@ void TrackPlayer::addMonitoredInput (juce::AudioBuffer<float>& buffer) const noe
         const auto inputChannel = monitorChannels[(std::size_t) std::min (channel, (int) monitorChannels.size() - 1)];
         if (inputChannel < 0 || inputChannel >= liveInput.numChannels || liveInput.channels[inputChannel] == nullptr)
             continue;
-        buffer.addFrom (channel, 0, liveInput.channels[inputChannel], buffer.getNumSamples());
+        buffer.addFrom (channel, 0, liveInput.channels[inputChannel] + liveInput.firstFrame, buffer.getNumSamples());
     }
 }
 } // namespace overdub::engine

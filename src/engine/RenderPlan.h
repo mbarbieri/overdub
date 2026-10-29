@@ -90,13 +90,14 @@ public:
     RenderPlan (const RenderPlan&) = delete;
     RenderPlan& operator= (const RenderPlan&) = delete;
 
-    // Audio thread. outputs has config.numOutputChannels channels of numSamples <= maxBlockSize.
-    // input is the device input of the block, which the monitored Armed Tracks hear while
+    // Audio thread. Renders frames [startFrame, startFrame + numSamples) of outputs, which has
+    // config.numOutputChannels channels; numSamples <= maxBlockSize. input is the device input of
+    // the block (input.firstFrame = startFrame), which the monitored Armed Tracks hear while
     // input.monitoring, and whose peaks every Armed Track's input meter takes.
-    // renderSample is the render position of the first sample (plan position + latency).
+    // renderSample is the render position of the span's first sample (plan position + latency).
     // Returns how many nodes rendered silence this block because another thread held their
     // callback lock (the patched graph never waits for it, ADR 0001 amendment).
-    std::uint64_t render (float* const* outputs, const LiveInput& input, int numSamples, std::int64_t renderSample, bool playing) noexcept;
+    std::uint64_t render (float* const* outputs, const LiveInput& input, int startFrame, int numSamples, std::int64_t renderSample, bool playing) noexcept;
 
     int sampleRate() const { return songSampleRate; }
     // The Practice Speed it plays at: render() takes plan samples (see PracticePlayback).

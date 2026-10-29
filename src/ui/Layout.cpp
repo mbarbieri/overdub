@@ -492,6 +492,8 @@ TranscribePageLayout transcribePageLayout (juce::Rectangle<int> page, bool colum
         area.removeFromRight (margin);
     }
     layout.markers = area.removeFromLeft (transcribeMarkersWidth);
+    layout.loops = layout.markers.removeFromTop ((layout.markers.getHeight() - gap) / 2);
+    layout.markers.removeFromTop (gap);
     area.removeFromLeft (margin);
     layout.overview = area.removeFromTop (transcribeOverviewHeight);
     area.removeFromTop (gap);

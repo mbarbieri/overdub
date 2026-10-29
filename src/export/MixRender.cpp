@@ -27,7 +27,7 @@ int MixRender::renderNext (float* const* outputs, int numSamples)
     if (count == 0)
         return 0;
 
-    plan->render (outputs, engine::LiveInput {}, count, graphPosition, true);
+    plan->render (outputs, engine::LiveInput {}, 0, count, graphPosition, true);
     graphPosition += count;
     produced += count;
     return count;
@@ -38,7 +38,7 @@ void MixRender::skipLatency()
     while (graphPosition < latencySamples())
     {
         const auto count = (int) std::min<song::SampleCount> (latencySamples() - graphPosition, maxBlockSize());
-        plan->render (scratch.getArrayOfWritePointers(), engine::LiveInput {}, count, graphPosition, true);
+        plan->render (scratch.getArrayOfWritePointers(), engine::LiveInput {}, 0, count, graphPosition, true);
         graphPosition += count;
     }
 }
