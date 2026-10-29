@@ -655,6 +655,17 @@ TEST_CASE ("Transcribe mode stacks the overview over the ruler and the waveform,
     }
     CHECK (column.octaveButtons[3].getRight() <= column.octaveSpinner.getX());
     CHECK (column.octaveButtons[0].getBottom() < column.mixCaption.getY());
+    // The Focus Track's band filter (issue #234): a caption over On, the low cut and "Hz", the high
+    // cut and "Hz", between the octave shift and the Transcribe Mix.
+    checkInsideAndApart (shown.column.withZeroOrigin(), { column.filterToggle, column.filterLowField, column.filterLowUnit, column.filterHighField, column.filterHighUnit });
+    CHECK (column.octaveButtons[0].getBottom() < column.filterCaption.getY());
+    CHECK (column.filterCaption.getBottom() <= column.filterToggle.getY());
+    CHECK (column.filterToggle.getRight() < column.filterLowField.getX());
+    CHECK (column.filterLowField.getRight() < column.filterLowUnit.getX());
+    CHECK (column.filterLowUnit.getRight() < column.filterHighField.getX());
+    CHECK (column.filterHighField.getRight() < column.filterHighUnit.getX());
+    CHECK (column.filterLowField.getWidth() == column.filterHighField.getWidth());
+    CHECK (column.filterToggle.getBottom() < column.mixCaption.getY());
 }
 
 TEST_CASE ("the Loop/Marker strip sits right above the ruler in Edit and Transcribe, and right above the overview in Record", "[ui][layout][markers]")

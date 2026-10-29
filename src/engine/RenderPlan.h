@@ -63,6 +63,17 @@ struct PracticePlayback
     std::optional<OctaveShiftedTrack> octaveShifted;
 };
 
+// The band filter heard (ADR 0010, issue #234): the Focus Track's in Transcribe mode while it is
+// on. Its Track's strip filters at these cuts (engine/BandFilter.h); every other strip does not.
+struct HeardBandFilter
+{
+    song::Id trackId;
+    int lowHz = 0;
+    int highHz = 0;
+
+    bool operator== (const HeardBandFilter&) const = default;
+};
+
 // The plan sample that plays Song sample `songSample` at `speedPercent`, and back (rounded to the
 // nearest). Identities at 100.
 std::int64_t songToPlanSample (std::int64_t songSample, int speedPercent);
@@ -132,6 +143,9 @@ public:
     // Non-audio thread. Sets every strip's gains from the Song's mix (engine/MixLaw.h); the audio
     // thread hears them from its next block. The Song must pass hasTracksOf.
     void applyMix (const song::Song& song);
+    // Non-audio thread. Turns on the band filter of `filter`'s Track strip (none when that Track is
+    // not in the plan) and off every other; the audio thread hears it from its next block.
+    void applyBandFilter (const std::optional<HeardBandFilter>& filter);
     // Non-audio thread. The peaks since the previous call; each starts again from 0.
     MeterPeaks takeMeterPeaks();
 

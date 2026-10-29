@@ -1,5 +1,7 @@
 #include "song/TranscribeMix.h"
 
+#include <string>
+
 namespace overdub::song
 {
 core::Expected<Song> setFocusTrack (Song song, const std::optional<Id>& trackId)
@@ -47,6 +49,28 @@ core::Expected<Song> setOctaveShift (Song song, const Id& trackId, int octaves)
     if (! track.has_value())
         return std::unexpected (track.error());
     (*track)->octaveShift = octaves;
+    return song;
+}
+
+core::Expected<Song> setBandFilter (Song song, const Id& trackId, BandFilter filter)
+{
+    const auto inRange = [] (int hz) { return hz >= minBandFilterHz && hz <= maxBandFilterHz; };
+    if (! inRange (filter.lowHz) || ! inRange (filter.highHz))
+        return std::unexpected (core::Error {
+            "song.band_filter_out_of_range",
+            "the band filter's cuts are whole Hz from " + std::to_string (minBandFilterHz) + " to " + std::to_string (maxBandFilterHz),
+            { { "low_hz", filter.lowHz }, { "high_hz", filter.highHz }, { "min_hz", minBandFilterHz }, { "max_hz", maxBandFilterHz } },
+        });
+    if (filter.lowHz >= filter.highHz)
+        return std::unexpected (core::Error {
+            "song.band_filter_low_not_below_high",
+            "the band filter's low cut must be below its high cut",
+            { { "low_hz", filter.lowHz }, { "high_hz", filter.highHz } },
+        });
+    auto track = lookupTrack (song, trackId);
+    if (! track.has_value())
+        return std::unexpected (track.error());
+    (*track)->bandFilter = filter;
     return song;
 }
 

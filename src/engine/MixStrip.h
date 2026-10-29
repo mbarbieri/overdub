@@ -1,13 +1,15 @@
 #pragma once
 
+#include "engine/BandFilter.h"
 #include "engine/MixLaw.h"
 #include "engine/PlainProcessor.h"
 
 #include <atomic>
 
 // A Mixer strip on the audio path (issue #31): the last node of each Track's path (after its
-// Insert Chain) and the Master node. It multiplies its two channels by the gains in its
-// StripControl and keeps the block's peak there for the meters.
+// Insert Chain) and the Master node. It runs its two channels through its StripControl's band
+// filter (engine/BandFilter.h, issue #234; only a Track strip's is ever on), multiplies them by the
+// gains there and keeps the block's peak there for the meters.
 //
 // Threads: a non-audio thread writes the target gains and takes the peak; the audio thread reads
 // the gains and raises the peak. When the gains changed since the previous block, the block ramps
@@ -31,6 +33,7 @@ struct StripControl
     std::atomic<float> leftGain { 1.0f };
     std::atomic<float> rightGain { 1.0f };
     PeakHold peak; // post-gain
+    BandFilterControl bandFilter; // pre-gain; off unless the plan's heard band filter is this Track's
 
     void setGains (ChannelGains gains) noexcept;
 };
@@ -42,11 +45,14 @@ public:
     MixStripNode (juce::String name, StripControl& control);
 
     const juce::String getName() const override { return stripName; }
+    void prepareToPlay (double sampleRate, int) override { preparedRate = sampleRate; }
     void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override;
 
 private:
     juce::String stripName;
     StripControl& control;
     ChannelGains applied; // audio thread: the gains the previous block ended on
+    BandFilterProcessor filter; // audio thread
+    double preparedRate = 0.0;
 };
 } // namespace overdub::engine

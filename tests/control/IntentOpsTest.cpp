@@ -510,6 +510,25 @@ TEST_CASE ("set_octave_shift takes a Track id and the octaves, -1 to +2, outside
     CHECK (socket.f.trackNamed ("Band Mix").octaveShift == -1);
 }
 
+TEST_CASE ("set_band_filter takes a Track id, on, low_hz and high_hz, outside history, and refuses a low cut not below the high cut", "[control][intent_ops][transcribe][band_filter]")
+{
+    SocketToWindow socket;
+    const auto bandId = socket.f.trackNamed ("Band Mix").id;
+    const auto undoLabel = socket.f.openSong->package().undoLabel();
+
+    CHECK (socket.request (R"({"id": 1, "op": "set_band_filter", "track_id": ")" + bandId + R"(", "on": true, "low_hz": 200, "high_hz": 3200})").at ("ok") == true);
+    CHECK (socket.f.trackNamed ("Band Mix").bandFilter == overdub::song::BandFilter { .on = true, .lowHz = 200, .highHz = 3200 });
+    CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
+
+    const auto inverted = socket.request (R"({"id": 2, "op": "set_band_filter", "track_id": ")" + bandId + R"(", "on": true, "low_hz": 3200, "high_hz": 200})");
+    CHECK (inverted.at ("ok") == false);
+    CHECK (inverted.at ("error").at ("code") == "song.band_filter_low_not_below_high");
+    const auto missing = socket.request (R"({"id": 3, "op": "set_band_filter", "track_id": ")" + bandId + R"(", "on": true, "low_hz": 200})");
+    CHECK (missing.at ("ok") == false);
+    CHECK (missing.at ("error").at ("code") == "control.bad_field");
+    CHECK (socket.f.trackNamed ("Band Mix").bandFilter == overdub::song::BandFilter { .on = true, .lowHz = 200, .highHz = 3200 });
+}
+
 TEST_CASE ("add_marker replies with the new Marker's id, select_marker seeks to it, and move_marker, rename_marker and delete_marker each take one undo step", "[control][intent_ops][markers]")
 {
     SocketToWindow socket;

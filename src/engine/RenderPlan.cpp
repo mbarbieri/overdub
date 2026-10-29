@@ -315,6 +315,15 @@ void RenderPlan::applyMix (const song::Song& song)
     masterStrip.setGains ({ gains.master, gains.master });
 }
 
+void RenderPlan::applyBandFilter (const std::optional<HeardBandFilter>& filter)
+{
+    for (std::size_t i = 0; i < trackStrips.size(); ++i)
+    {
+        const auto heard = filter.has_value() && filter->trackId == trackIds[i];
+        trackStrips[i]->bandFilter.set (heard ? BandFilterSetting { true, filter->lowHz, filter->highHz } : BandFilterSetting {});
+    }
+}
+
 MeterPeaks RenderPlan::takeMeterPeaks()
 {
     MeterPeaks peaks;

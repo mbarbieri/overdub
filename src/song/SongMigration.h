@@ -51,6 +51,7 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
 //   9 -> 10 (issue #230): every Loop gains "practiceSpeedPercent": 100.
 //   10 -> 11 (issue #232): the Song gains "transposeCents": 0.
 //   11 -> 12 (issue #233): every Track gains "octaveShift": 0.
+//   12 -> 13 (issue #234): every Track gains "bandFilter": {"on": false, "lowHz": 100, "highHz": 4000}.
 std::span<const MigrationStep> songMigrationSteps();
 
 // migrateDocument with songMigrationSteps().

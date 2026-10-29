@@ -536,6 +536,18 @@ TranscribeColumnLayout transcribeColumnLayout (juce::Rectangle<int> column)
         octaveRow.removeFromLeft (2);
     }
     layout.octaveSpinner = octaveRow.removeFromLeft (fieldSpinnerWidth).withSizeKeepingCentre (fieldSpinnerWidth, fieldSpinnerWidth);
+    area.removeFromTop (gap);
+    auto filterRow = area.removeFromTop (fieldRowHeight);
+    layout.filterCaption = filterRow.removeFromTop (fieldCaptionHeight);
+    layout.filterToggle = filterRow.removeFromLeft (transcribeFilterToggleWidth);
+    filterRow.removeFromLeft (gap);
+    layout.filterLowField = filterRow.removeFromLeft (transcribeFilterFieldWidth);
+    filterRow.removeFromLeft (2);
+    layout.filterLowUnit = filterRow.removeFromLeft (transcribeFilterUnitWidth);
+    filterRow.removeFromLeft (gap);
+    layout.filterHighField = filterRow.removeFromLeft (transcribeFilterFieldWidth);
+    filterRow.removeFromLeft (2);
+    layout.filterHighUnit = filterRow.removeFromLeft (transcribeFilterUnitWidth);
     area.removeFromTop (2 * gap);
     layout.mixCaption = area.removeFromTop (fieldCaptionHeight);
     area.removeFromTop (gap);
