@@ -151,7 +151,7 @@ TEST_CASE ("a Practice Speed run renders every job on a worker and logs its star
     const PracticeRenderKey key { .speedPercent = 80, .semitones = 1 };
     overdub::core::ScopedLogCapture capture;
 
-    auto run = PracticeSpeedRun::start (f.song().sampleRate, key, missingPracticeRenders (f.root, f.folder, f.song(), key), PracticeSpeedRun::Clock::now());
+    auto run = PracticeSpeedRun::start (f.song().sampleRate, key, std::nullopt, missingPracticeRenders (f.root, f.folder, f.song(), key), PracticeSpeedRun::Clock::now());
     CHECK (run->key() == key);
     const auto ended = runToEnd (*run);
 
@@ -178,7 +178,7 @@ TEST_CASE ("a Practice Speed run that cannot render names the source", "[song][p
     const auto jobs = missingPracticeRenders (f.root, f.folder, f.song(), key);
     REQUIRE (f.root.getChildFile ("audio/take-a.wav").deleteFile());
 
-    auto run = PracticeSpeedRun::start (f.song().sampleRate, key, jobs, PracticeSpeedRun::Clock::now());
+    auto run = PracticeSpeedRun::start (f.song().sampleRate, key, std::nullopt, jobs, PracticeSpeedRun::Clock::now());
     const auto ended = runToEnd (*run);
 
     REQUIRE (ended.has_value());
@@ -187,4 +187,93 @@ TEST_CASE ("a Practice Speed run that cannot render names the source", "[song][p
     CHECK (ended->error().fields.at ("source_kind") == "take");
     CHECK (ended->error().fields.at ("source_id") == "take-a");
     CHECK (run->failedSource() == ClipSource { ClipSourceKind::take, "take-a" });
+}
+
+TEST_CASE ("a Loop's window is the Loop widened by 1 s on each side, from 0", "[song][practice_speed][loop]")
+{
+    CHECK (loopRenderWindow (96000, 144000, 48000) == SampleRange { 48000, 192000 });
+    CHECK (loopRenderWindow (12000, 24000, 48000) == SampleRange { 0, 72000 });
+    CHECK (loopRenderWindow (44100, 88200, 44100) == SampleRange { 0, 132300 });
+}
+
+TEST_CASE ("a source's range in a Loop's window spans the source samples its Clips play there", "[song][practice_speed][loop]")
+{
+    PracticeFixture f;
+    auto song = f.song();
+    // take-a plays from 0.5 s of its file at Song time 2 s for 1 s, and again from 0 at 6 s.
+    auto& clips = song.tracks.back().clips;
+    clips[0].timelineStart = 96000;
+    clips[0].sourceOffset = 24000;
+    clips[0].length = 24000;
+    auto again = clips[0];
+    again.id = "clip-a2";
+    again.timelineStart = 288000;
+    again.sourceOffset = 0;
+    clips.push_back (again);
+
+    // Song time 2.25..2.75 s is 0.75..1.25 s of the file; 2.25..7 s spans both Clips.
+    CHECK (sourceRangeIn (song, PracticeFixture::takeA(), { 108000, 132000 }) == SampleRange { 36000, 48000 });
+    CHECK (sourceRangeIn (song, PracticeFixture::takeA(), { 108000, 336000 }) == SampleRange { 0, 48000 });
+    CHECK (sourceRangeIn (song, PracticeFixture::takeA(), { 0, 96000 }) == std::nullopt);
+    CHECK (sourceRangeIn (song, { ClipSourceKind::take, "take-b" }, { 0, 480000 }) == std::nullopt);
+}
+
+TEST_CASE ("in a Loop's window each source a Clip plays there needs a render of only its range there", "[song][practice_speed][loop]")
+{
+    PracticeFixture f;
+    const PracticeRenderKey key { .speedPercent = 80, .semitones = 2 };
+    // The Band Clip plays 0..1 s, the take-a Clip 0..1 s: a window of 0.25..0.5 s.
+    const SampleRange window { 12000, 24000 };
+
+    const auto missing = missingPracticeRenders (f.root, f.folder, f.song(), key, window);
+
+    REQUIRE (missing.size() == 2);
+    CHECK (missing[0].source == f.band());
+    CHECK (missing[0].sourceRange == SampleRange { 12000, 24000 });
+    CHECK (missing[0].to == f.folder.getChildFile ("backing-" + f.band().id + ".transpose+2.speed80.range12000-24000.wav"));
+    CHECK (missing[0].semitones == 2);
+    CHECK (missing[1].source == PracticeFixture::takeA());
+    CHECK (missing[1].to == f.folder.getChildFile ("take-take-a.speed80.range12000-24000.wav"));
+    // The whole Song's jobs have no range.
+    for (const auto& job : missingPracticeRenders (f.root, f.folder, f.song(), key))
+        CHECK_FALSE (job.sourceRange.has_value());
+
+    // A range render plays in its window; a whole render, once there, wins and needs no range.
+    REQUIRE (missing[0].to.replaceWithText ("rendered"));
+    REQUIRE (missing[1].to.replaceWithText ("rendered"));
+    CHECK (missingPracticeRenders (f.root, f.folder, f.song(), key, window).empty());
+    CHECK (practiceRendersOf (f.folder, f.song(), key, window).at (f.band()) == missing[0].to);
+    CHECK (practiceRendersOf (f.folder, f.song(), key).empty());
+    const auto whole = practiceRenderFileFor (f.folder, f.band(), key);
+    REQUIRE (whole.replaceWithText ("rendered"));
+    CHECK (practiceRendersOf (f.folder, f.song(), key, window).at (f.band()) == whole);
+    CHECK (deletePracticeRendersExcept (f.folder, f.song(), key, window) == 1); // the Band's range render
+    CHECK_FALSE (missing[0].to.exists());
+    CHECK (missing[1].to.exists());
+}
+
+TEST_CASE ("a Practice Speed run of a Loop's range renders logs its scope and window", "[song][practice_speed][loop]")
+{
+    PracticeFixture f;
+    const PracticeRenderKey key { .speedPercent = 80, .semitones = 0 };
+    const SampleRange window { 12000, 36000 };
+    overdub::core::ScopedLogCapture capture;
+
+    auto loopRun = PracticeSpeedRun::start (f.song().sampleRate, key, window, missingPracticeRenders (f.root, f.folder, f.song(), key, window), PracticeSpeedRun::Clock::now());
+    CHECK (loopRun->loopWindow() == window);
+    REQUIRE (runToEnd (*loopRun).has_value());
+    auto songRun = PracticeSpeedRun::start (f.song().sampleRate, key, window, missingPracticeRenders (f.root, f.folder, f.song(), key), PracticeSpeedRun::Clock::now());
+    REQUIRE (runToEnd (*songRun).has_value());
+
+    std::vector<nlohmann::json> started;
+    for (const auto& event : capture.events())
+        if (event.at ("event") == "song.practice_speed_started")
+            started.push_back (event);
+    REQUIRE (started.size() == 2);
+    CHECK (started[0].at ("scope") == "loop");
+    CHECK (started[0].at ("window_start") == 12000);
+    CHECK (started[0].at ("window_end") == 36000);
+    CHECK (started[0].at ("renders") == 2);
+    CHECK (started[1].at ("scope") == "song");
+    CHECK_FALSE (started[1].contains ("window_start"));
 }

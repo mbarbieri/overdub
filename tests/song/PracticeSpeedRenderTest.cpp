@@ -136,3 +136,38 @@ TEST_CASE ("a Practice Speed render that cannot read its source or is asked to s
     CHECK_FALSE (destination.exists());
     CHECK_FALSE (overdub::song::tempFileFor (destination).exists());
 }
+
+TEST_CASE ("an impulse inside a Loop's range lands at the same Song time in the range render and the whole render", "[song][practice_speed][render][loop]")
+{
+    const auto speedPercent = GENERATE (80, 125, 25);
+    INFO (speedPercent << "%");
+    juce::AudioBuffer<float> clicks { 1, 4 * sampleRate };
+    clicks.clear();
+    clicks.setSample (0, 24000, 1.0f);  // outside the range
+    clicks.setSample (0, 100000, 1.0f); // inside it
+    const ScratchFolder scratch;
+    const auto source = scratch.write ("take.wav", clicks);
+    const auto whole = scratch.folder.getChildFile ("take.speed.wav");
+    const auto ranged = scratch.folder.getChildFile ("take.speed.range.wav");
+    const overdub::song::SampleRange range { 60000, 150000 };
+
+    REQUIRE (overdub::song::renderAtPracticeSpeed (source, whole, sampleRate, 0, speedPercent, {}).has_value());
+    REQUIRE (overdub::song::renderAtPracticeSpeed (source, ranged, sampleRate, 0, speedPercent, {}, range).has_value());
+
+    const auto wholeAudio = overdub::song::readWavFile (whole);
+    const auto rangedAudio = overdub::song::readWavFile (ranged);
+    REQUIRE (wholeAudio.has_value());
+    REQUIRE (rangedAudio.has_value());
+    REQUIRE (rangedAudio->getNumSamples() == wholeAudio->getNumSamples());
+    const auto rate = speedPercent / 100.0;
+    const auto rangeStart = (int) std::llround (range.start / rate);
+    const auto rangeEnd = (int) std::llround (range.end / rate);
+    // ADR 0005: within 1 ms (48 samples) of each other and of its time divided by the speed.
+    const auto wholePeak = peakIndex (wholeAudio->getReadPointer (0) + rangeStart, rangeEnd - rangeStart) + rangeStart;
+    const auto rangedPeak = peakIndex (rangedAudio->getReadPointer (0), rangedAudio->getNumSamples());
+    CHECK_THAT ((double) rangedPeak, WithinAbs ((double) wholePeak, 48.0));
+    CHECK_THAT ((double) rangedPeak, WithinAbs (100000.0 / rate, 48.0));
+    // Outside the range the render is silent: the impulse at 0.5 s is not in it.
+    CHECK_FALSE (rangedAudio->getMagnitude (0, 0, rangeStart) > 0.0f);
+    CHECK_FALSE (rangedAudio->getMagnitude (0, rangeEnd, rangedAudio->getNumSamples() - rangeEnd) > 0.0f);
+}

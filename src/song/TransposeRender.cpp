@@ -99,6 +99,28 @@ bool stretchAudio (juce::AudioBuffer<float>& input, juce::AudioBuffer<float>& ou
     stretch.flush (pointersAt (output, processedOutput), outputLength - processedOutput, (float) rate);
     return true;
 }
+
+// Only `range` of `input` stretched as stretchAudio does, into `output` (the whole input's length
+// divided by the rate) where the whole render has it; the rest of `output` silent.
+bool stretchRange (const juce::AudioBuffer<float>& input, juce::AudioBuffer<float>& output, SampleRange range, int sampleRate, int semitones, double rate, const std::stop_token& stop)
+{
+    output.clear();
+    const auto inputLength = (SampleCount) input.getNumSamples();
+    const auto start = std::clamp<SampleCount> (range.start, 0, inputLength);
+    const auto end = std::clamp<SampleCount> (range.end, start, inputLength);
+    const auto outputStart = std::min ((int) std::llround ((double) start / rate), output.getNumSamples());
+    const auto outputEnd = std::min ((int) std::llround ((double) end / rate), output.getNumSamples());
+
+    juce::AudioBuffer<float> segment (input.getNumChannels(), (int) (end - start));
+    for (int channel = 0; channel < input.getNumChannels(); ++channel)
+        segment.copyFrom (channel, 0, input, channel, (int) start, segment.getNumSamples());
+    juce::AudioBuffer<float> stretched (input.getNumChannels(), outputEnd - outputStart);
+    if (! stretchAudio (segment, stretched, sampleRate, semitones, rate, stop))
+        return false;
+    for (int channel = 0; channel < output.getNumChannels(); ++channel)
+        output.copyFrom (channel, outputStart, stretched, channel, 0, stretched.getNumSamples());
+    return true;
+}
 } // namespace
 
 core::Expected<void> renderTransposed (const juce::File& source, const juce::File& destination, int sampleRate, int semitones, std::stop_token stop)
@@ -122,7 +144,13 @@ core::Expected<void> renderTransposed (const juce::File& source, const juce::Fil
     return {};
 }
 
-core::Expected<void> renderAtPracticeSpeed (const juce::File& source, const juce::File& destination, int sampleRate, int semitones, int speedPercent, std::stop_token stop)
+core::Expected<void> renderAtPracticeSpeed (const juce::File& source,
+                                            const juce::File& destination,
+                                            int sampleRate,
+                                            int semitones,
+                                            int speedPercent,
+                                            std::stop_token stop,
+                                            std::optional<SampleRange> sourceRange)
 {
     const auto cancelled = [&] { return core::Error { "song.practice_render_cancelled", "the Practice Speed render was cancelled", practiceFields (destination, semitones, speedPercent) }; };
     if (stop.stop_requested())
@@ -133,7 +161,9 @@ core::Expected<void> renderAtPracticeSpeed (const juce::File& source, const juce
 
     const auto rate = speedPercent / 100.0;
     juce::AudioBuffer<float> output (input->getNumChannels(), (int) std::llround (input->getNumSamples() / rate));
-    if (! stretchAudio (*input, output, sampleRate, semitones, rate, stop))
+    const auto stretched = sourceRange.has_value() ? stretchRange (*input, output, *sourceRange, sampleRate, semitones, rate, stop)
+                                                   : stretchAudio (*input, output, sampleRate, semitones, rate, stop);
+    if (! stretched)
         return std::unexpected (cancelled());
 
     if (auto written = writeFloatWavAtomically (destination, output, sampleRate, {}); ! written.has_value())

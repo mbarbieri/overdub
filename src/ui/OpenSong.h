@@ -143,6 +143,11 @@
 // rendered again until the Practice Speed or Transpose changes, or the same Practice Speed is set
 // again. Edits, undo, redo, import and a
 // finished Separation start the renders they need at once.
+// While a Loop is heard (heardLoop(), issue #231), the renders over its window
+// (song::loopRenderWindow) come first: once they are there playback switches to them, and a second
+// run renders the whole Song, which then replaces them. A run is cancelled when the Loop's window
+// changes (another Loop, a moved one, looping or Transcribe mode turned off) and started again
+// for it; outside a Loop the whole Song renders as before.
 //
 // Message thread only.
 namespace overdub::ui
@@ -454,8 +459,16 @@ private:
     void applyHeardLoopPracticeSpeed();
     // refusal() does not refuse set_practice_speed now.
     bool practiceSpeedMayChange() const;
-    // What the engine plays at heardPracticeSpeed(): the renders there are of the heard key.
+    // What the engine plays at heardPracticeSpeed(): the renders there are of the heard key (with
+    // the heard Loop's range renders, for sources not rendered whole yet).
     engine::PracticePlayback heardPracticePlayback() const;
+    // The heard Loop's song::loopRenderWindow while the Practice Speed is not 100%; none otherwise.
+    std::optional<song::SampleRange> practiceLoopWindow() const;
+    // The running practiceRun is for practiceKey() and practiceLoopWindow().
+    bool practiceRunIsWanted() const;
+    // Deletes every Practice Speed render but those heardPracticePlayback() plays
+    // (ui.practice_renders_deleted: count).
+    void deleteUnheardPracticeRenders();
     // The key the Practice Speed renders are wanted for: the Practice Speed and the Song's Transpose
     // ({} at 100%).
     song::PracticeRenderKey practiceKey() const;
