@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overdub Transcribe mode — PROTOTYPE</title>
+<!--
+  PROTOTYPE — throwaway, never production. Production UI is JUCE Components (ADR 0001).
+  Question: what does the Transcribe mode page look like?
+  Four variants, switchable via ?variant=A|B|C|D (or ← → keys / the bottom pill):
+    A  Lanes      — Edit's timeline, Clips read-only; Transcribe Mix in the lane headers; side panel.
+    B  Focus wave — one tall waveform of the Focus Track; compact Track list below; side panel.
+    C  Overview   — B plus a whole-Song overview above the tall waveform.
+    D  Loop drill — Loop cards on the left; the waveform zoomed to the active Loop; controls and mix in a bottom bar.
+  Settled decisions every variant follows (grilling session 2026-10-28):
+    Loop strip above the ruler: drag on empty strip = new Loop, drag an edge = resize, click = activate, double-click = rename.
+    Ruler click = seek. Space play/stop. [ and ] set a Loop live. K drops "Marker N". L toggles looping.
+    ⌥← ⌥→ previous/next Loop, ⌥1…⌥9 jump to a Loop. H toggles ½ speed / 100% (key not settled). Delete removes the active Loop.
+    Picking or creating a Loop turns looping on and applies the Loop's own speed; changing speed while it is active updates the Loop.
+    Practice Speed 25–125 %. Speed changes render the active Loop first, then the rest of the Song.
+    Transpose = semitones + cents. Octave shift and band filter act on the Focus Track only.
+    Picking a Focus Track solos it in the Transcribe Mix (which never touches the Song's own mix).
+  State is in memory only. Click "state" in the pill to see the full model.
+-->
+<style>
+:root{
+  --bg:#1c1c1e; --panel:#2a2a2d; --panel2:#323236; --line:#3a3a3d; --text:#e8e8ea; --dim:#8e8e93;
+  --accent:#4f8cff; --rec:#ff453a; --mute:#ff9f0a; --solo:#ffd60a; --loop:#ffd60a; --marker:#64d2ff;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:12px -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;overflow:hidden;user-select:none}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:3px 8px;cursor:pointer}
+button:hover{border-color:#55565e}
+button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+button.mute.on{background:var(--mute);border-color:var(--mute);color:#000}
+button.solo.on{background:var(--solo);border-color:var(--solo);color:#000}
+button.focus.on{background:#fff;border-color:#fff;color:#000}
+select{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:2px 4px}
+input[type=range]{accent-color:var(--accent);width:100%}
+.dim{color:var(--dim)}
+#app{display:flex;flex-direction:column;height:100vh}
+.topbar{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0}
+.modes button{border-radius:0;margin-left:-1px}
+.modes button:first-child{border-radius:5px 0 0 5px}
+.modes button:last-child{border-radius:0 5px 5px 0}
+.clock{font:600 15px ui-monospace,Menlo,monospace;background:#000;padding:2px 10px;border-radius:5px;min-width:120px;text-align:center}
+.clock small{font:10px -apple-system;color:var(--dim);margin-left:6px}
+.spacer{flex:1}
+.status{font-size:11px;color:var(--dim);min-width:220px;text-align:right}
+.status.busy{color:var(--solo)}
+.page{flex:1;min-height:0;display:grid}
+.panel{background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:8px 10px}
+.panel h4{margin:10px 0 4px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}
+.panel h4:first-child{margin-top:0}
+.ctl{display:flex;align-items:center;gap:6px;margin:4px 0}
+.ctl label{width:62px;color:var(--dim)}
+.ctl .val{min-width:46px;text-align:right;font-variant-numeric:tabular-nums}
+.list .item{display:flex;align-items:center;gap:6px;padding:3px 5px;border-radius:4px;cursor:pointer}
+.list .item:hover{background:#ffffff0d}
+.list .item.on{background:#ffd60a26}
+.list .item .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list .item .tm{color:var(--dim);font-variant-numeric:tabular-nums}
+.sw{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+canvas{display:block;width:100%;height:100%}
+.cwrap{position:relative;min-height:0;min-width:0}
+.trow{display:flex;align-items:center;gap:5px;padding:0 8px;border-bottom:1px solid var(--line)}
+.trow .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow button{padding:1px 6px;font-size:11px}
+.trow.isfocus{background:#ffffff10}
+.trow.silent .nm{color:var(--dim)}
+.kbd{font:10px ui-monospace,Menlo,monospace;background:#ffffff14;border-radius:3px;padding:0 4px;color:var(--dim)}
+.hint{font-size:11px;color:var(--dim);line-height:1.5}
+/* D */
+.cards{overflow:auto;padding:8px;background:var(--panel);border-right:1px solid var(--line)}
+.card{border:1px solid var(--line);border-radius:6px;padding:7px 9px;margin-bottom:6px;cursor:pointer;background:var(--panel2)}
+.card.on{border-color:var(--loop);box-shadow:0 0 0 1px var(--loop) inset}
+.card .t1{font-weight:600;font-size:13px}
+.card .t2{color:var(--dim);margin-top:2px;font-variant-numeric:tabular-nums}
+.bottombar{display:flex;gap:14px;padding:8px 12px;background:var(--panel);border-top:1px solid var(--line);overflow-x:auto}
+.bottombar .grp{min-width:170px}
+.bottombar h4{margin:0 0 4px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}
+.strips{display:flex;gap:4px}
+.strip{width:62px;border:1px solid var(--line);border-radius:5px;padding:4px;display:flex;flex-direction:column;gap:3px;align-items:stretch;background:var(--panel2)}
+.strip.isfocus{border-color:#fff}
+.strip .nm{font-size:10px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip button{padding:0;font-size:10px}
+.strip .bb{display:flex;gap:2px}.strip .bb button{flex:1}
+/* pill */
+#pill{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:#fff;color:#000;border-radius:20px;padding:4px 6px;display:flex;gap:6px;align-items:center;box-shadow:0 4px 18px #0009;z-index:1000;font-weight:600}
+#pill button{background:#eee;border:0;color:#000;border-radius:14px;padding:3px 10px}
+#statebox{position:fixed;right:10px;bottom:56px;width:380px;max-height:70vh;overflow:auto;background:#000e;border:1px solid var(--line);border-radius:6px;padding:8px;font:10px ui-monospace,Menlo,monospace;white-space:pre;z-index:999;display:none}
+#keys{position:fixed;left:50%;transform:translateX(-50%);bottom:56px;font-size:11px;color:var(--text);z-index:998;line-height:1.8;max-width:520px;background:#000e;border:1px solid var(--line);border-radius:6px;padding:8px 10px;display:none}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="keys">
+  <span class="kbd">Space</span> play/stop · <span class="kbd">[</span><span class="kbd">]</span> Loop start/end live ·
+  <span class="kbd">K</span> Marker · <span class="kbd">L</span> looping on/off · <span class="kbd">⌥←</span><span class="kbd">⌥→</span> prev/next Loop ·
+  <span class="kbd">⌥1–9</span> Loop n · <span class="kbd">H</span> ½ speed · <span class="kbd">⌫</span> delete Loop ·
+  drag the yellow strip for a new Loop · wheel scrolls, ⌘/ctrl-wheel zooms
+</div>
+<div id="statebox"></div>
+<div id="pill"><button id="prev">‹</button><span id="vlabel"></span><button id="next">›</button><button id="keysBtn">keys</button><button id="stateBtn">state</button></div>
+<script>
+// ---------- fixture ----------
+const SONG_LEN = 210;
+const PEAK_RATE = 100; // peaks per second
+const TRACKS = [
+  { id:'mix',    name:'Original mix', kind:'Backing Track', color:'#9aa0b4', rate:4.0, level:1.0 },
+  { id:'vocals', name:'Vocals',       kind:'Separated',     color:'#e8a0bf', rate:2.0, level:0.8 },
+  { id:'drums',  name:'Drums',        kind:'Separated',     color:'#f0c674', rate:8.0, level:0.9 },
+  { id:'bass',   name:'Bass',         kind:'Separated',     color:'#81a2be', rate:2.5, level:0.7 },
+  { id:'guitar', name:'Guitar',       kind:'Separated',     color:'#b5bd68', rate:5.0, level:0.75 },
+  { id:'other',  name:'Other',        kind:'Separated',     color:'#b294bb', rate:1.5, level:0.4 },
+  { id:'take',   name:'My guitar',    kind:'Take (Pass 1)', color:'#8abeb7', rate:5.0, level:0.6, from:45, to:105 },
+];
+const SECTIONS = [[0,0.3],[12,0.6],[45,1.0],[70,0.6],[105,1.0],[135,0.9],[175,0.5],[200,0.2]];
+function sectionLevel(t){ let l=0.3; for(const [s,v] of SECTIONS) if(t>=s) l=v; return l; }
+function rng(seed){ let s=seed; return ()=>{ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+for (const [i,tr] of TRACKS.entries()){
+  const r = rng(1234+i*77), n = SONG_LEN*PEAK_RATE, p = new Float32Array(n);
+  let lastOnset=0, nextOnset=0;
+  for (let k=0;k<n;k++){
+    const t = k/PEAK_RATE;
+    if (t>=nextOnset){ lastOnset=t; nextOnset=t+(0.4+r()*1.2)/tr.rate*2; }
+    const decay = Math.exp(-(t-lastOnset)*(tr.id==='drums'?14:3));
+    let a = tr.level*sectionLevel(t)*(0.25+0.75*decay)*(0.7+0.3*r());
+    if (tr.id==='vocals' && (t<12 || (t>135 && t<175))) a*=0.05;
+    if (tr.id==='guitar' && t>135 && t<175) a=Math.min(1,a*1.4);
+    if (tr.from!==undefined && (t<tr.from||t>tr.to)) a=0;
+    p[k]=Math.min(1,a)*0.7;
+  }
+  tr.peaks=p;
+}
+
+// ---------- state ----------
+const VARIANTS = { A:'Lanes', B:'Focus wave', C:'Focus wave + overview', D:'Loop drill' };
+const S = {
+  variant: (new URLSearchParams(location.search).get('variant')||'A').toUpperCase(),
+  mode:'transcribe', playing:false, pos:132, speed:100,
+  transpose:{ semitones:0, cents:0 },
+  focus:'guitar',
+  mix:Object.fromEntries(TRACKS.map(t=>[t.id,{mute:false,solo:t.id==='guitar'}])),
+  octave:0, filter:{ on:false, low:150, high:3000 },
+  loops:[ {id:1,name:'Chorus riff',start:45,end:53,speed:75}, {id:2,name:'Solo bars 1–4',start:135,end:145.5,speed:50} ],
+  markers:[ {id:1,name:'Verse 1',t:12},{id:2,name:'Chorus',t:45},{id:3,name:'Verse 2',t:70},{id:4,name:'Chorus 2',t:105},{id:5,name:'Solo',t:135},{id:6,name:'Outro',t:175} ],
+  activeLoop:null, looping:false, pendingStart:null,
+  view:{ start:0, end:SONG_LEN },
+  render:null, // {phase:'loop'|'rest', until}
+  nextLoopNo:3, nextMarkerNo:1, log:[],
+};
+if (!VARIANTS[S.variant]) S.variant='A';
+function log(msg){ S.log.unshift(msg); S.log.length=Math.min(S.log.length,12); }
+const loopById = id => S.loops.find(l=>l.id===id);
+const sortedLoops = () => [...S.loops].sort((a,b)=>a.start-b.start);
+function fmt(t){ const m=Math.floor(t/60), s=t-m*60; return m+':'+(s<10?'0':'')+s.toFixed(1); }
+function fmtRange(l){ return fmt(l.start)+' – '+fmt(l.end); }
+function heard(id){
+  const anySolo = Object.values(S.mix).some(m=>m.solo);
+  const m=S.mix[id]; return !m.mute && (!anySolo || m.solo);
+}
+
+// ---------- actions (each one an Intent in the real app) ----------
+function setSpeed(v, why){
+  v=Math.max(25,Math.min(125,Math.round(v)));
+  if (v===S.speed) return;
+  S.speed=v;
+  const l=loopById(S.activeLoop); if (l && S.looping) l.speed=v;
+  S.render={ phase: (S.activeLoop && S.looping)?'loop':'rest', until:performance.now()+(S.activeLoop&&S.looping?350:1800) };
+  log('SetPracticeSpeed '+v+'%'+(why?' ('+why+')':''));
+}
+function activateLoop(id){
+  const l=loopById(id); if(!l) return;
+  S.activeLoop=id; S.looping=true;
+  if (S.pos<l.start||S.pos>l.end) S.pos=l.start;
+  if (S.variant==='D') zoomToLoop(l);
+  else if (l.start<S.view.start||l.end>S.view.end) centerView((l.start+l.end)/2);
+  log('ActivateLoop "'+l.name+'"');
+  const sp=l.speed; S.speed=-1; setSpeed(sp,'Loop speed');
+}
+function addLoop(start,end){
+  if (end-start<0.2) return;
+  const l={id:Date.now(),name:'Loop '+S.nextLoopNo++,start,end,speed:S.speed};
+  S.loops.push(l); log('AddLoop "'+l.name+'" '+fmtRange(l)); activateLoop(l.id);
+}
+function deleteActiveLoop(){
+  const l=loopById(S.activeLoop); if(!l) return;
+  S.loops=S.loops.filter(x=>x!==l); S.activeLoop=null; S.looping=false; log('DeleteLoop "'+l.name+'"');
+}
+function addMarker(){ const m={id:Date.now(),name:'Marker '+S.nextMarkerNo++,t:S.pos}; S.markers.push(m); log('AddMarker "'+m.name+'" '+fmt(m.t)); }
+function toggleLooping(){ if(!S.activeLoop){ log('L: no active Loop'); return; } S.looping=!S.looping; log('SetLooping '+S.looping); }
+function stepLoop(dir){
+  const ls=sortedLoops(); if(!ls.length) return;
+  let i=ls.findIndex(l=>l.id===S.activeLoop);
+  i = i<0 ? (dir>0?0:ls.length-1) : (i+dir+ls.length)%ls.length;
+  activateLoop(ls[i].id);
+}
+function setFocus(id){
+  S.focus=id||null;
+  for (const t of TRACKS) S.mix[t.id].solo = (t.id===id);
+  log('SetFocusTrack '+(id||'none')+' (solos it in the Transcribe Mix)');
+}
+function playStop(){
+  S.playing=!S.playing;
+  const l=loopById(S.activeLoop);
+  if (S.playing && S.looping && l && (S.pos<l.start||S.pos>=l.end)) S.pos=l.start;
+  log(S.playing?'Play':'Stop');
+}
+function seek(t){ S.pos=Math.max(0,Math.min(SONG_LEN,t)); }
+function rename(kind,obj){ const n=prompt('Rename '+kind,obj.name); if(n){ log('Rename'+kind+' "'+obj.name+'" → "'+n+'"'); obj.name=n; render(); } }
+function setMode(m){
+  if (m!=='transcribe' && S.speed!==100){ S.speed=-1; setSpeed(100,'leaving Transcribe'); }
+  if (m==='transcribe'){ const l=loopById(S.activeLoop); if(l&&S.looping){ S.speed=-1; setSpeed(l.speed,'Loop speed'); } }
+  S.mode=m; render();
+}
+
+// ---------- view ----------
+function clampView(){
+  let w=S.view.end-S.view.start; w=Math.max(2,Math.min(SONG_LEN,w));
+  let s=Math.max(0,Math.min(SONG_LEN-w,S.view.start)); S.view={start:s,end:s+w};
+}
+function centerView(t){ const w=S.view.end-S.view.start; S.view.start=t-w/2; S.view.end=t+w/2; clampView(); }
+function zoomToLoop(l){ const pad=(l.end-l.start)*0.15+0.5; S.view={start:l.start-pad,end:l.end+pad}; clampView(); }
+function zoomAt(t,f){ const s=S.view.start,e=S.view.end; S.view={start:t-(t-s)*f,end:t+(e-t)*f}; clampView(); }
+
+// ---------- drawing ----------
+const STRIP_H=24, RULER_H=20;
+function setupCanvas(cv){
+  const dpr=devicePixelRatio||1, w=cv.clientWidth, h=cv.clientHeight;
+  if (cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); }
+  const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); return {g,w,h};
+}
+function peakAt(tr,t0,t1){
+  const a=Math.max(0,Math.floor(t0*PEAK_RATE)), b=Math.min(tr.peaks.length-1,Math.ceil(t1*PEAK_RATE));
+  let m=0; for(let k=a;k<=b;k++) if(tr.peaks[k]>m) m=tr.peaks[k]; return m;
+}
+function drawWave(g,tr,x0,y0,w,h,view,dimmed){
+  const mid=y0+h/2, span=view.end-view.start;
+  g.fillStyle=dimmed?'#ffffff22':tr.color;
+  for(let x=0;x<w;x++){
+    const t0=view.start+x/w*span, t1=view.start+(x+1)/w*span;
+    let a=peakAt(tr,t0,t1);
+    if (span<6) a*=0.55+0.45*Math.abs(Math.sin(t0*2*Math.PI*(tr.id==='bass'?55:220)/ (span<2?40:120))); // fake cycle detail when zoomed in
+    const hh=a*(h/2-2); g.fillRect(x0+x,mid-hh,1,Math.max(1,hh*2));
+  }
+}
+function tx(t,w,view){ return (t-view.start)/(view.end-view.start)*w; }
+function drawStripAndRuler(g,w,view){
+  g.fillStyle='#232326'; g.fillRect(0,0,w,STRIP_H);
+  g.fillStyle=getCSS('--panel'); g.fillRect(0,STRIP_H,w,RULER_H);
+  // loops
+  for (const l of S.loops){
+    const x0=tx(l.start,w,view), x1=tx(l.end,w,view); if(x1<0||x0>w) continue;
+    const on=l.id===S.activeLoop;
+    g.fillStyle= on ? (S.looping?'#ffd60a':'#ffd60a88') : '#ffd60a40';
+    g.fillRect(x0,3,x1-x0,STRIP_H-6);
+    g.fillStyle= on ? '#000':'#ffd60acc'; g.font='600 10px system-ui';
+    g.save(); g.beginPath(); g.rect(x0,0,x1-x0,STRIP_H); g.clip();
+    g.fillText((on&&S.looping?'⟳ ':'')+l.name+'  '+l.speed+'%',x0+4,STRIP_H-8); g.restore();
+  }
+  if (S.pendingStart!==null){ const x=tx(S.pendingStart,w,view); g.fillStyle='#ffd60a'; g.fillRect(x,0,2,STRIP_H); g.font='10px system-ui'; g.fillText('[ …',x+4,STRIP_H-8); }
+  // ruler ticks
+  const span=view.end-view.start, step=[0.5,1,2,5,10,15,30,60].find(s=>w/(span/s)>60)||60;
+  g.strokeStyle='#55565e'; g.fillStyle=getCSS('--dim'); g.font='9px system-ui';
+  for(let t=Math.ceil(view.start/step)*step;t<=view.end;t+=step){ const x=Math.round(tx(t,w,view))+0.5; g.beginPath(); g.moveTo(x,STRIP_H+8); g.lineTo(x,STRIP_H+RULER_H); g.stroke(); g.fillText(fmt(t).replace(/\.0$/,''),x+3,STRIP_H+10); }
+  // markers on ruler
+  for (const m of S.markers){ const x=tx(m.t,w,view); if(x<-80||x>w) continue; g.fillStyle=getCSS('--marker'); g.beginPath(); g.moveTo(x,STRIP_H); g.lineTo(x+6,STRIP_H); g.lineTo(x,STRIP_H+7); g.fill(); g.font='600 9px system-ui'; g.fillText(m.name,x+8,STRIP_H+RULER_H-3); }
+  g.fillStyle=getCSS('--line'); g.fillRect(0,STRIP_H+RULER_H-1,w,1);
+}
+function drawOverlays(g,w,y0,h,view){
+  const l=loopById(S.activeLoop);
+  if (l){ g.fillStyle=S.looping?'#ffd60a14':'#ffd60a08'; const x0=tx(l.start,w,view),x1=tx(l.end,w,view); g.fillRect(x0,y0,x1-x0,h); g.fillStyle='#ffd60a66'; g.fillRect(x0,y0,1,h); g.fillRect(x1,y0,1,h); }
+  for (const m of S.markers){ const x=tx(m.t,w,view); g.fillStyle='#64d2ff30'; g.fillRect(x,y0,1,h); }
+  const px=tx(S.pos,w,view); g.fillStyle='#fff'; g.fillRect(Math.round(px),0,1,y0+h);
+}
+let cssCache={}; function getCSS(v){ return cssCache[v]||(cssCache[v]=getComputedStyle(document.documentElement).getPropertyValue(v).trim()); }
+
+const LANE_H=52;
+function drawLanes(cv){ // variant A
+  const {g,w,h}=setupCanvas(cv); g.clearRect(0,0,w,h);
+  drawStripAndRuler(g,w,S.view);
+  TRACKS.forEach((tr,i)=>{
+    const y=STRIP_H+RULER_H+i*LANE_H;
+    g.fillStyle=i%2?'#1f1f22':'#1c1c1e'; g.fillRect(0,y,w,LANE_H);
+    // read-only Clip: one per Track spanning its audio
+    const from=tr.from??0, to=tr.to??SONG_LEN, x0=tx(from,w,S.view), x1=tx(to,w,S.view);
+    g.fillStyle=heard(tr.id)?tr.color+'40':'#ffffff0a'; g.fillRect(x0,y+3,x1-x0,LANE_H-6);
+    drawWave(g,tr,0,y+4,w,LANE_H-8,S.view,!heard(tr.id));
+    g.fillStyle=getCSS('--line'); g.fillRect(0,y+LANE_H-1,w,1);
+  });
+  drawOverlays(g,w,STRIP_H+RULER_H,TRACKS.length*LANE_H,S.view);
+}
+function focusTrack(){ return TRACKS.find(t=>t.id===S.focus); }
+function drawFocus(cv,view){ // B, C, D
+  const {g,w,h}=setupCanvas(cv); g.clearRect(0,0,w,h);
+  drawStripAndRuler(g,w,view);
+  const y0=STRIP_H+RULER_H, wh=h-y0, tr=focusTrack();
+  g.fillStyle='#18181a'; g.fillRect(0,y0,w,wh);
+  g.strokeStyle='#ffffff10'; g.beginPath(); g.moveTo(0,y0+wh/2+0.5); g.lineTo(w,y0+wh/2+0.5); g.stroke();
+  if (tr) drawWave(g,tr,0,y0+8,w,wh-16,view,false);
+  else { // no Focus Track: the Transcribe Mix
+    const hs=TRACKS.filter(t=>heard(t.id)); hs.forEach(t=>drawWave(g,t,0,y0+8,w,wh-16,view,false)); }
+  drawOverlays(g,w,y0,wh,view);
+  // tags
+  g.font='600 11px system-ui'; let tag=(tr?tr.name:'Transcribe Mix (no Focus Track)');
+  if (tr && S.octave) tag+='  ·  '+(S.octave>0?'+':'')+S.octave+' oct';
+  if (tr && S.filter.on) tag+='  ·  filter '+S.filter.low+'–'+S.filter.high+' Hz';
+  g.fillStyle='#000a'; const tw=g.measureText(tag).width; g.fillRect(8,y0+8,tw+12,20); g.fillStyle=tr?tr.color:'#fff'; g.fillText(tag,14,y0+22);
+  const span=view.end-view.start; g.fillStyle=getCSS('--dim'); g.font='10px system-ui'; g.fillText('showing '+span.toFixed(1)+' s',w-90,y0+wh-8);
+}
+function drawOverview(cv){
+  const {g,w,h}=setupCanvas(cv); g.clearRect(0,0,w,h);
+  const full={start:0,end:SONG_LEN};
+  g.fillStyle='#161618'; g.fillRect(0,0,w,h);
+  drawWave(g,TRACKS[0],0,4,w,h-8,full,true);
+  const tr=focusTrack(); if(tr) drawWave(g,tr,0,4,w,h-8,full,false);
+  for (const l of S.loops){ g.fillStyle=l.id===S.activeLoop?'#ffd60a55':'#ffd60a22'; g.fillRect(tx(l.start,w,full),0,Math.max(2,tx(l.end,w,full)-tx(l.start,w,full)),h); }
+  for (const m of S.markers){ g.fillStyle='#64d2ff'; g.fillRect(tx(m.t,w,full),0,1,6); }
+  const x0=tx(S.view.start,w,full), x1=tx(S.view.end,w,full);
+  g.strokeStyle='#fff'; g.lineWidth=1.5; g.strokeRect(x0+0.75,0.75,Math.max(4,x1-x0)-1.5,h-1.5); g.lineWidth=1;
+  g.fillStyle='#fff'; g.fillRect(tx(S.pos,w,full),0,1,h);
+}
+
+// ---------- canvas interaction ----------
+// One window listener each; every render replaces the handlers of the canvases it just built.
+const winHandlers={ timelineMove:null, timelineUp:null, overviewMove:null, overviewUp:null };
+window.addEventListener('mousemove',e=>{ winHandlers.timelineMove?.(e); winHandlers.overviewMove?.(e); });
+window.addEventListener('mouseup',e=>{ winHandlers.timelineUp?.(e); winHandlers.overviewUp?.(e); });
+function attachTimeline(cv, getView, opts={}){
+  let drag=null;
+  const tAt=(x)=>{ const v=getView(); return v.start+x/cv.clientWidth*(v.end-v.start); };
+  const loopAt=(x)=>{ const v=getView(),w=cv.clientWidth; for(const l of S.loops){ const x0=tx(l.start,w,v),x1=tx(l.end,w,v);
+    if(Math.abs(x-x0)<5) return {l,edge:'start'}; if(Math.abs(x-x1)<5) return {l,edge:'end'}; if(x>x0&&x<x1) return {l,edge:null}; } return null; };
+  cv.addEventListener('mousemove',e=>{ if(drag) return; const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+    cv.style.cursor = y<STRIP_H ? ((h=>h&&h.edge?'ew-resize':h?'pointer':'crosshair')(loopAt(x))) : 'text'; });
+  cv.addEventListener('mousedown',e=>{
+    const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top, t=tAt(x);
+    if (y<STRIP_H){
+      const hit=loopAt(x);
+      if (hit&&hit.edge) drag={kind:'edge',l:hit.l,edge:hit.edge};
+      else if (hit) drag={kind:'click',l:hit.l};
+      else drag={kind:'new',a:t,b:t,preview:{id:-1,name:'new Loop',start:t,end:t,speed:S.speed}};
+      if (drag.preview) S.loops.push(drag.preview);
+    } else { seek(t); drag={kind:'seek'}; }
+    draw();
+  });
+  winHandlers.timelineMove=e=>{ if(!drag) return; const r=cv.getBoundingClientRect(), t=Math.max(0,Math.min(SONG_LEN,tAt(e.clientX-r.left)));
+    if (drag.kind==='new'){ drag.b=t; drag.preview.start=Math.min(drag.a,t); drag.preview.end=Math.max(drag.a,t); }
+    else if (drag.kind==='edge'){ if(drag.edge==='start') drag.l.start=Math.min(t,drag.l.end-0.2); else drag.l.end=Math.max(t,drag.l.start+0.2); }
+    else if (drag.kind==='seek') seek(t);
+    draw(); };
+  winHandlers.timelineUp=()=>{ if(!drag) return; const d=drag; drag=null;
+    if (d.kind==='new'){ S.loops=S.loops.filter(l=>l!==d.preview); addLoop(d.preview.start,d.preview.end); }
+    else if (d.kind==='edge') log('MoveLoopEdge "'+d.l.name+'" '+fmtRange(d.l));
+    else if (d.kind==='click') activateLoop(d.l.id);
+    render(); };
+  cv.addEventListener('dblclick',e=>{ const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+    if (y<STRIP_H){ const h=loopAt(x); if(h) rename('Loop',h.l); }
+    else if (y<STRIP_H+RULER_H){ const v=getView(),w=cv.clientWidth; const m=S.markers.find(m=>Math.abs(tx(m.t,w,v)-x)<40 && x>=tx(m.t,w,v)-4); if(m) rename('Marker',m); } });
+  cv.addEventListener('wheel',e=>{ e.preventDefault(); if(opts.fixedView) return; const r=cv.getBoundingClientRect(), t=tAt(e.clientX-r.left);
+    if (e.ctrlKey||e.metaKey) zoomAt(t,Math.exp(e.deltaY*0.01)); else { const span=S.view.end-S.view.start, d=(e.deltaX||e.deltaY)/cv.clientWidth*span; S.view.start+=d; S.view.end+=d; clampView(); }
+    draw(); },{passive:false});
+}
+function attachOverview(cv){
+  let down=false; const go=e=>{ const r=cv.getBoundingClientRect(); centerView((e.clientX-r.left)/cv.clientWidth*SONG_LEN); draw(); };
+  cv.addEventListener('mousedown',e=>{down=true;go(e);}); winHandlers.overviewMove=e=>{if(down)go(e);}; winHandlers.overviewUp=()=>down=false;
+}
+
+// ---------- shared panel pieces (HTML) ----------
+function speedCtl(){ return `<div class="ctl"><label>Speed</label><input type="range" min="25" max="125" value="${S.speed}" data-live="speed"><span class="val" id="v-speed">${S.speed}%</span><button data-act="half" class="${S.speed===50?'on':''}">½</button></div>`; }
+function transposeCtl(){ return `<div class="ctl"><label>Transpose</label><input type="range" min="-12" max="12" value="${S.transpose.semitones}" data-live="semitones"><span class="val" id="v-semitones">${sgn(S.transpose.semitones)} st</span></div>
+  <div class="ctl"><label>Fine tune</label><input type="range" min="-50" max="50" value="${S.transpose.cents}" data-live="cents"><span class="val" id="v-cents">${sgn(S.transpose.cents)} ct</span></div>`; }
+function focusCtl(){ return `<div class="ctl"><label>Focus</label><select data-act="focus" style="flex:1"><option value="">None (whole Transcribe Mix)</option>${TRACKS.map(t=>`<option value="${t.id}" ${t.id===S.focus?'selected':''}>${t.name}</option>`).join('')}</select></div>`; }
+function focusAidsCtl(){ const dis=S.focus?'':'disabled';
+  return `<div class="ctl"><label>Octave</label>${[-1,0,1,2].map(o=>`<button data-act="octave" data-v="${o}" class="${S.octave===o?'on':''}" ${dis}>${o>0?'+':''}${o}</button>`).join('')}</div>
+  <div class="ctl"><label>Filter</label><button data-act="filter" class="${S.filter.on?'on':''}" ${dis}>${S.filter.on?'On':'Off'}</button><span class="dim" id="v-filter">${S.filter.low}–${S.filter.high} Hz</span></div>
+  <div class="ctl"><label>Low cut</label><input type="range" min="20" max="2000" value="${S.filter.low}" data-live="low" ${dis}></div>
+  <div class="ctl"><label>High cut</label><input type="range" min="200" max="16000" value="${S.filter.high}" data-live="high" ${dis}></div>`; }
+function sgn(v){ return (v>0?'+':'')+v; }
+function loopList(){ const ls=sortedLoops();
+  return `<div class="list">${ls.map((l,i)=>`<div class="item ${l.id===S.activeLoop?'on':''}" data-act="loop" data-id="${l.id}"><span class="kbd">⌥${i+1}</span><span class="nm">${S.looping&&l.id===S.activeLoop?'⟳ ':''}${esc(l.name)}</span><span class="tm">${fmtRange(l)} · ${l.speed}%</span></div>`).join('')||'<div class="hint">No Loops. Drag on the yellow strip, or press [ and ] while playing.</div>'}</div>
+  <div class="ctl"><button data-act="looping" class="${S.looping?'on':''}" ${S.activeLoop?'':'disabled'}>⟳ Looping <span class="kbd">L</span></button></div>`; }
+function markerList(){ return `<div class="list">${[...S.markers].sort((a,b)=>a.t-b.t).map(m=>`<div class="item" data-act="marker" data-id="${m.id}"><span class="sw" style="background:var(--marker)"></span><span class="nm">${esc(m.name)}</span><span class="tm">${fmt(m.t)}</span></div>`).join('')}</div>`; }
+function mixRow(t,cls){ const m=S.mix[t.id];
+  return `<div class="${cls} ${t.id===S.focus?'isfocus':''} ${heard(t.id)?'':'silent'}"><span class="sw" style="background:${t.color}"></span><span class="nm">${t.name} <span class="dim">${t.kind}</span></span>
+    <button class="focus ${t.id===S.focus?'on':''}" data-act="focusbtn" data-id="${t.id}" title="Focus Track">◎</button>
+    <button class="mute ${m.mute?'on':''}" data-act="mute" data-id="${t.id}">M</button><button class="solo ${m.solo?'on':''}" data-act="solo" data-id="${t.id}">S</button></div>`; }
+function esc(s){ return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function sidePanel(withMix){ return `<div class="panel">
+  <h4>Focus</h4>${focusCtl()}${focusAidsCtl()}
+  ${withMix?`<h4>Transcribe Mix</h4>${TRACKS.map(t=>mixRow(t,'trow')).join('')}`:''}
+  <h4>Listening</h4>${speedCtl()}${transposeCtl()}
+  <h4>Loops</h4>${loopList()}
+  <h4>Markers</h4>${markerList()}</div>`; }
+
+// ---------- variants ----------
+function layoutA(){ return `<div class="page" style="grid-template-columns:200px 1fr 290px">
+  <div style="background:var(--panel);border-right:1px solid var(--line);overflow:hidden">
+    <div style="height:${STRIP_H+RULER_H}px;display:flex;align-items:center;padding:0 8px" class="dim">Loops / Markers ▸</div>
+    ${TRACKS.map(t=>`<div style="height:${LANE_H}px">${mixRow(t,'trow').replace('class="trow','style="height:'+LANE_H+'px" class="trow')}</div>`).join('')}
+  </div>
+  <div class="cwrap"><canvas id="main"></canvas></div>${sidePanel(false)}</div>`; }
+function layoutB(withOverview){ return `<div class="page" style="grid-template-columns:1fr 290px">
+  <div style="display:grid;grid-template-rows:${withOverview?'46px ':''}1fr auto;min-height:0">
+    ${withOverview?'<div class="cwrap" style="border-bottom:1px solid var(--line)"><canvas id="ov"></canvas></div>':''}
+    <div class="cwrap"><canvas id="main"></canvas></div>
+    <div style="background:var(--panel);border-top:1px solid var(--line);max-height:220px;overflow:auto">${TRACKS.map(t=>mixRow(t,'trow')).join('').replace(/class="trow/g,'style="height:28px" class="trow')}</div>
+  </div>${sidePanel(false)}</div>`; }
+function layoutD(){ const ls=sortedLoops();
+  return `<div class="page" style="grid-template-rows:46px 1fr auto;grid-template-columns:230px 1fr">
+  <div class="cwrap" style="grid-column:1/3;border-bottom:1px solid var(--line)"><canvas id="ov"></canvas></div>
+  <div class="cards">${ls.map((l,i)=>`<div class="card ${l.id===S.activeLoop?'on':''}" data-act="loop" data-id="${l.id}"><div class="t1">${S.looping&&l.id===S.activeLoop?'⟳ ':''}${esc(l.name)} <span class="kbd">⌥${i+1}</span></div><div class="t2">${fmtRange(l)} · ${(l.end-l.start).toFixed(1)} s · ${l.speed}%</div></div>`).join('')}
+    <div class="hint">Drag on the yellow strip, or press <span class="kbd">[</span> <span class="kbd">]</span> while playing, to add a Loop.</div>
+    <h4 class="dim" style="font-size:10px;letter-spacing:1px;margin:12px 0 4px">MARKERS</h4>${markerList()}</div>
+  <div class="cwrap"><canvas id="main"></canvas></div>
+  <div class="bottombar" style="grid-column:1/3">
+    <div class="grp" style="min-width:260px"><h4>Speed</h4>${speedCtl()}<div class="ctl"><button data-act="looping" class="${S.looping?'on':''}" ${S.activeLoop?'':'disabled'}>⟳ Looping <span class="kbd">L</span></button></div></div>
+    <div class="grp" style="min-width:240px"><h4>Transpose</h4>${transposeCtl()}</div>
+    <div class="grp" style="min-width:250px"><h4>Focus Track</h4>${focusCtl()}${focusAidsCtl().split('<div class="ctl"><label>Low cut')[0]}</div>
+    <div class="grp"><h4>Transcribe Mix</h4><div class="strips">${TRACKS.map(t=>{const m=S.mix[t.id];return `<div class="strip ${t.id===S.focus?'isfocus':''}" style="${heard(t.id)?'':'opacity:.5'}"><span class="sw" style="background:${t.color};width:100%;height:4px"></span><div class="nm">${t.name}</div>
+      <button class="focus ${t.id===S.focus?'on':''}" data-act="focusbtn" data-id="${t.id}">◎ Focus</button><div class="bb"><button class="mute ${m.mute?'on':''}" data-act="mute" data-id="${t.id}">M</button><button class="solo ${m.solo?'on':''}" data-act="solo" data-id="${t.id}">S</button></div></div>`}).join('')}</div></div>
+  </div></div>`; }
+
+// ---------- render ----------
+function topbar(){
+  return `<div class="topbar"><div class="modes">${[['record','Record 1'],['edit','Edit 2'],['transcribe','Transcribe 3']].map(([m,l])=>`<button data-act="mode" data-v="${m}" class="${S.mode===m?'on':''}">${l}</button>`).join('')}</div>
+  <button data-act="play">${S.playing?'■':'▶'}</button><div class="clock"><span id="clock">${fmt(S.pos)}</span><small id="clockspeed">${S.speed!==100?S.speed+'%':''}</small></div>
+  <span class="dim">Song: “Late Night Session”</span><div class="spacer"></div><div class="status" id="status"></div></div>`;
+}
+function render(){
+  const app=document.getElementById('app');
+  let page;
+  if (S.mode!=='transcribe') page=`<div class="page" style="place-items:center"><div class="hint" style="text-align:center;font-size:13px">${S.mode==='record'?'Record':'Edit'} mode is not prototyped here.<br>Loops and Markers would show on its strip (${S.mode==='record'?'read-only':'editable'}).<br>Practice Speed went back to 100%.</div></div>`;
+  else if (S.variant==='A') page=layoutA();
+  else if (S.variant==='B') page=layoutB(false);
+  else if (S.variant==='C') page=layoutB(true);
+  else page=layoutD();
+  app.innerHTML=topbar()+page;
+  const main=document.getElementById('main'), ov=document.getElementById('ov');
+  if (main) attachTimeline(main,()=>S.view);
+  if (!ov){ winHandlers.overviewMove=null; winHandlers.overviewUp=null; }
+  if (ov) attachOverview(ov);
+  document.getElementById('vlabel').textContent=S.variant+' ('+VARIANTS[S.variant]+')';
+  draw();
+}
+function draw(){
+  const main=document.getElementById('main'), ov=document.getElementById('ov');
+  if (main){ if (S.variant==='A') drawLanes(main); else drawFocus(main,S.view); }
+  if (ov) drawOverview(ov);
+  const c=document.getElementById('clock'); if(c) c.textContent=fmt(S.pos);
+  const cs=document.getElementById('clockspeed'); if(cs) cs.textContent=S.speed!==100?S.speed+'%':'';
+  const st=document.getElementById('status');
+  if (st){ const r=S.render; st.className='status'+(r?' busy':'');
+    st.textContent = r ? (r.phase==='loop'?'⏳ rendering the active Loop at '+S.speed+'%…':'⏳ rendering the rest of the Song in the background…') : (S.log[0]||''); }
+  const sb=document.getElementById('statebox');
+  if (sb.style.display==='block'){ const {log,...rest}=S; sb.textContent=JSON.stringify({...rest,heard:TRACKS.filter(t=>heard(t.id)).map(t=>t.id),log},(k,v)=>typeof v==='number'?Math.round(v*100)/100:v,1); }
+}
+
+// ---------- events ----------
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act]'); if(!el||el.tagName==='SELECT') return;
+  const a=el.dataset.act, id=el.dataset.id;
+  if (a==='mode') return setMode(el.dataset.v);
+  if (a==='play') playStop();
+  else if (a==='half') setSpeed(S.speed===50?100:50,'½');
+  else if (a==='octave'){ S.octave=+el.dataset.v; log('SetOctaveShift '+S.octave+' on '+S.focus); }
+  else if (a==='filter'){ S.filter.on=!S.filter.on; log('SetBandFilter '+(S.filter.on?'on':'off')); }
+  else if (a==='loop') activateLoop(+id);
+  else if (a==='looping') toggleLooping();
+  else if (a==='marker'){ const m=S.markers.find(m=>m.id===+id); seek(m.t); centerView(m.t); }
+  else if (a==='focusbtn') setFocus(S.focus===id?null:id);
+  else if (a==='mute'){ S.mix[id].mute=!S.mix[id].mute; log('SetTranscribeMute '+id+' '+S.mix[id].mute); }
+  else if (a==='solo'){ S.mix[id].solo=!S.mix[id].solo; log('SetTranscribeSolo '+id+' '+S.mix[id].solo); }
+  else return;
+  render();
+});
+document.addEventListener('dblclick',e=>{ const el=e.target.closest('[data-act="loop"],[data-act="marker"]'); if(!el) return;
+  if (el.dataset.act==='loop') rename('Loop',loopById(+el.dataset.id)); else rename('Marker',S.markers.find(m=>m.id===+el.dataset.id)); });
+document.addEventListener('change',e=>{
+  if (e.target.dataset.act==='focus'){ setFocus(e.target.value); render(); }
+  if (e.target.dataset.live) render();
+});
+document.addEventListener('input',e=>{
+  const k=e.target.dataset.live; if(!k) return; const v=+e.target.value;
+  if (k==='speed'){ setSpeed(v); document.getElementById('v-speed').textContent=S.speed+'%'; }
+  if (k==='semitones'){ S.transpose.semitones=v; document.getElementById('v-semitones').textContent=sgn(v)+' st'; log('SetTranspose '+sgn(v)+' st '+sgn(S.transpose.cents)+' ct'); }
+  if (k==='cents'){ S.transpose.cents=v; document.getElementById('v-cents').textContent=sgn(v)+' ct'; log('SetTranspose '+sgn(S.transpose.semitones)+' st '+sgn(v)+' ct'); }
+  if (k==='low'){ S.filter.low=Math.min(v,S.filter.high-50); document.getElementById('v-filter').textContent=S.filter.low+'–'+S.filter.high+' Hz'; }
+  if (k==='high'){ S.filter.high=Math.max(v,S.filter.low+50); document.getElementById('v-filter').textContent=S.filter.low+'–'+S.filter.high+' Hz'; }
+  draw();
+});
+document.addEventListener('keydown',e=>{
+  const tag=e.target.tagName; if ((tag==='INPUT'&&e.target.type!=='range')||tag==='SELECT'||tag==='TEXTAREA') return;
+  if (e.altKey && (e.key==='ArrowLeft'||e.key==='ArrowRight')){ e.preventDefault(); stepLoop(e.key==='ArrowRight'?1:-1); render(); return; }
+  if (e.altKey && /^Digit[1-9]$/.test(e.code)){ e.preventDefault(); const l=sortedLoops()[+e.code.slice(5)-1]; if(l) activateLoop(l.id); render(); return; }
+  if (e.key==='ArrowLeft'||e.key==='ArrowRight'){ e.preventDefault(); cycleVariant(e.key==='ArrowRight'?1:-1); return; }
+  if (e.metaKey||e.ctrlKey) return;
+  const k=e.key.toLowerCase();
+  if (k==='1') return setMode('record'); if (k==='2') return setMode('edit'); if (k==='3') return setMode('transcribe');
+  if (S.mode!=='transcribe' && !['k'].includes(k)) return;
+  if (e.key===' '){ e.preventDefault(); playStop(); }
+  else if (e.key==='['){ S.pendingStart=S.pos; log('Loop start at '+fmt(S.pos)+' — press ] for the end'); }
+  else if (e.key===']'){ if (S.pendingStart!==null && S.pos>S.pendingStart+0.2){ const a=S.pendingStart; S.pendingStart=null; addLoop(a,S.pos); } else log(']: press [ first, before this point'); }
+  else if (k==='k') addMarker();
+  else if (k==='l') toggleLooping();
+  else if (k==='h') setSpeed(S.speed===50?100:50,'½');
+  else if (e.key==='Backspace'||e.key==='Delete') deleteActiveLoop();
+  else if (e.key==='Escape') S.pendingStart=null;
+  else return;
+  render();
+});
+function cycleVariant(d){ const ks=Object.keys(VARIANTS); S.variant=ks[(ks.indexOf(S.variant)+d+ks.length)%ks.length];
+  const u=new URL(location); u.searchParams.set('variant',S.variant); history.replaceState(null,'',u);
+  if (S.variant==='D'){ const l=loopById(S.activeLoop); if(l) zoomToLoop(l); } render(); }
+document.getElementById('prev').onclick=()=>cycleVariant(-1);
+document.getElementById('next').onclick=()=>cycleVariant(1);
+document.getElementById('keysBtn').onclick=()=>{ const k=document.getElementById('keys'); k.style.display=k.style.display==='block'?'none':'block'; };
+document.getElementById('stateBtn').onclick=()=>{ const sb=document.getElementById('statebox'); sb.style.display=sb.style.display==='block'?'none':'block'; draw(); };
+window.addEventListener('resize',draw);
+
+// ---------- clock ----------
+let last=performance.now();
+function tick(now){
+  const dt=(now-last)/1000; last=now;
+  if (S.render && now>S.render.until){ S.render = S.render.phase==='loop' ? {phase:'rest',until:now+1800} : null; }
+  if (S.playing && S.mode==='transcribe'){
+    const silent = S.render && S.render.phase==='loop';
+    if (!silent) S.pos += dt*S.speed/100;
+    const l=loopById(S.activeLoop);
+    if (S.looping && l && S.pos>=l.end) S.pos=l.start;
+    if (S.pos>=SONG_LEN){ S.pos=SONG_LEN; S.playing=false; }
+    if (S.variant!=='D' && (S.pos>S.view.end||S.pos<S.view.start)) centerView(S.pos+ (S.view.end-S.view.start)*0.4);
+  }
+  draw(); requestAnimationFrame(tick);
+}
+S.activeLoop=2; S.looping=true; S.speed=50; if (S.variant==='D') zoomToLoop(loopById(2)); else S.view={start:120,end:165};
+render(); requestAnimationFrame(tick);
+</script>
+</body>
+</html>
