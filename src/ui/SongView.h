@@ -12,6 +12,7 @@
 #include "ui/RunDialog.h"
 #include "ui/SongEdits.h"
 #include "ui/TopBar.h"
+#include "ui/TranscribePage.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -26,7 +27,7 @@ namespace overdub::ui
 class MainComponent;
 class VideoScreen;
 
-// The part of the main window that needs a Song: the Record and Edit pages, the Export sheet and
+// The part of the main window that needs a Song: the Record, Edit and Transcribe pages, the Export sheet and
 // the plugin editor windows, wired to one OpenSong. The Export sheet covers the whole window, so
 // the window puts it among its own children (MainComponent::setOpenSong) while this object owns
 // it; show_export shows and hides it, and an export that starts closes it (issue #200). The
@@ -94,6 +95,7 @@ public:
     // Children are public so tests can click them and check what shows.
     RecordPage recordPage;
     EditPage editPage;
+    TranscribePage transcribePage;
     ExportSheet exportSheet;
     PluginWindows pluginWindows;
 

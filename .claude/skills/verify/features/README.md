@@ -40,3 +40,4 @@ Each feature file starts with an H1 title and one paragraph that describes the u
 | [Export](./export.md) | yes: `journey-export.sh` (WAV and M4A through the Export sheet, proven 2026-10-26); MP4: no |
 | [Transpose](./transpose.md) | yes: `journey-transpose.sh` (set, render, undo, out of range, back to 0; proven 2026-10-27); a failed render and the refusals while Transposing: no |
 | [Practice Speed](./practice-speed.md) | yes: `journey-practice-speed.sh` (set, render, playhead rate, out of range, back to 100; proven 2026-10-27); the silent-until-rendered source, a failed render and the Transpose interplay: no |
+| [Transcribe mode](./transcribe.md) | over the socket by hand (show_mode, set_transcribe_view, seek, set_transcribe_column_visible, the ui.transcribing refusals); no journey script yet |

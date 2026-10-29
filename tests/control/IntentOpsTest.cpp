@@ -168,7 +168,7 @@ TEST_CASE ("ops lists every Intent with its group and the JSON form of each fiel
 
     const auto* showMode = schemaOf (ops, "show_mode");
     REQUIRE (showMode != nullptr);
-    CHECK (*showMode == json { { "op", "show_mode" }, { "group", "window" }, { "fields", json::array ({ { { "key", "mode" }, { "type", "string" }, { "enum", { "record", "edit" } } } }) } });
+    CHECK (*showMode == json { { "op", "show_mode" }, { "group", "window" }, { "fields", json::array ({ { { "key", "mode" }, { "type", "string" }, { "enum", { "record", "edit", "transcribe" } } } }) } });
 
     const auto* mute = schemaOf (ops, "set_track_mute");
     REQUIRE (mute != nullptr);
@@ -412,4 +412,32 @@ TEST_CASE ("set_practice_speed takes a whole percent from 50 to 125, outside his
         CHECK (refused.at ("error").at ("fields").at ("key") == "speed_percent");
     }
     CHECK (socket.f.openSong->practiceSpeed() == 80);
+}
+
+TEST_CASE ("the socket shows Transcribe mode, and a Clip edit there answers ui.transcribing with its reason", "[control][intent_ops][transcribe]")
+{
+    SocketToWindow socket;
+    const auto clipId = socket.f.trackNamed ("Band Mix").clips.front().id;
+    REQUIRE (socket.request (R"({"id":1,"op":"select_clip","clip_id":")" + clipId + R"("})").at ("ok") == true);
+    REQUIRE (socket.request (R"({"id":2,"op":"seek","sample":4800})").at ("ok") == true);
+
+    const core::ScopedLogCapture capture;
+    CHECK (socket.request (R"({"id":3,"op":"show_mode","mode":"transcribe"})").at ("ok") == true);
+    CHECK (socket.f.window->mode() == ui::Mode::transcribe);
+    const auto events = capture.events();
+    const auto changed = std::ranges::find_if (events, [] (const json& event) { return event.at ("event") == "ui.mode_changed"; });
+    REQUIRE (changed != events.end());
+    CHECK (changed->at ("mode") == "transcribe");
+
+    const auto before = socket.f.song();
+    const auto refused = socket.request (R"({"id":4,"op":"split_selected_clip"})");
+    CHECK (refused.at ("ok") == false);
+    CHECK (refused.at ("error").at ("code") == "ui.transcribing");
+    CHECK (refused.at ("error").at ("fields").at ("op") == "split_selected_clip");
+    CHECK (refused.at ("error").at ("message") == "Transcribe mode never changes a Clip");
+    CHECK (socket.f.song() == before);
+
+    CHECK (socket.request (R"({"id":5,"op":"set_transcribe_column_visible","visible":false})").at ("ok") == true);
+    CHECK_FALSE (socket.f.window->isTranscribeColumnVisible());
+    CHECK (socket.request (R"({"id":6,"op":"show_mode","mode":"listen"})").at ("error").at ("code") == "control.bad_field");
 }

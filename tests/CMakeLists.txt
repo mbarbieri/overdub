@@ -130,12 +130,15 @@ target_sources(overdub_tests PRIVATE
     ui/TopBarTransposeTest.cpp
     ui/TopBarPracticeSpeedTest.cpp
     ui/TransposeRecordExportTest.cpp
+    ui/TranscribeGeometryTest.cpp
+    ui/TranscribeModeTest.cpp
     ui/TrackColoursUiTest.cpp
     ui/TrackReorderUiTest.cpp
     ui/TrackRowEditsTest.cpp
     ui/TransportTextTest.cpp
     ui/UserMessagesTest.cpp
     ui/VideoPreviewTest.cpp
+    ui/WindowSettingsTest.cpp
     ui/WorkspaceTest.cpp
     video/FrameSelectionTest.cpp
     video/MovieFileTest.cpp

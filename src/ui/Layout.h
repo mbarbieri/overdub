@@ -26,14 +26,14 @@ struct MainLayout
 
 MainLayout mainLayout (juce::Rectangle<int> window);
 
-// Left: Record · Edit, then the control indicator. Centre: ⏮ ▶/■ ● and the clock. Right: Undo,
+// Left: Record · Edit · Transcribe, then the control indicator. Centre: ⏮ ▶/■ ● and the clock. Right: Undo,
 // Redo, then the export slot, which holds the Export... button, or the running export's progress
 // (issue #200). The indicator's slot is kept whether or not it shows, so nothing moves when a
 // control client connects (issue #177); Undo and Redo narrow below 190 to make room at small
 // widths.
 struct TopBarLayout
 {
-    std::array<juce::Rectangle<int>, 2> modeButtons;
+    std::array<juce::Rectangle<int>, 3> modeButtons;
     juce::Rectangle<int> controlIndicator;
     juce::Rectangle<int> rewind;
     juce::Rectangle<int> playStop;
@@ -330,4 +330,38 @@ struct PassRowLayout
 };
 
 PassRowLayout passRowLayout (juce::Rectangle<int> row);
+
+// Transcribe mode (issue #225): the whole-Song overview strip on top, under it the ruler over the
+// one tall waveform, and at the right, full height, the Transcribe column of transcribeColumnWidth
+// while it shows (empty while hidden: the rest takes its width).
+inline constexpr int transcribeOverviewHeight = 56;
+inline constexpr int transcribeRulerHeight = 22;
+inline constexpr int transcribeColumnWidth = 200;
+
+struct TranscribePageLayout
+{
+    juce::Rectangle<int> overview;
+    juce::Rectangle<int> ruler;
+    juce::Rectangle<int> waveform;
+    juce::Rectangle<int> column;
+};
+
+TranscribePageLayout transcribePageLayout (juce::Rectangle<int> page, bool columnVisible);
+
+// Inside the Transcribe column, in its own coordinates: the "LISTENING" heading, then Practice
+// Speed and Transpose, each a caption over its field, unit and spinner.
+struct TranscribeColumnLayout
+{
+    juce::Rectangle<int> heading;
+    juce::Rectangle<int> practiceSpeedCaption;
+    juce::Rectangle<int> practiceSpeedField;
+    juce::Rectangle<int> practiceSpeedUnit;
+    juce::Rectangle<int> practiceSpeedSpinner;
+    juce::Rectangle<int> transposeCaption;
+    juce::Rectangle<int> transposeField;
+    juce::Rectangle<int> transposeUnit;
+    juce::Rectangle<int> transposeSpinner;
+};
+
+TranscribeColumnLayout transcribeColumnLayout (juce::Rectangle<int> column);
 } // namespace overdub::ui

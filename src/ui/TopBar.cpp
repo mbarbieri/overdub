@@ -163,7 +163,7 @@ TopBar::TopBar()
     recordButton.setColour (juce::TextButton::buttonOnColourId, colours::rec);
     recordButton.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
 
-    for (auto* modeButton : { &recordModeButton, &editModeButton })
+    for (auto* modeButton : { &recordModeButton, &editModeButton, &transcribeModeButton })
     {
         modeButton->setClickingTogglesState (false);
         modeButton->setColour (juce::TextButton::buttonOnColourId, colours::accent);
@@ -171,6 +171,7 @@ TopBar::TopBar()
 
     recordModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::record } }); };
     editModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::edit } }); };
+    transcribeModeButton.onClick = [this] { send (WindowIntent { intent::ShowMode { Mode::transcribe } }); };
     rewindButton.onClick = [this] { send (SongIntent { intent::Rewind {} }); };
     playStopButton.onClick = [this] { send (SongIntent { intent::PlayOrStop {} }); };
     recordButton.onClick = [this] { send (SongIntent { intent::Record {} }); };
@@ -182,7 +183,7 @@ TopBar::TopBar()
     cancelExportButton.onClick = [this] { send (SongIntent { intent::CancelExport {} }); };
     cancelExportButton.setWantsKeyboardFocus (false);
 
-    for (auto* button : { &recordModeButton, &editModeButton, &rewindButton, &playStopButton, &recordButton, &undoButton, &redoButton, &exportButton })
+    for (auto* button : { &recordModeButton, &editModeButton, &transcribeModeButton, &rewindButton, &playStopButton, &recordButton, &undoButton, &redoButton, &exportButton })
     {
         button->setWantsKeyboardFocus (false); // keys go to the main window (MainComponent::keyPressed)
         addAndMakeVisible (button);
@@ -263,6 +264,7 @@ void TopBar::show (const TopBarState& state)
 {
     recordModeButton.setToggleState (state.mode == Mode::record, juce::dontSendNotification);
     editModeButton.setToggleState (state.mode == Mode::edit, juce::dontSendNotification);
+    transcribeModeButton.setToggleState (state.mode == Mode::transcribe, juce::dontSendNotification);
 
     for (auto* transport : { &rewindButton, &playStopButton })
         transport->setEnabled (state.songOpen);
@@ -309,6 +311,7 @@ void TopBar::resized()
     const auto layout = topBarLayout (getLocalBounds());
     recordModeButton.setBounds (layout.modeButtons[0]);
     editModeButton.setBounds (layout.modeButtons[1]);
+    transcribeModeButton.setBounds (layout.modeButtons[2]);
     rewindButton.setBounds (layout.rewind);
     playStopButton.setBounds (layout.playStop);
     recordButton.setBounds (layout.record);

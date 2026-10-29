@@ -1,6 +1,7 @@
 #include "ui/Layout.h"
 
 #include <algorithm>
+#include <array>
 
 namespace overdub::ui
 {
@@ -9,7 +10,8 @@ namespace
 constexpr int margin = 10;
 constexpr int gap = 6;
 constexpr int rowGap = 4;
-constexpr int modeButtonWidth = 76;
+// Record, Edit, Transcribe: each wide enough for its label.
+constexpr std::array modeButtonWidths { 64, 48, 80 };
 constexpr int transportButtonWidth = 40;
 constexpr int clockWidth = 130;
 constexpr int undoButtonWidth = 190;
@@ -61,9 +63,9 @@ TopBarLayout topBarLayout (juce::Rectangle<int> bar)
     TopBarLayout layout;
     auto area = bar.reduced (margin, 8);
 
-    for (auto& button : layout.modeButtons)
+    for (std::size_t i = 0; i < layout.modeButtons.size(); ++i)
     {
-        button = area.removeFromLeft (modeButtonWidth);
+        layout.modeButtons[i] = area.removeFromLeft (modeButtonWidths[i]);
         area.removeFromLeft (2);
     }
     area.removeFromLeft (gap);
@@ -473,6 +475,43 @@ PassRowLayout passRowLayout (juce::Rectangle<int> row)
     layout.status = area.removeFromRight (90);
     area.removeFromRight (gap);
     layout.title = area;
+    return layout;
+}
+TranscribePageLayout transcribePageLayout (juce::Rectangle<int> page, bool columnVisible)
+{
+    TranscribePageLayout layout;
+    auto area = page.reduced (margin);
+    if (columnVisible)
+    {
+        layout.column = area.removeFromRight (transcribeColumnWidth);
+        area.removeFromRight (margin);
+    }
+    layout.overview = area.removeFromTop (transcribeOverviewHeight);
+    area.removeFromTop (gap);
+    layout.ruler = area.removeFromTop (transcribeRulerHeight);
+    layout.waveform = area;
+    return layout;
+}
+
+TranscribeColumnLayout transcribeColumnLayout (juce::Rectangle<int> column)
+{
+    constexpr int headingHeight = 20;
+    constexpr int fieldRowHeight = fieldCaptionHeight + 22;
+    TranscribeColumnLayout layout;
+    auto area = column.reduced (margin);
+    layout.heading = area.removeFromTop (headingHeight);
+    area.removeFromTop (gap);
+    const auto practiceSpeed = fieldSlot (area.removeFromTop (fieldRowHeight), practiceSpeedFieldWidth);
+    layout.practiceSpeedCaption = practiceSpeed.caption;
+    layout.practiceSpeedField = practiceSpeed.field;
+    layout.practiceSpeedUnit = practiceSpeed.unit;
+    layout.practiceSpeedSpinner = practiceSpeed.spinner;
+    area.removeFromTop (gap);
+    const auto transpose = fieldSlot (area.removeFromTop (fieldRowHeight), transposeFieldWidth);
+    layout.transposeCaption = transpose.caption;
+    layout.transposeField = transpose.field;
+    layout.transposeUnit = transpose.unit;
+    layout.transposeSpinner = transpose.spinner;
     return layout;
 }
 } // namespace overdub::ui

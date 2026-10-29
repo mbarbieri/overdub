@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-// The always-visible top bar (issue #9 resolution): Record · Edit, the transport (⏮ ▶/■ ●) with
+// The always-visible top bar (issue #9 resolution): Record · Edit · Transcribe (issue #225), the transport (⏮ ▶/■ ●) with
 // the clock and its REC · PASS n line, Undo / Redo naming their steps, and Export..., which opens
 // the Export sheet (issue #200); while an export runs, its status and progress stand in its place,
 // with ✕, which cancels it (issue #202). Before it, Transpose (issue #209): "TRANSPOSE" over the
@@ -126,6 +126,7 @@ public:
     // Children are public so tests can click them (ADR 0005 UI amendment).
     juce::TextButton recordModeButton { "Record" };
     juce::TextButton editModeButton { "Edit" };
+    juce::TextButton transcribeModeButton { "Transcribe" };
     juce::TextButton rewindButton;
     juce::TextButton playStopButton;
     juce::TextButton recordButton;

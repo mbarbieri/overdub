@@ -169,15 +169,29 @@ TEST_CASE ("every Intent leaf round-trips through its JSON form, named by its op
     CHECK (leaves >= 70);
 }
 
-TEST_CASE ("keys 1 and 2 show the Record and Edit modes, and command-E opens the Export sheet", "[ui][intent][keys]")
+TEST_CASE ("keys 1, 2 and 3 show the Record, Edit and Transcribe modes, and command-E opens the Export sheet", "[ui][intent][keys]")
 {
     CHECK (keyRuns (KeyChord { '1' }) == windowIntent (intent::ShowMode { Mode::record }));
     CHECK (keyRuns (KeyChord { '2' }) == windowIntent (intent::ShowMode { Mode::edit }));
-    CHECK (keyRuns (KeyChord { '3' }) == std::nullopt);
+    CHECK (keyRuns (KeyChord { '3' }) == windowIntent (intent::ShowMode { Mode::transcribe }));
+    CHECK (keyRuns (KeyChord { '4' }) == std::nullopt);
+    CHECK (keyRuns (KeyChord { '3', true }) == std::nullopt);
     CHECK (keyRuns (KeyChord { 'e', true }) == songIntent (intent::ShowExport { true }));
     CHECK (keyRuns (KeyChord { 'E', true }) == songIntent (intent::ShowExport { true }));
     CHECK (keyRuns (KeyChord { 'e', true, true }) == std::nullopt);
     CHECK (keyRuns (KeyChord { 'e' }) == std::nullopt);
+}
+
+TEST_CASE ("I shows the Transcribe column when it is hidden and hides it when it shows", "[ui][intent][keys][transcribe]")
+{
+    const auto run = [] (KeyChord key, bool visible) {
+        const auto intent = intentForKey (key, KeyContext { .transcribeColumnVisible = visible });
+        return intent.has_value() ? std::optional (core::operationToJson (*intent)) : std::nullopt;
+    };
+    CHECK (run (KeyChord { 'i' }, true) == windowIntent (intent::SetTranscribeColumnVisible { false }));
+    CHECK (run (KeyChord { 'I' }, false) == windowIntent (intent::SetTranscribeColumnVisible { true }));
+    CHECK (run (KeyChord { 'i', true }, true) == std::nullopt);
+    CHECK (run (KeyChord { 'i', false, true }, true) == std::nullopt);
 }
 
 TEST_CASE ("R records, Space plays or stops, command-Z undoes and shift-command-Z redoes", "[ui][intent][keys]")

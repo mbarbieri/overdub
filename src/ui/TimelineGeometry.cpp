@@ -4,6 +4,7 @@
 #include "ui/SongEdits.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <format>
 
@@ -50,18 +51,18 @@ TimelineView zoomedOut (TimelineView view)
     return view;
 }
 
-PinchZoom pinchZoomed (TimelineView view, double pendingLevels, float scaleFactor, int anchorX)
+PinchZoom pinchZoomed (TimelineView view, double pendingLevels, float scaleFactor, int anchorX, SampleCount minimum, SampleCount maximum)
 {
     auto levels = pendingLevels + std::log2 ((double) scaleFactor);
     auto samplesPerPixel = view.samplesPerPixel;
-    while (levels >= 0.5 && samplesPerPixel > minSamplesPerPixel)
+    while (levels >= 0.5 && samplesPerPixel > minimum)
     {
-        samplesPerPixel = std::max (minSamplesPerPixel, samplesPerPixel / 2);
+        samplesPerPixel = std::max (minimum, samplesPerPixel / 2);
         levels -= 1.0;
     }
-    while (levels <= -0.5 && samplesPerPixel < maxSamplesPerPixel)
+    while (levels <= -0.5 && samplesPerPixel < maximum)
     {
-        samplesPerPixel = std::min (maxSamplesPerPixel, samplesPerPixel * 2);
+        samplesPerPixel = std::min (maximum, samplesPerPixel * 2);
         levels += 1.0;
     }
     if (std::abs (levels) >= 0.5)
@@ -163,6 +164,20 @@ core::Expected<song::Song> songForDrag (const song::Song& songAtDown, const Clip
     if (! edited.has_value())
         return std::unexpected (edited.error());
     return std::move (edited->song);
+}
+
+double rulerStepSeconds (SampleCount samplesPerPixel, int sampleRate)
+{
+    constexpr std::array steps { 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0 };
+    for (const auto step : steps)
+        if (step * sampleRate / (double) samplesPerPixel >= 70.0)
+            return step;
+    return steps.back();
+}
+
+std::string rulerLabel (double seconds)
+{
+    return std::format ("{:g} s", seconds);
 }
 
 std::string decibelsText (double gainDb)

@@ -44,12 +44,15 @@ target_sources(overdub_ui PRIVATE
     TimelineGestures.cpp
     TimelineGeometry.cpp
     TopBar.cpp
+    TranscribeGeometry.cpp
+    TranscribePage.cpp
     TrackDrag.cpp
     TrackRowEdits.cpp
     TransportText.cpp
     UserMessages.cpp
     VideoPreview.cpp
     VideoScreen.mm
+    WindowSettings.cpp
     Workspace.cpp)
 
 set_source_files_properties(CameraStage.mm VideoScreen.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")

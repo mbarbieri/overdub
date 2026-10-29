@@ -30,7 +30,7 @@
 
 // The UI → Intent proof (ADR 0008, issue #167): every gesture the window's Components offer, and
 // each File menu Song item (ui/SongMenuItems.h), is fired at a Song with Tracks, Clips, a Pass, a
-// Video Take, an Insert and a selection, in each mode, with the Export sheet open (issue #200) and
+// Video Take, an Insert and a selection, in each mode (Transcribe too, issue #225), with the Export sheet open (issue #200) and
 // while an export runs (issue #202), and a gesture that changes the app state without running an Intent through
 // MainComponent::run (its intentsRun count, which includes the per-frame Intents that log no
 // ui.intent_run) is a bypass, and the census fails on any bypass.
@@ -341,6 +341,10 @@ struct CensusWorkspace
         const auto& timeline = builtView["timeline"];
         if (differs ("/timeline/first_sample"_json_pointer) || differs ("/timeline/samples_per_pixel"_json_pointer))
             f.content.run (ui::SongIntent { SetTimelineView { timeline["first_sample"].get<song::SampleCount>(), timeline["samples_per_pixel"].get<song::SampleCount>() } });
+        if (differs ("/transcribe"_json_pointer))
+            f.content.run (ui::SongIntent { SetTranscribeView { builtView["transcribe"]["first_sample"].get<song::SampleCount>(), builtView["transcribe"]["samples_per_pixel"].get<song::SampleCount>() } });
+        if (differs ("/transcribe_column_visible"_json_pointer))
+            f.content.run (ui::WindowIntent { SetTranscribeColumnVisible { builtView["transcribe_column_visible"].get<bool>() } });
         if (differs ("/timeline/take_lanes_unfolded"_json_pointer))
             for (const auto& track : f.song().song().tracks)
                 f.content.run (ui::SongIntent { SetTakeLanesUnfolded { track.id, std::ranges::contains (timeline["take_lanes_unfolded"], json (track.id)) } });
@@ -408,6 +412,7 @@ CensusResult runCensus()
     const Scene scenes[] {
         { "record", ui::Mode::record, false },
         { "edit", ui::Mode::edit, false },
+        { "transcribe", ui::Mode::transcribe, false },
         { "export_sheet", ui::Mode::record, true },
         { "exporting", ui::Mode::record, false, true },
     };
@@ -433,6 +438,8 @@ CensusResult runCensus()
 
 TEST_CASE ("no gesture changes the app state without running an Intent", "[control][census]")
 {
+    // Kept for the TopBar and TranscribeColumn built below, after every census Workspace is gone.
+    const juce::ScopedJuceInitialiser_GUI gui;
     const auto result = runCensus();
     for (const auto& [probe, changed] : result.changedBy)
         FAIL_CHECK (probe << " changed " << changed << " without running an Intent");
@@ -463,6 +470,24 @@ TEST_CASE ("no gesture changes the app state without running an Intent", "[contr
     CHECK (fired ("record/TopBar#0/Label#" + std::to_string (practiceSpeedOrdinal), ":double_click"));
     CHECK (fired ("edit/TopBar#0/Label#" + std::to_string (practiceSpeedOrdinal), ":click"));
     CHECK (fired ("record/menu:Export...", ""));
+    // Transcribe mode (issue #225): its mode button, 3 and I, and its page's overview, waveform and
+    // column.
+    int transcribeOrdinal = 0;
+    for (int i = 0; bar.getChildComponent (i) != &bar.transcribeModeButton; ++i)
+        if (dynamic_cast<const juce::TextButton*> (bar.getChildComponent (i)) != nullptr)
+            ++transcribeOrdinal;
+    CHECK (fired ("record/TopBar#0/TextButton#" + std::to_string (transcribeOrdinal), ":click"));
+    CHECK (fired ("record/key:3", ""));
+    CHECK (fired ("transcribe/key:i", ""));
+    CHECK (fired ("transcribe/", "/TranscribePage#0/TranscribeOverview#0:drag"));
+    CHECK (fired ("transcribe/", "/TranscribePage#0/TranscribeWave#0:pinch"));
+    CHECK (fired ("transcribe/", "/TranscribePage#0/TranscribeWave#0:wheel"));
+    const ui::TranscribeColumn column;
+    int columnFieldOrdinal = 0;
+    for (int i = 0; column.getChildComponent (i) != &column.practiceSpeedField; ++i)
+        if (dynamic_cast<const juce::Label*> (column.getChildComponent (i)) != nullptr)
+            ++columnFieldOrdinal;
+    CHECK (fired ("transcribe/", "/TranscribeColumn#0/Label#" + std::to_string (columnFieldOrdinal) + ":double_click"));
 }
 
 TEST_CASE ("the census fails on a button that edits the Song without an Intent", "[control][census]")

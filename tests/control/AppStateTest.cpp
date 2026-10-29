@@ -128,6 +128,8 @@ TEST_CASE ("the app state has every section, each with its keys, over a Song wit
     CHECK (view["selected_video_take"] == nullptr);
     CHECK (keysOf (view["timeline"]) == std::set<std::string> { "first_sample", "samples_per_pixel", "vertical_scroll", "take_lanes_unfolded" });
     CHECK (view["timeline"]["take_lanes_unfolded"] == json::array());
+    CHECK (keysOf (view["transcribe"]) == std::set<std::string> { "first_sample", "samples_per_pixel" });
+    CHECK (view["transcribe_column_visible"] == true);
     CHECK (view["mixer_visible"] == true);
     CHECK (view["passes_panel_open"] == false);
     CHECK (view["export_sheet_shown"] == false);
@@ -170,7 +172,7 @@ TEST_CASE ("the app state with no Song open has null Song sections and the mode"
     CHECK (state["song"] == nullptr);
     CHECK (state["history"] == nullptr);
     CHECK (state["transport"] == nullptr);
-    CHECK (state["view"] == json { { "mode", "record" } });
+    CHECK (state["view"] == json { { "mode", "record" }, { "transcribe_column_visible", true } });
     CHECK (state["activity"] == json { { "kind", "idle" }, { "progress", 0.0 }, { "counter", 0 }, { "last_finish", nullptr } });
     CHECK (state["refused"]["add_track"] == nullptr);
 }

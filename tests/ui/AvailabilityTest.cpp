@@ -92,9 +92,9 @@ TEST_CASE ("during a Pass only transport, view and plugin window ops, the Window
     const std::set<std::string> allowed {
         "record", "record_again", "play_or_stop", "rewind", "cancel_run", "open_insert_editor", "close_plugin_window",
         "set_export_format", "set_export_length", "set_export_destination", "set_export_video_take", "reveal_export",
-        "select_clip", "select_video_take", "set_timeline_view", "set_vertical_scroll", "set_take_lanes_unfolded",
+        "select_clip", "select_video_take", "set_timeline_view", "set_transcribe_view", "set_vertical_scroll", "set_take_lanes_unfolded",
         "set_mixer_visible", "set_mixer_height", "set_passes_panel_open", "clear_clip_indicator",
-        "show_mode", "dismiss_alerts", "quit"
+        "show_mode", "dismiss_alerts", "set_transcribe_column_visible", "quit"
     };
 
     auto expected = allBut (allowed, "ui.stop_recording_first");
@@ -228,4 +228,21 @@ TEST_CASE ("set_practice_speed is refused while a Pass, a Separation or a conver
     CHECK (refusalOf ("set_practice_speed", Running { .song = ActivityKind::conversion }).has_value());
     CHECK_FALSE (refusalOf ("set_practice_speed", Running { .song = ActivityKind::exportSong }).has_value());
     CHECK_FALSE (refusalOf ("set_practice_speed", Running { .song = ActivityKind::idle, .transposing = true }).has_value());
+}
+
+TEST_CASE ("in Transcribe mode the Clip edits and nudge are refused quietly with ui.transcribing", "[ui][availability][transcribe]")
+{
+    const std::set<std::string> clipOps { "move_clip", "trim_clip_start", "trim_clip_end", "set_clip_fade_in", "set_clip_fade_out", "set_clip_gain", "split_selected_clip", "delete_selection", "take_lane_click", "nudge" };
+    std::map<std::string, std::string> expected { { "cancel_export", "ui.no_export_running" } };
+    for (const auto& op : clipOps)
+        expected[op] = "ui.transcribing";
+    CHECK (refusedCodes (Running { .song = ActivityKind::idle, .transcribing = true }) == expected);
+
+    const auto refused = refusalOf ("split_selected_clip", Running { .song = ActivityKind::idle, .transcribing = true });
+    REQUIRE (refused.has_value());
+    CHECK_FALSE (refused->presented);
+    CHECK (refused->error.fields.at ("op") == "split_selected_clip");
+    CHECK (unavailableReason ("ui.transcribing") == "Unavailable in Transcribe mode");
+    // With no Song open each answers ui.no_song_open from its handler instead.
+    CHECK (refusedCodes (Running { .transcribing = true }).empty());
 }

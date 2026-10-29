@@ -224,6 +224,7 @@ Running MainComponent::running() const
         .calibrating = calibrationRunning != nullptr && calibrationRunning(),
         .songHasNoPass = songContent != nullptr && songContent->currentSong().song().passes.empty(),
         .transposing = songContent != nullptr && songContent->currentSong().isTransposing(),
+        .transcribing = currentMode == Mode::transcribe,
     };
 }
 
@@ -258,6 +259,7 @@ IntentResult MainComponent::runWindow (const WindowIntent& windowIntent)
         core::Overloaded {
             [this] (const ShowMode& show) -> IntentResult { showMode (show.mode); return IntentDone {}; },
             [this] (const DismissAlerts&) { return dismissAlerts(); },
+            [this] (const SetTranscribeColumnVisible& i) { return setTranscribeColumnVisible (i.visible); },
         });
 }
 
@@ -276,6 +278,35 @@ void MainComponent::showMode (Mode mode)
         core::logEvent (core::Level::debug, "ui.mode_changed", { { "mode", modeName (mode) } });
     }
     currentMode = mode;
+    refresh();
+}
+
+IntentResult MainComponent::setTranscribeColumnVisible (bool visible)
+{
+    if (visible != windowSettings.transcribeColumnVisible)
+        core::logEvent (core::Level::debug, "ui.transcribe_column_visibility_changed", { { "visible", visible } });
+    windowSettings.transcribeColumnVisible = visible;
+    // The column shows either way: a settings file that cannot be written only forgets it.
+    if (windowSettingsFile != juce::File())
+        if (auto written = writeWindowSettings (windowSettingsFile, windowSettings); ! written.has_value())
+            core::logError (written.error(), core::Level::warn);
+    refresh();
+    return IntentDone {};
+}
+
+void MainComponent::useWindowSettingsFile (const juce::File& file)
+{
+    windowSettingsFile = file;
+    if (file == juce::File())
+        return;
+    auto read = readWindowSettings (file);
+    if (! read.has_value())
+    {
+        core::logError (read.error(), core::Level::warn);
+        return;
+    }
+    windowSettings = *read;
+    core::logEvent (core::Level::debug, "ui.window_settings_read", { { "path", file.getFullPathName().toStdString() }, { "transcribe_column_visible", windowSettings.transcribeColumnVisible } });
     refresh();
 }
 
@@ -416,10 +447,11 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
 {
     const auto modifiers = key.getModifiers();
     const auto intent = intentForKey (KeyChord {
-        .character = (char32_t) key.getKeyCode(),
-        .command = modifiers.isCommandDown(),
-        .shift = modifiers.isShiftDown(),
-    });
+                                          .character = (char32_t) key.getKeyCode(),
+                                          .command = modifiers.isCommandDown(),
+                                          .shift = modifiers.isShiftDown(),
+                                      },
+                                      KeyContext { .transcribeColumnVisible = windowSettings.transcribeColumnVisible });
     // The run dialog is modal: it swallows every key while it shows.
     if (runShowing())
         return true;
