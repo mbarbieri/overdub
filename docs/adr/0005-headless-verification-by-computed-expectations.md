@@ -30,7 +30,7 @@ Every implementation slice must build and pass the full `ctest` suite, and it mu
   | Backing Track import, resampled sine | frequency within 0.01 Hz (1 kHz, 48 → 44.1 kHz) |
   | Sample rate conversion (issue #160) | a Take's click lands sample-exact on `llround (position × new rate / old rate)` (44.1 → 48 kHz); a Backing Track derived again from its original at the original's rate equals it sample for sample, its 1 kHz sine within 0.01 Hz |
   | Transpose render (issue #209) | a 440 Hz sine rendered at +12 and −1 semitones is within 5 cents of 440 × 2^(n/12) Hz (Signalsmith Stretch's default preset measured +1.0 and +3.6 cents), and exactly as long as its source |
-  | Practice Speed render (issue #212) | a 440 Hz sine rendered at 50, 80 and 125% is within 5 cents of 440 Hz and exactly llround (length × 100 / speed) samples long; an impulse at source sample t peaks within 1 ms of t × 100 / speed, in the render and played through `Engine::process` |
+  | Practice Speed render (issue #212; 25% added by issue #229) | a 440 Hz sine rendered at 25, 50, 80 and 125% is within 5 cents of 440 Hz and exactly llround (length × 100 / speed) samples long; an impulse at source sample t peaks within 1 ms of t × 100 / speed, in the render and played through `Engine::process` |
 - UI verification is covered by the amendment below.
 
 ## Amendment: UI verification (issue #17)

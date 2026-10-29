@@ -28,7 +28,7 @@ core::Expected<int> checkPracticeSpeed (int speedPercent)
     if (speedPercent < minPracticeSpeed || speedPercent > maxPracticeSpeed)
         return std::unexpected (core::Error {
             "song.practice_speed_out_of_range",
-            "Practice Speed is a whole percent from 50 to 125",
+            "Practice Speed is a whole percent from 25 to 125",
             { { "speed_percent", speedPercent }, { "min", minPracticeSpeed }, { "max", maxPracticeSpeed } },
         });
     return speedPercent;

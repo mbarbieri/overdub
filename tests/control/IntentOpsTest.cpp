@@ -387,7 +387,7 @@ TEST_CASE ("record and export over the socket while Transposing are refused with
     CHECK_FALSE (socket.f.openSong->isExporting());
 }
 
-TEST_CASE ("set_practice_speed takes a whole percent from 50 to 125, outside history, and any other value is an explicit Error", "[control][intent_ops][practice_speed]")
+TEST_CASE ("set_practice_speed takes a whole percent from 25 to 125, outside history, and any other value is an explicit Error", "[control][intent_ops][practice_speed]")
 {
     SocketToWindow socket;
     const auto undoLabel = socket.f.openSong->package().undoLabel();
@@ -397,11 +397,19 @@ TEST_CASE ("set_practice_speed takes a whole percent from 50 to 125, outside his
     CHECK (socket.f.openSong->practiceSpeed() == 80);
     CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
 
-    for (const auto* outside : { R"({"id": 2, "op": "set_practice_speed", "speed_percent": 49})", R"({"id": 3, "op": "set_practice_speed", "speed_percent": 126})" })
+    const auto slowest = socket.request (R"({"id": 7, "op": "set_practice_speed", "speed_percent": 25})");
+    CHECK (slowest.at ("ok") == true);
+    CHECK (socket.f.openSong->practiceSpeed() == 25);
+    CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
+    CHECK (socket.request (R"({"id": 8, "op": "set_practice_speed", "speed_percent": 80})").at ("ok") == true);
+
+    for (const auto* outside : { R"({"id": 2, "op": "set_practice_speed", "speed_percent": 24})", R"({"id": 3, "op": "set_practice_speed", "speed_percent": 126})" })
     {
         const auto outOfRange = socket.request (outside);
         CHECK (outOfRange.at ("ok") == false);
         CHECK (outOfRange.at ("error").at ("code") == "song.practice_speed_out_of_range");
+        CHECK (outOfRange.at ("error").at ("fields").at ("min") == 25);
+        CHECK (outOfRange.at ("error").at ("fields").at ("max") == 125);
     }
 
     for (const auto* notWhole : { R"({"id": 4, "op": "set_practice_speed", "speed_percent": 80.5})", R"({"id": 5, "op": "set_practice_speed", "speed_percent": "80%"})", R"({"id": 6, "op": "set_practice_speed"})" })

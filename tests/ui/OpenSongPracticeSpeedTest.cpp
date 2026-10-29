@@ -1,5 +1,6 @@
 #include "ui/OpenSong.h"
 
+#include "../song/AudioMeasurements.h"
 #include "core/Log.h"
 #include "engine/EngineFixture.h"
 #include "song/AtomicWrite.h"
@@ -142,7 +143,7 @@ TEST_CASE ("a Practice Speed change plays the previous audio until every source'
     CHECK_FALSE (f.openSong->practiceRenderFolder().isAChildOf (f.root));
 }
 
-TEST_CASE ("a value outside 50..125 is refused and changes nothing", "[ui][open_song][practice_speed]")
+TEST_CASE ("a value outside 25..125 is refused and changes nothing", "[ui][open_song][practice_speed]")
 {
     PracticeFixture f;
 
@@ -177,6 +178,46 @@ TEST_CASE ("at 80% the playhead moves at 0.8 times real time, and a Take and a B
     CHECK (backing == take);
     // 160 blocks of 256 samples move the playhead 40960 × 0.8 Song samples.
     CHECK (f.openSong->position() == 32768);
+}
+
+TEST_CASE ("at 25% a sine Backing Track keeps its frequency, and an impulse at Song time t is heard after 4t", "[ui][open_song][practice_speed]")
+{
+    // A Song with one Backing Track: a 440 Hz sine for 2 s with an impulse over it at Song time 0.5 s.
+    TempPackage folder;
+    const auto root = folder.root.getChildFile ("Song.overdub");
+    auto samples = sine (2 * testSampleRate, 440.0);
+    samples[(std::size_t) clickAt] = 1.0f;
+    const auto wav = folder.root.getChildFile ("Sine.wav");
+    writeFloatWav (wav, { samples });
+    auto created = overdub::song::SongPackage::create (root, overdub::song::makeEmptySong (testSampleRate));
+    REQUIRE (created.has_value());
+    REQUIRE ((*created)->importBackingTrack (wav).has_value());
+    Engine engine { EngineConfig { .numOutputChannels = 2, .maxBlockSize = 256 } };
+    auto openSong = std::make_unique<OpenSong> (std::move (*created), AudioBinding { &engine, {}, {} });
+    DeviceDriver device { 2, 256 };
+
+    REQUIRE (openSong->setPracticeSpeed (25).has_value());
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (60);
+    while (openSong->isPracticeRendering() && std::chrono::steady_clock::now() < deadline)
+    {
+        CHECK (openSong->poll().empty());
+        std::this_thread::sleep_for (std::chrono::milliseconds (5));
+    }
+    REQUIRE (openSong->heardPracticeSpeed() == 25);
+    REQUIRE (openSong->playOrStop().has_value());
+    // 1400 blocks: about 7.5 s of playback, within the 8 s the 2 s Song lasts at 25%.
+    const auto left = device.render (engine, 1400).channels[0];
+    // 358400 samples of playback move the playhead 358400 × 0.25 Song samples.
+    CHECK (openSong->position() == 89600);
+    openSong->stop();
+    device.render (engine, 1);
+
+    // ADR 0005: within 5 cents, measured away from the impulse (heard at 2 s) and the ends.
+    const auto measured = overdub::song::testing::measuredFrequency (left.data(), 3 * testSampleRate, 7 * testSampleRate, testSampleRate);
+    CHECK_THAT (1200.0 * std::log2 (measured / 440.0), WithinAbs (0.0, 5.0));
+    // ADR 0005: within 1 ms of 4 × 0.5 s.
+    CHECK_THAT ((double) peakIndex (left), WithinAbs (4.0 * clickAt, 48.0));
+    openSong.reset();
 }
 
 TEST_CASE ("a Practice Speed change during play switches to the renders at the same Song time", "[ui][open_song][practice_speed]")

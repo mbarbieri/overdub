@@ -233,6 +233,33 @@ TEST_CASE ("the left and right arrows nudge the playhead back and forward", "[ui
     CHECK (keyRuns (KeyChord { rightArrowCharacter, false, true }) == std::nullopt);
 }
 
+TEST_CASE ("H sets half speed or back to 100%, and - and = step the Practice Speed by 5%, clamped to 25..125", "[ui][intent][keys][practice_speed]")
+{
+    const auto runs = [] (KeyChord key, int practiceSpeed) -> std::optional<nlohmann::json> {
+        const auto intent = intentForKey (key, KeyContext { .practiceSpeed = practiceSpeed });
+        if (! intent.has_value())
+            return std::nullopt;
+        return core::operationToJson (*intent);
+    };
+    CHECK (runs (KeyChord { 'h' }, 100) == songIntent (intent::SetPracticeSpeed { 50 }));
+    CHECK (runs (KeyChord { 'H' }, 80) == songIntent (intent::SetPracticeSpeed { 50 }));
+    CHECK (runs (KeyChord { 'h' }, 50) == songIntent (intent::SetPracticeSpeed { 100 }));
+
+    CHECK (runs (KeyChord { '-' }, 100) == songIntent (intent::SetPracticeSpeed { 95 }));
+    CHECK (runs (KeyChord { '=' }, 100) == songIntent (intent::SetPracticeSpeed { 105 }));
+    CHECK (runs (KeyChord { '-' }, 27) == songIntent (intent::SetPracticeSpeed { 25 }));
+    CHECK (runs (KeyChord { '-' }, 25) == songIntent (intent::SetPracticeSpeed { 25 }));
+    CHECK (runs (KeyChord { '=' }, 123) == songIntent (intent::SetPracticeSpeed { 125 }));
+    CHECK (runs (KeyChord { '=' }, 125) == songIntent (intent::SetPracticeSpeed { 125 }));
+
+    for (const auto character : { U'h', U'-', U'=' })
+    {
+        CHECK (runs (KeyChord { .character = character, .command = true }, 100) == std::nullopt);
+        CHECK (runs (KeyChord { .character = character, .shift = true }, 100) == std::nullopt);
+        CHECK (runs (KeyChord { .character = character, .option = true }, 100) == std::nullopt);
+    }
+}
+
 TEST_CASE ("K adds a Marker, and backspace or forward delete deletes the selected Marker while one is selected", "[ui][intent][keys][markers]")
 {
     CHECK (keyRuns (KeyChord { 'k' }) == songIntent (intent::AddMarker {}));

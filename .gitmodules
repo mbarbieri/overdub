@@ -15,6 +15,7 @@
 [submodule "external/signalsmith-stretch"]
 	path = external/signalsmith-stretch
 	url = https://github.com/Signalsmith-Audio/signalsmith-stretch.git
+	ignore = dirty
 [submodule "external/signalsmith-linear"]
 	path = external/signalsmith-linear
 	url = https://github.com/Signalsmith-Audio/linear.git

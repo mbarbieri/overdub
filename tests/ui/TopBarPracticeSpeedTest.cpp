@@ -114,7 +114,7 @@ TEST_CASE ("Practice Speed typed in the window's top bar is no undo step, and an
     CHECK (f.window->topBar.practiceSpeedSpinner.isVisible());
 
     core::ScopedLogCapture capture;
-    field.setText ("49", juce::sendNotificationSync);
+    field.setText ("24", juce::sendNotificationSync);
     CHECK (f.openSong->practiceSpeed() == 80);
     CHECK (field.getText() == "80");
     bool noticeShown = false;
@@ -122,4 +122,34 @@ TEST_CASE ("Practice Speed typed in the window's top bar is no undo step, and an
         if (event.at ("event") == "ui.notice_shown" && event.at ("code") == "song.practice_speed_out_of_range")
             noticeShown = true;
     CHECK (noticeShown);
+}
+
+TEST_CASE ("in every mode H toggles half speed, and - and = step the Practice Speed by 5%, clamped to 25..125, never an undo step", "[ui][keys][practice_speed]")
+{
+    MainWindowFixture f;
+    const auto undoLabel = f.openSong->package().undoLabel();
+    const auto press = [&f] (char character) { f.window->keyPressed (juce::KeyPress ((int) character, {}, (juce::juce_wchar) character)); };
+
+    for (const auto mode : { Mode::record, Mode::edit, Mode::transcribe })
+    {
+        INFO (modeName (mode));
+        f.window->run (WindowIntent { intent::ShowMode { mode } });
+        press ('h');
+        CHECK (f.openSong->practiceSpeed() == 50);
+        press ('h');
+        CHECK (f.openSong->practiceSpeed() == 100);
+        press ('-');
+        CHECK (f.openSong->practiceSpeed() == 95);
+        press ('=');
+        CHECK (f.openSong->practiceSpeed() == 100);
+    }
+
+    for (int i = 0; i < 20; ++i)
+        press ('-');
+    CHECK (f.openSong->practiceSpeed() == 25);
+    for (int i = 0; i < 30; ++i)
+        press ('=');
+    CHECK (f.openSong->practiceSpeed() == 125);
+    CHECK (f.window->topBar.practiceSpeedField.getText() == "125");
+    CHECK (f.openSong->package().undoLabel() == undoLabel);
 }

@@ -1,0 +1,11 @@
+--- a/signalsmith-stretch.h
++++ b/signalsmith-stretch.h
+@@ -506,7 +506,7 @@
+ 
+ 	using Complex = std::complex<Sample>;
+ 	static constexpr Sample noiseFloor{Sample(1e-15)};
+-	static constexpr Sample maxCleanStretch{2}; // time-stretch ratio before we start randomising phases
++	static constexpr Sample maxCleanStretch{4}; // time-stretch ratio before we start randomising phases (OVERDUB PATCH: 2 upstream; 4 keeps a 25% Practice Speed render phase-coherent, ADR 0009)
+ 	size_t silenceCounter = 0;
+ 	bool silenceFirst = true;
+ 
