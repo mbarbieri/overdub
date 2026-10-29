@@ -76,11 +76,15 @@ std::optional<Intent> intentForKey (KeyChord key, KeyContext context)
         case U'2': return WindowIntent { intent::ShowMode { Mode::edit } };
         case U'3': return WindowIntent { intent::ShowMode { Mode::transcribe } };
         case U'i': return WindowIntent { intent::SetTranscribeColumnVisible { ! context.transcribeColumnVisible } };
+        case U'k': return SongIntent { intent::AddMarker {} };
         case U'r': return SongIntent { intent::Record {} };
         case U' ': return SongIntent { intent::PlayOrStop {} };
         case U's': return SongIntent { intent::SplitSelectedClip {} };
         case backspaceCharacter:
-        case forwardDeleteCharacter: return SongIntent { intent::DeleteSelection {} };
+        case forwardDeleteCharacter:
+            if (context.selectedMarker.has_value())
+                return SongIntent { intent::Edit { intent::DeleteMarker { *context.selectedMarker } } };
+            return SongIntent { intent::DeleteSelection {} };
         case leftArrowCharacter: return SongIntent { intent::Nudge { Direction::back } };
         case rightArrowCharacter: return SongIntent { intent::Nudge { Direction::forward } };
         default: return std::nullopt;

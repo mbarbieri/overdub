@@ -170,6 +170,7 @@ inline Song fullyPopulatedSong()
     song.exportLength = VideoLength::fullSong;
     song.exportDestination = "/Users/someone/Music/Mixes/Band Mix.mp4";
     song.transpose = -3;
+    song.markers = { Marker { .id = "marker-1", .name = "Verse", .position = 48000 }, Marker { .id = "marker-2", .name = "Chorus", .position = 96000 } };
     song.focusTrackId = "track-backing";
     return song;
 }

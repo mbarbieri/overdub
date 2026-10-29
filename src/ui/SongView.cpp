@@ -5,6 +5,7 @@
 #include "plugin/PluginKind.h"
 #include "song/ClipEdits.h"
 #include "song/InsertEdits.h"
+#include "song/MarkerEdits.h"
 #include "song/MixEdits.h"
 #include "song/TakeEdits.h"
 #include "song/TrackEdits.h"
@@ -97,6 +98,8 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const SetFocusTrack& i) { return unlessRefused (openSong.setFocusTrack (i.trackId)); },
             [this] (const SetTranscribeMute& i) { return unlessRefused (openSong.setTranscribeMute (i.trackId, i.mute)); },
             [this] (const SetTranscribeSolo& i) { return unlessRefused (openSong.setTranscribeSolo (i.trackId, i.solo)); },
+            [this] (const AddMarker&) { return addMarker(); },
+            [this] (const SelectMarker& i) { return selectMarker (i.markerId); },
             [this] (const SetPreRoll& i) { return setPreRoll (i.preRoll); },
             [this] (const SetCameraArmed& i) { return armCamera (i.armed); },
             [this] (const SetCameraDevice& i) { return setCameraDevice (i.cameraId); },
@@ -115,8 +118,8 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const Export&) { return exportSong(); },
             [this] (const CancelExport&) { return cancelExport(); },
             [this] (const RevealExport&) { return revealExport(); },
-            [this] (const SelectClip& i) -> IntentResult { editPage.timeline.selectClip (i.clipId); return IntentDone {}; },
-            [this] (const SelectVideoTake& i) -> IntentResult { editPage.timeline.selectVideoTake (i.videoTakeId); return IntentDone {}; },
+            [this] (const SelectClip& i) -> IntentResult { selectedMarkerId.reset(); editPage.timeline.selectClip (i.clipId); return IntentDone {}; },
+            [this] (const SelectVideoTake& i) -> IntentResult { selectedMarkerId.reset(); editPage.timeline.selectVideoTake (i.videoTakeId); return IntentDone {}; },
             [this] (const SetTimelineView& i) -> IntentResult { editPage.timeline.setView (i.firstSample, i.samplesPerPixel); return IntentDone {}; },
             [this] (const SetTranscribeView& i) -> IntentResult { transcribePage.setView (i.firstSample, i.samplesPerPixel); return IntentDone {}; },
             [this] (const SetVerticalScroll& i) -> IntentResult { editPage.timeline.setVerticalScroll (i.pixels); return IntentDone {}; },
@@ -288,6 +291,44 @@ IntentResult SongView::setTranspose (int semitones)
 IntentResult SongView::setPracticeSpeed (int speedPercent)
 {
     return unlessRefused (openSong.setPracticeSpeed (speedPercent));
+}
+
+IntentResult SongView::addMarker()
+{
+    const auto markerId = song::makeId();
+    const auto position = openSong.position();
+    if (auto added = applyEdit (song::addMarker (openSong.song(), position, markerId), song::addMarkerLabel); ! added.has_value())
+        return added;
+    const auto* marker = song::findMarker (openSong.song(), markerId);
+    core::logEvent (core::Level::info, "ui.marker_added", { { "marker_id", markerId }, { "position", position }, { "name", marker != nullptr ? marker->name : std::string {} } });
+    return IntentDone { .createdId = markerId };
+}
+
+IntentResult SongView::selectMarker (const std::optional<song::Id>& markerId)
+{
+    if (! markerId.has_value())
+    {
+        selectedMarkerId.reset();
+        return IntentDone {};
+    }
+    const auto* marker = song::findMarker (openSong.song(), *markerId);
+    if (marker == nullptr)
+        return window.quietError (song::markerNotFound (*markerId));
+    if (auto sought = unlessRefused (openSong.seek (marker->position)); ! sought.has_value())
+        return sought;
+    if (window.mode() != Mode::record)
+    {
+        selectedMarkerId = *markerId;
+        editPage.timeline.selectClip (std::nullopt);
+    }
+    return IntentDone {};
+}
+
+std::optional<song::Id> SongView::selectedMarker() const
+{
+    if (selectedMarkerId.has_value() && song::findMarker (openSong.song(), *selectedMarkerId) != nullptr)
+        return selectedMarkerId;
+    return std::nullopt;
 }
 
 IntentResult SongView::setCameraDevice (const std::string& cameraId)
@@ -785,6 +826,8 @@ void SongView::refresh (TopBarState& state)
             .tracksDeletable = ! window.refusalOf (intent::ImportFiles::op).has_value(),
             .videoTakes = openSong.videoPlayback().spans (song),
             .canArmCamera = cameraControls.canArm && ! window.refusalOf (intent::SetCameraArmed::op).has_value(),
+            .selectedMarker = selectedMarker(),
+            .markersEditable = ! window.refusalOf (intent::MoveMarker::op).has_value(),
         });
     if (mode == Mode::transcribe)
         transcribePage.show (TranscribePageState {
@@ -798,6 +841,8 @@ void SongView::refresh (TopBarState& state)
             .transposeRendering = state.transposeRendering,
             .canTranspose = state.canTranspose,
             .canSetTranscribeMix = ! window.refusalOf (intent::SetFocusTrack::op).has_value(),
+            .selectedMarker = selectedMarker(),
+            .markersEditable = ! window.refusalOf (intent::MoveMarker::op).has_value(),
         });
     const auto request = exportRequest();
     exportSheet.show (ExportSheetState {

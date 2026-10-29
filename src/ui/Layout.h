@@ -16,6 +16,8 @@ inline constexpr int topBarHeight = 52;
 inline constexpr int noticeLineHeight = 28;
 inline constexpr int trackColumnWidth = 460;
 inline constexpr int trackRowHeight = 98;
+// The Loop/Marker strip above the ruler in every mode (issue #227, ui/MarkerStrip.h).
+inline constexpr int markerStripHeight = 20;
 
 struct MainLayout
 {
@@ -64,7 +66,7 @@ TopBarLayout topBarLayout (juce::Rectangle<int> bar);
 // at its right end) over the camera stage; in a right column of trackColumnWidth the Track rows,
 // the Add Track and Import buttons side by side under the last row, then the Passes list filling
 // the rest. Along the bottom, full width, the Backing Track look-ahead strip and under it the
-// whole-Song overview.
+// whole-Song overview, with the read-only Loop/Marker strip (issue #227) right above it.
 inline constexpr int stageBarHeight = 30;
 inline constexpr int lookAheadStripHeight = 124;
 inline constexpr int songOverviewHeight = 40;
@@ -81,6 +83,7 @@ struct RecordPageLayout
     juce::Rectangle<int> importButton;
     juce::Rectangle<int> passes;
     juce::Rectangle<int> lookAhead;
+    juce::Rectangle<int> markerStrip;
     juce::Rectangle<int> overview;
 };
 
@@ -171,7 +174,8 @@ ClipToolbarLayout clipToolbarLayout (juce::Rectangle<int> bar);
 
 // The timeline: a header column of laneHeaderWidth on the left; on the right the ruler, the
 // Camera lane, one lane per Track, each followed by its unfolded Take Lanes (issue #30), and the
-// horizontal scroll bar along the bottom. Rows keep their height.
+// horizontal scroll bar along the bottom. Rows keep their height. Above the ruler, the Loop/Marker
+// strip (issue #227) with its own corner over the header column.
 //
 // Vertical scrolling (issue #127): the Track rows (headers, lanes, Take Lanes) sit in the tracks
 // viewport between the Camera lane and the horizontal scroll bar, moved up by the vertical scroll;
@@ -187,6 +191,8 @@ inline constexpr int timelineScrollBarHeight = 12;
 
 struct TimelineLayout
 {
+    juce::Rectangle<int> markerStripCorner;
+    juce::Rectangle<int> markerStrip;
     juce::Rectangle<int> rulerCorner;
     juce::Rectangle<int> ruler;
     juce::Rectangle<int> cameraHeader;
@@ -331,16 +337,21 @@ struct PassRowLayout
 
 PassRowLayout passRowLayout (juce::Rectangle<int> row);
 
-// Transcribe mode (issue #225): the whole-Song overview strip on top, under it the ruler over the
-// one tall waveform, and at the right, full height, the Transcribe column of transcribeColumnWidth
-// while it shows (empty while hidden: the rest takes its width).
+// Transcribe mode (issue #225): the whole-Song overview strip on top, under it the Loop/Marker
+// strip (issue #227) over the ruler over the one tall waveform; at the left, full height, the
+// Markers list of transcribeMarkersWidth (issue #227), and at the right, full height, the
+// Transcribe column of transcribeColumnWidth while it shows (empty while hidden: the rest takes its
+// width).
 inline constexpr int transcribeOverviewHeight = 56;
 inline constexpr int transcribeRulerHeight = 22;
 inline constexpr int transcribeColumnWidth = 200;
+inline constexpr int transcribeMarkersWidth = 180;
 
 struct TranscribePageLayout
 {
+    juce::Rectangle<int> markers;
     juce::Rectangle<int> overview;
+    juce::Rectangle<int> markerStrip;
     juce::Rectangle<int> ruler;
     juce::Rectangle<int> waveform;
     juce::Rectangle<int> column;

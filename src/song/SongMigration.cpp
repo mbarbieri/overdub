@@ -111,12 +111,18 @@ core::Expected<nlohmann::json> addTranscribeMix (nlohmann::json document)
     }
     return document;
 }
+
+core::Expected<nlohmann::json> addMarkers (nlohmann::json document)
+{
+    document["markers"] = nlohmann::json::array();
+    return document;
+}
 } // namespace
 
 std::span<const MigrationStep> songMigrationSteps()
 {
     // songFormatVersion must equal songMigrationSteps().size() + 1.
-    static const std::array<MigrationStep, 6> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours, addExportChoices, addTranspose, addTranscribeMix };
+    static const std::array<MigrationStep, 7> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours, addExportChoices, addTranspose, addTranscribeMix, addMarkers };
     static_assert (std::tuple_size_v<decltype (steps)> + 1 == songFormatVersion);
     return steps;
 }

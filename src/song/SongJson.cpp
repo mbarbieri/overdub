@@ -318,6 +318,15 @@ json backingTrackToJson (const BackingTrack& backing)
     };
 }
 
+json markerToJson (const Marker& marker)
+{
+    return {
+        { "id", marker.id },
+        { "name", marker.name },
+        { "position", marker.position },
+    };
+}
+
 json videoTakeToJson (const VideoTake& videoTake)
 {
     return {
@@ -417,6 +426,15 @@ BackingTrack readBackingTrack (const Reader& reader)
     };
 }
 
+Marker readMarker (const Reader& reader)
+{
+    return Marker {
+        .id = reader.string ("id"),
+        .name = reader.string ("name"),
+        .position = reader.integer ("position"),
+    };
+}
+
 VideoTake readVideoTake (const Reader& reader)
 {
     return VideoTake {
@@ -462,6 +480,7 @@ Song readSong (const Reader& reader)
     song.backingTracks = reader.objects<BackingTrack> ("backingTracks", readBackingTrack);
     song.videoTakes = reader.objects<VideoTake> ("videoTakes", readVideoTake);
     song.transpose = reader.smallInteger ("transpose");
+    song.markers = reader.objects<Marker> ("markers", readMarker);
 
     song.preRoll = readPreRoll (reader, "preRollSeconds");
     song.cameraArmed = reader.boolean ("cameraArmed");
@@ -488,6 +507,7 @@ nlohmann::json songToJson (const Song& song)
         { "backingTracks", arrayToJson (song.backingTracks, backingTrackToJson) },
         { "videoTakes", arrayToJson (song.videoTakes, videoTakeToJson) },
         { "transpose", song.transpose },
+        { "markers", arrayToJson (song.markers, markerToJson) },
         { "preRollSeconds", preRollToSeconds (song.preRoll) },
         { "cameraArmed", song.cameraArmed },
         { "cameraDeviceId", song.cameraDeviceId },

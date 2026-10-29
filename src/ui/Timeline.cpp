@@ -179,6 +179,8 @@ Timeline::Timeline (PeaksLookup peaks)
     addAndMakeVisible (trackHeaderColumn);
     addAndMakeVisible (scrollBar);
     addChildComponent (verticalScrollBar);
+    markerStrip.onIntent = [this] (const Intent& intent) { emit (intent); };
+    addAndMakeVisible (markerStrip);
 }
 
 Timeline::~Timeline()
@@ -201,6 +203,7 @@ void Timeline::show (const TimelineState& state)
     cameraArmButton.setEnabled (current.canArmCamera);
     if (! current.editable && std::holds_alternative<TrackDrag> (gesture))
         cancelGesture ("pass_running");
+    showMarkerStrip();
     if (! changed)
         return;
 
@@ -372,7 +375,13 @@ void Timeline::setView (song::SampleCount firstSample, song::SampleCount samples
     timelineView.samplesPerPixel = std::clamp (samplesPerPixel, minSamplesPerPixel, maxSamplesPerPixel);
     if (! scrollBarReporting)
         updateScrollBar();
+    showMarkerStrip();
     repaint();
+}
+
+void Timeline::showMarkerStrip()
+{
+    markerStrip.show (current.song.markers, stripScaleFor (timelineView), current.editable && current.markersEditable, current.selectedMarker);
 }
 
 std::optional<song::Id> Timeline::selectedClip() const
@@ -558,6 +567,8 @@ void Timeline::layOutRows()
     }
 
     timelineView.laneX = layout.ruler.getX();
+    markerStrip.setBounds (layout.markerStrip);
+    showMarkerStrip();
     cameraHeader.setBounds (layout.cameraHeader.withRight (layout.cameraArm.getX()).reduced (8, 0));
     cameraArmButton.setBounds (layout.cameraArm);
     scrollBar.setBounds (layout.scrollBar);
@@ -617,6 +628,8 @@ void Timeline::paintOverChildren (juce::Graphics& g)
 
 void Timeline::paintRuler (juce::Graphics& g) const
 {
+    g.setColour (colours::panel.darker (0.3f));
+    g.fillRect (layout.markerStripCorner);
     g.setColour (colours::panel);
     g.fillRect (layout.rulerCorner);
     g.fillRect (layout.ruler);

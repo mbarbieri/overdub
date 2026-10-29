@@ -35,6 +35,9 @@ constexpr SongOpGesture songOpGestures[] {
     { "remove_insert", Gesture::edit },
     { "move_insert", Gesture::edit },
     { "set_insert_bypassed", Gesture::edit },
+    { "move_marker", Gesture::edit },
+    { "rename_marker", Gesture::edit },
+    { "delete_marker", Gesture::edit },
     { "record", Gesture::record },
     { "record_again", Gesture::record },
     { "play_or_stop", Gesture::playOrStop },
@@ -58,6 +61,8 @@ constexpr SongOpGesture songOpGestures[] {
     { "set_focus_track", Gesture::setTranscribeMix },
     { "set_transcribe_mute", Gesture::setTranscribeMix },
     { "set_transcribe_solo", Gesture::setTranscribeMix },
+    { "add_marker", Gesture::edit },
+    { "select_marker", Gesture::seek },
     { "set_pre_roll", Gesture::setPreRoll },
     { "set_camera_armed", Gesture::setCameraArmed },
     { "set_camera_device", Gesture::setCameraDevice },
@@ -109,6 +114,9 @@ constexpr std::array waitForTranspose { Record::op, RecordAgain::op, ShowExport:
 constexpr std::array refusedWhileTranscribing { MoveClip::op, TrimClipStart::op, TrimClipEnd::op, SetClipFadeIn::op, SetClipFadeOut::op,
                                                 SetClipGain::op, SplitSelectedClip::op, DeleteSelection::op, TakeLaneClick::op, Nudge::op };
 
+// What Record mode refuses: adding and editing Markers (issue #227); its strip is read-only.
+constexpr std::array refusedInRecordMode { AddMarker::op, MoveMarker::op, RenameMarker::op, DeleteMarker::op };
+
 bool isAppOp (std::string_view op)
 {
     return std::ranges::contains (core::operationNames<AppIntent>(), op);
@@ -155,6 +163,8 @@ std::optional<Refusal> refusalOfSongOp (std::string_view op, const Running& runn
         return Refusal { core::Error { "ui.no_pass_to_record_again", "the Song has no Pass to record again from", { { "op", std::string (op) } } }, false };
     if (running.transcribing && running.song.has_value() && std::ranges::contains (refusedWhileTranscribing, op))
         return Refusal { core::Error { "ui.transcribing", "Transcribe mode never changes a Clip", { { "op", std::string (op) } } }, false };
+    if (running.recordMode && running.song.has_value() && std::ranges::contains (refusedInRecordMode, op))
+        return Refusal { core::Error { "ui.record_mode", "Markers are added and edited in Transcribe and Edit mode", { { "op", std::string (op) } } }, true };
     const auto found = std::ranges::find (songOpGestures, op, &SongOpGesture::op);
     if (! running.song.has_value() || found == std::end (songOpGestures) || ! found->gesture.has_value())
         return std::nullopt;
@@ -201,6 +211,8 @@ std::string unavailableReason (std::string_view code)
         return "Wait for the export to finish";
     if (code == "ui.transcribing")
         return "Unavailable in Transcribe mode";
+    if (code == "ui.record_mode")
+        return "Unavailable in Record mode";
     return "Wait for what runs to finish";
 }
 } // namespace overdub::ui

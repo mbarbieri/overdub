@@ -226,6 +226,7 @@ Running MainComponent::running() const
         .songHasNoPass = songContent != nullptr && songContent->currentSong().song().passes.empty(),
         .transposing = songContent != nullptr && songContent->currentSong().isTransposing(),
         .transcribing = currentMode == Mode::transcribe,
+        .recordMode = currentMode == Mode::record,
     };
 }
 
@@ -455,7 +456,10 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
                                           .command = modifiers.isCommandDown(),
                                           .shift = modifiers.isShiftDown(),
                                       },
-                                      KeyContext { .transcribeColumnVisible = windowSettings.transcribeColumnVisible });
+                                      KeyContext {
+                                          .transcribeColumnVisible = windowSettings.transcribeColumnVisible,
+                                          .selectedMarker = songContent != nullptr && currentMode != Mode::record ? songContent->selectedMarker() : std::nullopt,
+                                      });
     // The run dialog is modal: it swallows every key while it shows.
     if (runShowing())
         return true;

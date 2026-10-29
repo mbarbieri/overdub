@@ -37,6 +37,9 @@ constexpr std::array codeTable {
     CodeEntry { "capture.camera_unavailable", Tier::notice, "The camera could not be opened." },
     CodeEntry { "capture.video_frames_dropped", Tier::notice, "The camera dropped frames during this Pass." },
     CodeEntry { "ui.export_running", Tier::notice, "Wait for the export to finish." },
+    CodeEntry { "ui.record_mode", Tier::notice, "Add and edit Markers in Transcribe or Edit mode." },
+    CodeEntry { "song.marker_not_found", Tier::notice, "That Marker is no longer in the Song." },
+    CodeEntry { "song.marker_name_empty", Tier::notice, "A Marker needs a name." },
     CodeEntry { "ui.transposing", Tier::notice, "Transposing\xe2\x80\xa6 Wait for the Backing Tracks to be transposed." },
     CodeEntry { "song.transpose_out_of_range", Tier::notice, "Transpose is a whole number of semitones from \xe2\x88\x92"
                                                              "12 to +12." },

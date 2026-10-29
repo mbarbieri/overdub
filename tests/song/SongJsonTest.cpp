@@ -82,6 +82,7 @@ Song songOfDefaults()
     song.takes = { Take {} };
     song.backingTracks = { BackingTrack {} };
     song.videoTakes = { VideoTake {} };
+    song.markers = { Marker {} };
     return song;
 }
 } // namespace
@@ -106,11 +107,13 @@ TEST_CASE ("the fully populated test Song sets every field away from its default
     checkListsHoldTwoOrMore (document, "$");
 }
 
-TEST_CASE ("song.json carries formatVersion 7 and the key names fixed by issues #8, #14, #68, #114, #137, #201, #209 and #226", "[song][json]")
+TEST_CASE ("song.json carries formatVersion 8 and the key names fixed by issues #8, #14, #68, #114, #137, #201, #209, #226 and #227", "[song][json]")
 {
     const auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
 
-    CHECK (document.at ("formatVersion") == 7);
+    CHECK (document.at ("formatVersion") == 8);
+    CHECK (document.at ("markers") == nlohmann::json::array ({ { { "id", "marker-1" }, { "name", "Verse" }, { "position", 48000 } }, { { "id", "marker-2" }, { "name", "Chorus" }, { "position", 96000 } } }));
+    CHECK (songToJson (overdub::song::Song {}).at ("markers") == nlohmann::json::array());
     CHECK (document.at ("focusTrackId") == "track-backing");
     CHECK (songToJson (overdub::song::Song {}).at ("focusTrackId").is_null());
     CHECK (document.at ("tracks").at (0).at ("transcribeMute") == true);

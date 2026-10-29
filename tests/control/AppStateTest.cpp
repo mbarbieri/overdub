@@ -280,6 +280,7 @@ struct SongForEveryOp
     song::Id firstTakeId;
     song::SampleCount firstTakeOrigin = 0;
     song::Id slotId;
+    song::Id markerId;
 
     SongForEveryOp()
     {
@@ -304,6 +305,7 @@ struct SongForEveryOp
         run (f, ui::SongIntent { SetExportDestination { pathIn ("Mix.wav") } });
         run (f, ui::SongIntent { SelectClip { bandClip } });
         run (f, ui::WindowIntent { ShowMode { ui::Mode::edit } });
+        markerId = *f.content.run (ui::SongIntent { AddMarker {} }, ui::Origin::control)->createdId;
     }
 
     core::AbsolutePath pathIn (const std::string& name) const { return core::AbsolutePath { f.folder.getChildFile (name).getFullPathName().toStdString() }; }
@@ -360,6 +362,11 @@ struct SongForEveryOp
             { "set_focus_track", { { "track_id", guitarId } } },
             { "set_transcribe_mute", { { "track_id", guitarId }, { "mute", true } } },
             { "set_transcribe_solo", { { "track_id", guitarId }, { "solo", true } } },
+            { "add_marker", json::object() },
+            { "select_marker", { { "marker_id", markerId } } },
+            { "move_marker", { { "marker_id", markerId }, { "position", 100 } } },
+            { "rename_marker", { { "marker_id", markerId }, { "name", "Solo" } } },
+            { "delete_marker", { { "marker_id", markerId } } },
             { "set_pre_roll", { { "pre_roll", "one_second" } } },
             { "set_camera_armed", { { "armed", true } } },
             { "set_camera_device", { { "camera_id", "camera" } } },

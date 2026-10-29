@@ -658,7 +658,7 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
         for (auto& track : document.at ("tracks"))
             for (const auto* key : { "colour", "transcribeMute", "transcribeSolo" })
                 track.erase (key);
-        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId" })
+        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId", "markers" })
             document.erase (key);
         return document;
     };
@@ -684,6 +684,7 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
     expected.exportDestination = "";
     expected.transpose = 0;
     expected.focusTrackId.reset();
+    expected.markers.clear();
     for (auto& track : expected.tracks)
         track.transcribeMute = track.transcribeSolo = false;
     CHECK (opened.package->song() == expected);
@@ -738,7 +739,7 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
     // Turn song.json and the history snapshot back into what a v4 build wrote.
     const auto toV4 = [] (nlohmann::json document) {
         document["formatVersion"] = 4;
-        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId" })
+        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId", "markers" })
             document.erase (key);
         for (auto& track : document.at ("tracks"))
             for (const auto* key : { "transcribeMute", "transcribeSolo" })
@@ -761,6 +762,7 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
     expected.exportDestination = "";
     expected.transpose = 0;
     expected.focusTrackId.reset();
+    expected.markers.clear();
     for (auto& track : expected.tracks)
         track.transcribeMute = track.transcribeSolo = false;
     CHECK (opened.package->song() == expected);

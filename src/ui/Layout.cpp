@@ -112,6 +112,7 @@ RecordPageLayout recordPageLayout (juce::Rectangle<int> page, int numTracks)
     RecordPageLayout layout;
     auto area = page.reduced (margin);
     layout.overview = area.removeFromBottom (songOverviewHeight);
+    layout.markerStrip = area.removeFromBottom (markerStripHeight);
     area.removeFromBottom (gap);
     layout.lookAhead = area.removeFromBottom (lookAheadStripHeight);
     area.removeFromBottom (margin);
@@ -277,7 +278,7 @@ EditPageLayout editPageLayout (juce::Rectangle<int> page, bool mixerVisible, int
             layout.videoPreview = layout.mixer.removeFromRight (videoPreviewWidth).reduced (gap);
     }
     layout.timeline = area;
-    layout.passesButton = juce::Rectangle<int> (area.getX(), area.getY(), laneHeaderWidth, rulerHeight).reduced (4, 2);
+    layout.passesButton = juce::Rectangle<int> (area.getX(), area.getY() + markerStripHeight, laneHeaderWidth, rulerHeight).reduced (4, 2);
     return layout;
 }
 
@@ -327,11 +328,13 @@ TimelineLayout timelineLayout (juce::Rectangle<int> area, const std::vector<int>
 
     auto rest = area;
     auto scrollRow = rest.removeFromBottom (timelineScrollBarHeight);
+    auto markerRow = rest.removeFromTop (markerStripHeight);
     auto rulerRow = rest.removeFromTop (rulerHeight);
     auto cameraRow = rest.removeFromTop (cameraLaneHeight);
     if (layout.tracksHeight > rest.getHeight())
     {
         layout.verticalScrollBar = rest.removeFromRight (timelineScrollBarHeight);
+        markerRow.removeFromRight (timelineScrollBarHeight);
         rulerRow.removeFromRight (timelineScrollBarHeight);
         cameraRow.removeFromRight (timelineScrollBarHeight);
         scrollRow.removeFromRight (timelineScrollBarHeight);
@@ -340,6 +343,8 @@ TimelineLayout timelineLayout (juce::Rectangle<int> area, const std::vector<int>
 
     scrollRow.removeFromLeft (laneHeaderWidth);
     layout.scrollBar = scrollRow;
+    layout.markerStripCorner = markerRow.removeFromLeft (laneHeaderWidth);
+    layout.markerStrip = markerRow;
     layout.rulerCorner = rulerRow.removeFromLeft (laneHeaderWidth);
     layout.ruler = rulerRow;
     layout.cameraHeader = cameraRow.removeFromLeft (laneHeaderWidth);
@@ -486,8 +491,11 @@ TranscribePageLayout transcribePageLayout (juce::Rectangle<int> page, bool colum
         layout.column = area.removeFromRight (transcribeColumnWidth);
         area.removeFromRight (margin);
     }
+    layout.markers = area.removeFromLeft (transcribeMarkersWidth);
+    area.removeFromLeft (margin);
     layout.overview = area.removeFromTop (transcribeOverviewHeight);
     area.removeFromTop (gap);
+    layout.markerStrip = area.removeFromTop (markerStripHeight);
     layout.ruler = area.removeFromTop (transcribeRulerHeight);
     layout.waveform = area;
     return layout;
