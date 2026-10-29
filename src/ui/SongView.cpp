@@ -337,7 +337,7 @@ IntentResult SongView::selectMarker (const std::optional<song::Id>& markerId)
 IntentResult SongView::addLoop (song::SampleCount start, song::SampleCount end)
 {
     const auto loopId = song::makeId();
-    if (auto added = applyEdit (song::addLoop (openSong.song(), start, end, loopId), song::addLoopLabel); ! added.has_value())
+    if (auto added = applyEdit (song::addLoop (openSong.song(), start, end, loopId, openSong.practiceSpeed()), song::addLoopLabel); ! added.has_value())
         return added;
     pendingLoopStart.reset();
     // Transcribe's selectLoop activates it; Edit's only selects it.

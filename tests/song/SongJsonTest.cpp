@@ -108,12 +108,12 @@ TEST_CASE ("the fully populated test Song sets every field away from its default
     checkListsHoldTwoOrMore (document, "$");
 }
 
-TEST_CASE ("song.json carries formatVersion 9 and the key names fixed by issues #8, #14, #68, #114, #137, #201, #209, #226, #227 and #228", "[song][json]")
+TEST_CASE ("song.json carries formatVersion 10 and the key names fixed by issues #8, #14, #68, #114, #137, #201, #209, #226, #227, #228 and #230", "[song][json]")
 {
     const auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
 
-    CHECK (document.at ("formatVersion") == 9);
-    CHECK (document.at ("loops").at (0) == nlohmann::json { { "id", "loop-1" }, { "name", "Intro riff" }, { "start", 24000 }, { "end", 72000 } });
+    CHECK (document.at ("formatVersion") == 10);
+    CHECK (document.at ("loops").at (0) == nlohmann::json { { "id", "loop-1" }, { "name", "Intro riff" }, { "start", 24000 }, { "end", 72000 }, { "practiceSpeedPercent", 40 } });
     CHECK (document.at ("loops").size() == 2);
     CHECK (document.at ("activeLoopId") == "loop-2");
     CHECK (document.at ("looping") == true);
@@ -219,6 +219,13 @@ TEST_CASE ("an unknown export format or length is an Error naming the JSON path"
     document = songToJson (overdub::song::testing::fullyPopulatedSong());
     document["exportLength"] = "trim";
     CHECK (songFromJson (document).error().fields.at ("json_path") == "$.exportLength");
+}
+
+TEST_CASE ("a Loop's Practice Speed outside 25..125 is an Error naming the JSON path", "[song][json][loops]")
+{
+    auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
+    document["loops"][1]["practiceSpeedPercent"] = 20;
+    CHECK (songFromJson (document).error().fields.at ("json_path") == "$.loops[1].practiceSpeedPercent");
 }
 
 TEST_CASE ("a document that is not an object, or holds a wrong-shaped list, is an Error naming the JSON path", "[song][json]")

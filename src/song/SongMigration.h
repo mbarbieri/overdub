@@ -48,6 +48,7 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
 //   7 -> 8 (issue #227): the Song gains "markers": [] (no Markers).
 //   8 -> 9 (issue #228): the Song gains "loops": [] (no Loops), "activeLoopId": null and
 //           "looping": false.
+//   9 -> 10 (issue #230): every Loop gains "practiceSpeedPercent": 100.
 std::span<const MigrationStep> songMigrationSteps();
 
 // migrateDocument with songMigrationSteps().

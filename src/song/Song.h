@@ -27,7 +27,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 9;
+inline constexpr int songFormatVersion = 10;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -249,6 +249,8 @@ struct Loop
     std::string name; // "Loop 1" when made, never empty
     SampleCount start = 0;
     SampleCount end = 0;
+    // The Practice Speed it is drilled at, 25..125 (issue #230): outside history. Format 10.
+    int practiceSpeedPercent = 100;
 
     SampleCount length() const { return end - start; }
     bool operator== (const Loop&) const = default;
@@ -315,7 +317,8 @@ core::Expected<Track*> lookupTrack (Song& song, const Id& trackId);
 // outside history: pre-roll, camera arm and device, playhead (converted to the snapshot's rate), the
 // export format, length and destination, the export's Video Take (unless the snapshot does not
 // have it), the Focus Track (unless the snapshot does not have it), the active Loop and looping
-// (unless the snapshot does not have that Loop: then none, not looping), per Track id Armed, input
+// (unless the snapshot does not have that Loop: then none, not looping), per Loop id its Practice
+// Speed (a Loop only the snapshot has keeps the snapshot's), per Track id Armed, input
 // channels and the Transcribe Mix's mute and solo, and per
 // Insert Chain slot id (Master's included) the plugin state hash: plugin parameters are outside
 // history. A slot only the snapshot has keeps the snapshot's hash.

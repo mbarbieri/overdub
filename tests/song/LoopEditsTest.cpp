@@ -24,9 +24,9 @@ std::vector<std::string> namesInOrder (const Song& song)
 Song songWithLoops()
 {
     auto song = makeEmptySong (48000);
-    song = *addLoop (song, 48000, 96000, "loop-b");
-    song = *addLoop (song, 0, 24000, "loop-a");
-    song = *addLoop (song, 120000, 100000, "loop-c");
+    song = *addLoop (song, 48000, 96000, "loop-b", 100);
+    song = *addLoop (song, 0, 24000, "loop-a", 100);
+    song = *addLoop (song, 120000, 100000, "loop-c", 100);
     return song;
 }
 } // namespace
@@ -45,7 +45,7 @@ TEST_CASE ("a new Loop is named Loop N with the lowest unused N, spans its range
     CHECK (nextLoopName (song) == "Loop 1");
 
     // Clamped to 0 or later.
-    const auto clamped = addLoop (song, -500, 300, "loop-d");
+    const auto clamped = addLoop (song, -500, 300, "loop-d", 100);
     REQUIRE (clamped.has_value());
     CHECK (findLoop (*clamped, "loop-d")->start == 0);
     CHECK (findLoop (*clamped, "loop-d")->end == 300);
@@ -62,7 +62,7 @@ TEST_CASE ("resizing a Loop moves it into time order; an empty range, a missing 
     CHECK (findLoop (*resized, "loop-a")->end == 130000);
 
     CHECK (resizeLoop (song, "loop-a", 500, 500).error().code == "song.loop_empty");
-    CHECK (addLoop (song, 500, 500, "loop-e").error().code == "song.loop_empty");
+    CHECK (addLoop (song, 500, 500, "loop-e", 100).error().code == "song.loop_empty");
     CHECK (resizeLoop (song, "loop-gone", 0, 10).error().code == "song.loop_not_found");
     CHECK (resizeLoop (song, "loop-gone", 0, 10).error().fields.at ("loop_id") == "loop-gone");
     CHECK (renameLoop (song, "loop-a", "   ").error().code == "song.loop_name_empty");
@@ -116,14 +116,36 @@ TEST_CASE ("a change only to the Loops or looping plays on without a new plan", 
 TEST_CASE ("undo and redo keep the active Loop and looping, unless the restored Song lacks that Loop", "[song][loops][history]")
 {
     const auto before = makeEmptySong (48000);
-    const auto withLoop = *setActiveLoop (*addLoop (before, 0, 100, "loop-a"), "loop-a", true);
+    const auto withLoop = *setActiveLoop (*addLoop (before, 0, 100, "loop-a", 100), "loop-a", true);
 
     const auto undone = keepStateOutsideHistory (before, withLoop);
     CHECK_FALSE (undone.activeLoopId.has_value());
     CHECK_FALSE (undone.looping);
 
     const auto renamed = *renameLoop (withLoop, "loop-a", "Riff");
-    const auto restored = keepStateOutsideHistory (*addLoop (before, 0, 100, "loop-a"), renamed);
+    const auto restored = keepStateOutsideHistory (*addLoop (before, 0, 100, "loop-a", 100), renamed);
     CHECK (restored.activeLoopId == "loop-a");
     CHECK (restored.looping);
+}
+
+TEST_CASE ("a new Loop takes the Practice Speed it is made at, and its speed changes outside history", "[song][loops][practice]")
+{
+    auto song = *addLoop (makeEmptySong (48000), 0, 100, "loop-a", 40);
+    REQUIRE (findLoop (song, "loop-a") != nullptr);
+    CHECK (findLoop (song, "loop-a")->practiceSpeedPercent == 40);
+    CHECK (addLoop (song, 0, 100, "loop-b", 20).error().code == "song.practice_speed_out_of_range");
+
+    const auto faster = *setLoopPracticeSpeed (song, "loop-a", 75);
+    CHECK (findLoop (faster, "loop-a")->practiceSpeedPercent == 75);
+    CHECK (setLoopPracticeSpeed (song, "loop-a", 130).error().code == "song.practice_speed_out_of_range");
+    CHECK (setLoopPracticeSpeed (song, "loop-z", 75).error().code == "song.loop_not_found");
+
+    // Undoing a rename keeps the speed set since; a Loop only the snapshot has keeps its own.
+    const auto renamed = *renameLoop (song, "loop-a", "Solo");
+    const auto renamedFaster = *setLoopPracticeSpeed (renamed, "loop-a", 75);
+    const auto undone = keepStateOutsideHistory (song, renamedFaster);
+    CHECK (findLoop (undone, "loop-a")->name == "Loop 1");
+    CHECK (findLoop (undone, "loop-a")->practiceSpeedPercent == 75);
+    const auto broughtBack = keepStateOutsideHistory (song, makeEmptySong (48000));
+    CHECK (findLoop (broughtBack, "loop-a")->practiceSpeedPercent == 40);
 }

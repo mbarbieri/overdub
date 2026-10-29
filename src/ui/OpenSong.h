@@ -130,8 +130,8 @@
 // again for the renders still missing.
 //
 // Practice Speed (issue #212, ADR 0009): held here, outside the Song and its history; a Song always
-// opens at 100%. At any other value, every source some Clip plays is rendered by a
-// song::PracticeSpeedRun into practiceRenderFolder(), a temp folder outside the package deleted with
+// opens at 100% (a Loop heard in Transcribe mode then brings back its own, issue #230). At any
+// other value, every source some Clip plays is rendered by a song::PracticeSpeedRun into practiceRenderFolder(), a temp folder outside the package deleted with
 // the OpenSong, with the Song's Transpose applied to its Backing Tracks. The engine plays at
 // heardPracticeSpeed() (engine::PracticePlayback): poll() starts the renders the Song's Practice
 // Speed and Transpose lack (cancelling a run for another value), and once none is missing switches
@@ -324,7 +324,10 @@ public:
     // (song.json, no undo step, song/LoopEdits.h). The engine loops (Engine::setLoop) only while
     // transcribing, looping and with an active Loop: heardLoop(). Every change of these, an edit, an
     // undo or redo, and the mode, sets it. Logs ui.active_loop_set (info: loop_id, "" for none,
-    // looping) and ui.looping_set (info: looping).
+    // looping) and ui.looping_set (info: looping). Each Loop keeps its Practice Speed (issue #230):
+    // once a Loop is heard (activated, looping turned on, or Transcribe mode entered while it
+    // loops), the Practice Speed becomes its speed; leaving Transcribe mode sets it to 100%. Neither
+    // happens while refusal() refuses set_practice_speed.
     // Errors: refusal()'s, song.loop_not_found; setLooping: song.no_active_loop.
     core::Expected<void> setActiveLoop (const std::optional<song::Id>& loopId, bool looping);
     core::Expected<void> setLooping (bool looping);
@@ -397,7 +400,8 @@ public:
     bool isTransposing() const { return isTransposeRendering() || heardSemitones != song().transpose; }
 
     // Sets the Practice Speed (see the header comment). The same value again changes nothing.
-    // Errors: refusal()'s, song.practice_speed_out_of_range.
+    // While a Loop is heard (heardLoop()) it is also that Loop's Practice Speed, outside history
+    // (issue #230). Errors: refusal()'s, song.practice_speed_out_of_range.
     core::Expected<void> setPracticeSpeed (int speedPercent);
     int practiceSpeed() const { return practiceTarget; }
     // The Practice Speed playback uses.
@@ -440,6 +444,16 @@ private:
     core::Expected<void> changeTranscribeMix (core::Expected<song::Song> changed);
     // Hands the engine heardLoop() (none without audio).
     void syncEngineLoop();
+    // Sets practiceTarget (ui.practice_speed_set when it changes), forgets failed renders and
+    // follows it.
+    void changePracticeTarget (int speedPercent);
+    // While a Loop is heard: stores practiceTarget as its Practice Speed outside history
+    // (ui.loop_practice_speed_set: loop_id, speed_percent) when it differs.
+    void storeActiveLoopPracticeSpeed();
+    // While a Loop is heard and the Practice Speed may change: plays at its Practice Speed.
+    void applyHeardLoopPracticeSpeed();
+    // refusal() does not refuse set_practice_speed now.
+    bool practiceSpeedMayChange() const;
     // What the engine plays at heardPracticeSpeed(): the renders there are of the heard key.
     engine::PracticePlayback heardPracticePlayback() const;
     // The key the Practice Speed renders are wanted for: the Practice Speed and the Song's Transpose

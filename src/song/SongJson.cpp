@@ -1,7 +1,10 @@
 #include "song/SongJson.h"
 
+#include "song/PracticeSpeed.h"
+
 #include <array>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -334,6 +337,7 @@ json loopToJson (const Loop& loop)
         { "name", loop.name },
         { "start", loop.start },
         { "end", loop.end },
+        { "practiceSpeedPercent", loop.practiceSpeedPercent },
     };
 }
 
@@ -452,9 +456,12 @@ Loop readLoop (const Reader& reader)
         .name = reader.string ("name"),
         .start = reader.integer ("start"),
         .end = reader.integer ("end"),
+        .practiceSpeedPercent = reader.smallInteger ("practiceSpeedPercent"),
     };
     if (loop.start < 0 || loop.end <= loop.start)
         reader.report (reader.childPath ("end"), "expected 0 <= start < end");
+    if (! checkPracticeSpeed (loop.practiceSpeedPercent).has_value())
+        reader.report (reader.childPath ("practiceSpeedPercent"), "expected a whole percent from " + std::to_string (minPracticeSpeed) + " to " + std::to_string (maxPracticeSpeed));
     return loop;
 }
 

@@ -567,7 +567,8 @@ struct SetTranspose // the top bar's Transpose field, on Return
 
 //==============================================================================
 // Song: Practice Speed (issue #212): rehearsal only, never an undo step nor saved; renders that
-// playback switches to once ready.
+// playback switches to once ready. While a Loop loops in Transcribe mode it is also that Loop's
+// Practice Speed, saved outside history (issue #230).
 
 struct SetPracticeSpeed // the Practice Speed fields, on Return, and H, - and =
 {
