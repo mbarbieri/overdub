@@ -32,7 +32,9 @@
 // clicking or dragging the ruler or the waveform seeks (seek); a whole number typed into the
 // column's fields runs set_practice_speed or set_transpose, as the top bar's do (the Transpose
 // cents field, issue #232, runs set_transpose with the Song's semitones kept); the octave buttons
-// (−1, 0, +1, +2, issue #233) run set_octave_shift for the Focus Track; a Track row's ◎
+// (−1, 0, +1, +2, issue #233) run set_octave_shift for the Focus Track; the FILTER row's On toggle
+// and its low and high cut fields (whole Hz, issue #234) run set_band_filter for the Focus Track
+// with its other values kept; a Track row's ◎
 // runs set_focus_track (none on the Focus Track's own ◎), its M set_transcribe_mute and its S
 // set_transcribe_solo. The Loop/Marker strip over the ruler (ui/MarkerStrip.h) runs the Marker and
 // Loop gestures (issues #227, #228); the left column's Loop cards (ui/LoopViews.h) run select_loop
@@ -147,7 +149,8 @@ private:
 
 // The right column: "LISTENING", then Practice Speed and Transpose, as the top bar shows them,
 // then the Focus Track's octave shift (−1, 0, +1, +2: the one it has is on; all disabled without a
-// Focus Track), then "TRANSCRIBE MIX" over one TranscribeTrackRow per Track in Song order.
+// Focus Track), then its band filter (On, low cut and high cut in Hz, the Focus Track's; disabled
+// without one), then "TRANSCRIBE MIX" over one TranscribeTrackRow per Track in Song order.
 class TranscribeColumn final : public juce::Component
 {
 public:
@@ -174,6 +177,12 @@ public:
     // −1, 0, +1, +2: octaveButtons[i] sets song::minOctaveShift + i.
     std::array<juce::TextButton, transcribeOctaveButtonCount> octaveButtons;
     Spinner octaveSpinner;
+    juce::Label filterCaption { {}, "FILTER" };
+    juce::TextButton filterToggle { "On" };
+    juce::Label filterLowField;
+    juce::Label filterLowUnit { {}, "Hz" };
+    juce::Label filterHighField;
+    juce::Label filterHighUnit { {}, "Hz" };
     juce::Label mixCaption { {}, "TRANSCRIBE MIX" };
     std::vector<std::unique_ptr<TranscribeTrackRow>> trackRows;
 
@@ -182,6 +191,11 @@ private:
     void transposeEntered();
     void transposeCentsEntered();
     void showOctaveShift (const TranscribePageState& state);
+    void showBandFilter (const TranscribePageState& state);
+    // Runs set_band_filter for the shown Focus Track with `filter`.
+    void sendBandFilter (song::BandFilter filter);
+    // A whole number of Hz typed into `field` sets that cut (lowHz or highHz), the rest kept.
+    void filterCutEntered (juce::Label& field, int song::BandFilter::* cut);
     // One row per Track, rebuilt only when the Track ids or their order change.
     void showTracks (const TranscribePageState& state);
     void layOutTrackRows();
@@ -189,6 +203,7 @@ private:
     int shownPracticeSpeed = 100;
     song::Transpose shownTranspose;
     std::optional<song::Id> shownFocusTrackId;
+    song::BandFilter shownBandFilter;
 };
 
 class TranscribePage final : public juce::Component

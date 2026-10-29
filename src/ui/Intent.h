@@ -620,6 +620,23 @@ struct SetOctaveShift
     static constexpr auto fields = std::tuple { field ("track_id", &SetOctaveShift::trackId), field ("octaves", &SetOctaveShift::octaves) };
 };
 
+// The FILTER row under the Focus Track in the right column (issue #234): the Track's own band
+// filter, on or off with its low and high cut in whole Hz, heard only while it is the Focus Track
+// in Transcribe mode.
+struct SetBandFilter
+{
+    static constexpr std::string_view op = "set_band_filter";
+    song::Id trackId;
+    bool on = false;
+    int lowHz = 0;
+    int highHz = 0;
+    bool operator== (const SetBandFilter&) const = default;
+    static constexpr auto fields = std::tuple { field ("track_id", &SetBandFilter::trackId),
+                                                field ("on", &SetBandFilter::on),
+                                                field ("low_hz", &SetBandFilter::lowHz),
+                                                field ("high_hz", &SetBandFilter::highHz) };
+};
+
 //==============================================================================
 // Song: Markers (issue #227, ADR 0010). Moving, renaming and deleting one are plain edits
 // (intent::Edit); Record mode refuses all four (ui/Availability.h).
@@ -967,7 +984,7 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::AddTrack, intent::ImportFiles, intent::DeleteTrack, intent::MoveTrack,
                                 intent::SetArmed, intent::SetInputChannels, intent::SetMonitoring,
                                 intent::StartSeparation, intent::CancelRun, intent::SetTranspose, intent::SetPracticeSpeed,
-                                intent::SetFocusTrack, intent::SetTranscribeMute, intent::SetTranscribeSolo, intent::SetOctaveShift,
+                                intent::SetFocusTrack, intent::SetTranscribeMute, intent::SetTranscribeSolo, intent::SetOctaveShift, intent::SetBandFilter,
                                 intent::AddMarker, intent::SelectMarker,
                                 intent::AddLoop, intent::MarkLoopStart, intent::MarkLoopEnd, intent::CancelLoopStart,
                                 intent::SelectLoop, intent::SelectAdjacentLoop, intent::SetLooping,

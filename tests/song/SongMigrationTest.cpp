@@ -256,9 +256,28 @@ TEST_CASE ("a v11 Song migrates to v12 with every Track's octave shift 0", "[son
 
     REQUIRE (migrated.has_value());
     CHECK (migrated->fromVersion == 11);
-    CHECK (migrated->document.at ("formatVersion") == 12);
+    CHECK (migrated->document.at ("formatVersion") == overdub::song::songFormatVersion);
     REQUIRE (migrated->document.at ("tracks").size() == 2);
     for (const auto& track : migrated->document.at ("tracks"))
         CHECK (track.at ("octaveShift") == 0);
     CHECK (migrated->document.at ("tracks").at (0).at ("transcribeSolo") == true);
+}
+
+TEST_CASE ("a v12 Song migrates to v13 with every Track's band filter off at 100..4000 Hz", "[song][migration][transcribe][band_filter]")
+{
+    const json document = {
+        { "formatVersion", 12 },
+        { "sampleRate", 48000 },
+        { "tracks", { { { "id", "track-1" }, { "octaveShift", 1 } }, { { "id", "track-2" } } } },
+    };
+
+    const auto migrated = overdub::song::migrateSongDocument (document);
+
+    REQUIRE (migrated.has_value());
+    CHECK (migrated->fromVersion == 12);
+    CHECK (migrated->document.at ("formatVersion") == 13);
+    REQUIRE (migrated->document.at ("tracks").size() == 2);
+    for (const auto& track : migrated->document.at ("tracks"))
+        CHECK (track.at ("bandFilter") == json { { "on", false }, { "lowHz", 100 }, { "highHz", 4000 } });
+    CHECK (migrated->document.at ("tracks").at (0).at ("octaveShift") == 1);
 }

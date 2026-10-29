@@ -365,12 +365,16 @@ TranscribePageLayout transcribePageLayout (juce::Rectangle<int> page, bool colum
 // Speed and Transpose, each a caption over its field, unit and spinner (Transpose's "st" followed
 // by its cents field and "ct", issue #232), then the Focus Track's octave shift (issue #233): an
 // "OCTAVE" caption over four buttons (−1, 0, +1, +2, transcribeOctaveButtonWidth each) and a
-// spinner, then the "TRANSCRIBE MIX"
+// spinner, then its band filter (issue #234): a "FILTER" caption over an On toggle, the low cut
+// field and "Hz", and the high cut field and "Hz", then the "TRANSCRIBE MIX"
 // caption over the Track list (issue #226): one row of transcribeTrackRowHeight per Track, in Song
 // order, from the top of `tracks`.
 inline constexpr int transcribeTrackRowHeight = 26;
 inline constexpr int transcribeOctaveButtonWidth = 30;
 inline constexpr int transcribeOctaveButtonCount = 4;
+inline constexpr int transcribeFilterToggleWidth = 36;
+inline constexpr int transcribeFilterFieldWidth = 44;
+inline constexpr int transcribeFilterUnitWidth = 14;
 
 struct TranscribeColumnLayout
 {
@@ -388,6 +392,12 @@ struct TranscribeColumnLayout
     juce::Rectangle<int> octaveCaption;
     std::array<juce::Rectangle<int>, transcribeOctaveButtonCount> octaveButtons;
     juce::Rectangle<int> octaveSpinner;
+    juce::Rectangle<int> filterCaption;
+    juce::Rectangle<int> filterToggle;
+    juce::Rectangle<int> filterLowField;
+    juce::Rectangle<int> filterLowUnit;
+    juce::Rectangle<int> filterHighField;
+    juce::Rectangle<int> filterHighUnit;
     juce::Rectangle<int> mixCaption;
     juce::Rectangle<int> tracks;
 };

@@ -281,6 +281,7 @@ json trackToJson (const Track& track)
         { "transcribeMute", track.transcribeMute },
         { "transcribeSolo", track.transcribeSolo },
         { "octaveShift", track.octaveShift },
+        { "bandFilter", { { "on", track.bandFilter.on }, { "lowHz", track.bandFilter.lowHz }, { "highHz", track.bandFilter.highHz } } },
         { "inputChannels", track.inputChannels },
         { "insertChain", arrayToJson (track.insertChain, insertSlotToJson) },
         { "clips", arrayToJson (track.clips, clipToJson) },
@@ -386,6 +387,11 @@ Clip readClip (const Reader& reader)
     };
 }
 
+BandFilter readBandFilter (const Reader& reader)
+{
+    return BandFilter { .on = reader.boolean ("on"), .lowHz = reader.smallInteger ("lowHz"), .highHz = reader.smallInteger ("highHz") };
+}
+
 Track readTrack (const Reader& reader)
 {
     return Track {
@@ -400,6 +406,7 @@ Track readTrack (const Reader& reader)
         .transcribeMute = reader.boolean ("transcribeMute"),
         .transcribeSolo = reader.boolean ("transcribeSolo"),
         .octaveShift = reader.smallInteger ("octaveShift"),
+        .bandFilter = readBandFilter (reader.object ("bandFilter")),
         .inputChannels = reader.integers ("inputChannels"),
         .insertChain = reader.objects<InsertSlot> ("insertChain", readInsertSlot),
         .clips = reader.objects<Clip> ("clips", readClip),

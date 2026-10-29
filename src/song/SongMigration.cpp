@@ -153,12 +153,24 @@ core::Expected<nlohmann::json> addOctaveShifts (nlohmann::json document)
             track["octaveShift"] = 0;
     return document;
 }
+
+core::Expected<nlohmann::json> addBandFilters (nlohmann::json document)
+{
+    const auto tracks = document.find ("tracks");
+    if (tracks == document.end() || ! tracks->is_array())
+        return document; // reading the migrated document reports what is missing
+    const BandFilter defaults;
+    for (auto& track : *tracks)
+        if (track.is_object())
+            track["bandFilter"] = { { "on", defaults.on }, { "lowHz", defaults.lowHz }, { "highHz", defaults.highHz } };
+    return document;
+}
 } // namespace
 
 std::span<const MigrationStep> songMigrationSteps()
 {
     // songFormatVersion must equal songMigrationSteps().size() + 1.
-    static const std::array<MigrationStep, 11> steps {
+    static const std::array<MigrationStep, 12> steps {
         addVideoTakeOutputDevice,
         addBackingTrackSeparatedFrom,
         addTrackColours,
@@ -170,6 +182,7 @@ std::span<const MigrationStep> songMigrationSteps()
         addLoopPracticeSpeeds,
         addTransposeCents,
         addOctaveShifts,
+        addBandFilters,
     };
     static_assert (std::tuple_size_v<decltype (steps)> + 1 == songFormatVersion);
     return steps;

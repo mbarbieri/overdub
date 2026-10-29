@@ -8,6 +8,7 @@
 #include "ui/Layout.h"
 #include "ui/MuteSoloButtons.h"
 #include "ui/RecordView.h"
+#include "ui/TopBar.h"
 #include "ui/TranscribeGeometry.h"
 
 #include <algorithm>
@@ -272,17 +273,17 @@ TranscribeColumn::TranscribeColumn()
     heading.setBorderSize ({});
     heading.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (heading);
-    for (auto* caption : { &practiceSpeedCaption, &transposeCaption, &octaveCaption, &mixCaption })
+    for (auto* caption : { &practiceSpeedCaption, &transposeCaption, &octaveCaption, &filterCaption, &mixCaption })
     {
         styleCaption (*caption);
         addAndMakeVisible (caption);
     }
-    for (auto* unit : { &practiceSpeedUnit, &transposeUnit, &transposeCentsUnit })
+    for (auto* unit : { &practiceSpeedUnit, &transposeUnit, &transposeCentsUnit, &filterLowUnit, &filterHighUnit })
     {
         styleUnit (*unit);
         addAndMakeVisible (unit);
     }
-    for (auto* field : { &practiceSpeedField, &transposeField, &transposeCentsField })
+    for (auto* field : { &practiceSpeedField, &transposeField, &transposeCentsField, &filterLowField, &filterHighField })
     {
         styleField (*field);
         addAndMakeVisible (field);
@@ -305,6 +306,18 @@ TranscribeColumn::TranscribeColumn()
         };
         addAndMakeVisible (octaveButtons[i]);
     }
+    filterToggle.setClickingTogglesState (false);
+    filterToggle.setColour (juce::TextButton::buttonOnColourId, colours::accent);
+    filterToggle.onClick = [this] {
+        auto filter = shownBandFilter;
+        filter.on = ! filter.on;
+        sendBandFilter (filter);
+    };
+    addAndMakeVisible (filterToggle);
+    filterLowField.setText (juce::String (shownBandFilter.lowHz), juce::dontSendNotification);
+    filterLowField.onTextChange = [this] { filterCutEntered (filterLowField, &song::BandFilter::lowHz); };
+    filterHighField.setText (juce::String (shownBandFilter.highHz), juce::dontSendNotification);
+    filterHighField.onTextChange = [this] { filterCutEntered (filterHighField, &song::BandFilter::highHz); };
     for (auto* spinner : { &practiceSpeedSpinner, &transposeSpinner, &octaveSpinner })
     {
         spinner->setInterceptsMouseClicks (false, false);
@@ -337,6 +350,24 @@ void TranscribeColumn::transposeCentsEntered()
         onIntent (SongIntent { intent::SetTranspose { .semitones = shownTranspose.semitones, .cents = *typed } });
 }
 
+void TranscribeColumn::sendBandFilter (song::BandFilter filter)
+{
+    if (shownFocusTrackId.has_value() && onIntent)
+        onIntent (SongIntent { intent::SetBandFilter { .trackId = *shownFocusTrackId, .on = filter.on, .lowHz = filter.lowHz, .highHz = filter.highHz } });
+}
+
+void TranscribeColumn::filterCutEntered (juce::Label& field, int song::BandFilter::* cut)
+{
+    const auto typed = parseHertz (field.getText().toStdString());
+    // The field shows the Focus Track's value until the handler has changed it (show() is called back).
+    field.setText (juce::String (shownBandFilter.*cut), juce::dontSendNotification);
+    if (! typed.has_value())
+        return;
+    auto filter = shownBandFilter;
+    filter.*cut = *typed;
+    sendBandFilter (filter);
+}
+
 void TranscribeColumn::show (const TranscribePageState& state)
 {
     shownPracticeSpeed = state.practiceSpeed;
@@ -358,6 +389,7 @@ void TranscribeColumn::show (const TranscribePageState& state)
     transposeSpinner.setVisible (state.transposeRendering);
 
     showOctaveShift (state);
+    showBandFilter (state);
     showTracks (state);
 }
 
@@ -371,6 +403,21 @@ void TranscribeColumn::showOctaveShift (const TranscribePageState& state)
         octaveButtons[i].setEnabled (focus != nullptr && state.canSetTranscribeMix);
     }
     octaveSpinner.setVisible (state.octaveRendering);
+}
+
+void TranscribeColumn::showBandFilter (const TranscribePageState& state)
+{
+    const auto* focus = song::focusTrack (state.song);
+    shownBandFilter = focus != nullptr ? focus->bandFilter : song::BandFilter {};
+    const auto enabled = focus != nullptr && state.canSetTranscribeMix;
+    filterToggle.setToggleState (focus != nullptr && shownBandFilter.on, juce::dontSendNotification);
+    filterToggle.setEnabled (enabled);
+    for (auto* field : { &filterLowField, &filterHighField })
+        field->setEnabled (enabled);
+    if (! filterLowField.isBeingEdited())
+        filterLowField.setText (juce::String (shownBandFilter.lowHz), juce::dontSendNotification);
+    if (! filterHighField.isBeingEdited())
+        filterHighField.setText (juce::String (shownBandFilter.highHz), juce::dontSendNotification);
 }
 
 void TranscribeColumn::showTracks (const TranscribePageState& state)
@@ -433,6 +480,12 @@ void TranscribeColumn::resized()
     for (std::size_t i = 0; i < octaveButtons.size(); ++i)
         octaveButtons[i].setBounds (layout.octaveButtons[i]);
     octaveSpinner.setBounds (layout.octaveSpinner);
+    filterCaption.setBounds (layout.filterCaption);
+    filterToggle.setBounds (layout.filterToggle);
+    filterLowField.setBounds (layout.filterLowField);
+    filterLowUnit.setBounds (layout.filterLowUnit);
+    filterHighField.setBounds (layout.filterHighField);
+    filterHighUnit.setBounds (layout.filterHighUnit);
     mixCaption.setBounds (layout.mixCaption);
     layOutTrackRows();
 }

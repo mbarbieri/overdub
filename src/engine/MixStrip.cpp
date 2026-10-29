@@ -38,9 +38,11 @@ void MixStripNode::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     const float from[2] { applied.left, applied.right };
     const float to[2] { target.left, target.right };
 
+    filter.update (control.bandFilter.get(), preparedRate);
     float blockPeak = 0.0f;
     for (int channel = 0; channel < std::min (buffer.getNumChannels(), 2); ++channel)
     {
+        filter.process (channel, buffer.getWritePointer (channel), numSamples);
         if (juce::exactlyEqual (from[channel], to[channel]))
             buffer.applyGain (channel, 0, numSamples, to[channel]);
         else

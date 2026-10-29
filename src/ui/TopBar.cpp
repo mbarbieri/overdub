@@ -53,6 +53,14 @@ std::optional<int> parsePracticeSpeed (const std::string& text)
     return parseDigits (trimmed.toStdString());
 }
 
+std::optional<int> parseHertz (const std::string& text)
+{
+    auto trimmed = juce::String::fromUTF8 (text.c_str()).trim();
+    if (trimmed.endsWithIgnoreCase ("hz"))
+        trimmed = trimmed.dropLastCharacters (2).trimEnd();
+    return parseDigits (trimmed.toStdString());
+}
+
 std::optional<int> parseTranspose (const std::string& text)
 {
     auto trimmed = juce::String::fromUTF8 (text.c_str()).trim();

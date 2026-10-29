@@ -100,6 +100,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const SetTranscribeMute& i) { return unlessRefused (openSong.setTranscribeMute (i.trackId, i.mute)); },
             [this] (const SetTranscribeSolo& i) { return unlessRefused (openSong.setTranscribeSolo (i.trackId, i.solo)); },
             [this] (const SetOctaveShift& i) { return unlessRefused (openSong.setOctaveShift (i.trackId, i.octaves)); },
+            [this] (const SetBandFilter& i) { return unlessRefused (openSong.setBandFilter (i.trackId, { .on = i.on, .lowHz = i.lowHz, .highHz = i.highHz })); },
             [this] (const AddMarker&) { return addMarker(); },
             [this] (const SelectMarker& i) { return selectMarker (i.markerId); },
             [this] (const AddLoop& i) { return addLoop (i.start, i.end); },

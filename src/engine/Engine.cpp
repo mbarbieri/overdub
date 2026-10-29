@@ -33,6 +33,7 @@ void Engine::loadSong (const song::Song& song, const juce::File& packageRoot, co
     const std::scoped_lock lock { nonRealtimeMutex };
 
     auto* plan = new RenderPlan (song, packageRoot, config, makeInserts, monitoredTracks, practice);
+    plan->applyBandFilter (heardBandFilter);
     // Right before publishing, so the audio thread has a free slot for the plan it replaces
     // (see the progress invariant in Engine.h).
     freeRetiredPlans();
@@ -52,6 +53,20 @@ bool Engine::setMix (const song::Song& song)
     latestPlan->applyMix (song);
     core::logEvent (core::Level::debug, "engine.mix_applied", { { "tracks", song.tracks.size() }, { "master_volume_db", song.master.volumeDb } });
     return true;
+}
+
+void Engine::setBandFilter (const std::optional<HeardBandFilter>& filter)
+{
+    const std::scoped_lock lock { nonRealtimeMutex };
+    heardBandFilter = filter;
+    if (latestPlan != nullptr)
+        latestPlan->applyBandFilter (filter);
+    core::logEvent (core::Level::debug,
+                    "engine.band_filter_set",
+                    { { "on", filter.has_value() },
+                      { "track_id", filter.has_value() ? filter->trackId : song::Id {} },
+                      { "low_hz", filter.has_value() ? filter->lowHz : 0 },
+                      { "high_hz", filter.has_value() ? filter->highHz : 0 } });
 }
 
 MeterPeaks Engine::takeMeterPeaks()

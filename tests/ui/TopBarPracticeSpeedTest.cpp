@@ -153,3 +153,16 @@ TEST_CASE ("in every mode H toggles half speed, and - and = step the Practice Sp
     CHECK (f.window->topBar.practiceSpeedField.getText() == "125");
     CHECK (f.openSong->package().undoLabel() == undoLabel);
 }
+
+TEST_CASE ("a band filter cut is typed as a whole number of Hz, with an optional Hz", "[ui][transcribe][band_filter]")
+{
+    CHECK (parseHertz ("200") == 200);
+    CHECK (parseHertz (" 3200 ") == 3200);
+    CHECK (parseHertz ("250Hz") == 250);
+    CHECK (parseHertz ("250 hz") == 250);
+    CHECK (parseHertz ("30000") == 30000); // out of range: the handler refuses it, with its Notice
+    CHECK_FALSE (parseHertz ("200.5").has_value());
+    CHECK_FALSE (parseHertz ("-200").has_value());
+    CHECK_FALSE (parseHertz ("Hz").has_value());
+    CHECK_FALSE (parseHertz ("low").has_value());
+}

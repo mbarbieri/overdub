@@ -55,6 +55,11 @@ json heardLoopJson (const std::optional<engine::LoopRange>& loop)
     return loop.has_value() ? json { { "start", loop->start }, { "end", loop->end } } : json (nullptr);
 }
 
+json heardBandFilterJson (const std::optional<engine::HeardBandFilter>& filter)
+{
+    return filter.has_value() ? json { { "track_id", filter->trackId }, { "low_hz", filter->lowHz }, { "high_hz", filter->highHz } } : json (nullptr);
+}
+
 json transportSection (const ui::OpenSong* song)
 {
     if (song == nullptr)
@@ -76,6 +81,7 @@ json transportSection (const ui::OpenSong* song)
         { "transcribe_mix_heard", song->isTranscribing() },
         { "octave_shifted_track", orNull (song->octaveShiftedTrack()) },
         { "octave_rendering", song->isOctaveRendering() },
+        { "heard_band_filter", heardBandFilterJson (song->heardBandFilter()) },
         { "heard_loop", heardLoopJson (song->heardLoop()) },
     };
 }

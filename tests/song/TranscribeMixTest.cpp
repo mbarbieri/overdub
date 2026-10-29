@@ -201,3 +201,31 @@ TEST_CASE ("undo and redo keep every Track's octave shift as it is now", "[song]
     CHECK (findTrack (restored, "track-band")->octaveShift == -1);
     CHECK (findTrack (restored, "track-vocals")->octaveShift == 0);
 }
+
+TEST_CASE ("each Track keeps its own band filter, its low cut below its high cut within 20..20000 Hz, and undo keeps it", "[song][transcribe][band_filter]")
+{
+    const auto snapshot = threeTracks();
+    const BandFilter guitar { .on = true, .lowHz = 200, .highHz = 3200 };
+    auto current = setBandFilter (snapshot, "track-guitar", guitar).value();
+    current = setBandFilter (current, "track-band", { .on = false, .lowHz = 20, .highHz = 20000 }).value();
+
+    CHECK (findTrack (current, "track-guitar")->bandFilter == guitar);
+    CHECK (findTrack (current, "track-vocals")->bandFilter == BandFilter {});
+    CHECK (findTrack (current, "track-guitar")->octaveShift == 0);
+
+    const auto restored = keepStateOutsideHistory (snapshot, current);
+    CHECK (findTrack (restored, "track-guitar")->bandFilter == guitar);
+    CHECK (findTrack (restored, "track-band")->bandFilter == BandFilter { .on = false, .lowHz = 20, .highHz = 20000 });
+
+    const auto equal = setBandFilter (current, "track-guitar", { .on = true, .lowHz = 500, .highHz = 500 });
+    REQUIRE_FALSE (equal.has_value());
+    CHECK (equal.error().code == "song.band_filter_low_not_below_high");
+    CHECK (equal.error().fields.at ("low_hz") == 500);
+    const auto tooLow = setBandFilter (current, "track-guitar", { .on = true, .lowHz = 19, .highHz = 500 });
+    REQUIRE_FALSE (tooLow.has_value());
+    CHECK (tooLow.error().code == "song.band_filter_out_of_range");
+    CHECK (tooLow.error().fields.at ("min_hz") == 20);
+    CHECK (tooLow.error().fields.at ("max_hz") == 20000);
+    CHECK (setBandFilter (current, "track-guitar", { .lowHz = 200, .highHz = 20001 }).error().code == "song.band_filter_out_of_range");
+    CHECK (setBandFilter (current, "track-gone", guitar).error().code == "song.track_not_found");
+}

@@ -159,6 +159,11 @@
 // (song.practice_render_failed; the renders made before it play) and not tried again until the Track, its shift or the heard key
 // changes.
 //
+// The band filter (issue #234, ADR 0010): each Track keeps its own (song::Track::bandFilter, outside
+// history), and only the Focus Track's is heard, only while transcribing and while it is on
+// (heardBandFilter()). It runs live in the engine (Engine::setBandFilter, set with the Loop by
+// syncTranscribeListening), so a change is heard from the next block, with no render or rebuild.
+//
 // Message thread only.
 namespace overdub::ui
 {
@@ -342,6 +347,12 @@ public:
     std::optional<song::Id> octaveShiftedTrack() const;
     // An octave-shift render runs (the octave control's spinner).
     bool isOctaveRendering() const { return octaveRun != nullptr; }
+    // A Track's band filter (issue #234, see the header comment): a Song setting outside history.
+    // Logs ui.band_filter_set (info: track_id, on, low_hz, high_hz). Errors: refusal()'s,
+    // song.band_filter_out_of_range, song.band_filter_low_not_below_high, song.track_not_found.
+    core::Expected<void> setBandFilter (const song::Id& trackId, song::BandFilter filter);
+    // The band filter the engine plays: the Focus Track's while transcribing, when it is on.
+    std::optional<engine::HeardBandFilter> heardBandFilter() const;
 
     // Loops (issue #228, ADR 0010). The active Loop and looping are Song settings outside history
     // (song.json, no undo step, song/LoopEdits.h). The engine loops (Engine::setLoop) only while
@@ -465,8 +476,8 @@ private:
     song::Song withHeardMix (song::Song song) const;
     // Stores a Transcribe Mix, Focus Track, active Loop or looping change outside history and plays it.
     core::Expected<void> changeTranscribeMix (core::Expected<song::Song> changed);
-    // Hands the engine heardLoop() (none without audio).
-    void syncEngineLoop();
+    // Hands the engine heardLoop() and heardBandFilter() (none without audio).
+    void syncTranscribeListening();
     // Sets practiceTarget (ui.practice_speed_set when it changes), forgets failed renders and
     // follows it.
     void changePracticeTarget (int speedPercent);

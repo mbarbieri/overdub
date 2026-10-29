@@ -373,7 +373,7 @@ void OpenSong::setTranscribing (bool on)
     if (binding.engine != nullptr && (octaveShiftedTrack() != shiftedBefore || ! binding.engine->setMix (heardSong())))
         reloadEngine();
     followOctaveShift();
-    syncEngineLoop();
+    syncTranscribeListening();
     // Record and Edit play at 100%; Transcribe brings back the looping Loop's speed (ADR 0010).
     if (! on && practiceTarget != song::normalPracticeSpeed && practiceSpeedMayChange())
         changePracticeTarget (song::normalPracticeSpeed);
@@ -415,10 +415,12 @@ std::optional<engine::LoopRange> OpenSong::heardLoop() const
     return engine::LoopRange { loop->start, loop->end };
 }
 
-void OpenSong::syncEngineLoop()
+void OpenSong::syncTranscribeListening()
 {
-    if (binding.engine != nullptr)
-        binding.engine->setLoop (heardLoop());
+    if (binding.engine == nullptr)
+        return;
+    binding.engine->setLoop (heardLoop());
+    binding.engine->setBandFilter (heardBandFilter());
 }
 
 core::Expected<void> OpenSong::changeTranscribeMix (core::Expected<song::Song> changed)
@@ -432,7 +434,7 @@ core::Expected<void> OpenSong::changeTranscribeMix (core::Expected<song::Song> c
     const auto shiftChanged = std::pair (octaveShiftedTrack(), song::focusOctaveShift (song())) != shiftedBefore;
     if (binding.engine != nullptr && (shiftChanged || ! binding.engine->setMix (heardSong())))
         reloadEngine();
-    syncEngineLoop();
+    syncTranscribeListening();
     followOctaveShift();
     return {};
 }
@@ -455,6 +457,24 @@ core::Expected<void> OpenSong::setOctaveShift (const song::Id& trackId, int octa
     if (changed.has_value())
         core::logEvent (core::Level::info, "ui.octave_shift_set", { { "track_id", trackId }, { "octaves", octaves } });
     return changed;
+}
+
+core::Expected<void> OpenSong::setBandFilter (const song::Id& trackId, song::BandFilter filter)
+{
+    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
+        return std::unexpected (std::move (*refused));
+    auto changed = changeTranscribeMix (song::setBandFilter (song(), trackId, filter));
+    if (changed.has_value())
+        core::logEvent (core::Level::info, "ui.band_filter_set", { { "track_id", trackId }, { "on", filter.on }, { "low_hz", filter.lowHz }, { "high_hz", filter.highHz } });
+    return changed;
+}
+
+std::optional<engine::HeardBandFilter> OpenSong::heardBandFilter() const
+{
+    const auto* track = song::focusTrack (song());
+    if (! transcribing || track == nullptr || ! track->bandFilter.on)
+        return std::nullopt;
+    return engine::HeardBandFilter { .trackId = track->id, .lowHz = track->bandFilter.lowHz, .highHz = track->bandFilter.highHz };
 }
 
 std::optional<song::Id> OpenSong::octaveShiftedTrack() const
@@ -1023,7 +1043,7 @@ void OpenSong::updateEngine (const song::Song& before)
     }
     if (binding.engine != nullptr && song::differsOnlyInMix (before, song()) && binding.engine->setMix (heardSong()))
     {
-        syncEngineLoop();
+        syncTranscribeListening();
         return;
     }
     reloadEngine();
@@ -1042,7 +1062,7 @@ void OpenSong::reloadEngine()
     inserts.sync (song());
     if (binding.engine != nullptr)
         binding.engine->loadSong (heardSong(), package_->location(), inserts.insertFactory(), monitored, heardPracticePlayback());
-    syncEngineLoop();
+    syncTranscribeListening();
 }
 
 song::Song OpenSong::heardSong() const

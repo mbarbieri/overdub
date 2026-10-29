@@ -5,6 +5,7 @@
 add_library(overdub_engine STATIC)
 
 target_sources(overdub_engine PRIVATE
+    BandFilter.cpp
     ClipSchedule.cpp
     DeviceBinding.cpp
     DeviceSettings.cpp

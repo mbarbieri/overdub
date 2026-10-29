@@ -130,6 +130,7 @@ Song keepStateOutsideHistory (Song snapshot, const Song& current)
         track.transcribeMute = currentTrack->transcribeMute;
         track.transcribeSolo = currentTrack->transcribeSolo;
         track.octaveShift = currentTrack->octaveShift;
+        track.bandFilter = currentTrack->bandFilter;
     }
 
     const auto currentHashes = stateHashBySlotId (current);

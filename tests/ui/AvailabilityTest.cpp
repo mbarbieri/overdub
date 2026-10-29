@@ -232,7 +232,7 @@ TEST_CASE ("set_practice_speed is refused while a Pass, a Separation or a conver
 
 TEST_CASE ("the Focus Track and Transcribe Mix ops are refused while a Pass, a Separation or a conversion runs, and allowed during an export and in every mode", "[ui][availability][transcribe]")
 {
-    for (const auto* op : { "set_focus_track", "set_transcribe_mute", "set_transcribe_solo", "set_octave_shift" })
+    for (const auto* op : { "set_focus_track", "set_transcribe_mute", "set_transcribe_solo", "set_octave_shift", "set_band_filter" })
     {
         INFO (op);
         CHECK (refusalOf (op, Running { .song = ActivityKind::pass })->error.code == "ui.stop_recording_first");

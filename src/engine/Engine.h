@@ -62,6 +62,12 @@ public:
     // Song's: then call loadSong. Logs engine.mix_applied or engine.mix_refused (debug, `reason`
     // no_plan or tracks_differ).
     bool setMix (const song::Song& song);
+    // The band filter heard (issue #234, ADR 0010), any non-audio thread: applied to the most
+    // recently loaded plan at once (heard from its next block, no rebuild) and to every plan
+    // loadSong builds after. None: no strip filters. The UI sets it only in Transcribe mode, so
+    // Record, Edit and Export (which builds its own plan) never hear it. Logs engine.band_filter_set
+    // (debug: on, track_id, low_hz, high_hz).
+    void setBandFilter (const std::optional<HeardBandFilter>& filter);
     // Any non-audio thread. Each strip's peak (post-fader, linear) and each Armed Track's input peak
     // (MeterPeaks) since the previous call, from the most recently loaded plan; empty before the
     // first loadSong.
@@ -268,6 +274,7 @@ private:
     std::optional<LoopRange> heardLoop; // audio thread only
     std::mutex loopWriteMutex; // serialises setLoop writers; never taken by process()
 
+    std::optional<HeardBandFilter> heardBandFilter; // under nonRealtimeMutex
     std::mutex nonRealtimeMutex; // serialises loadSong and housekeeping; never taken by process()
     std::optional<std::uint64_t> lastLoadSummaryNs;
 };

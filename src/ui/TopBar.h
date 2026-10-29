@@ -67,6 +67,10 @@ std::optional<int> parseTranspose (const std::string& text);
 // spaces around; none for anything else. The range is the handler's to check.
 std::optional<int> parsePracticeSpeed (const std::string& text);
 
+// A whole number of Hz typed into a band filter field (issue #234): digits, an optional "Hz" after
+// them (any case), and spaces around; none for anything else. The range is the handler's to check.
+std::optional<int> parseHertz (const std::string& text);
+
 // The indicator's name line: "<first>", or "<first> +N" with N other processes; empty with none.
 std::string controlIndicatorName (const std::vector<std::string>& processes);
 

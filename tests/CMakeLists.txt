@@ -45,6 +45,7 @@ target_sources(overdub_tests PRIVATE
     engine/EngineTest.cpp
     engine/EnginePracticeSpeedTest.cpp
     engine/EngineLoopTest.cpp
+    engine/EngineBandFilterTest.cpp
     export/MixExportTest.cpp
     export/MixRenderTest.cpp
     export/MovieExportTest.cpp
@@ -141,6 +142,7 @@ target_sources(overdub_tests PRIVATE
     ui/TranscribeModeTest.cpp
     ui/TranscribeMixTest.cpp
     ui/OctaveShiftTest.cpp
+    ui/BandFilterTest.cpp
     ui/TrackColoursUiTest.cpp
     ui/TrackReorderUiTest.cpp
     ui/TrackRowEditsTest.cpp
