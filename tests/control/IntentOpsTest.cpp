@@ -414,6 +414,35 @@ TEST_CASE ("set_practice_speed takes a whole percent from 50 to 125, outside his
     CHECK (socket.f.openSong->practiceSpeed() == 80);
 }
 
+TEST_CASE ("set_focus_track takes a Track id, or null or no track_id for none, and set_transcribe_mute and set_transcribe_solo a Track id, all outside history", "[control][intent_ops][transcribe]")
+{
+    SocketToWindow socket;
+    const auto guitarId = socket.f.trackNamed ("Guitar").id;
+    const auto bandId = socket.f.trackNamed ("Band Mix").id;
+    const auto undoLabel = socket.f.openSong->package().undoLabel();
+
+    CHECK (socket.request (R"({"id": 1, "op": "set_focus_track", "track_id": ")" + guitarId + R"("})").at ("ok") == true);
+    CHECK (socket.f.song().focusTrackId == guitarId);
+    CHECK (socket.f.trackNamed ("Guitar").transcribeSolo);
+    CHECK (socket.request (R"({"id": 2, "op": "set_focus_track", "track_id": null})").at ("ok") == true);
+    CHECK_FALSE (socket.f.song().focusTrackId.has_value());
+    CHECK (socket.request (R"({"id": 3, "op": "set_focus_track", "track_id": ")" + guitarId + R"("})").at ("ok") == true);
+    CHECK (socket.request (R"({"id": 4, "op": "set_focus_track"})").at ("ok") == true);
+    CHECK_FALSE (socket.f.song().focusTrackId.has_value());
+
+    CHECK (socket.request (R"({"id": 5, "op": "set_transcribe_mute", "track_id": ")" + bandId + R"(", "mute": true})").at ("ok") == true);
+    CHECK (socket.request (R"({"id": 6, "op": "set_transcribe_solo", "track_id": ")" + bandId + R"(", "solo": true})").at ("ok") == true);
+    CHECK (socket.f.trackNamed ("Band Mix").transcribeMute);
+    CHECK (socket.f.trackNamed ("Band Mix").transcribeSolo);
+    CHECK_FALSE (socket.f.trackNamed ("Band Mix").mute);
+    CHECK_FALSE (socket.f.trackNamed ("Band Mix").solo);
+    CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
+
+    const auto unknown = socket.request (R"({"id": 7, "op": "set_focus_track", "track_id": "track-gone"})");
+    CHECK (unknown.at ("ok") == false);
+    CHECK (unknown.at ("error").at ("code") == "song.track_not_found");
+}
+
 TEST_CASE ("the socket shows Transcribe mode, and a Clip edit there answers ui.transcribing with its reason", "[control][intent_ops][transcribe]")
 {
     SocketToWindow socket;

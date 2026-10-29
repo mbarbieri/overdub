@@ -37,6 +37,8 @@ core::Expected<DeletedTrack> deleteTrack (Song song, const Id& trackId)
         return std::unexpected (track.error());
     auto label = "Delete Track " + (*track)->name;
     song.tracks.erase (song.tracks.begin() + (*track - song.tracks.data()));
+    if (song.focusTrackId == trackId)
+        song.focusTrackId.reset();
     return DeletedTrack { std::move (song), std::move (label) };
 }
 

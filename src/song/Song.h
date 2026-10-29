@@ -27,7 +27,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 6;
+inline constexpr int songFormatVersion = 7;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -133,6 +133,10 @@ struct Track
     bool mute = false;
     bool solo = false;
     bool armed = false;              // persisted, not undoable
+    // Transcribe mode's own mute and solo (the Transcribe Mix, ADR 0010, issue #226): heard only
+    // in Transcribe mode, never by Record, Edit or Export. Persisted, not undoable. Format 7.
+    bool transcribeMute = false;
+    bool transcribeSolo = false;
     std::vector<int> inputChannels;  // 0-based device input channel indices, 1 (mono) or 2 (stereo); empty = none. Not undoable.
     std::vector<InsertSlot> insertChain;
     std::vector<Clip> clips; // layer order: the last Clip is on top
@@ -249,6 +253,8 @@ struct Song
     ExportFormat exportFormat = ExportFormat::wav;
     VideoLength exportLength = VideoLength::trimToVideoTake;
     std::string exportDestination; // an absolute path; empty = <export folder>/<Song name>.<ext>
+    // Transcribe mode's Focus Track (ADR 0010, issue #226); none = no Focus Track. Format 7.
+    std::optional<Id> focusTrackId;
 
     bool operator== (const Song&) const = default;
 };
@@ -274,7 +280,8 @@ core::Expected<Track*> lookupTrack (Song& song, const Id& trackId);
 // Undo and redo restore a snapshot's undoable content but keep the current state that lives
 // outside history: pre-roll, camera arm and device, playhead (converted to the snapshot's rate), the
 // export format, length and destination, the export's Video Take (unless the snapshot does not
-// have it), per Track id Armed and input channels, and per
+// have it), the Focus Track (unless the snapshot does not have it), per Track id Armed, input
+// channels and the Transcribe Mix's mute and solo, and per
 // Insert Chain slot id (Master's included) the plugin state hash: plugin parameters are outside
 // history. A slot only the snapshot has keeps the snapshot's hash.
 Song keepStateOutsideHistory (Song snapshot, const Song& current);

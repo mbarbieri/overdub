@@ -9,20 +9,26 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
 // Transcribe mode's page (issue #225, ADR 0010, prototype/transcribe-mode variant D with C's
 // overview): a whole-Song overview strip on top, with the heard mix's waveform and a rectangle for
 // the visible window; under it the ruler over one tall, zoomable waveform of the heard mix
-// (ui/TranscribeGeometry.h heardMixColumns); and at the right the Transcribe column with Practice
-// Speed and Transpose, which set_transcribe_column_visible (I) shows or hides.
+// (ui/TranscribeGeometry.h transcribeColumns: the Focus Track under its name, or the heard
+// Transcribe Mix); and at the right the Transcribe column with Practice Speed, Transpose and the
+// Track list of the Focus Track and the Transcribe Mix (issue #226), which
+// set_transcribe_column_visible (I) shows or hides.
 //
 // Gestures, each an Intent through onIntent (ADR 0008): clicking or dragging the overview moves
 // the window there (set_transcribe_view); the wheel scrolls time, and command-wheel or a trackpad
 // pinch zooms around the pointer (set_transcribe_view), in until about 2 s fills the width;
 // clicking or dragging the ruler or the waveform seeks (seek); a whole number typed into the
-// column's fields runs set_practice_speed or set_transpose, as the top bar's do. The view is
+// column's fields runs set_practice_speed or set_transpose, as the top bar's do; a Track row's ◎
+// runs set_focus_track (none on the Focus Track's own ◎), its M set_transcribe_mute and its S
+// set_transcribe_solo. The view is
 // transient UI state, never in the Song; the page changes it only when the handler calls setView.
 namespace overdub::ui
 {
@@ -37,6 +43,8 @@ struct TranscribePageState
     int transpose = 0;
     bool transposeRendering = false;
     bool canTranspose = false;
+    // The Focus Track and Transcribe Mix controls are enabled (ui/Availability.h).
+    bool canSetTranscribeMix = false;
 };
 
 // The overview strip: the heard mix across the whole Song, the visible window and the playhead.
@@ -66,8 +74,10 @@ private:
 class TranscribeWave final : public juce::Component
 {
 public:
-    void show (std::vector<song::PeakRange> columns, TimelineView view, int sampleRate, song::SampleCount playhead);
+    // `label` names what the columns are (the Focus Track's name, in `labelColour`).
+    void show (std::vector<song::PeakRange> columns, TimelineView view, int sampleRate, song::SampleCount playhead, juce::String label, juce::Colour labelColour);
     void paint (juce::Graphics& g) override;
+    const juce::String& label() const { return shownLabel; }
     void mouseDown (const juce::MouseEvent& event) override;
     void mouseDrag (const juce::MouseEvent& event) override;
     void mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) override;
@@ -85,9 +95,43 @@ private:
     TimelineView view;
     int sampleRate = 48000;
     song::SampleCount playhead = 0;
+    juce::String shownLabel;
+    juce::Colour shownLabelColour;
 };
 
-// The right column: "LISTENING", then Practice Speed and Transpose, as the top bar shows them.
+// One Track in the Transcribe column's list: its colour and name, ◎ (Focus), M and S of the
+// Transcribe Mix. Dimmed when the Transcribe Mix does not sound it.
+class TranscribeTrackRow final : public juce::Component
+{
+public:
+    explicit TranscribeTrackRow (song::Id trackId);
+
+    const song::Id& trackId() const { return id; }
+    void show (const song::Track& track, bool focused, bool heard, bool enabled);
+    void resized() override;
+    void paint (juce::Graphics& g) override;
+
+    // The new value a click asks for: focused, muted or soloed.
+    std::function<void (bool)> onFocus;
+    std::function<void (bool)> onMute;
+    std::function<void (bool)> onSolo;
+
+    juce::TextButton focusButton;
+    juce::TextButton muteButton { "M" };
+    juce::TextButton soloButton { "S" };
+
+private:
+    song::Id id;
+    juce::String name;
+    juce::Colour colour;
+    bool focused = false;
+    bool muted = false;
+    bool soloed = false;
+    bool heard = true;
+};
+
+// The right column: "LISTENING", then Practice Speed and Transpose, as the top bar shows them,
+// then "TRANSCRIBE MIX" over one TranscribeTrackRow per Track in Song order.
 class TranscribeColumn final : public juce::Component
 {
 public:
@@ -108,10 +152,15 @@ public:
     juce::Label transposeField;
     juce::Label transposeUnit { {}, "st" };
     Spinner transposeSpinner;
+    juce::Label mixCaption { {}, "TRANSCRIBE MIX" };
+    std::vector<std::unique_ptr<TranscribeTrackRow>> trackRows;
 
 private:
     void practiceSpeedEntered();
     void transposeEntered();
+    // One row per Track, rebuilt only when the Track ids or their order change.
+    void showTracks (const TranscribePageState& state);
+    void layOutTrackRows();
 
     int shownPracticeSpeed = 100;
     std::string shownTranspose = "0";

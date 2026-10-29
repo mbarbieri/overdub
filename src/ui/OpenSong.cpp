@@ -4,6 +4,7 @@
 #include "core/Log.h"
 #include "song/InsertEdits.h"
 #include "song/MixEdits.h"
+#include "song/TranscribeMix.h"
 #include "song/Transpose.h"
 #include "ui/TrackRowEdits.h"
 
@@ -205,7 +206,7 @@ core::Expected<void> OpenSong::startPass (song::SampleCount recordPoint, bool pl
 
     beginActivity (PassActivity { .recorder = std::move (*started), .number = passNumber, .preRollPoint = options.recordPoint });
     // A Mixer preview still applied (a drag the Pass interrupts) gives way to the Song's mix.
-    binding.engine->setMix (song());
+    binding.engine->setMix (heardSong());
     if (usePreRoll)
     {
         const auto playFrom = std::max<song::SampleCount> (0, recordPoint - preRollSamples);
@@ -326,6 +327,58 @@ void OpenSong::setExportDestination (const std::string& path)
     package_->changeWithoutHistory (std::move (changed));
 }
 
+void OpenSong::setTranscribing (bool on)
+{
+    if (on == transcribing)
+        return;
+    transcribing = on;
+    core::logEvent (core::Level::debug, "ui.transcribe_mix_heard", { { "heard", on } });
+    if (binding.engine != nullptr && ! binding.engine->setMix (heardSong()))
+        reloadEngine();
+}
+
+core::Expected<void> OpenSong::changeTranscribeMix (core::Expected<song::Song> changed)
+{
+    if (! changed.has_value())
+        return std::unexpected (std::move (changed.error()));
+    if (*changed == song())
+        return {};
+    package_->changeWithoutHistory (std::move (*changed));
+    if (binding.engine != nullptr && ! binding.engine->setMix (heardSong()))
+        reloadEngine();
+    return {};
+}
+
+core::Expected<void> OpenSong::setFocusTrack (const std::optional<song::Id>& trackId)
+{
+    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
+        return std::unexpected (std::move (*refused));
+    auto changed = changeTranscribeMix (song::setFocusTrack (song(), trackId));
+    if (changed.has_value())
+        core::logEvent (core::Level::info, "ui.focus_track_set", { { "track_id", trackId.value_or ("") } });
+    return changed;
+}
+
+core::Expected<void> OpenSong::setTranscribeMute (const song::Id& trackId, bool mute)
+{
+    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
+        return std::unexpected (std::move (*refused));
+    auto changed = changeTranscribeMix (song::setTranscribeMute (song(), trackId, mute));
+    if (changed.has_value())
+        core::logEvent (core::Level::debug, "ui.transcribe_mute_set", { { "track_id", trackId }, { "mute", mute } });
+    return changed;
+}
+
+core::Expected<void> OpenSong::setTranscribeSolo (const song::Id& trackId, bool solo)
+{
+    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
+        return std::unexpected (std::move (*refused));
+    auto changed = changeTranscribeMix (song::setTranscribeSolo (song(), trackId, solo));
+    if (changed.has_value())
+        core::logEvent (core::Level::debug, "ui.transcribe_solo_set", { { "track_id", trackId }, { "solo", solo } });
+    return changed;
+}
+
 void OpenSong::stop()
 {
     if (binding.engine == nullptr)
@@ -407,7 +460,7 @@ core::Expected<void> OpenSong::previewMix (const song::Song& candidate)
     if (auto refused = refusal (activity, Gesture::previewMix))
         return std::unexpected (std::move (*refused));
     if (binding.engine != nullptr && song::differsOnlyInMix (song(), candidate))
-        binding.engine->setMix (candidate);
+        binding.engine->setMix (withHeardMix (candidate));
     return {};
 }
 
@@ -852,7 +905,7 @@ void OpenSong::updateEngine (const song::Song& before)
         sampleRateChanged = true;
         return;
     }
-    if (binding.engine != nullptr && song::differsOnlyInMix (before, song()) && binding.engine->setMix (song()))
+    if (binding.engine != nullptr && song::differsOnlyInMix (before, song()) && binding.engine->setMix (heardSong()))
         return;
     reloadEngine();
     followTranspose();
@@ -873,9 +926,14 @@ void OpenSong::reloadEngine()
 
 song::Song OpenSong::heardSong() const
 {
-    auto heard = song();
+    auto heard = withHeardMix (song());
     heard.transpose = heardSemitones;
     return heard;
+}
+
+song::Song OpenSong::withHeardMix (song::Song candidate) const
+{
+    return transcribing ? song::withTranscribeMix (std::move (candidate)) : candidate;
 }
 
 std::optional<core::Error> OpenSong::advanceTranspose (song::SongPackage::Clock::time_point now)

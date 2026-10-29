@@ -105,6 +105,7 @@ inline Song fullyPopulatedSong()
             .mute = true,
             .solo = true,
             .armed = true,
+            .transcribeMute = true,
             .inputChannels = { 2, 3 },
             .insertChain = { insertSlot ("slot-1", "aaaa"), insertSlot ("slot-2", "abab") },
             .clips = {
@@ -140,6 +141,7 @@ inline Song fullyPopulatedSong()
             .mute = false,
             .solo = false,
             .armed = false,
+            .transcribeSolo = true,
             .inputChannels = { 0 },
             .insertChain = { insertSlot ("slot-3", "acac"), insertSlot ("slot-4", "adad") },
             .clips = {
@@ -168,6 +170,7 @@ inline Song fullyPopulatedSong()
     song.exportLength = VideoLength::fullSong;
     song.exportDestination = "/Users/someone/Music/Mixes/Band Mix.mp4";
     song.transpose = -3;
+    song.focusTrackId = "track-backing";
     return song;
 }
 } // namespace overdub::song::testing

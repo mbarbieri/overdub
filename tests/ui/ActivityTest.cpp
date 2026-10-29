@@ -145,6 +145,9 @@ std::vector<GestureCase> gestureCases()
           [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->startSampleRateConversion (otherSampleRate)); },
           { "ok", pass, separation, "ok", exportRunning } },
         { "setPracticeSpeed", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setPracticeSpeed (80)); }, { "ok", pass, separation, conversion, "ok" } },
+        { "setFocusTrack", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setFocusTrack (a.guitarId())); }, { "ok", pass, separation, conversion, "ok" } },
+        { "setTranscribeMute", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setTranscribeMute (a.guitarId(), true)); }, { "ok", pass, separation, conversion, "ok" } },
+        { "setTranscribeSolo", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setTranscribeSolo (a.guitarId(), true)); }, { "ok", pass, separation, conversion, "ok" } },
     };
 }
 

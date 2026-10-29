@@ -109,6 +109,9 @@ Song keepStateOutsideHistory (Song snapshot, const Song& current)
     snapshot.exportFormat = current.exportFormat;
     snapshot.exportLength = current.exportLength;
     snapshot.exportDestination = current.exportDestination;
+    snapshot.focusTrackId.reset();
+    if (current.focusTrackId.has_value() && findTrack (snapshot, *current.focusTrackId) != nullptr)
+        snapshot.focusTrackId = current.focusTrackId;
 
     for (auto& track : snapshot.tracks)
     {
@@ -117,6 +120,8 @@ Song keepStateOutsideHistory (Song snapshot, const Song& current)
             continue;
         track.armed = currentTrack->armed;
         track.inputChannels = currentTrack->inputChannels;
+        track.transcribeMute = currentTrack->transcribeMute;
+        track.transcribeSolo = currentTrack->transcribeSolo;
     }
 
     const auto currentHashes = stateHashBySlotId (current);

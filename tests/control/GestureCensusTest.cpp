@@ -356,6 +356,24 @@ struct CensusWorkspace
             f.content.run (ui::SongIntent { SetMixerHeight { builtView["mixer_height"].get<int>() } });
         if (differs ("/passes_panel_open"_json_pointer))
             f.content.run (ui::SongIntent { SetPassesPanelOpen { builtView["passes_panel_open"].get<bool>() } });
+        restoreTranscribeMix();
+    }
+
+    // The Focus Track and the Transcribe Mix are outside history: ◎, M and S leave no undo step.
+    void restoreTranscribeMix()
+    {
+        if (f.song().song().focusTrackId != builtSong.focusTrackId)
+            f.content.run (ui::SongIntent { SetFocusTrack { builtSong.focusTrackId } });
+        for (const auto& built : builtSong.tracks)
+        {
+            const auto* current = song::findTrack (f.song().song(), built.id);
+            if (current == nullptr)
+                continue;
+            if (current->transcribeMute != built.transcribeMute)
+                f.content.run (ui::SongIntent { SetTranscribeMute { built.id, built.transcribeMute } });
+            if (current->transcribeSolo != built.transcribeSolo)
+                f.content.run (ui::SongIntent { SetTranscribeSolo { built.id, built.transcribeSolo } });
+        }
     }
 
     void settle (const Scene& scene)
@@ -488,6 +506,9 @@ TEST_CASE ("no gesture changes the app state without running an Intent", "[contr
         if (dynamic_cast<const juce::Label*> (column.getChildComponent (i)) != nullptr)
             ++columnFieldOrdinal;
     CHECK (fired ("transcribe/", "/TranscribeColumn#0/Label#" + std::to_string (columnFieldOrdinal) + ":double_click"));
+    // A Track row's ◎, M and S in the Transcribe column (issue #226).
+    for (const auto* button : { "TextButton#0", "TextButton#1", "TextButton#2" })
+        CHECK (fired ("transcribe/", std::string ("/TranscribeColumn#0/TranscribeTrackRow#0/") + button + ":click"));
 }
 
 TEST_CASE ("the census fails on a button that edits the Song without an Intent", "[control][census]")

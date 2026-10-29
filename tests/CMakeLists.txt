@@ -71,6 +71,7 @@ target_sources(overdub_tests PRIVATE
     song/SeparationTest.cpp
     song/SongPackageTest.cpp
     song/SongTest.cpp
+    song/TranscribeMixTest.cpp
     song/TakeEditsTest.cpp
     song/TrackColoursTest.cpp
     song/TransposeTest.cpp
@@ -132,6 +133,7 @@ target_sources(overdub_tests PRIVATE
     ui/TransposeRecordExportTest.cpp
     ui/TranscribeGeometryTest.cpp
     ui/TranscribeModeTest.cpp
+    ui/TranscribeMixTest.cpp
     ui/TrackColoursUiTest.cpp
     ui/TrackReorderUiTest.cpp
     ui/TrackRowEditsTest.cpp

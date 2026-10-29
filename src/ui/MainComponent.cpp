@@ -178,6 +178,7 @@ void MainComponent::setOpenSong (OpenSong* song)
     if (song != nullptr)
     {
         songContent = std::make_unique<SongView> (*song, *this);
+        song->setTranscribing (currentMode == Mode::transcribe);
         addAndMakeVisible (*songContent, getIndexOfChildComponent (&noticeLine));
         // Over the top bar and the page, under the Notice line; the SongView owns it.
         addChildComponent (songContent->exportSheet, getIndexOfChildComponent (&noticeLine));
@@ -278,6 +279,9 @@ void MainComponent::showMode (Mode mode)
         core::logEvent (core::Level::debug, "ui.mode_changed", { { "mode", modeName (mode) } });
     }
     currentMode = mode;
+    // Transcribe mode hears the Transcribe Mix; Record and Edit the Song's own mix (issue #226).
+    if (songContent != nullptr)
+        songContent->currentSong().setTranscribing (mode == Mode::transcribe);
     refresh();
 }
 

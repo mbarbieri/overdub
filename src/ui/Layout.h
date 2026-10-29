@@ -349,7 +349,11 @@ struct TranscribePageLayout
 TranscribePageLayout transcribePageLayout (juce::Rectangle<int> page, bool columnVisible);
 
 // Inside the Transcribe column, in its own coordinates: the "LISTENING" heading, then Practice
-// Speed and Transpose, each a caption over its field, unit and spinner.
+// Speed and Transpose, each a caption over its field, unit and spinner, then the "TRANSCRIBE MIX"
+// caption over the Track list (issue #226): one row of transcribeTrackRowHeight per Track, in Song
+// order, from the top of `tracks`.
+inline constexpr int transcribeTrackRowHeight = 26;
+
 struct TranscribeColumnLayout
 {
     juce::Rectangle<int> heading;
@@ -361,7 +365,22 @@ struct TranscribeColumnLayout
     juce::Rectangle<int> transposeField;
     juce::Rectangle<int> transposeUnit;
     juce::Rectangle<int> transposeSpinner;
+    juce::Rectangle<int> mixCaption;
+    juce::Rectangle<int> tracks;
 };
 
 TranscribeColumnLayout transcribeColumnLayout (juce::Rectangle<int> column);
+
+// One row of the Transcribe column's Track list, in its own coordinates: the Track's colour swatch
+// and name, then ◎ (Focus), M and S at the right.
+struct TranscribeTrackRowLayout
+{
+    juce::Rectangle<int> swatch;
+    juce::Rectangle<int> name;
+    juce::Rectangle<int> focus;
+    juce::Rectangle<int> mute;
+    juce::Rectangle<int> solo;
+};
+
+TranscribeTrackRowLayout transcribeTrackRowLayout (juce::Rectangle<int> row);
 } // namespace overdub::ui

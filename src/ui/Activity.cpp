@@ -45,6 +45,7 @@ constexpr GestureRule ruleFor (Gesture gesture)
         case Gesture::startSeparation: return { "start_separation", true, false, true, true, false };
         case Gesture::startSampleRateConversion: return { "start_sample_rate_conversion", true, true, false, true, false };
         case Gesture::setPracticeSpeed: return { "set_practice_speed", true, true, true, false, false };
+        case Gesture::setTranscribeMix: return { "set_transcribe_mix", true, true, true, false, false };
     }
     std::unreachable();
 }

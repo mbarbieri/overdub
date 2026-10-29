@@ -66,6 +66,7 @@ json transportSection (const ui::OpenSong* song)
         { "practice_speed", song->practiceSpeed() },
         { "heard_practice_speed", song->heardPracticeSpeed() },
         { "practice_rendering", song->isPracticeRendering() },
+        { "transcribe_mix_heard", song->isTranscribing() },
     };
 }
 
