@@ -232,3 +232,18 @@ TEST_CASE ("the left and right arrows nudge the playhead back and forward", "[ui
     CHECK (keyRuns (KeyChord { leftArrowCharacter, true, false }) == std::nullopt);
     CHECK (keyRuns (KeyChord { rightArrowCharacter, false, true }) == std::nullopt);
 }
+
+TEST_CASE ("K adds a Marker, and backspace or forward delete deletes the selected Marker while one is selected", "[ui][intent][keys][markers]")
+{
+    CHECK (keyRuns (KeyChord { 'k' }) == songIntent (intent::AddMarker {}));
+    CHECK (keyRuns (KeyChord { 'K' }) == songIntent (intent::AddMarker {}));
+    CHECK (keyRuns (KeyChord { 'k', true }) == std::nullopt);
+
+    const KeyContext selected { .selectedMarker = song::Id ("marker-1") };
+    for (const auto character : { backspaceCharacter, forwardDeleteCharacter })
+    {
+        const auto intent = intentForKey (KeyChord { character }, selected);
+        REQUIRE (intent.has_value());
+        CHECK (core::operationToJson (*intent) == songIntent (intent::Edit { intent::DeleteMarker { "marker-1" } }));
+    }
+}

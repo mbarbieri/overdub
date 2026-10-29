@@ -37,6 +37,7 @@ Song withMixOf (Song song, const Song& from)
     }
     song.master.volumeDb = from.master.volumeDb;
     song.focusTrackId = from.focusTrackId;
+    song.markers = from.markers; // the engine never hears a Marker
     return song;
 }
 } // namespace

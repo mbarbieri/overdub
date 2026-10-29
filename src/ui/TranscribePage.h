@@ -3,6 +3,7 @@
 #include "song/Peaks.h"
 #include "song/Song.h"
 #include "ui/Intent.h"
+#include "ui/MarkerStrip.h"
 #include "ui/PeaksLookup.h"
 #include "ui/TimelineGeometry.h"
 #include "ui/TopBar.h"
@@ -11,6 +12,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,7 +30,8 @@
 // clicking or dragging the ruler or the waveform seeks (seek); a whole number typed into the
 // column's fields runs set_practice_speed or set_transpose, as the top bar's do; a Track row's ◎
 // runs set_focus_track (none on the Focus Track's own ◎), its M set_transcribe_mute and its S
-// set_transcribe_solo. The view is
+// set_transcribe_solo. The Loop/Marker strip over the ruler and the Markers list in the left
+// column (issue #227, ui/MarkerStrip.h) run select_marker, move_marker and rename_marker. The view is
 // transient UI state, never in the Song; the page changes it only when the handler calls setView.
 namespace overdub::ui
 {
@@ -45,6 +48,9 @@ struct TranscribePageState
     bool canTranspose = false;
     // The Focus Track and Transcribe Mix controls are enabled (ui/Availability.h).
     bool canSetTranscribeMix = false;
+    // The selected Marker (SongView::selectedMarker), and whether the strip edits Markers.
+    std::optional<song::Id> selectedMarker;
+    bool markersEditable = false;
 };
 
 // The overview strip: the heard mix across the whole Song, the visible window and the playhead.
@@ -187,7 +193,9 @@ public:
 
     // Children are public so tests can click them (ADR 0005 UI amendment).
     TranscribeOverview overview;
+    MarkerStrip markerStrip;
     TranscribeWave wave;
+    MarkerList markerList;
     TranscribeColumn column;
 
 private:

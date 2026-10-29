@@ -171,7 +171,7 @@ TEST_CASE ("a v6 Song migrates to v7 with no Focus Track and every Track unmuted
 
     REQUIRE (migrated.has_value());
     CHECK (migrated->fromVersion == 6);
-    CHECK (migrated->document.at ("formatVersion") == 7);
+    CHECK (migrated->document.at ("formatVersion") == overdub::song::songFormatVersion);
     CHECK (migrated->document.at ("focusTrackId").is_null());
     for (const auto& track : migrated->document.at ("tracks"))
     {
@@ -181,4 +181,17 @@ TEST_CASE ("a v6 Song migrates to v7 with no Focus Track and every Track unmuted
     // The Song's own mix is untouched.
     CHECK (migrated->document.at ("tracks").at (0).at ("mute") == true);
     CHECK (migrated->document.at ("tracks").at (0).at ("solo") == true);
+}
+
+TEST_CASE ("a v7 Song migrates to v8 with no Markers", "[song][migration][markers]")
+{
+    const json document = { { "formatVersion", 7 }, { "sampleRate", 48000 }, { "transpose", 2 } };
+
+    const auto migrated = overdub::song::migrateSongDocument (document);
+
+    REQUIRE (migrated.has_value());
+    CHECK (migrated->fromVersion == 7);
+    CHECK (migrated->document.at ("formatVersion") == 8);
+    CHECK (migrated->document.at ("markers") == json::array());
+    CHECK (migrated->document.at ("transpose") == 2);
 }

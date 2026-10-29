@@ -27,7 +27,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 7;
+inline constexpr int songFormatVersion = 8;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -230,6 +230,17 @@ struct VideoTake
     bool operator== (const VideoTake&) const = default;
 };
 
+// A labelled point in time on the Song (ADR 0010, issue #227), shown in every mode. Undoable.
+// Format 8.
+struct Marker
+{
+    Id id;
+    std::string name; // "Marker 1" when added, never empty
+    SampleCount position = 0;
+
+    bool operator== (const Marker&) const = default;
+};
+
 struct Song
 {
     int sampleRate = 48000; // fixed from the device at creation
@@ -242,6 +253,9 @@ struct Song
     // Every Backing Track's pitch shift in whole semitones, -12..+12 (ADR 0009, song/Transpose.h).
     // Undoable; Takes are never transposed. Format 6.
     int transpose = 0;
+    // In time order (song/MarkerEdits.h keeps it); Markers at one position keep the order they
+    // were placed in. Format 8.
+    std::vector<Marker> markers;
 
     // Persisted settings outside undo history.
     PreRoll preRoll = PreRoll::off;

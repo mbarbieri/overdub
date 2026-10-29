@@ -314,6 +314,7 @@ RecordPage::RecordPage (PeaksLookup peaks)
     passesList.onSelect = [this] (const song::Id& passId) { emit (SongIntent { intent::JumpToPass { passId } }); };
     passesList.onBringBack = [this] (const song::Id& passId) { emit (SongIntent { intent::Edit { intent::BringBackPass { passId } } }); };
     overview.onSeek = [this] (song::SampleCount sample) { emit (SongIntent { intent::Seek { sample } }); };
+    markerStrip.onIntent = [this] (const Intent& intent) { emit (intent); };
     mix.onIntent = [this] (const Intent& intent) { emit (intent); };
     mix.onFocusChanged = [this] { showFocus(); };
     mix.onKeyValue = [this] (const MixerControl& control, double value) {
@@ -332,6 +333,7 @@ RecordPage::RecordPage (PeaksLookup peaks)
     addChildComponent (stageVideo);
     addAndMakeVisible (passesList);
     addAndMakeVisible (lookAheadStrip);
+    addAndMakeVisible (markerStrip);
     addAndMakeVisible (overview);
 }
 
@@ -515,6 +517,7 @@ void RecordPage::showSong (const song::Song& song, const RecordTransport& newTra
     transport = newTransport;
     showLookAhead();
     overview.show (song, transport.playhead);
+    markerStrip.show (song.markers, stripScaleFitting (overview.length(), markerStrip.getWidth()), false, std::nullopt);
 }
 
 void RecordPage::showStagePlayback (bool playback)
@@ -566,6 +569,7 @@ void RecordPage::resized()
     passesList.setBounds (layout.passes);
     lookAheadStrip.setBounds (layout.lookAhead);
     overview.setBounds (layout.overview);
+    markerStrip.setBounds (layout.markerStrip);
     showLookAhead(); // its columns follow the strip's width
 }
 

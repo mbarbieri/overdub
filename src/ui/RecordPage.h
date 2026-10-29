@@ -7,6 +7,7 @@
 #include "ui/InsertChain.h"
 #include "ui/Intent.h"
 #include "ui/LookAheadStrip.h"
+#include "ui/MarkerStrip.h"
 #include "ui/MixFocus.h"
 #include "ui/Mixer.h"
 #include "ui/PassesPanel.h"
@@ -34,7 +35,8 @@
 // Right column: one row per Track (grip, name, A, M and S (issue #31), input picker, Monitoring), the
 // Import button, then the Passes list (heard status and ↺ Bring back; clicking a row jumps to the
 // Pass's start). Along the bottom: the Backing Track look-ahead strip and the whole-Song overview
-// (a click moves the playhead). Under each row's name: the Track's Insert Chain (issue #34,
+// (a click moves the playhead), with the read-only Loop/Marker strip on the overview's scale over
+// it (issue #227: clicking a Marker runs select_marker, which moves the record point there). Under each row's name: the Track's Insert Chain (issue #34,
 // ui/InsertChain.h: add, open, bypass, remove, drag to reorder); the Monitoring button counts
 // the chain's active Inserts. A right-click (or control-click) on a row asks for its Track's menu
 // (issue #114: Separate...). Along each row's bottom: the Track's horizontal volume fader and its dB
@@ -243,6 +245,7 @@ public:
     VideoScreen stageVideo;
     PassesPanel passesList { "Passes \xC2\xB7 newest first \xC2\xB7 click one to jump to its start" };
     LookAheadStrip lookAheadStrip;
+    MarkerStrip markerStrip;
     SongOverview overview;
 
 private:

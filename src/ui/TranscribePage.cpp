@@ -418,9 +418,13 @@ TranscribePage::TranscribePage (PeaksLookup peaksLookup)
         emit (SongIntent { intent::SetTranscribeView { pinch.view.firstSample, pinch.view.samplesPerPixel } });
     };
     column.onIntent = [this] (const Intent& intent) { emit (intent); };
+    markerStrip.onIntent = [this] (const Intent& intent) { emit (intent); };
+    markerList.onIntent = [this] (const Intent& intent) { emit (intent); };
 
     addAndMakeVisible (overview);
+    addAndMakeVisible (markerStrip);
     addAndMakeVisible (wave);
+    addAndMakeVisible (markerList);
     addAndMakeVisible (column);
 }
 
@@ -491,12 +495,16 @@ void TranscribePage::showViews()
     const auto labelColour = focus != nullptr ? trackColour (*focus) : juce::Colours::white;
     wave.show (waveColumns, current, shown.song.sampleRate, shown.playhead, label, labelColour);
     overview.show (overviewColumns, length, current, width, shown.playhead);
+    markerStrip.show (shown.song.markers, stripScaleFor (current), shown.markersEditable, shown.selectedMarker);
+    markerList.show (shown.song.markers, shown.song.sampleRate, shown.selectedMarker);
 }
 
 void TranscribePage::resized()
 {
     const auto layout = transcribePageLayout (getLocalBounds(), shown.columnVisible);
     overview.setBounds (layout.overview);
+    markerStrip.setBounds (layout.markerStrip);
+    markerList.setBounds (layout.markers);
     wave.setBounds (layout.ruler.getUnion (layout.waveform));
     column.setBounds (layout.column);
     column.setVisible (shown.columnVisible);

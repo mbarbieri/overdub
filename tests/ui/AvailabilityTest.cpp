@@ -260,3 +260,24 @@ TEST_CASE ("in Transcribe mode the Clip edits and nudge are refused quietly with
     // With no Song open each answers ui.no_song_open from its handler instead.
     CHECK (refusedCodes (Running { .transcribing = true }).empty());
 }
+
+TEST_CASE ("Record mode refuses adding and editing Markers with ui.record_mode, presented; Transcribe and Edit allow them", "[ui][availability][markers]")
+{
+    for (const auto* op : { "add_marker", "move_marker", "rename_marker", "delete_marker" })
+    {
+        INFO (op);
+        const auto refused = refusalOf (op, Running { .song = ActivityKind::idle, .recordMode = true });
+        REQUIRE (refused.has_value());
+        CHECK (refused->error.code == "ui.record_mode");
+        CHECK (refused->error.fields.at ("op") == op);
+        CHECK (refused->presented);
+        CHECK_FALSE (refusalOf (op, Running { .song = ActivityKind::idle }).has_value());
+        CHECK_FALSE (refusalOf (op, Running { .song = ActivityKind::idle, .transcribing = true }).has_value());
+        CHECK (refusalOf (op, Running { .song = ActivityKind::separation }).has_value());
+        CHECK_FALSE (refusalOf (op, Running { .recordMode = true }).has_value()); // no Song: ui.no_song_open instead
+    }
+    CHECK (unavailableReason ("ui.record_mode") == "Unavailable in Record mode");
+    // Seeking to a Marker works in every mode.
+    CHECK_FALSE (refusalOf ("select_marker", Running { .song = ActivityKind::idle, .recordMode = true }).has_value());
+    CHECK (refusalOf ("select_marker", Running { .song = ActivityKind::pass, .recordMode = true }).has_value());
+}

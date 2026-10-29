@@ -62,6 +62,7 @@ target_sources(overdub_tests PRIVATE
     song/BackingTrackImportTest.cpp
     song/ClipEditsTest.cpp
     song/InsertEditsTest.cpp
+    song/MarkerEditsTest.cpp
     song/MixEditsTest.cpp
     song/SongJsonTest.cpp
     song/SongMigrationTest.cpp
@@ -99,6 +100,7 @@ target_sources(overdub_tests PRIVATE
     ui/InsertChainUiTest.cpp
     ui/IntentRunTest.cpp
     ui/IntentTest.cpp
+    ui/MarkersTest.cpp
     ui/KeyBurstCommitTest.cpp
     ui/LastSongTest.cpp
     ui/LayoutTest.cpp

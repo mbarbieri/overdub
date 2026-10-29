@@ -443,6 +443,44 @@ TEST_CASE ("set_focus_track takes a Track id, or null or no track_id for none, a
     CHECK (unknown.at ("error").at ("code") == "song.track_not_found");
 }
 
+TEST_CASE ("add_marker replies with the new Marker's id, select_marker seeks to it, and move_marker, rename_marker and delete_marker each take one undo step", "[control][intent_ops][markers]")
+{
+    SocketToWindow socket;
+    REQUIRE (socket.request (R"({"id":1,"op":"show_mode","mode":"edit"})").at ("ok") == true);
+    REQUIRE (socket.request (R"({"id":2,"op":"seek","sample":4800})").at ("ok") == true);
+
+    const auto added = socket.request (R"({"id":3,"op":"add_marker"})");
+    REQUIRE (added.at ("ok") == true);
+    const auto markerId = added.at ("created_id").get<std::string>();
+    REQUIRE (socket.f.song().markers.size() == 1);
+    CHECK (socket.f.song().markers[0].id == markerId);
+    CHECK (socket.f.song().markers[0].position == 4800);
+
+    CHECK (socket.request (R"({"id":4,"op":"move_marker","marker_id":")" + markerId + R"(","position":9600})").at ("ok") == true);
+    CHECK (socket.request (R"({"id":5,"op":"rename_marker","marker_id":")" + markerId + R"(","name":"Solo"})").at ("ok") == true);
+    CHECK (socket.f.song().markers[0] == song::Marker { markerId, "Solo", 9600 });
+    CHECK (socket.f.openSong->package().undoLabel() == "Rename Marker");
+
+    REQUIRE (socket.request (R"({"id":6,"op":"seek","sample":0})").at ("ok") == true);
+    CHECK (socket.request (R"({"id":7,"op":"select_marker","marker_id":")" + markerId + R"("})").at ("ok") == true);
+    CHECK (socket.f.openSong->position() == 9600);
+    CHECK (socket.f.window->songView()->selectedMarker() == markerId);
+    CHECK (socket.request (R"({"id":8,"op":"select_marker"})").at ("ok") == true);
+    CHECK_FALSE (socket.f.window->songView()->selectedMarker().has_value());
+
+    CHECK (socket.request (R"({"id":9,"op":"delete_marker","marker_id":")" + markerId + R"("})").at ("ok") == true);
+    CHECK (socket.f.song().markers.empty());
+    const auto gone = socket.request (R"({"id":10,"op":"select_marker","marker_id":")" + markerId + R"("})");
+    CHECK (gone.at ("ok") == false);
+    CHECK (gone.at ("error").at ("code") == "song.marker_not_found");
+
+    REQUIRE (socket.request (R"({"id":11,"op":"show_mode","mode":"record"})").at ("ok") == true);
+    const auto refused = socket.request (R"({"id":12,"op":"add_marker"})");
+    CHECK (refused.at ("ok") == false);
+    CHECK (refused.at ("error").at ("code") == "ui.record_mode");
+    CHECK (refused.at ("error").at ("message") == "Markers are added and edited in Transcribe and Edit mode");
+}
+
 TEST_CASE ("the socket shows Transcribe mode, and a Clip edit there answers ui.transcribing with its reason", "[control][intent_ops][transcribe]")
 {
     SocketToWindow socket;

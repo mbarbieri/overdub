@@ -489,7 +489,9 @@ TEST_CASE ("the Passes button sits in the timeline's ruler corner and its panel 
     const Rectangle<int> page { 0, 52, 1200, 700 };
     const auto edit = editPageLayout (page, true, defaultMixerHeight, false);
     CHECK (edit.timeline.contains (edit.passesButton));
-    CHECK (edit.passesButton.getBottom() <= edit.timeline.getY() + rulerHeight);
+    // The ruler is under the Loop/Marker strip (issue #227).
+    CHECK (edit.passesButton.getY() >= edit.timeline.getY() + markerStripHeight);
+    CHECK (edit.passesButton.getBottom() <= edit.timeline.getY() + markerStripHeight + rulerHeight);
     CHECK (edit.passesButton.getRight() <= edit.timeline.getX() + laneHeaderWidth);
 
     const auto bounds = passesPanelBounds (page, edit.passesButton, 3);
@@ -634,4 +636,41 @@ TEST_CASE ("Transcribe mode stacks the overview over the ruler and the waveform,
     CHECK (column.practiceSpeedCaption.getBottom() <= column.practiceSpeedField.getY());
     CHECK (column.practiceSpeedField.getBottom() < column.transposeCaption.getY());
     CHECK (column.transposeCaption.getBottom() <= column.transposeField.getY());
+}
+
+TEST_CASE ("the Loop/Marker strip sits right above the ruler in Edit and Transcribe, and right above the overview in Record", "[ui][layout][markers]")
+{
+    const Rectangle<int> page { 0, topBarHeight, 1200, 700 };
+
+    const auto timeline = timelineLayout ({ 0, 88, 1200, 500 }, { 0 });
+    CHECK (timeline.markerStrip.getY() == 88);
+    CHECK (timeline.markerStrip.getHeight() == markerStripHeight);
+    CHECK (timeline.markerStrip.getBottom() == timeline.ruler.getY());
+    CHECK (timeline.markerStrip.getX() == timeline.ruler.getX());
+    CHECK (timeline.markerStrip.getWidth() == timeline.ruler.getWidth());
+    CHECK (timeline.markerStripCorner.getRight() == timeline.markerStrip.getX());
+    CHECK (timeline.markerStripCorner.getWidth() == laneHeaderWidth);
+    // The Passes button stays over the ruler's corner.
+    const auto edit = editPageLayout (page, true, defaultMixerHeight, false);
+    const auto editTimeline = timelineLayout (edit.timeline, { 0 });
+    CHECK (editTimeline.rulerCorner.contains (edit.passesButton));
+
+    const auto record = recordPageLayout (page, 2);
+    CHECK (record.markerStrip.getHeight() == markerStripHeight);
+    CHECK (record.markerStrip.getBottom() == record.overview.getY());
+    CHECK (record.markerStrip.getX() == record.overview.getX());
+    CHECK (record.markerStrip.getWidth() == record.overview.getWidth());
+    CHECK (record.lookAhead.getBottom() < record.markerStrip.getY());
+
+    const auto transcribe = transcribePageLayout (page, true);
+    checkInsideAndApart (page, { transcribe.markers, transcribe.overview, transcribe.markerStrip, transcribe.ruler, transcribe.column });
+    CHECK (transcribe.markerStrip.getBottom() == transcribe.ruler.getY());
+    CHECK (transcribe.markerStrip.getX() == transcribe.ruler.getX());
+    CHECK (transcribe.markerStrip.getWidth() == transcribe.ruler.getWidth());
+    CHECK (transcribe.overview.getBottom() < transcribe.markerStrip.getY());
+    CHECK (transcribe.markers.getWidth() == transcribeMarkersWidth);
+    CHECK (transcribe.markers.getX() == page.getX() + 10);
+    CHECK (transcribe.markers.getHeight() == page.getHeight() - 20);
+    CHECK (transcribe.markers.getRight() < transcribe.overview.getX());
+    CHECK (transcribePageLayout (page, false).markers == transcribe.markers);
 }

@@ -35,9 +35,10 @@
 //
 // Keys (issue #9 resolution, issues #27, #28, #128, #200, #225): 1, 2 and 3 pick a mode, R records,
 // Space plays or stops, command-Z / shift-command-Z undo and redo, command-E opens the Export sheet,
-// I shows or hides the Transcribe column, and S, backspace (or forward delete) and the left and
-// right arrows split, delete and nudge, which their handlers refuse outside Edit mode (and
-// ui/Availability.h refuses in Transcribe mode).
+// I shows or hides the Transcribe column, K adds a Marker at the playhead (issue #227), and S,
+// backspace (or forward delete) and the left and right arrows split, delete and nudge, which their
+// handlers refuse outside Edit mode (and ui/Availability.h refuses in Transcribe mode). While a
+// Marker is selected, backspace and forward delete delete it instead (delete_marker).
 namespace overdub::ui
 {
 enum class Mode
@@ -342,9 +343,35 @@ struct SetInsertBypassed // the chip's bypass, and the plugin window's
     static constexpr auto fields = std::tuple { field ("slot_id", &SetInsertBypassed::slotId), field ("bypassed", &SetInsertBypassed::bypassed) };
 };
 
+struct MoveMarker // a Marker dragged along the Loop/Marker strip (issue #227)
+{
+    static constexpr std::string_view op = "move_marker";
+    song::Id markerId;
+    song::SampleCount position = 0;
+    bool operator== (const MoveMarker&) const = default;
+    static constexpr auto fields = std::tuple { field ("marker_id", &MoveMarker::markerId), field ("position", &MoveMarker::position) };
+};
+
+struct RenameMarker // a name typed after double-clicking a Marker on the strip
+{
+    static constexpr std::string_view op = "rename_marker";
+    song::Id markerId;
+    std::string name;
+    bool operator== (const RenameMarker&) const = default;
+    static constexpr auto fields = std::tuple { field ("marker_id", &RenameMarker::markerId), field ("name", &RenameMarker::name) };
+};
+
+struct DeleteMarker // backspace or forward delete while a Marker is selected
+{
+    static constexpr std::string_view op = "delete_marker";
+    song::Id markerId;
+    bool operator== (const DeleteMarker&) const = default;
+    static constexpr auto fields = std::tuple { field ("marker_id", &DeleteMarker::markerId) };
+};
+
 using Edit = std::variant<MoveClip, TrimClipStart, TrimClipEnd, SetClipFadeIn, SetClipFadeOut, SetClipGain, BringBackPass,
                           SetTrackVolume, SetTrackPan, SetMasterVolume, SetTrackMute, SetTrackSolo,
-                          RemoveInsert, MoveInsert, SetInsertBypassed>;
+                          RemoveInsert, MoveInsert, SetInsertBypassed, MoveMarker, RenameMarker, DeleteMarker>;
 
 // The edits a Mixer gesture in progress can be heard with (OpenSong::previewMix).
 using MixEdit = std::variant<SetTrackVolume, SetTrackPan, SetMasterVolume>;
@@ -547,6 +574,25 @@ struct SetTranscribeSolo // S on a row of the Transcribe column
     bool solo = true;
     bool operator== (const SetTranscribeSolo&) const = default;
     static constexpr auto fields = std::tuple { field ("track_id", &SetTranscribeSolo::trackId), field ("solo", &SetTranscribeSolo::solo) };
+};
+
+//==============================================================================
+// Song: Markers (issue #227, ADR 0010). Moving, renaming and deleting one are plain edits
+// (intent::Edit); Record mode refuses all four (ui/Availability.h).
+
+struct AddMarker // K: "Marker N" at the playhead, one undo step; playback carries on
+{
+    static constexpr std::string_view op = "add_marker";
+    bool operator== (const AddMarker&) const = default;
+    static constexpr auto fields = std::tuple {};
+};
+
+struct SelectMarker // a click on a Marker (strip or list) seeks to it; none: a click on empty strip
+{
+    static constexpr std::string_view op = "select_marker";
+    std::optional<song::Id> markerId;
+    bool operator== (const SelectMarker&) const = default;
+    static constexpr auto fields = std::tuple { field ("marker_id", &SelectMarker::markerId) };
 };
 
 //==============================================================================
@@ -817,6 +863,7 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::SetArmed, intent::SetInputChannels, intent::SetMonitoring,
                                 intent::StartSeparation, intent::CancelRun, intent::SetTranspose, intent::SetPracticeSpeed,
                                 intent::SetFocusTrack, intent::SetTranscribeMute, intent::SetTranscribeSolo,
+                                intent::AddMarker, intent::SelectMarker,
                                 intent::SetPreRoll, intent::SetCameraArmed, intent::SetCameraDevice,
                                 intent::SplitSelectedClip, intent::DeleteSelection, intent::TakeLaneClick, intent::PreviewMix,
                                 intent::AddInsert, intent::OpenInsertEditor, intent::ClosePluginWindow,
@@ -886,10 +933,11 @@ struct KeyChord
 };
 
 // What the window shows that a key's Intent depends on: I sets the Transcribe column to the
-// opposite of what it is.
+// opposite of what it is, and backspace deletes the selected Marker, when there is one.
 struct KeyContext
 {
     bool transcribeColumnVisible = true;
+    std::optional<song::Id> selectedMarker;
 };
 
 // The Intent a key press runs, or none.

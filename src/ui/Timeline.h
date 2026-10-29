@@ -4,6 +4,7 @@
 #include "song/Song.h"
 #include "ui/Intent.h"
 #include "ui/Layout.h"
+#include "ui/MarkerStrip.h"
 #include "ui/PeaksLookup.h"
 #include "ui/TakeLanes.h"
 #include "ui/TimelineGeometry.h"
@@ -90,6 +91,9 @@ struct TimelineState
     bool tracksDeletable = true; // false while a Pass, a Separation or an Export runs
     std::vector<video::VideoTakeSpan> videoTakes; // the Camera lane's blocks (video::videoTakeSpans)
     bool canArmCamera = true; // the Camera lane header's A: as Record mode's camera arm, and not refused
+    // The Loop/Marker strip (issue #227): the selected Marker, and whether the strip edits Markers.
+    std::optional<song::Id> selectedMarker;
+    bool markersEditable = true;
 };
 
 // The name a Clip shows: "Pass n" for a Take (its Pass's number), the file name for a Backing
@@ -226,6 +230,7 @@ public:
     juce::TextButton cameraArmButton { "A" };
     juce::ScrollBar scrollBar { false };
     juce::ScrollBar verticalScrollBar { true }; // shown only when the Track rows overflow
+    MarkerStrip markerStrip; // above the ruler, at the timeline's view (issue #227)
 
 private:
     struct ClipSelection
@@ -275,6 +280,7 @@ private:
     void updateScrollBar();
     void previewClipDrag (ClipDragGesture& clipDrag) const;
     void layOutRows();
+    void showMarkerStrip();
     void revealNewTracks (const std::vector<song::Id>& previousTrackIds);
     std::optional<std::size_t> laneAt (juce::Point<int> position) const;
     juce::Rectangle<int> lanesArea() const;

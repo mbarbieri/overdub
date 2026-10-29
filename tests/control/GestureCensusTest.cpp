@@ -273,6 +273,13 @@ struct CensusWorkspace
         const auto guitarId = song.tracks.at (1).id;
         run (ui::SongIntent { AddInsert { guitarId, "aufx", "dely", "appl" } });
         run (ui::SongIntent { SetTakeLanesUnfolded { guitarId, true } });
+        // Two Markers (issue #227), added where Markers are edited.
+        run (ui::WindowIntent { ShowMode { ui::Mode::edit } });
+        run (ui::SongIntent { Seek { 1000 } });
+        run (ui::SongIntent { AddMarker {} });
+        run (ui::SongIntent { Seek { 30000 } });
+        run (ui::SongIntent { AddMarker {} });
+        run (ui::WindowIntent { ShowMode { ui::Mode::record } });
         selectedClip = f.song().song().tracks.front().clips.front().id;
         run (ui::SongIntent { SelectClip { selectedClip } });
         run (ui::SongIntent { Seek { 0 } });
@@ -333,7 +340,8 @@ struct CensusWorkspace
         REQUIRE (songAsBuilt());
         const auto view = control::appState (f.content, *f.workspace, std::array<std::string_view, 1> { "view" })["view"];
         const auto differs = [&view, this] (const json::json_pointer& pointer) { return view.value (pointer, json()) != builtView.value (pointer, json()); };
-        if (differs ("/selected_clip"_json_pointer) || differs ("/selected_video_take"_json_pointer))
+        // select_clip also clears the selected Marker.
+        if (differs ("/selected_clip"_json_pointer) || differs ("/selected_video_take"_json_pointer) || differs ("/selected_marker"_json_pointer))
         {
             f.content.run (ui::SongIntent { SelectVideoTake { std::nullopt } });
             f.content.run (ui::SongIntent { SelectClip { selectedClip } });
@@ -509,6 +517,17 @@ TEST_CASE ("no gesture changes the app state without running an Intent", "[contr
     // A Track row's ◎, M and S in the Transcribe column (issue #226).
     for (const auto* button : { "TextButton#0", "TextButton#1", "TextButton#2" })
         CHECK (fired ("transcribe/", std::string ("/TranscribeColumn#0/TranscribeTrackRow#0/") + button + ":click"));
+    // Markers (issue #227): K, each strip's flags, the empty strip, and the Markers list.
+    for (const auto* scene : { "record/", "edit/", "transcribe/" })
+        CHECK (fired (scene, "key:k"));
+    for (const auto* gesture : { ":click", ":drag", ":double_click" })
+    {
+        CHECK (fired ("edit/", std::string ("/Timeline#0/MarkerStrip#0/MarkerFlag#1") + gesture));
+        CHECK (fired ("transcribe/", std::string ("/TranscribePage#0/MarkerStrip#0/MarkerFlag#0") + gesture));
+        CHECK (fired ("record/", std::string ("/RecordPage#0/MarkerStrip#0/MarkerFlag#0") + gesture));
+    }
+    CHECK (fired ("edit/", "/Timeline#0/MarkerStrip#0:click"));
+    CHECK (fired ("transcribe/", "/MarkerList#0/MarkerRow#1:click"));
 }
 
 TEST_CASE ("the census fails on a button that edits the Song without an Intent", "[control][census]")

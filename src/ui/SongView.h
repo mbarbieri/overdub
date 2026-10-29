@@ -89,6 +89,10 @@ public:
     void showRun (RunDialog& dialog) const;
     // True while the Export sheet shows (show_export). It is modal: it takes every click and key.
     bool isExportSheetShown() const { return exportSheetShown; }
+    // The Marker select_marker selected (issue #227), while the Song has it; none in Record mode's
+    // eyes too (MainComponent passes it to backspace only outside Record mode). Selecting a Clip or
+    // a Video Take clears it, and selecting a Marker clears theirs.
+    std::optional<song::Id> selectedMarker() const;
 
     void resized() override;
 
@@ -142,6 +146,11 @@ private:
     // Not an undo step; the same value again tries failed renders again. Errors:
     // song.practice_speed_out_of_range (presented), refusals.
     IntentResult setPracticeSpeed (int speedPercent);
+    // "Marker N" at the playhead, one undo step, without stopping playback (issue #227).
+    IntentResult addMarker();
+    // Seeks to the Marker; outside Record mode it also becomes the selected Marker. None clears
+    // the selection. Errors: song.marker_not_found (quiet), seek's refusals.
+    IntentResult selectMarker (const std::optional<song::Id>& markerId);
     IntentResult armCamera (bool armed);
     IntentResult cameraAccessAnswered (bool granted);
     IntentResult setCameraArmed (bool armed);
@@ -186,6 +195,7 @@ private:
 
     // A slot whose editor opens once its plugin is ready (just added, or clicked while loading).
     std::optional<song::Id> pendingEditorSlot;
+    std::optional<song::Id> selectedMarkerId;
     bool exportSheetShown = false;
     engine::MeterPeaks shownPeaks;
     // Record mode's double-Space: the last Space that may be the first of two, and when a single

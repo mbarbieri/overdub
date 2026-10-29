@@ -130,6 +130,7 @@ json viewSection (const ui::MainComponent& window)
     const auto& editPage = songView->editPage;
     view["selected_clip"] = orNull (editPage.timeline.selectedClip());
     view["selected_video_take"] = orNull (editPage.timeline.selectedVideoTake());
+    view["selected_marker"] = orNull (songView->selectedMarker());
     view["timeline"] = timelineView (*songView);
     const auto transcribe = songView->transcribePage.view();
     view["transcribe"] = { { "first_sample", transcribe.firstSample }, { "samples_per_pixel", transcribe.samplesPerPixel } };

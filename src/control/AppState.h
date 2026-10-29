@@ -31,6 +31,7 @@ class Workspace;
 //                started, so it names the running or last one
 //   idle         activity.kind is "idle" (an export or a calibration run is not idle)
 //   view         {"mode"} and, with a Song open, "selected_clip", "selected_video_take",
+//                "selected_marker" (issue #227),
 //                "timeline" {"first_sample", "samples_per_pixel", "vertical_scroll",
 //                "take_lanes_unfolded": [track ids]}, "mixer_visible", "mixer_height",
 //                "passes_panel_open", "export_sheet_shown", "export_form" {"format", "length",
