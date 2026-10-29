@@ -1,5 +1,6 @@
 #include "ui/ExportSheet.h"
 
+#include "song/LoopEdits.h"
 #include "ui/Availability.h"
 #include "ui/Colours.h"
 
@@ -13,11 +14,13 @@ namespace
 {
 constexpr int formWidth = 560;
 constexpr int panelPadding = 24;
-// The form's rows (resized), without and with the MP4 rows.
+// The form's rows (resized): without the MP4's Video Take rows and the length rows, those, and
+// the length's heading and each of its choices.
 constexpr int formHeight = 292;
-constexpr int mp4RowsHeight = 126;
+constexpr int videoTakeRowsHeight = 52;
+constexpr int lengthHeadingHeight = 26;
+constexpr int lengthChoiceHeight = 24;
 constexpr int formatRadioGroup = 3701;
-constexpr int lengthRadioGroup = 3702;
 
 // "1:23.4": minutes and seconds to a tenth, rounded down.
 std::string minutesText (song::SampleCount samples, int sampleRate)
@@ -41,11 +44,22 @@ void styleHeading (juce::Label& label, const juce::String& text)
 }
 } // namespace
 
-ExportSpanBarState exportSpanBar (exporting::ExportFormat format, exporting::VideoLength length, song::SampleCount clipsEnd, const std::optional<video::VideoTakeSpan>& videoTake)
+ExportSpanBarState exportSpanBar (exporting::ExportFormat format,
+                                  exporting::VideoLength length,
+                                  song::SampleCount clipsEnd,
+                                  const std::optional<video::VideoTakeSpan>& videoTake,
+                                  const std::optional<exporting::SampleRange>& loop)
 {
-    if (format != exporting::ExportFormat::mp4 || ! videoTake.has_value())
+    const auto movie = format == exporting::ExportFormat::mp4 && videoTake.has_value();
+    if (! movie)
+    {
+        if (loop.has_value())
+            return { .scaleEnd = std::max (clipsEnd, loop->end), .exported = *loop };
         return { .scaleEnd = clipsEnd, .exported = { 0, clipsEnd } };
+    }
     const auto span = exporting::SampleRange { std::max<song::SampleCount> (0, videoTake->start), std::max<song::SampleCount> (0, videoTake->end) };
+    if (loop.has_value())
+        return { .scaleEnd = std::max ({ clipsEnd, span.end, loop->end }), .exported = *loop, .videoTake = span, .blackOutsideVideo = true };
     return {
         .scaleEnd = std::max (clipsEnd, span.end),
         .exported = exporting::movieExportRange (length, clipsEnd, { videoTake->start, videoTake->end }),
@@ -78,6 +92,19 @@ std::string movieSpanText (exporting::VideoLength length, const video::VideoTake
     return "Trimmed to " + videoTake.title + ": " + rangeText (exported, sampleRate);
 }
 
+std::string loopSpanText (const song::Loop& loop, const std::optional<video::VideoTakeSpan>& videoTake, int sampleRate)
+{
+    auto text = loopChoiceText (loop) + ": " + rangeText ({ loop.start, loop.end }, sampleRate);
+    if (videoTake.has_value())
+        text += ", black outside " + videoTake->title;
+    return text;
+}
+
+std::string loopChoiceText (const song::Loop& loop)
+{
+    return "Loop: " + loop.name;
+}
+
 std::string videoTakeChoiceText (const video::VideoTakeSpan& videoTake, int sampleRate)
 {
     return videoTake.title + " \xc2\xb7 " + rangeText ({ videoTake.start, videoTake.end }, sampleRate);
@@ -106,7 +133,10 @@ juce::File exportDestinationFor (const song::Song& song, const juce::File& expor
 exporting::ExportRequest exportRequestFor (const song::Song& song, const std::vector<video::VideoTakeSpan>& videoTakes, const juce::File& destination)
 {
     const auto mp4 = song.exportFormat == exporting::ExportFormat::mp4;
-    return { song.exportFormat, destination, mp4 ? defaultExportVideoTake (videoTakes, song.exportVideoTakeId) : std::nullopt, song.exportLength };
+    std::optional<exporting::ExportLoop> loop;
+    if (const auto* found = song.exportLoopId.has_value() ? song::findLoop (song, *song.exportLoopId) : nullptr)
+        loop = exporting::ExportLoop { found->id, { found->start, found->end } };
+    return { song.exportFormat, destination, mp4 ? defaultExportVideoTake (videoTakes, song.exportVideoTakeId) : std::nullopt, song.exportLength, loop };
 }
 
 std::string replacesExistingText (const juce::File& destination)
@@ -186,18 +216,24 @@ ExportSheet::ExportSheet()
         addAndMakeVisible (button);
     }
 
+    // The length choices are in no radio group: show() sets each one's state, since an MP4's
+    // stored length and a Loop are kept apart.
     const std::pair<juce::ToggleButton*, exporting::VideoLength> lengthButtons[] {
         { &trimButton, exporting::VideoLength::trimToVideoTake },
         { &fullSongButton, exporting::VideoLength::fullSong },
     };
     for (const auto& [button, buttonLength] : lengthButtons)
     {
-        button->setRadioGroupId (lengthRadioGroup, juce::dontSendNotification);
         button->setClickingTogglesState (false);
         button->setWantsKeyboardFocus (false);
         button->onClick = [this, length = buttonLength] { emit (SongIntent { intent::SetExportLength { length } }); };
         addChildComponent (button);
     }
+    // The Whole Song keeps the MP4's stored length.
+    wholeSongButton.setClickingTogglesState (false);
+    wholeSongButton.setWantsKeyboardFocus (false);
+    wholeSongButton.onClick = [this] { emit (SongIntent { intent::SetExportLength { shown.request.videoLength } }); };
+    addChildComponent (wholeSongButton);
 
     videoTakePicker.setWantsKeyboardFocus (false);
     videoTakePicker.onChange = [this] { pickVideoTake(); };
@@ -222,25 +258,35 @@ ExportSheet::ExportSheet()
 void ExportSheet::show (const ExportSheetState& state)
 {
     const auto videoTakesChanged = state.videoTakes != shown.videoTakes || state.sampleRate != shown.sampleRate;
-    const auto formatChanged = state.request.format != shown.request.format;
+    const auto loopsChanged = state.loops != shown.loops || loopButtons.size() != shown.loops.size();
+    const auto layoutBefore = std::pair { shown.request.format, lengthChoiceCount() };
     shown = state;
     if (videoTakesChanged)
         updatePicker();
+    if (loopsChanged)
+        updateLoopButtons();
 
     const auto format = shown.request.format;
     wavButton.setToggleState (format == exporting::ExportFormat::wav, juce::dontSendNotification);
     m4aButton.setToggleState (format == exporting::ExportFormat::m4a, juce::dontSendNotification);
     mp4Button.setToggleState (format == exporting::ExportFormat::mp4, juce::dontSendNotification);
     const auto length = shown.request.videoLength;
-    trimButton.setToggleState (length == exporting::VideoLength::trimToVideoTake, juce::dontSendNotification);
-    fullSongButton.setToggleState (length == exporting::VideoLength::fullSong, juce::dontSendNotification);
+    const auto loop = shownLoop();
+    wholeSongButton.setToggleState (! loop.has_value(), juce::dontSendNotification);
+    trimButton.setToggleState (! loop.has_value() && length == exporting::VideoLength::trimToVideoTake, juce::dontSendNotification);
+    fullSongButton.setToggleState (! loop.has_value() && length == exporting::VideoLength::fullSong, juce::dontSendNotification);
+    for (std::size_t i = 0; i < loopButtons.size(); ++i)
+        loopButtons[i]->setToggleState (loop.has_value() && loop->id == shown.loops[i].id, juce::dontSendNotification);
     destinationLabel.setText (shown.request.destination.getFullPathName(), juce::dontSendNotification);
     replacesLabel.setText (shown.replacesExisting ? juce::String::fromUTF8 (replacesExistingText (shown.request.destination).c_str()) : juce::String(), juce::dontSendNotification);
 
     updateSpan();
     updateControls();
-    if (formatChanged)
+    if (loopsChanged || layoutBefore != std::pair { shown.request.format, lengthChoiceCount() })
+    {
         resized();
+        repaint();
+    }
 }
 
 void ExportSheet::emit (Intent intent) const
@@ -268,6 +314,41 @@ std::optional<video::VideoTakeSpan> ExportSheet::shownVideoTake() const
     return *found;
 }
 
+std::optional<song::Loop> ExportSheet::shownLoop() const
+{
+    if (! shown.request.loop.has_value())
+        return std::nullopt;
+    const auto found = std::ranges::find (shown.loops, shown.request.loop->loopId, &song::Loop::id);
+    if (found == shown.loops.end())
+        return std::nullopt;
+    return *found;
+}
+
+int ExportSheet::lengthChoiceCount() const
+{
+    const auto loops = (int) shown.loops.size();
+    if (shown.request.format == exporting::ExportFormat::mp4)
+        return shown.videoTakes.empty() ? 0 : 2 + loops;
+    return loops == 0 ? 0 : 1 + loops;
+}
+
+// One length choice per Loop; show() sets which is on.
+void ExportSheet::updateLoopButtons()
+{
+    for (auto& button : loopButtons)
+        removeChildComponent (button.get());
+    loopButtons.clear();
+    for (const auto& loop : shown.loops)
+    {
+        auto button = std::make_unique<juce::ToggleButton> (juce::String::fromUTF8 (loopChoiceText (loop).c_str()));
+        button->setClickingTogglesState (false);
+        button->setWantsKeyboardFocus (false);
+        button->onClick = [this, loopId = loop.id] { emit (SongIntent { intent::SetExportLength { shown.request.videoLength, loopId } }); };
+        addChildComponent (*button);
+        loopButtons.push_back (std::move (button));
+    }
+}
+
 // Fills the picker's items; updateSpan() selects the one shown.
 void ExportSheet::updatePicker()
 {
@@ -279,11 +360,18 @@ void ExportSheet::updatePicker()
 void ExportSheet::updateSpan()
 {
     const auto videoTake = shownVideoTake();
-    const auto bar = exportSpanBar (shown.request.format, shown.request.videoLength, shown.clipsEnd, videoTake);
+    const auto loop = shownLoop();
+    const auto loopRange = loop.has_value() ? std::optional<exporting::SampleRange> ({ loop->start, loop->end }) : std::nullopt;
+    const auto bar = exportSpanBar (shown.request.format, shown.request.videoLength, shown.clipsEnd, videoTake, loopRange);
     spanBar.setState (bar);
-    const auto text = bar.videoTake.has_value() && videoTake.has_value()
-                        ? movieSpanText (shown.request.videoLength, *videoTake, bar.exported, shown.sampleRate)
-                        : exportSpanText (shown.clipsEnd, shown.sampleRate);
+    const auto movie = bar.videoTake.has_value() && videoTake.has_value();
+    std::string text;
+    if (loop.has_value() && (movie || shown.clipsEnd > 0))
+        text = loopSpanText (*loop, movie ? videoTake : std::nullopt, shown.sampleRate);
+    else if (movie)
+        text = movieSpanText (shown.request.videoLength, *videoTake, bar.exported, shown.sampleRate);
+    else
+        text = exportSpanText (shown.clipsEnd, shown.sampleRate);
     spanLabel.setText (juce::String::fromUTF8 (text.c_str()), juce::dontSendNotification);
 
     if (videoTake.has_value())
@@ -301,9 +389,13 @@ void ExportSheet::updateControls()
     videoTakeHeading.setVisible (mp4);
     videoTakePicker.setVisible (mp4 && hasVideoTakes);
     noVideoTakesLabel.setVisible (mp4 && ! hasVideoTakes);
-    lengthHeading.setVisible (mp4 && hasVideoTakes);
-    trimButton.setVisible (mp4 && hasVideoTakes);
-    fullSongButton.setVisible (mp4 && hasVideoTakes);
+    const auto lengthShown = lengthChoiceCount() > 0;
+    lengthHeading.setVisible (lengthShown);
+    wholeSongButton.setVisible (lengthShown && ! mp4);
+    trimButton.setVisible (lengthShown && mp4);
+    fullSongButton.setVisible (lengthShown && mp4);
+    for (auto& button : loopButtons)
+        button->setVisible (lengthShown);
     replacesLabel.setVisible (shown.replacesExisting);
     exportButton.setEnabled (canExport());
     exportButton.setTooltip (shown.exportRefusal.has_value() ? juce::String::fromUTF8 (unavailableReason (*shown.exportRefusal).c_str()) : juce::String());
@@ -316,7 +408,9 @@ bool ExportSheet::canExport() const
 
 juce::Rectangle<int> ExportSheet::panelBounds() const
 {
-    const auto height = formHeight + (shown.request.format == exporting::ExportFormat::mp4 ? mp4RowsHeight : 0) + 2 * panelPadding;
+    const auto choices = lengthChoiceCount();
+    const auto height = formHeight + (shown.request.format == exporting::ExportFormat::mp4 ? videoTakeRowsHeight : 0)
+                      + (choices > 0 ? lengthHeadingHeight + choices * lengthChoiceHeight : 0) + 2 * panelPadding;
     const auto width = std::min (formWidth + 2 * panelPadding, getWidth() - 32);
     return getLocalBounds().withSizeKeepingCentre (width, std::min (height, getHeight() - 32));
 }
@@ -337,10 +431,17 @@ void ExportSheet::resized()
         const auto pickerRow = area.removeFromTop (26);
         videoTakePicker.setBounds (pickerRow);
         noVideoTakesLabel.setBounds (pickerRow);
+    }
+    if (lengthChoiceCount() > 0)
+    {
         area.removeFromTop (8);
         lengthHeading.setBounds (area.removeFromTop (18));
-        trimButton.setBounds (area.removeFromTop (24));
-        fullSongButton.setBounds (area.removeFromTop (24));
+        const auto lengthButtons = shown.request.format == exporting::ExportFormat::mp4 ? std::vector<juce::ToggleButton*> { &trimButton, &fullSongButton }
+                                                                                        : std::vector<juce::ToggleButton*> { &wholeSongButton };
+        for (auto* button : lengthButtons)
+            button->setBounds (area.removeFromTop (lengthChoiceHeight));
+        for (auto& button : loopButtons)
+            button->setBounds (area.removeFromTop (lengthChoiceHeight));
     }
     area.removeFromTop (10);
     spanBar.setBounds (area.removeFromTop (18));

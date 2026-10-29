@@ -109,6 +109,8 @@ Song keepStateOutsideHistory (Song snapshot, const Song& current)
     snapshot.exportFormat = current.exportFormat;
     snapshot.exportLength = current.exportLength;
     snapshot.exportDestination = current.exportDestination;
+    const auto exportLoopExists = current.exportLoopId.has_value() && std::ranges::contains (snapshot.loops, *current.exportLoopId, &Loop::id);
+    snapshot.exportLoopId = exportLoopExists ? current.exportLoopId : std::nullopt;
     snapshot.focusTrackId.reset();
     if (current.focusTrackId.has_value() && findTrack (snapshot, *current.focusTrackId) != nullptr)
         snapshot.focusTrackId = current.focusTrackId;

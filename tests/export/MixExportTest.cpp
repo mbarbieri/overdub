@@ -11,6 +11,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -310,4 +311,55 @@ TEST_CASE ("a Song without Clips whose Master chain reports a tail: the page and
     CHECK (! destination.exists());
     CHECK (eventsNamed (capture, "export.started").empty());
     CHECK (overdub::ui::exportSpanText (overdub::exporting::lastClipEnd (mix), render.sampleRate()) == "Nothing to export: the Song has no Clips");
+}
+
+TEST_CASE ("a Loop's WAV export is exactly its range: the impulse at its start lands at sample 0 and the file is as long as the Loop", "[export][wav][loop]")
+{
+    TempPackage package;
+    const auto mix = clickSong (package);
+    const auto destination = package.root.getChildFile ("Loop.wav");
+    // A start inside the Song and an end before the Clips' end; a Loop past the Clips' end gets
+    // silence up to its end, never more.
+    const auto [loopStart, loopEnd] = GENERATE (std::pair<song::SampleCount, song::SampleCount> { clickAt, clickAt + 10007 },
+                                                std::pair<song::SampleCount, song::SampleCount> { clickAt, clipLength + 30011 });
+    CAPTURE (loopStart, loopEnd);
+    MixRender render { mix, package.root, 256, {} };
+
+    core::ScopedLogCapture capture;
+    const auto request = ExportRequest { .format = ExportFormat::wav, .destination = destination, .loop = overdub::exporting::ExportLoop { "loop-1", { loopStart, loopEnd } } };
+    const auto exported = overdub::exporting::exportMix (render, request);
+    REQUIRE (exported.has_value());
+    CHECK (exported->samples == loopEnd - loopStart);
+
+    const auto decoded = song::decodeAudioFile (destination, testSampleRate);
+    REQUIRE (decoded.has_value());
+    REQUIRE (decoded->audio.getNumSamples() == loopEnd - loopStart);
+    for (int channel = 0; channel < 2; ++channel)
+    {
+        CAPTURE (channel);
+        CHECK (std::abs (decoded->audio.getSample (channel, 0) - 0.8f * centrePanGain) < 1.0e-6f);
+        CHECK (nonZeroSamples ({ decoded->audio.getReadPointer (channel), decoded->audio.getReadPointer (channel) + decoded->audio.getNumSamples() }) == std::vector<std::int64_t> { 0 });
+    }
+
+    const auto started = eventsNamed (capture, "export.started");
+    REQUIRE (started.size() == 1);
+    CHECK (started[0]["loop_id"] == "loop-1");
+    CHECK (started[0]["start_sample"] == loopStart);
+    CHECK (started[0]["samples"] == loopEnd - loopStart);
+    CHECK (eventsNamed (capture, "export.finished").at (0)["samples"] == loopEnd - loopStart);
+}
+
+TEST_CASE ("a Loop that ends at the impulse exports only the silence before it", "[export][wav][loop]")
+{
+    TempPackage package;
+    const auto mix = clickSong (package);
+    const auto destination = package.root.getChildFile ("Before.wav");
+    MixRender render { mix, package.root, 256, {} };
+
+    const auto request = ExportRequest { .format = ExportFormat::wav, .destination = destination, .loop = overdub::exporting::ExportLoop { "loop-1", { 1000, clickAt } } };
+    REQUIRE (overdub::exporting::exportMix (render, request).has_value());
+    const auto decoded = song::decodeAudioFile (destination, testSampleRate);
+    REQUIRE (decoded.has_value());
+    REQUIRE (decoded->audio.getNumSamples() == clickAt - 1000);
+    CHECK (decoded->audio.getMagnitude (0, decoded->audio.getNumSamples()) == 0.0f);
 }

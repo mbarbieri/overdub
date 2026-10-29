@@ -12,11 +12,13 @@
 #include <optional>
 
 // An Export's work (issue #37): render the mix offline (MixRender) and write it (MixFileWriter)
-// to the requested file, faster than real time.
+// to the requested file, faster than real time: the whole Song span, or exactly the request's Loop
+// range (issue #235), with no tail after it.
 //
 // exportMix writes a hidden sibling of the destination first and renames it over the destination
 // only once the file is complete, so a failed or cancelled export leaves no partial file and an
-// existing file is replaced whole. Logs export.started and export.finished (info).
+// existing file is replaced whole. Logs export.started and export.finished (info), with loop_id
+// and start_sample when it writes a Loop's range.
 //
 // The destination's folder must exist: an export never creates it (issue #201).
 //
@@ -47,11 +49,12 @@ core::Expected<void> createExportFolder (const juce::File& destination);
 // Errors: export.write_failed (step rename).
 core::Expected<void> moveExportIntoPlace (const juce::File& partial, const juce::File& destination);
 
-// Renders the whole mix into `file` (no logging, no rename): what exportMix and exportMovie
-// share. After the mix ends, silence is written up to `padToSamples` (exportMovie's range end, so
-// its audio is as long as its video, even for a Song with no Clips). On failure or a stop the file
-// is deleted. Errors: as exportMix's, but folder_missing and rename.
-core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop, song::SampleCount padToSamples = 0);
+// Renders the mix from Song sample 0 and writes exactly `range` of it into `file` (no logging, no
+// rename): what exportMix and exportMovie share. The samples before range.start are rendered and
+// dropped, so Insert Chains hear the Song from its start; after the mix ends, silence is written
+// up to range.end (an MP4's audio is as long as its video, even for a Song with no Clips). On
+// failure or a stop the file is deleted. Errors: as exportMix's, but folder_missing and rename.
+core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop, SampleRange range);
 
 struct MovieSource; // export/MovieExport.h
 

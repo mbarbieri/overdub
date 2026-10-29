@@ -92,6 +92,28 @@ TEST_CASE ("the active Loop and looping: deleting the active Loop turns looping 
     CHECK_FALSE (deleted->looping);
 }
 
+TEST_CASE ("deleting the Loop Export writes sends Export back to the whole Song; deleting another keeps it", "[song][loops][export]")
+{
+    auto song = songWithLoops();
+    song.exportLoopId = "loop-b";
+
+    CHECK (deleteLoop (song, "loop-a")->exportLoopId == "loop-b");
+    const auto deleted = deleteLoop (song, "loop-b");
+    REQUIRE (deleted.has_value());
+    CHECK_FALSE (deleted->exportLoopId.has_value());
+}
+
+TEST_CASE ("undo and redo keep the export's Loop, unless the restored Song lacks that Loop", "[song][loops][history][export]")
+{
+    const auto before = makeEmptySong (48000);
+    auto withLoop = *addLoop (before, 0, 100, "loop-a", 100);
+    withLoop.exportLoopId = "loop-a";
+
+    CHECK_FALSE (keepStateOutsideHistory (before, withLoop).exportLoopId.has_value());
+    const auto renamed = *renameLoop (withLoop, "loop-a", "Riff");
+    CHECK (keepStateOutsideHistory (*addLoop (before, 0, 100, "loop-a", 100), renamed).exportLoopId == "loop-a");
+}
+
 TEST_CASE ("the previous and next Loop go by time order and stop at the ends", "[song][loops]")
 {
     const auto song = songWithLoops(); // loop-a, loop-b, loop-c

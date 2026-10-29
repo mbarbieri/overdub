@@ -50,9 +50,14 @@ core::Expected<Song> resizeLoop (Song song, const Id& loopId, SampleCount from, 
 // Errors: song.loop_not_found (loop_id), song.loop_name_empty (loop_id).
 core::Expected<Song> renameLoop (Song song, const Id& loopId, const std::string& name);
 
-// The Song without the Loop; when it was active, none is and looping is off.
+// The Song without the Loop; when it was active, none is and looping is off; when Export wrote
+// its range, Export writes the whole Song.
 // Errors: song.loop_not_found (loop_id).
 core::Expected<Song> deleteLoop (Song song, const Id& loopId);
+
+// Outside history. The Song whose Export writes this Loop's range (issue #235); none: the whole
+// Song. Errors: song.loop_not_found (loop_id).
+core::Expected<Song> setExportLoop (Song song, const std::optional<Id>& loopId);
 
 // Outside history. The Song with this Loop active (none: no active Loop, looping off) and looping
 // as asked. Errors: song.loop_not_found (loop_id).

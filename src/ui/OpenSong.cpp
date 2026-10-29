@@ -345,13 +345,16 @@ void OpenSong::setExportFormat (song::ExportFormat format)
     package_->changeWithoutHistory (std::move (changed));
 }
 
-void OpenSong::setExportLength (song::VideoLength length)
+core::Expected<void> OpenSong::setExportLength (song::VideoLength length, const std::optional<song::Id>& loopId)
 {
-    if (song().exportLength == length)
-        return;
-    auto changed = song();
-    changed.exportLength = length;
-    package_->changeWithoutHistory (std::move (changed));
+    auto changed = song::setExportLoop (song(), loopId);
+    if (! changed.has_value())
+        return std::unexpected (changed.error());
+    if (song().exportLength == length && song().exportLoopId == loopId)
+        return {};
+    changed->exportLength = length;
+    package_->changeWithoutHistory (std::move (*changed));
+    return {};
 }
 
 void OpenSong::setExportDestination (const std::string& path)

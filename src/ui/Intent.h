@@ -836,9 +836,12 @@ struct SetExportFormat // stored in the Song, outside history
 struct SetExportLength // stored in the Song, outside history
 {
     static constexpr std::string_view op = "set_export_length";
-    exporting::VideoLength length = exporting::VideoLength::trimToVideoTake;
+    exporting::VideoLength length = exporting::VideoLength::trimToVideoTake; // an MP4's, without a Loop
+    // A Loop of the Song: every format writes exactly its range (issue #235); none: the whole Song.
+    std::optional<song::Id> loopId = std::nullopt;
     bool operator== (const SetExportLength&) const = default;
-    static constexpr auto fields = std::tuple { enumField ("length", &SetExportLength::length, core::EnumNames<exporting::VideoLength> { song::videoLengthNames }) };
+    static constexpr auto fields = std::tuple { enumField ("length", &SetExportLength::length, core::EnumNames<exporting::VideoLength> { song::videoLengthNames }),
+                                                field ("loop_id", &SetExportLength::loopId) };
 };
 
 struct SetExportDestination // Choose..., after the save dialog; stored in the Song, outside history; its folder must exist

@@ -658,7 +658,7 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
         for (auto& track : document.at ("tracks"))
             for (const auto* key : { "colour", "transcribeMute", "transcribeSolo", "octaveShift", "bandFilter" })
                 track.erase (key);
-        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId", "markers", "loops", "activeLoopId", "looping" })
+        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "exportLoopId", "transpose", "focusTrackId", "markers", "loops", "activeLoopId", "looping" })
             document.erase (key);
         return document;
     };
@@ -688,6 +688,7 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
     expected.loops.clear();
     expected.activeLoopId.reset();
     expected.looping = false;
+    expected.exportLoopId.reset();
     for (auto& track : expected.tracks)
     {
         track.transcribeMute = track.transcribeSolo = false;
@@ -746,7 +747,7 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
     // Turn song.json and the history snapshot back into what a v4 build wrote.
     const auto toV4 = [] (nlohmann::json document) {
         document["formatVersion"] = 4;
-        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId", "markers", "loops", "activeLoopId", "looping" })
+        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "exportLoopId", "transpose", "focusTrackId", "markers", "loops", "activeLoopId", "looping" })
             document.erase (key);
         for (auto& track : document.at ("tracks"))
             for (const auto* key : { "transcribeMute", "transcribeSolo", "octaveShift", "bandFilter" })
@@ -773,6 +774,7 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
     expected.loops.clear();
     expected.activeLoopId.reset();
     expected.looping = false;
+    expected.exportLoopId.reset();
     for (auto& track : expected.tracks)
     {
         track.transcribeMute = track.transcribeSolo = false;

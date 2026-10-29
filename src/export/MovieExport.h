@@ -11,19 +11,21 @@
 //
 // The mix is rendered (MixRender) into a hidden WAV beside the destination, then an
 // AVMutableComposition holds the mix at time 0 and the Video Take at its sample-exact start (a
-// CMTime in Song samples), its movie scaled by the drift ratio onto the Song clock.
+// CMTime in Song samples; for a Loop, time 0 is the Loop's start), its movie scaled by the drift
+// ratio onto the Song clock.
 // AVAssetExportSession writes H.264 + AAC into a hidden partial file that is renamed over the
 // destination once complete; the mix file is always deleted. The range (export/MovieSpan.h) is
 // the Video Take's span, or for the full song [0, max (mix end, Video Take end)) with an
-// AVMutableVideoComposition's black background where there is no video. The full song re-times
+// AVMutableVideoComposition's black background where there is no video, or a Loop's range (issue
+// #235), black the same way. The full song re-times
 // frames onto an output grid of the Video Take's mean frame duration on the Song clock; the video
 // enters the composition half a grid step early so each grid point shows the nearest source
 // frame: up to ±½ frame per frame (a placement's phase on the grid), no systematic offset.
 // The mix file is padded with silence to the range's end, so a Song with no Clips (an empty mix)
 // still exports its Video Take, over silence (issue #67).
 //
-// Logs export.started (format mp4, path, video_take_id, length, start_sample, end_sample,
-// sample_rate) and export.finished (format, path, samples, elapsed_ms).
+// Logs export.started (format mp4, path, video_take_id, length (trim, full or loop, with loop_id),
+// start_sample, end_sample, sample_rate) and export.finished (format, path, samples, elapsed_ms).
 //
 // Errors: export.video_take_outside_song (video_take_id, video_take_end_sample: the range is
 // empty because the Video Take ends at or before Song sample 0), export.cancelled,

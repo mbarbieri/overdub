@@ -53,9 +53,8 @@ core::Expected<void> moveExportIntoPlace (const juce::File& partial, const juce:
     });
 }
 
-core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop, song::SampleCount padToSamples)
+core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const juce::File& file, const ProgressFn& progress, const ShouldStopFn& shouldStop, SampleRange range)
 {
-    const auto total = std::max (render.totalSamples(), padToSamples);
     auto writer = MixFileWriter::create (file, format, render.sampleRate(), MixRender::numChannels);
     if (! writer.has_value())
     {
@@ -64,33 +63,40 @@ core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const
     }
 
     juce::AudioBuffer<float> block { MixRender::numChannels, render.maxBlockSize() };
-    song::SampleCount written = 0;
-    while (true)
+    song::SampleCount position = 0; // the Song sample the next block starts at
+    while (position < range.end)
     {
         if (shouldStop && shouldStop())
         {
             (*writer).reset();
             file.deleteFile();
+            const auto written = std::max<song::SampleCount> (0, position - range.start);
             return std::unexpected (core::Error { "export.cancelled", "the export was stopped", { { "samples_written", written } } });
         }
-        auto count = render.renderNext (block.getArrayOfWritePointers(), block.getNumSamples());
-        if (count == 0 && written < padToSamples)
+        const auto wanted = (int) std::min<song::SampleCount> (block.getNumSamples(), range.end - position);
+        auto count = render.renderNext (block.getArrayOfWritePointers(), wanted);
+        if (count == 0)
         {
-            // The mix has ended: silence up to padToSamples.
-            count = (int) std::min<song::SampleCount> (block.getNumSamples(), padToSamples - written);
+            // The mix has ended: silence up to range.end.
+            count = wanted;
             block.clear();
         }
-        if (count == 0)
-            break;
-        if (auto result = (*writer)->write (block.getArrayOfReadPointers(), count); ! result.has_value())
+        const auto skipped = (int) std::clamp<song::SampleCount> (range.start - position, 0, count);
+        if (skipped < count)
         {
-            (*writer).reset();
-            file.deleteFile();
-            return std::unexpected (result.error());
+            const float* channels[MixRender::numChannels];
+            for (int channel = 0; channel < MixRender::numChannels; ++channel)
+                channels[channel] = block.getReadPointer (channel, skipped);
+            if (auto result = (*writer)->write (channels, count - skipped); ! result.has_value())
+            {
+                (*writer).reset();
+                file.deleteFile();
+                return std::unexpected (result.error());
+            }
         }
-        written += count;
-        if (progress && total > 0)
-            progress ((double) written / (double) total);
+        position += count;
+        if (progress)
+            progress ((double) position / (double) range.end);
     }
 
     if (auto closed = (*writer)->close(); ! closed.has_value())
@@ -104,26 +110,31 @@ core::Expected<void> writeMixFile (MixRender& render, ExportFormat format, const
 core::Expected<ExportResult> exportMix (MixRender& render, const ExportRequest& request, const ProgressFn& progress, const ShouldStopFn& shouldStop)
 {
     // A tail alone is not a mix: without Clips there is no sound to ring out (issue #95).
-    const auto total = render.totalSamples();
     if (render.songEnd() <= 0)
         return std::unexpected (core::Error { "export.nothing_to_export", "the Song has no Clips to export", {} });
+    const auto range = request.loop.has_value() ? request.loop->range : SampleRange { 0, render.totalSamples() };
+    const auto total = range.length();
 
     if (auto folder = checkExportFolder (request.destination); ! folder.has_value())
         return std::unexpected (folder.error());
 
-    core::logEvent (core::Level::info,
-                    "export.started",
-                    { { "format", formatName (request.format) },
-                      { "path", request.destination.getFullPathName().toStdString() },
-                      { "samples", total },
-                      { "song_end_samples", render.songEnd() },
-                      { "tail_samples", render.tailSamples() },
-                      { "latency_samples", render.latencySamples() },
-                      { "sample_rate", render.sampleRate() } });
+    core::Fields started { { "format", formatName (request.format) },
+                           { "path", request.destination.getFullPathName().toStdString() },
+                           { "samples", total },
+                           { "song_end_samples", render.songEnd() },
+                           { "tail_samples", render.tailSamples() },
+                           { "latency_samples", render.latencySamples() },
+                           { "sample_rate", render.sampleRate() } };
+    if (request.loop.has_value())
+    {
+        started["loop_id"] = request.loop->loopId;
+        started["start_sample"] = range.start;
+    }
+    core::logEvent (core::Level::info, "export.started", std::move (started));
     const auto startNs = core::hostTimeNowNs();
 
     const auto partial = partialFileFor (request.destination);
-    if (auto written = writeMixFile (render, request.format, partial, progress, shouldStop); ! written.has_value())
+    if (auto written = writeMixFile (render, request.format, partial, progress, shouldStop, range); ! written.has_value())
         return std::unexpected (written.error());
     if (auto moved = moveExportIntoPlace (partial, request.destination); ! moved.has_value())
         return std::unexpected (moved.error());

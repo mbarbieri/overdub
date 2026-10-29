@@ -112,6 +112,16 @@ core::Expected<Song> deleteLoop (Song song, const Id& loopId)
         song.activeLoopId.reset();
         song.looping = false;
     }
+    if (song.exportLoopId == loopId)
+        song.exportLoopId.reset(); // Export goes back to the whole Song (issue #235)
+    return song;
+}
+
+core::Expected<Song> setExportLoop (Song song, const std::optional<Id>& loopId)
+{
+    if (loopId.has_value() && findLoop (song, *loopId) == nullptr)
+        return std::unexpected (loopNotFound (*loopId));
+    song.exportLoopId = loopId;
     return song;
 }
 

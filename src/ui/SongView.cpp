@@ -122,7 +122,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const ClosePluginWindow& i) { return closePluginWindow (i.slotId); },
             [this] (const ShowExport& i) { return showExport (i.shown); },
             [this] (const SetExportFormat& i) { return setExportFormat (i.format); },
-            [this] (const SetExportLength& i) { return setExportLength (i.length); },
+            [this] (const SetExportLength& i) { return setExportLength (i.length, i.loopId); },
             [this] (const SetExportDestination& i) { return setExportDestination (juce::File (i.path.value)); },
             [this] (const SetExportVideoTake& i) { return setExportVideoTake (i.videoTakeId); },
             [this] (const Export&) { return exportSong(); },
@@ -706,11 +706,11 @@ IntentResult SongView::setExportFormat (exporting::ExportFormat format)
     return IntentDone {};
 }
 
-IntentResult SongView::setExportLength (exporting::VideoLength length)
+IntentResult SongView::setExportLength (exporting::VideoLength length, const std::optional<song::Id>& loopId)
 {
-    openSong.setExportLength (length);
+    auto set = presented (openSong.setExportLength (length, loopId));
     window.refresh();
-    return IntentDone {};
+    return set;
 }
 
 IntentResult SongView::setExportDestination (const juce::File& file)
@@ -967,6 +967,7 @@ void SongView::refresh (TopBarState& state)
         .clipsEnd = exporting::lastClipEnd (song),
         .sampleRate = song.sampleRate,
         .videoTakes = openSong.videoPlayback().spans (song),
+        .loops = song.loops,
         .request = request,
         .replacesExisting = exportSheetShown && request.destination.existsAsFile(),
         .exportRefusal = codeOf (window.refusalOf (intent::Export::op)),

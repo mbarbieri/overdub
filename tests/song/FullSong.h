@@ -177,6 +177,7 @@ inline Song fullyPopulatedSong()
     song.focusTrackId = "track-backing";
     song.activeLoopId = "loop-2";
     song.looping = true;
+    song.exportLoopId = "loop-1";
     return song;
 }
 } // namespace overdub::song::testing

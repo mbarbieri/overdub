@@ -365,3 +365,68 @@ TEST_CASE ("an MP4 of a Video Take that ends before the Song starts is refused, 
     CHECK_FALSE (destination.getParentDirectory().exists()); // nothing was started
     CHECK (eventsNamed (capture, "export.started").empty());
 }
+
+TEST_CASE ("a Loop's MP4 is exactly its range: the Video Take inside it, every flash on its click, black where the Video Take does not cover it", "[export][mp4][loop]")
+{
+    FlashFixture f;
+    MixRender render { f.mix, f.package.root, 256, {} };
+    const auto destination = f.package.root.getChildFile ("Loop.mp4");
+    // Starts before the Video Take and ends inside it: flashes 15 and 100 are in it.
+    const auto loop = SampleRange { testSampleRate / 2, 5 * testSampleRate };
+    auto request = f.request (VideoLength::trimToVideoTake, destination);
+    request.loop = overdub::exporting::ExportLoop { "loop-1", loop };
+
+    core::ScopedLogCapture capture;
+    const auto exported = overdub::exporting::exportMovie (render, request, f.source());
+    REQUIRE (exported.has_value());
+    CHECK (exported->samples == loop.length());
+    CHECK (std::abs (movieDurationSeconds (destination) - (double) loop.length() / testSampleRate) < 1.0 / fps);
+
+    const auto frames = decodeVideoFrames (destination);
+    const auto flashes = flashTimes (frames);
+    REQUIRE (flashes.size() == 2);
+    const auto audio = decodeAudio (destination, testSampleRate);
+    for (std::size_t i = 0; i < flashes.size(); ++i)
+    {
+        const auto expected = (double) (clickSampleOf (flashFrames[i]) - loop.start) / testSampleRate;
+        CAPTURE (i, flashes[i], expected);
+        CHECK (std::abs (flashes[i] - expected) <= halfFrame);
+        CHECK (std::abs (flashes[i] - clickTimeNear (audio, expected)) <= halfFrame);
+    }
+    const auto videoStartSeconds = (double) (videoStart - loop.start) / testSampleRate;
+    int blackBefore = 0;
+    for (const auto& frame : frames)
+        if (frame.seconds < videoStartSeconds - 1.0 / fps)
+        {
+            CHECK (frame.meanLuma < 8.0);
+            ++blackBefore;
+        }
+    CHECK (blackBefore >= fps / 2 - 2);
+
+    const auto started = eventsNamed (capture, "export.started");
+    REQUIRE (started.size() == 1);
+    CHECK (started[0]["length"] == "loop");
+    CHECK (started[0]["loop_id"] == "loop-1");
+    CHECK (started[0]["start_sample"] == loop.start);
+    CHECK (started[0]["end_sample"] == loop.end);
+}
+
+TEST_CASE ("a Loop's MP4 before the Video Take starts or after it ends is black for the Loop's whole length", "[export][mp4][loop]")
+{
+    FlashFixture f;
+    MixRender render { f.mix, f.package.root, 256, {} };
+    const auto destination = f.package.root.getChildFile ("Outside.mp4");
+    const auto loop = GENERATE (SampleRange { 0, videoStart - testSampleRate / 4 }, SampleRange { videoEnd() + testSampleRate / 4, mixLength });
+    CAPTURE (loop.start, loop.end);
+    auto request = f.request (VideoLength::fullSong, destination);
+    request.loop = overdub::exporting::ExportLoop { "loop-1", loop };
+
+    const auto exported = overdub::exporting::exportMovie (render, request, f.source());
+    REQUIRE (exported.has_value());
+    CHECK (exported->samples == loop.length());
+    CHECK (std::abs (movieDurationSeconds (destination) - (double) loop.length() / testSampleRate) < 1.0 / fps);
+    const auto frames = decodeVideoFrames (destination);
+    REQUIRE (! frames.empty());
+    for (const auto& frame : frames)
+        CHECK (frame.meanLuma < 8.0);
+}

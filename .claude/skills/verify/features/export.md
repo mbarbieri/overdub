@@ -6,6 +6,7 @@ Export is an action, not a mode (issue #200): the Export sheet renders the Song'
 
 - `export-wav`, `export-m4a`: the audio mix over the Song span plus Insert Chain tails.
 - `export-mp4`: the mix plus the chosen Video Take, trimmed or full-song length.
+- `export-loop` (issue #235): every format can write exactly one Loop's range instead: the sheet's length offers "Whole Song" (WAV, M4A) or the two MP4 lengths, then "Loop: <name>" per Loop. Over the socket, `set_export_length length=<trim_to_video_take|full_song> loop_id=<id>` (omit `loop_id` for the whole Song); `/view/export_form/loop` is the Loop id or `null`. Deleting that Loop sets it back to `null`.
 - `export-progress`: the top bar's progress, then the `ui.export_finished` Notice with **Reveal in Finder**.
 - `export-cancel` (issue #202): **✕** beside the top bar's progress, or File ▸ Cancel Export, runs `cancel_export`. The render stops, its `.partial` file goes, a file that was at the destination stays, and the `ui.export_cancelled` Notice says "The export was cancelled." (event `ui.export_cancelled`: `path`, `phase`). A cancel that arrives after the file is written is too late: the export ends as written.
 

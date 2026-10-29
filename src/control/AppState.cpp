@@ -133,6 +133,7 @@ json exportForm (const ui::SongView& view)
         { "length", nameOf<exporting::VideoLength> (song::videoLengthNames, request.videoLength) },
         { "destination", request.destination.getFullPathName().toStdString() },
         { "video_take", orNull (request.videoTakeId) },
+        { "loop", request.loop.has_value() ? json (request.loop->loopId) : json (nullptr) },
         { "replaces_existing", view.exportSheet.replacesExisting() },
     };
 }
