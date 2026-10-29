@@ -575,7 +575,7 @@ TEST_CASE ("a Separation in a transposed Song splits the original audio and rend
 {
     constexpr int semitones = -2;
     SeparateFixture s;
-    REQUIRE (s.f.window->run (SongIntent { intent::SetTranspose { semitones } }, Origin::control).has_value());
+    REQUIRE (s.f.window->run (SongIntent { intent::SetTranspose { .semitones = semitones } }, Origin::control).has_value());
     tickUntilTransposed (s.f);
     const auto root = s.f.openSong->package().location();
     const auto source = s.f.song().backingTracks.front();
@@ -586,7 +586,7 @@ TEST_CASE ("a Separation in a transposed Song splits the original audio and rend
     CHECK (s.log->starts[0].input == song::originalFileFor (root, source));
     CHECK (s.f.openSong->isTransposing());
     tickUntilTransposed (s.f);
-    CHECK (s.f.openSong->heardTranspose() == semitones);
+    CHECK (s.f.openSong->heardTranspose() == song::Transpose { .semitones = semitones });
 
     std::vector<song::BackingTrack> parts;
     for (std::size_t part = 0; part < 6; ++part)
@@ -595,7 +595,7 @@ TEST_CASE ("a Separation in a transposed Song splits the original audio and rend
         INFO ("Track " << track.name);
         const auto& backingTrack = s.backingTrackOf (track);
         parts.push_back (backingTrack);
-        const auto rendered = song::readWavFile (song::transposedFileFor (root, backingTrack, semitones));
+        const auto rendered = song::readWavFile (song::transposedFileFor (root, backingTrack, { .semitones = semitones }));
         REQUIRE (rendered.has_value());
         const auto expected = partFrequencies[part] * std::pow (2.0, semitones / 12.0);
         // ADR 0005: within 5 cents, away from both ends.
@@ -607,14 +607,14 @@ TEST_CASE ("a Separation in a transposed Song splits the original audio and rend
     tickUntilTransposed (s.f);
 
     for (const auto& part : parts)
-        CHECK_FALSE (song::transposedFileFor (root, part, semitones).exists());
-    CHECK (song::transposedFileFor (root, source, semitones).existsAsFile());
+        CHECK_FALSE (song::transposedFileFor (root, part, { .semitones = semitones }).exists());
+    CHECK (song::transposedFileFor (root, source, { .semitones = semitones }).existsAsFile());
 }
 
 TEST_CASE ("undoing a Separation while its new Backing Tracks render cancels their renders and leaves none", "[ui][separation][transpose]")
 {
     SeparateFixture s;
-    REQUIRE (s.f.window->run (SongIntent { intent::SetTranspose { 3 } }, Origin::control).has_value());
+    REQUIRE (s.f.window->run (SongIntent { intent::SetTranspose { .semitones = 3 } }, Origin::control).has_value());
     tickUntilTransposed (s.f);
     s.separate ("Band Mix");
     REQUIRE (s.f.openSong->isTransposeRendering());
@@ -625,5 +625,5 @@ TEST_CASE ("undoing a Separation while its new Backing Tracks render cancels the
 
     CHECK_FALSE (s.f.openSong->isTransposing());
     for (const auto& backingTrack : separated)
-        CHECK (song::transposedFileFor (root, backingTrack, 3).existsAsFile() == (backingTrack.id == s.f.song().backingTracks.front().id));
+        CHECK (song::transposedFileFor (root, backingTrack, { .semitones = 3 }).existsAsFile() == (backingTrack.id == s.f.song().backingTracks.front().id));
 }

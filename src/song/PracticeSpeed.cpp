@@ -77,7 +77,7 @@ juce::File practiceRenderFileFor (const juce::File& folder, const ClipSource& so
     const auto speed = ".speed" + juce::String (key.speedPercent) + ".wav";
     if (source.kind == ClipSourceKind::take)
         return folder.getChildFile ("take-" + juce::String (source.id) + speed);
-    const auto transpose = ".transpose" + juce::String (key.semitones >= 0 ? "+" : "") + juce::String (key.semitones);
+    const auto transpose = ".transpose" + juce::String (transposeFileTag (key.transpose));
     return folder.getChildFile ("backing-" + juce::String (source.id) + transpose + speed);
 }
 
@@ -98,17 +98,17 @@ std::vector<PracticeRenderJob> missingPracticeRenders (const juce::File& package
         const auto from = mediaFileFor (packageRoot, song, source);
         if (! from.has_value() || ! from->existsAsFile() || practiceRenderFileFor (folder, source, key).existsAsFile())
             continue;
-        const auto semitones = source.kind == ClipSourceKind::backing ? key.semitones : 0;
+        const auto transpose = source.kind == ClipSourceKind::backing ? key.transpose : Transpose {};
         if (! window.has_value())
         {
-            missing.push_back ({ source, *from, practiceRenderFileFor (folder, source, key), semitones });
+            missing.push_back ({ source, *from, practiceRenderFileFor (folder, source, key), transpose });
             continue;
         }
         const auto range = sourceRangeIn (song, source, *window);
         if (! range.has_value())
             continue;
         if (const auto to = practiceRangeRenderFileFor (folder, source, key, *range); ! to.existsAsFile())
-            missing.push_back ({ source, *from, to, semitones, range });
+            missing.push_back ({ source, *from, to, transpose, range });
     }
     return missing;
 }
@@ -147,7 +147,7 @@ std::unique_ptr<PracticeSpeedRun> PracticeSpeedRun::start (int sampleRate, Pract
     std::vector<RenderWorker::Render> renders;
     for (const auto& job : run->jobs)
         renders.push_back ([job, sampleRate, speedPercent = key.speedPercent] (std::stop_token stop) -> core::Expected<void> {
-            auto rendered = renderAtPracticeSpeed (job.from, job.to, sampleRate, job.semitones, speedPercent, stop, job.sourceRange);
+            auto rendered = renderAtPracticeSpeed (job.from, job.to, sampleRate, job.transpose, speedPercent, stop, job.sourceRange);
             if (! rendered.has_value())
             {
                 rendered.error().fields["source_kind"] = toString (job.source.kind);
@@ -175,7 +175,8 @@ PracticeSpeedRun::~PracticeSpeedRun()
 core::Fields PracticeSpeedRun::fields (Clock::time_point now) const
 {
     core::Fields logged { { "speed_percent", target.speedPercent },
-                          { "semitones", target.semitones },
+                          { "semitones", target.transpose.semitones },
+                          { "cents", target.transpose.cents },
                           { "renders", jobs.size() },
                           { "scope", "song" },
                           { "duration_ms", std::chrono::duration_cast<std::chrono::milliseconds> (now - startedAt).count() } };

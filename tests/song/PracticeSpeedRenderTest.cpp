@@ -65,7 +65,7 @@ TEST_CASE ("a sine rendered at a Practice Speed keeps its pitch and lasts its le
     const auto source = scratch.write ("take.wav", sineBuffer (2, 2 * sampleRate, 440.0));
     const auto destination = scratch.folder.getChildFile ("take.speed.wav");
 
-    REQUIRE (overdub::song::renderAtPracticeSpeed (source, destination, sampleRate, 0, speedPercent, {}).has_value());
+    REQUIRE (overdub::song::renderAtPracticeSpeed (source, destination, sampleRate, {}, speedPercent, {}).has_value());
 
     const auto rendered = overdub::song::readWavFile (destination);
     REQUIRE (rendered.has_value());
@@ -82,17 +82,21 @@ TEST_CASE ("a sine rendered at a Practice Speed keeps its pitch and lasts its le
 
 TEST_CASE ("a render at a Practice Speed also applies a Transpose, in one pass", "[song][practice_speed][render]")
 {
+    // Whole semitones, and semitones with cents together (issue #232).
+    const auto transpose = GENERATE (overdub::song::Transpose { .semitones = -2 }, overdub::song::Transpose { .semitones = -2, .cents = 30 });
+    INFO (transpose.semitones << " semitones " << transpose.cents << " cents");
     const ScratchFolder scratch;
     const auto source = scratch.write ("backing.wav", sineBuffer (1, 2 * sampleRate, 440.0));
     const auto destination = scratch.folder.getChildFile ("backing.speed.wav");
 
-    REQUIRE (overdub::song::renderAtPracticeSpeed (source, destination, sampleRate, -2, 80, {}).has_value());
+    REQUIRE (overdub::song::renderAtPracticeSpeed (source, destination, sampleRate, transpose, 80, {}).has_value());
 
     const auto rendered = overdub::song::readWavFile (destination);
     REQUIRE (rendered.has_value());
     CHECK (rendered->getNumSamples() == 120000);
     const auto measured = measuredFrequency (rendered->getReadPointer (0), 15000, 105000, sampleRate);
-    CHECK_THAT (1200.0 * std::log2 (measured / (440.0 * std::pow (2.0, -2.0 / 12.0))), WithinAbs (0.0, 5.0)); // 392.00 Hz
+    const auto expected = 440.0 * std::pow (2.0, (transpose.semitones + transpose.cents / 100.0) / 12.0); // 392.00 Hz, 398.84 Hz
+    CHECK_THAT (1200.0 * std::log2 (measured / expected), WithinAbs (0.0, 5.0));
 }
 
 TEST_CASE ("an impulse rendered at a Practice Speed lands at its time divided by the speed", "[song][practice_speed][render]")
@@ -106,7 +110,7 @@ TEST_CASE ("an impulse rendered at a Practice Speed lands at its time divided by
     const auto source = scratch.write ("take.wav", click);
     const auto destination = scratch.folder.getChildFile ("take.speed.wav");
 
-    REQUIRE (overdub::song::renderAtPracticeSpeed (source, destination, sampleRate, 0, speedPercent, {}).has_value());
+    REQUIRE (overdub::song::renderAtPracticeSpeed (source, destination, sampleRate, {}, speedPercent, {}).has_value());
 
     const auto rendered = overdub::song::readWavFile (destination);
     REQUIRE (rendered.has_value());
@@ -121,7 +125,7 @@ TEST_CASE ("a Practice Speed render that cannot read its source or is asked to s
     const auto source = scratch.write ("take.wav", sineBuffer (1, sampleRate, 440.0));
     const auto destination = scratch.folder.getChildFile ("take.speed.wav");
 
-    const auto failed = overdub::song::renderAtPracticeSpeed (scratch.folder.getChildFile ("missing.wav"), destination, sampleRate, 0, 80, {});
+    const auto failed = overdub::song::renderAtPracticeSpeed (scratch.folder.getChildFile ("missing.wav"), destination, sampleRate, {}, 80, {});
     REQUIRE_FALSE (failed.has_value());
     CHECK (failed.error().code == "song.practice_render_failed");
     CHECK (failed.error().fields.at ("step") == "read");
@@ -129,7 +133,7 @@ TEST_CASE ("a Practice Speed render that cannot read its source or is asked to s
 
     std::stop_source stop;
     stop.request_stop();
-    const auto cancelled = overdub::song::renderAtPracticeSpeed (source, destination, sampleRate, 0, 80, stop.get_token());
+    const auto cancelled = overdub::song::renderAtPracticeSpeed (source, destination, sampleRate, {}, 80, stop.get_token());
     REQUIRE_FALSE (cancelled.has_value());
     CHECK (cancelled.error().code == "song.practice_render_cancelled");
 
@@ -151,8 +155,8 @@ TEST_CASE ("an impulse inside a Loop's range lands at the same Song time in the 
     const auto ranged = scratch.folder.getChildFile ("take.speed.range.wav");
     const overdub::song::SampleRange range { 60000, 150000 };
 
-    REQUIRE (overdub::song::renderAtPracticeSpeed (source, whole, sampleRate, 0, speedPercent, {}).has_value());
-    REQUIRE (overdub::song::renderAtPracticeSpeed (source, ranged, sampleRate, 0, speedPercent, {}, range).has_value());
+    REQUIRE (overdub::song::renderAtPracticeSpeed (source, whole, sampleRate, {}, speedPercent, {}).has_value());
+    REQUIRE (overdub::song::renderAtPracticeSpeed (source, ranged, sampleRate, {}, speedPercent, {}, range).has_value());
 
     const auto wholeAudio = overdub::song::readWavFile (whole);
     const auto rangedAudio = overdub::song::readWavFile (ranged);

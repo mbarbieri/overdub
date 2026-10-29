@@ -114,7 +114,7 @@ TEST_CASE ("the app state has every section, each with its keys, over a Song wit
 
     CHECK (state["history"] == json { { "can_undo", true }, { "undo_label", "Record Pass 1" }, { "can_redo", false }, { "redo_label", "" } });
 
-    CHECK (keysOf (state["transport"]) == std::set<std::string> { "playing", "position", "pre_roll_record_point", "running_pass_start", "running_pass_number", "saving_pass", "heard_transpose", "transposing", "transpose_rendering", "practice_speed", "heard_practice_speed", "practice_rendering", "transcribe_mix_heard", "heard_loop" });
+    CHECK (keysOf (state["transport"]) == std::set<std::string> { "playing", "position", "pre_roll_record_point", "running_pass_start", "running_pass_number", "saving_pass", "heard_transpose", "heard_transpose_cents", "transposing", "transpose_rendering", "practice_speed", "heard_practice_speed", "practice_rendering", "transcribe_mix_heard", "heard_loop" });
     CHECK (state["transport"]["playing"] == false);
     CHECK (state["transport"]["running_pass_number"] == 0);
     CHECK (state["transport"]["pre_roll_record_point"] == nullptr);

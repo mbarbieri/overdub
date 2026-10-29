@@ -557,12 +557,13 @@ struct CancelRun // the run dialog's Cancel (a Separation or a conversion)
 //==============================================================================
 // Song: Transpose (issue #209): one undo step, then renders that playback switches to once ready.
 
-struct SetTranspose // the top bar's Transpose field, on Return
+struct SetTranspose // the Transpose fields (semitones and cents), on Return
 {
     static constexpr std::string_view op = "set_transpose";
     int semitones = 0;
+    std::optional<int> cents = std::nullopt; // the fine tune (issue #232); 0 when omitted
     bool operator== (const SetTranspose&) const = default;
-    static constexpr auto fields = std::tuple { field ("semitones", &SetTranspose::semitones) };
+    static constexpr auto fields = std::tuple { field ("semitones", &SetTranspose::semitones), field ("cents", &SetTranspose::cents) };
 };
 
 //==============================================================================

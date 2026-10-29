@@ -517,11 +517,16 @@ TranscribeColumnLayout transcribeColumnLayout (juce::Rectangle<int> column)
     layout.practiceSpeedUnit = practiceSpeed.unit;
     layout.practiceSpeedSpinner = practiceSpeed.spinner;
     area.removeFromTop (gap);
-    const auto transpose = fieldSlot (area.removeFromTop (fieldRowHeight), transposeFieldWidth);
+    auto transposeRow = area.removeFromTop (fieldRowHeight);
+    const auto transpose = fieldSlot (transposeRow, transposeFieldWidth);
     layout.transposeCaption = transpose.caption;
     layout.transposeField = transpose.field;
     layout.transposeUnit = transpose.unit;
-    layout.transposeSpinner = transpose.spinner;
+    // The cents field and "ct" follow "st"; the spinner follows them.
+    const auto cents = fieldSlot (transposeRow.withLeft (transpose.unit.getRight() + 2 * gap), transposeFieldWidth);
+    layout.transposeCentsField = cents.field;
+    layout.transposeCentsUnit = cents.unit;
+    layout.transposeSpinner = cents.spinner;
     area.removeFromTop (2 * gap);
     layout.mixCaption = area.removeFromTop (fieldCaptionHeight);
     area.removeFromTop (gap);

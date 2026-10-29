@@ -207,8 +207,24 @@ TEST_CASE ("the Transcribe column's Practice Speed and Transpose run the top bar
     CHECK (f.window->topBar.practiceSpeedField.getText() == "80");
 
     page.column.transposeField.setText ("+2", juce::sendNotificationSync);
-    CHECK (f.song().transpose == 2);
+    CHECK (f.song().transpose == overdub::song::Transpose { .semitones = 2 });
     CHECK (f.window->topBar.transposeField.getText() == "+2");
+
+    // The fine tune (issue #232): its own field beside "st", keeping the semitones, and one undo step.
+    CHECK (page.column.transposeCentsField.getText() == "0");
+    CHECK (page.column.transposeCentsUnit.getText() == "ct");
+    page.column.transposeCentsField.setText ("-30", juce::sendNotificationSync);
+    CHECK (f.song().transpose == overdub::song::Transpose { .semitones = 2, .cents = -30 });
+    CHECK (page.column.transposeCentsField.getText() == juce::String::fromUTF8 ("\xe2\x88\x92"
+                                                                                "30"));
+    CHECK (page.column.transposeField.getText() == "+2");
+    page.column.transposeField.setText ("3", juce::sendNotificationSync);
+    CHECK (f.song().transpose == overdub::song::Transpose { .semitones = 3, .cents = -30 });
+    REQUIRE (f.openSong->undo().has_value());
+    REQUIRE (f.openSong->undo().has_value());
+    f.window->refresh();
+    CHECK (f.song().transpose == overdub::song::Transpose { .semitones = 2 });
+    CHECK (page.column.transposeCentsField.getText() == "0");
 
     page.column.practiceSpeedField.setText ("fast", juce::sendNotificationSync);
     CHECK (f.openSong->practiceSpeed() == 80);
@@ -217,7 +233,7 @@ TEST_CASE ("the Transcribe column's Practice Speed and Transpose run the top bar
     std::vector<std::string> ops;
     for (const auto& event : eventsNamed (capture, "ui.intent_run"))
         ops.push_back (event.at ("op"));
-    CHECK (ops == std::vector<std::string> { "set_practice_speed", "set_transpose" });
+    CHECK (ops == std::vector<std::string> { "set_practice_speed", "set_transpose", "set_transpose", "set_transpose" });
 }
 
 TEST_CASE ("I shows and hides the Transcribe column, remembered per Mac and not in the Song", "[ui][transcribe][column]")

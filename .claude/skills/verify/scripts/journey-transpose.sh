@@ -1,6 +1,6 @@
 #!/bin/zsh
-# Journey transpose: a new Song with a 4 s synthetic Backing Track, set_transpose -1, +2, undo and 0,
-# checking the undo labels, the heard Transpose, the renders in the package (as long as the derived
+# Journey transpose: a new Song with a 4 s synthetic Backing Track, set_transpose -1, +2, undo, a
+# fine tune of +30 cents (issue #232), undo and 0, checking the undo labels, the heard Transpose, the renders in the package (as long as the derived
 # WAV) and that an out-of-range value is an explicit Error.
 # Usage: .claude/skills/verify/scripts/journey-transpose.sh [run-dir]   (default: build/verify/latest)
 # Needs a running app from launch.sh with no Song open (it opens its own). Nothing is played.
@@ -66,8 +66,26 @@ echo "$REFUSED" >"$EVIDENCE/out-of-range.json"
 check "+13 is refused with song.transpose_out_of_range" "$REFUSED" '.ok == false and .error.code == "song.transpose_out_of_range"'
 check "the refused value changed nothing" "$(state song)" '.song.song.transpose == -1'
 
+# The fine tune (issue #232): -1 semitones +30 cents is one render, and undo goes back to -1.
+ctl set_transpose semitones=-1 cents=30 >/dev/null
+ctl wait pointer=/transport/transposing equals=false timeout_ms=60000 >/dev/null
+check "playback is at Transpose −1 +30 cents" "$(state song transport history)" \
+    '.song.song.transpose == -1 and .song.song.transposeCents == 30 and .transport.heard_transpose == -1 and .transport.heard_transpose_cents == 30 and .history.undo_label == "Transpose −1 +30 ct"'
+CENTS_RENDER="$SONG/backing/$BACKING.transpose-1+30c.wav"
+check_cmd "only the −1 +30 cents render is left ($(renders) render)" '[[ "$(renders)" == 1 && -f "$CENTS_RENDER" ]]'
+CENTS_FRAMES="$(frames "$CENTS_RENDER")"
+check_cmd "the cents render is as long as the derived WAV ($CENTS_FRAMES = $DERIVED_FRAMES frames)" '[[ "$CENTS_FRAMES" == "$DERIVED_FRAMES" ]]'
+CENTS_REFUSED="$("$CTL" --socket "$SOCKET" set_transpose semitones=-1 cents=51 2>&1)"
+echo "$CENTS_REFUSED" >"$EVIDENCE/cents-out-of-range.json"
+check "+51 cents is refused with song.transpose_cents_out_of_range" "$CENTS_REFUSED" '.ok == false and .error.code == "song.transpose_cents_out_of_range"'
+ctl undo >/dev/null
+ctl wait pointer=/transport/transposing equals=false timeout_ms=60000 >/dev/null
+check "undo went back to −1 with no fine tune" "$(state song transport)" \
+    '.song.song.transpose == -1 and .song.song.transposeCents == 0 and .transport.heard_transpose_cents == 0'
+check_cmd "the −1 render is back and the cents one gone" '[[ "$(renders)" == 1 && -f "$RENDER" ]]'
+
 transpose_to 0
 check_cmd "at Transpose 0 no render is left" '[[ "$(renders)" == 0 ]]'
 snapshot final song history transport
-check "song.json on disk is at Transpose 0" "$(jq -c . "$SONG/song.json")" '.transpose == 0 and .formatVersion == 6'
+check "song.json on disk is at Transpose 0" "$(jq -c . "$SONG/song.json")" '.transpose == 0 and .transposeCents == 0 and .formatVersion == 11'
 journey_end

@@ -36,7 +36,7 @@ OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding aud
                blockSizeOf (audio)),
       playback (package_->location()),
       // The derived audio plays until every render of the Song's Transpose is there.
-      heardSemitones (song::missingTransposeRenders (package_->location(), package_->song()).empty() ? package_->song().transpose : 0)
+      heardShift (song::missingTransposeRenders (package_->location(), package_->song()).empty() ? package_->song().transpose : song::Transpose {})
 {
     practiceFolder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("overdub-practice-" + juce::Uuid().toString());
     package_->setPluginStateCapture ([this] (song::Song& song) { capturePluginState (song); });
@@ -1021,7 +1021,7 @@ void OpenSong::reloadEngine()
 song::Song OpenSong::heardSong() const
 {
     auto heard = withHeardMix (song());
-    heard.transpose = heardSemitones;
+    heard.transpose = heardShift;
     return heard;
 }
 
@@ -1033,12 +1033,12 @@ song::Song OpenSong::withHeardMix (song::Song candidate) const
 std::optional<core::Error> OpenSong::advanceTranspose (song::SongPackage::Clock::time_point now)
 {
     const auto target = song().transpose;
-    if (target != failedSemitones)
+    if (target != failedShift)
         failedRenders.clear();
     std::optional<core::Error> failure;
     if (transposeRun != nullptr)
     {
-        if (transposeRun->semitones() != target || rendersRemovedBackingTrack (*transposeRun, song()))
+        if (transposeRun->transpose() != target || rendersRemovedBackingTrack (*transposeRun, song()))
         {
             transposeRun->cancel (now);
             transposeRun.reset();
@@ -1051,10 +1051,10 @@ std::optional<core::Error> OpenSong::advanceTranspose (song::SongPackage::Clock:
             if (! ended->has_value())
             {
                 failure = ended->error();
-                failedSemitones = target;
+                failedShift = target;
                 failedRenders.insert (failure->fields.value ("backing_track_id", std::string()));
             }
-            else if (heardSemitones == target)
+            else if (heardShift == target)
                 reloadEngine(); // Backing Tracks added since: their renders play now
         }
         else
@@ -1076,10 +1076,10 @@ std::optional<core::Error> OpenSong::advanceTranspose (song::SongPackage::Clock:
         transposeRun = song::TransposeRun::start (song().sampleRate, target, std::move (missing), now);
         return failure;
     }
-    if (heardSemitones != target && failedRenders.empty())
+    if (heardShift != target && failedRenders.empty())
     {
-        core::logEvent (core::Level::info, "ui.transpose_heard", { { "from_semitones", heardSemitones }, { "to_semitones", target } });
-        heardSemitones = target;
+        core::logEvent (core::Level::info, "ui.transpose_heard", { { "from_semitones", heardShift.semitones }, { "from_cents", heardShift.cents }, { "to_semitones", target.semitones }, { "to_cents", target.cents } });
+        heardShift = target;
         song::deleteTransposeRendersExcept (package_->location(), target);
         reloadEngine();
     }
@@ -1114,7 +1114,7 @@ song::PracticeRenderKey OpenSong::practiceKey() const
 {
     if (practiceTarget == song::normalPracticeSpeed)
         return {};
-    return { .speedPercent = practiceTarget, .semitones = song().transpose };
+    return { .speedPercent = practiceTarget, .transpose = song().transpose };
 }
 
 std::optional<core::Error> OpenSong::advancePracticeSpeed (song::SongPackage::Clock::time_point now)
@@ -1174,7 +1174,7 @@ std::optional<core::Error> OpenSong::advancePracticeSpeed (song::SongPackage::Cl
     {
         core::logEvent (core::Level::info,
                         "ui.practice_speed_heard",
-                        { { "from_percent", heardPractice.speedPercent }, { "to_percent", target.speedPercent }, { "semitones", target.semitones } });
+                        { { "from_percent", heardPractice.speedPercent }, { "to_percent", target.speedPercent }, { "semitones", target.transpose.semitones }, { "cents", target.transpose.cents } });
         heardPractice = target;
         reloadEngine();
         deleteUnheardPracticeRenders();

@@ -281,17 +281,17 @@ TEST_CASE ("a Transpose change at a Practice Speed renders the Backing Tracks ag
     const auto band = f.song().backingTracks.at (0);
     const overdub::song::ClipSource backingSource { overdub::song::ClipSourceKind::backing, band.id };
 
-    auto changed = overdub::song::setTranspose (f.song(), 2);
+    auto changed = overdub::song::setTranspose (f.song(), { .semitones = 2 });
     REQUIRE (changed.has_value());
-    REQUIRE (f.openSong->edit (*changed, overdub::song::transposeLabel (2)).has_value());
+    REQUIRE (f.openSong->edit (*changed, overdub::song::transposeLabel ({ .semitones = 2 })).has_value());
     CHECK (f.openSong->isPracticeRendering());
     f.pollUntilRendered();
     while (f.openSong->isTransposing())
         f.openSong->poll();
 
     const auto folder = f.openSong->practiceRenderFolder();
-    CHECK (overdub::song::practiceRenderFileFor (folder, backingSource, { .speedPercent = 80, .semitones = 2 }).existsAsFile());
-    CHECK_FALSE (overdub::song::practiceRenderFileFor (folder, backingSource, { .speedPercent = 80, .semitones = 0 }).exists());
+    CHECK (overdub::song::practiceRenderFileFor (folder, backingSource, { .speedPercent = 80, .transpose = { .semitones = 2 } }).existsAsFile());
+    CHECK_FALSE (overdub::song::practiceRenderFileFor (folder, backingSource, { .speedPercent = 80, .transpose = { .semitones = 0 } }).exists());
     CHECK (f.rendersInFolder() == 2);
 }
 

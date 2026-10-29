@@ -343,7 +343,7 @@ TEST_CASE ("set_transpose takes a whole number from -12 to +12 as one undo step,
 
     const auto done = socket.request (R"({"id": 1, "op": "set_transpose", "semitones": -1})");
     CHECK (done.at ("ok") == true);
-    CHECK (socket.f.song().transpose == -1);
+    CHECK (socket.f.song().transpose == song::Transpose { .semitones = -1 });
     CHECK (socket.f.openSong->package().undoLabel() == "Transpose \xe2\x88\x92"
                                                        "1");
 
@@ -359,15 +359,53 @@ TEST_CASE ("set_transpose takes a whole number from -12 to +12 as one undo step,
         CHECK (refused.at ("error").at ("code") == "control.bad_field");
         CHECK (refused.at ("error").at ("fields").at ("key") == "semitones");
     }
-    CHECK (socket.f.song().transpose == -1);
+    CHECK (socket.f.song().transpose == song::Transpose { .semitones = -1 });
     CHECK (socket.f.openSong->package().undoLabel() == "Transpose \xe2\x88\x92"
                                                        "1");
 
     // The same value again is no new step.
     CHECK (socket.request (R"({"id": 6, "op": "set_transpose", "semitones": -1})").at ("ok") == true);
     REQUIRE (socket.f.openSong->undo().has_value());
-    CHECK (socket.f.song().transpose == 0);
+    CHECK (socket.f.song().transpose == song::Transpose {});
     CHECK (socket.f.openSong->package().undoLabel() == "Add Tracks");
+}
+
+TEST_CASE ("set_transpose takes a fine tune of whole cents from -50 to +50, 0 when omitted, and any other value is an explicit Error", "[control][intent_ops][transpose]")
+{
+    SocketToWindow socket;
+
+    CHECK (socket.request (R"({"id": 1, "op": "set_transpose", "semitones": -12, "cents": -50})").at ("ok") == true);
+    CHECK (socket.f.song().transpose == song::Transpose { .semitones = -12, .cents = -50 });
+    CHECK (socket.f.openSong->package().undoLabel() == "Transpose \xe2\x88\x92"
+                                                       "12 \xe2\x88\x92"
+                                                       "50 ct");
+
+    CHECK (socket.request (R"({"id": 2, "op": "set_transpose", "semitones": 0, "cents": 30})").at ("ok") == true);
+    CHECK (socket.f.song().transpose == song::Transpose { .semitones = 0, .cents = 30 });
+
+    for (const auto* outOfRange : { R"({"id": 3, "op": "set_transpose", "semitones": 0, "cents": 51})", R"({"id": 4, "op": "set_transpose", "semitones": 0, "cents": -51})" })
+    {
+        const auto refused = socket.request (outOfRange);
+        CHECK (refused.at ("ok") == false);
+        CHECK (refused.at ("error").at ("code") == "song.transpose_cents_out_of_range");
+        CHECK (refused.at ("error").at ("fields").at ("min") == -50);
+        CHECK (refused.at ("error").at ("fields").at ("max") == 50);
+    }
+    const auto notWhole = socket.request (R"({"id": 5, "op": "set_transpose", "semitones": 0, "cents": 2.5})");
+    CHECK (notWhole.at ("ok") == false);
+    CHECK (notWhole.at ("error").at ("code") == "control.bad_field");
+    CHECK (notWhole.at ("error").at ("fields").at ("key") == "cents");
+    CHECK (socket.f.song().transpose == song::Transpose { .semitones = 0, .cents = 30 });
+
+    // Omitted cents are 0: the fine tune goes back with the same semitones.
+    CHECK (socket.request (R"({"id": 6, "op": "set_transpose", "semitones": 0})").at ("ok") == true);
+    CHECK (socket.f.song().transpose == song::Transpose {});
+
+    // Undo restores the previous value.
+    REQUIRE (socket.f.openSong->undo().has_value());
+    CHECK (socket.f.song().transpose == song::Transpose { .semitones = 0, .cents = 30 });
+    REQUIRE (socket.f.openSong->undo().has_value());
+    CHECK (socket.f.song().transpose == song::Transpose { .semitones = -12, .cents = -50 });
 }
 
 TEST_CASE ("record and export over the socket while Transposing are refused with ui.transposing", "[control][intent_ops][transpose]")

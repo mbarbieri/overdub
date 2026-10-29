@@ -19,7 +19,7 @@
 // one pass from its derived audio (song/TransposeRender.h renderAtPracticeSpeed), with the Song's
 // Transpose applied to a Backing Track. Renders are temporary files in a folder outside the package:
 //   take-<id>.speed80.wav                  a Take's (every Transpose)
-//   backing-<id>.transpose+3.speed80.wav   a Backing Track's at Transpose +3
+//   backing-<id>.transpose+3.speed80.wav   a Backing Track's at Transpose +3 (transposeFileTag)
 // While a Loop loops in Transcribe mode (issue #231, ADR 0009 "The active Loop renders first"), a
 // source is first rendered only over the source samples its Clips play in the Loop's window (the
 // Loop plus loopRenderMarginSeconds each side), as a render of the whole length that is silent
@@ -62,7 +62,7 @@ std::optional<SampleRange> sourceRangeIn (const Song& song, const ClipSource& so
 struct PracticeRenderKey
 {
     int speedPercent = normalPracticeSpeed;
-    int semitones = 0;
+    Transpose transpose;
 
     bool operator== (const PracticeRenderKey&) const = default;
 };
@@ -78,7 +78,7 @@ struct PracticeRenderJob
     ClipSource source;
     juce::File from;   // the Take's file, or the Backing Track's derived WAV
     juce::File to;     // practiceRenderFileFor
-    int semitones = 0; // the key's for a Backing Track, 0 for a Take
+    Transpose transpose; // the key's for a Backing Track, none ({}) for a Take
     // Set for a Loop's render: only these source samples are rendered (renderAtPracticeSpeed).
     std::optional<SampleRange> sourceRange = std::nullopt;
 };
@@ -106,7 +106,7 @@ int deletePracticeRendersExcept (const juce::File& folder, const Song& song, Pra
 // the Song may change while it runs. `loopWindow` is the Loop's window (loopRenderWindow) it was
 // started for, none outside a Loop: the owner cancels a run whose key or window is no longer
 // wanted. Its scope is "loop" when its jobs are range renders, else "song". Logs
-// song.practice_speed_started (info: speed_percent, semitones, renders, scope, and for a "loop"
+// song.practice_speed_started (info: speed_percent, semitones, cents, renders, scope, and for a "loop"
 // run window_start and window_end in Song samples) and, once every render is written, song.practice_speed_rendered (info: the
 // same and duration_ms). The first failed render ends the run (its Error with source_kind and
 // source_id). cancel() stops the worker after its current block, logging

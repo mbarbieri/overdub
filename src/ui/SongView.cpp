@@ -94,7 +94,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const SetMonitoring& i) { return setMonitoring (i.trackId, i.on); },
             [this] (const StartSeparation& i) { return startSeparation (i.trackId); },
             [this] (const CancelRun&) { return cancelRun(); },
-            [this] (const SetTranspose& i) { return setTranspose (i.semitones); },
+            [this] (const SetTranspose& i) { return setTranspose ({ .semitones = i.semitones, .cents = i.cents.value_or (0) }); },
             [this] (const SetPracticeSpeed& i) { return setPracticeSpeed (i.speedPercent); },
             [this] (const SetFocusTrack& i) { return unlessRefused (openSong.setFocusTrack (i.trackId)); },
             [this] (const SetTranscribeMute& i) { return unlessRefused (openSong.setTranscribeMute (i.trackId, i.mute)); },
@@ -289,11 +289,11 @@ IntentResult SongView::setPreRoll (song::PreRoll preRoll)
     return result;
 }
 
-IntentResult SongView::setTranspose (int semitones)
+IntentResult SongView::setTranspose (song::Transpose transpose)
 {
-    if (semitones == openSong.song().transpose)
+    if (transpose == openSong.song().transpose)
         return IntentDone {};
-    return applyEdit (song::setTranspose (openSong.song(), semitones), song::transposeLabel (semitones));
+    return applyEdit (song::setTranspose (openSong.song(), transpose), song::transposeLabel (transpose));
 }
 
 IntentResult SongView::setPracticeSpeed (int speedPercent)

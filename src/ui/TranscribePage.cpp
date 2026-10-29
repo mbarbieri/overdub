@@ -275,20 +275,22 @@ TranscribeColumn::TranscribeColumn()
         styleCaption (*caption);
         addAndMakeVisible (caption);
     }
-    for (auto* unit : { &practiceSpeedUnit, &transposeUnit })
+    for (auto* unit : { &practiceSpeedUnit, &transposeUnit, &transposeCentsUnit })
     {
         styleUnit (*unit);
         addAndMakeVisible (unit);
     }
-    for (auto* field : { &practiceSpeedField, &transposeField })
+    for (auto* field : { &practiceSpeedField, &transposeField, &transposeCentsField })
     {
         styleField (*field);
         addAndMakeVisible (field);
     }
     practiceSpeedField.setText (juce::String (shownPracticeSpeed), juce::dontSendNotification);
     practiceSpeedField.onTextChange = [this] { practiceSpeedEntered(); };
-    transposeField.setText (shownTranspose, juce::dontSendNotification);
+    transposeField.setText ("0", juce::dontSendNotification);
     transposeField.onTextChange = [this] { transposeEntered(); };
+    transposeCentsField.setText ("0", juce::dontSendNotification);
+    transposeCentsField.onTextChange = [this] { transposeCentsEntered(); };
     for (auto* spinner : { &practiceSpeedSpinner, &transposeSpinner })
     {
         spinner->setInterceptsMouseClicks (false, false);
@@ -308,9 +310,17 @@ void TranscribeColumn::practiceSpeedEntered()
 void TranscribeColumn::transposeEntered()
 {
     const auto typed = parseTranspose (transposeField.getText().toStdString());
-    transposeField.setText (juce::String::fromUTF8 (shownTranspose.c_str()), juce::dontSendNotification);
+    transposeField.setText (juce::String::fromUTF8 (song::signedText (shownTranspose.semitones).c_str()), juce::dontSendNotification);
     if (typed.has_value() && onIntent)
-        onIntent (SongIntent { intent::SetTranspose { *typed } });
+        onIntent (SongIntent { intent::SetTranspose { .semitones = *typed, .cents = shownTranspose.cents } });
+}
+
+void TranscribeColumn::transposeCentsEntered()
+{
+    const auto typed = parseTranspose (transposeCentsField.getText().toStdString());
+    transposeCentsField.setText (juce::String::fromUTF8 (song::signedText (shownTranspose.cents).c_str()), juce::dontSendNotification);
+    if (typed.has_value() && onIntent)
+        onIntent (SongIntent { intent::SetTranspose { .semitones = shownTranspose.semitones, .cents = *typed } });
 }
 
 void TranscribeColumn::show (const TranscribePageState& state)
@@ -322,11 +332,15 @@ void TranscribeColumn::show (const TranscribePageState& state)
     practiceSpeedField.setEnabled (state.canSetPracticeSpeed);
     practiceSpeedSpinner.setVisible (state.practiceRendering);
 
-    shownTranspose = song::transposeText (state.transpose);
+    shownTranspose = state.transpose;
     if (! transposeField.isBeingEdited())
-        transposeField.setText (juce::String::fromUTF8 (shownTranspose.c_str()), juce::dontSendNotification);
-    transposeField.setColour (juce::Label::backgroundColourId, state.transpose != 0 ? colours::accent : colours::background);
+        transposeField.setText (juce::String::fromUTF8 (song::signedText (shownTranspose.semitones).c_str()), juce::dontSendNotification);
+    if (! transposeCentsField.isBeingEdited())
+        transposeCentsField.setText (juce::String::fromUTF8 (song::signedText (shownTranspose.cents).c_str()), juce::dontSendNotification);
+    transposeField.setColour (juce::Label::backgroundColourId, state.transpose.semitones != 0 ? colours::accent : colours::background);
+    transposeCentsField.setColour (juce::Label::backgroundColourId, state.transpose.cents != 0 ? colours::accent : colours::background);
     transposeField.setEnabled (state.canTranspose);
+    transposeCentsField.setEnabled (state.canTranspose);
     transposeSpinner.setVisible (state.transposeRendering);
 
     showTracks (state);
@@ -385,6 +399,8 @@ void TranscribeColumn::resized()
     transposeCaption.setBounds (layout.transposeCaption);
     transposeField.setBounds (layout.transposeField);
     transposeUnit.setBounds (layout.transposeUnit);
+    transposeCentsField.setBounds (layout.transposeCentsField);
+    transposeCentsUnit.setBounds (layout.transposeCentsUnit);
     transposeSpinner.setBounds (layout.transposeSpinner);
     mixCaption.setBounds (layout.mixCaption);
     layOutTrackRows();

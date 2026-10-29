@@ -28,7 +28,8 @@
 // the window there (set_transcribe_view); the wheel scrolls time, and command-wheel or a trackpad
 // pinch zooms around the pointer (set_transcribe_view), in until about 2 s fills the width;
 // clicking or dragging the ruler or the waveform seeks (seek); a whole number typed into the
-// column's fields runs set_practice_speed or set_transpose, as the top bar's do; a Track row's ◎
+// column's fields runs set_practice_speed or set_transpose, as the top bar's do (the Transpose
+// cents field, issue #232, runs set_transpose with the Song's semitones kept); a Track row's ◎
 // runs set_focus_track (none on the Focus Track's own ◎), its M set_transcribe_mute and its S
 // set_transcribe_solo. The Loop/Marker strip over the ruler (ui/MarkerStrip.h) runs the Marker and
 // Loop gestures (issues #227, #228); the left column's Loop cards (ui/LoopViews.h) run select_loop
@@ -44,7 +45,7 @@ struct TranscribePageState
     int practiceSpeed = 100;
     bool practiceRendering = false;
     bool canSetPracticeSpeed = false;
-    int transpose = 0;
+    song::Transpose transpose;
     bool transposeRendering = false;
     bool canTranspose = false;
     // The Focus Track and Transcribe Mix controls are enabled (ui/Availability.h).
@@ -160,6 +161,8 @@ public:
     juce::Label transposeCaption { {}, "TRANSPOSE" };
     juce::Label transposeField;
     juce::Label transposeUnit { {}, "st" };
+    juce::Label transposeCentsField;
+    juce::Label transposeCentsUnit { {}, "ct" };
     Spinner transposeSpinner;
     juce::Label mixCaption { {}, "TRANSCRIBE MIX" };
     std::vector<std::unique_ptr<TranscribeTrackRow>> trackRows;
@@ -167,12 +170,13 @@ public:
 private:
     void practiceSpeedEntered();
     void transposeEntered();
+    void transposeCentsEntered();
     // One row per Track, rebuilt only when the Track ids or their order change.
     void showTracks (const TranscribePageState& state);
     void layOutTrackRows();
 
     int shownPracticeSpeed = 100;
-    std::string shownTranspose = "0";
+    song::Transpose shownTranspose;
 };
 
 class TranscribePage final : public juce::Component
