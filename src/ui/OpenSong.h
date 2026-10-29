@@ -323,7 +323,9 @@ public:
     // destination is an absolute path, "" for the export folder; its folder is not checked here.
     void setExportVideoTake (const song::Id& videoTakeId);
     void setExportFormat (song::ExportFormat format);
-    void setExportLength (song::VideoLength length);
+    // An MP4's length, and the Loop whose range every format writes (none: the whole Song).
+    // Errors: song.loop_not_found (loop_id), changing nothing.
+    core::Expected<void> setExportLength (song::VideoLength length, const std::optional<song::Id>& loopId);
     void setExportDestination (const std::string& path);
 
     // Transcribe mode (issue #226, ADR 0010). While transcribing, the engine plays the Transcribe

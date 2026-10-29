@@ -75,22 +75,28 @@ CMTime samplesToTime (song::SampleCount samples, int sampleRate)
     return CMTimeMake (samples, (int32_t) sampleRate);
 }
 
-// Where the Video Take's movie enters the composition (ADR 0003): at its start in Song samples,
-// less `leadSamples`, its movie scaled by the drift ratio. Movie before composition time 0 is cut.
-core::Expected<AVMutableCompositionTrack*> composeVideo (AVMutableComposition* composition, AVAssetTrack* source, const song::VideoTake& videoTake, song::SampleCount leadSamples, int sampleRate)
+// Where the Video Take's movie enters the composition (ADR 0003): at its start in Song samples
+// less `origin` (the Song sample at composition time 0) and `leadSamples`, its movie scaled by the
+// drift ratio. Movie before composition time 0 is cut. A movie that ends before it is an error,
+// unless `mayBeEmpty` (a Loop after the Video Take): then the track has no movie at all.
+core::Expected<AVMutableCompositionTrack*> composeVideo (AVMutableComposition* composition, AVAssetTrack* source, const song::VideoTake& videoTake, song::SampleCount origin, song::SampleCount leadSamples, int sampleRate, bool mayBeEmpty)
 {
     const auto ratio = videoTake.songSamplesPerMovieSecond;
-    const auto compositionStart = videoTake.startSample - leadSamples;
+    const auto compositionStart = videoTake.startSample - origin - leadSamples;
     const auto skipSeconds = compositionStart < 0 ? (double) -compositionStart / ratio : 0.0;
     const auto sourceRange = source.timeRange;
     const auto skip = CMTimeMakeWithSeconds (skipSeconds, std::max<int32_t> (sourceRange.duration.timescale, 1'000'000));
+    auto* track = [composition addMutableTrackWithMediaType:AVMediaTypeVideo preferredTrackID:kCMPersistentTrackID_Invalid];
+    track.preferredTransform = source.preferredTransform;
     if (CMTimeCompare (skip, sourceRange.duration) >= 0)
+    {
+        if (mayBeEmpty)
+            return track;
         return std::unexpected (movieFailed ("compose_video", "the Video Take ends before the Song starts"));
+    }
     const auto inserted = CMTimeRangeMake (CMTimeAdd (sourceRange.start, skip), CMTimeSubtract (sourceRange.duration, skip));
     const auto insertAt = samplesToTime (std::max<song::SampleCount> (0, compositionStart), sampleRate);
 
-    auto* track = [composition addMutableTrackWithMediaType:AVMediaTypeVideo preferredTrackID:kCMPersistentTrackID_Invalid];
-    track.preferredTransform = source.preferredTransform;
     NSError* error = nil;
     if (! [track insertTimeRange:inserted ofTrack:source atTime:insertAt error:&error])
         return std::unexpected (movieFailed ("compose_video", describe (error, "insertTimeRange failed")));
@@ -115,10 +121,10 @@ core::Expected<void> composeAudio (AVMutableComposition* composition, const juce
 
 // The export session ends the video track where its last segment ends, empty or not: after the
 // movie, its first frame is stretched to `end` and hidden (opacity 0 in the video composition), so
-// the black background shows there. Returns where the movie ends.
+// the black background shows there. Returns where the movie ends (0 for a track without movie).
 core::Expected<CMTime> padAfterMovie (AVMutableCompositionTrack* track, AVAssetTrack* source, CMTime end)
 {
-    const auto movieEnd = CMTimeRangeGetEnd (track.timeRange);
+    const auto movieEnd = track.segments.count == 0 ? kCMTimeZero : CMTimeRangeGetEnd (track.timeRange);
     if (CMTimeCompare (movieEnd, end) >= 0)
         return movieEnd;
     const auto oneFrame = CMTimeRangeMake (source.timeRange.start, CMTimeMinimum (source.timeRange.duration, source.minFrameDuration));
@@ -191,7 +197,8 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest
 
     const auto sampleRate = render.sampleRate();
     const auto videoSpan = SampleRange { source.videoTake.startSample, video::videoTakeEnd (source.videoTake, *timing) };
-    const auto range = movieExportRange (request.videoLength, render.songEnd() > 0 ? render.totalSamples() : 0, videoSpan);
+    // A Loop: its range, black wherever the Video Take does not cover it (issue #235).
+    const auto range = request.loop.has_value() ? request.loop->range : movieExportRange (request.videoLength, render.songEnd() > 0 ? render.totalSamples() : 0, videoSpan);
     if (range.length() <= 0)
         return std::unexpected (core::Error { "export.video_take_outside_song",
                                               "the Video Take ends before the Song starts",
@@ -201,15 +208,16 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest
         return std::unexpected (folder.error());
 
     const auto path = request.destination.getFullPathName().toStdString();
-    core::logEvent (core::Level::info,
-                    "export.started",
-                    { { "format", formatName (ExportFormat::mp4) },
-                      { "path", path },
-                      { "video_take_id", source.videoTake.id },
-                      { "length", videoLengthName (request.videoLength) },
-                      { "start_sample", range.start },
-                      { "end_sample", range.end },
-                      { "sample_rate", sampleRate } });
+    core::Fields started { { "format", formatName (ExportFormat::mp4) },
+                           { "path", path },
+                           { "video_take_id", source.videoTake.id },
+                           { "length", request.loop.has_value() ? "loop" : videoLengthName (request.videoLength) },
+                           { "start_sample", range.start },
+                           { "end_sample", range.end },
+                           { "sample_rate", sampleRate } };
+    if (request.loop.has_value())
+        started["loop_id"] = request.loop->loopId;
+    core::logEvent (core::Level::info, "export.started", std::move (started));
     const auto startNs = core::hostTimeNowNs();
 
     // The mix: the first half of the progress.
@@ -218,9 +226,11 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest
         if (progress)
             progress (0.5 * fraction);
     };
-    // Padded with silence to the range's end: a Video Take may outlast the mix, or the Song may
-    // have no Clips at all (an empty mix).
-    if (auto mixed = writeMixFile (render, ExportFormat::wav, mixFile.file, halfProgress, shouldStop, range.end); ! mixed.has_value())
+    // The composition's time 0 is Song sample 0, or a Loop's start: the output frame grid then
+    // starts where the file does, as for the full song. The mix runs from there to the range's end,
+    // padded with silence: a Video Take may outlast the mix, or the Song may have no Clips at all.
+    const auto origin = request.loop.has_value() ? range.start : 0;
+    if (auto mixed = writeMixFile (render, ExportFormat::wav, mixFile.file, halfProgress, shouldStop, { origin, range.end }); ! mixed.has_value())
         return std::unexpected (mixed.error());
 
     @autoreleasepool
@@ -230,22 +240,23 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest
         if (sourceVideo == nil)
             return std::unexpected (unreadableVideoTake (source, "no video track"));
 
-        const auto fullSong = request.videoLength == VideoLength::fullSong;
+        // The full song and a Loop show black around the Video Take; trimmed, there is none.
+        const auto blackAround = request.loop.has_value() || request.videoLength == VideoLength::fullSong;
         // The full song's output grid: the Video Take's mean frame on the Song clock.
         const auto meanFrameMovieSeconds = timing->durationSeconds / (double) timing->frameSeconds.size();
         const auto gridSeconds = meanFrameMovieSeconds * source.videoTake.songSamplesPerMovieSecond / sampleRate;
-        const auto leadSamples = fullSong ? (song::SampleCount) std::llround (0.5 * gridSeconds * sampleRate) : 0;
+        const auto leadSamples = blackAround ? (song::SampleCount) std::llround (0.5 * gridSeconds * sampleRate) : 0;
 
         auto* composition = [AVMutableComposition composition];
         if (auto audio = composeAudio (composition, mixFile.file); ! audio.has_value())
             return std::unexpected (audio.error());
-        auto videoTrack = composeVideo (composition, sourceVideo, source.videoTake, leadSamples, sampleRate);
+        auto videoTrack = composeVideo (composition, sourceVideo, source.videoTake, origin, leadSamples, sampleRate, request.loop.has_value());
         if (! videoTrack.has_value())
             return std::unexpected (videoTrack.error());
         AVMutableVideoComposition* blackOutside = nil;
-        if (fullSong)
+        if (blackAround)
         {
-            const auto movieEnd = padAfterMovie (*videoTrack, sourceVideo, samplesToTime (range.end, sampleRate));
+            const auto movieEnd = padAfterMovie (*videoTrack, sourceVideo, samplesToTime (range.end - origin, sampleRate));
             if (! movieEnd.has_value())
                 return std::unexpected (movieEnd.error());
             blackOutside = blackBackgroundComposition (composition, *videoTrack, sourceVideo, *movieEnd, gridSeconds, sampleRate);
@@ -258,7 +269,7 @@ core::Expected<ExportResult> exportMovie (MixRender& render, const ExportRequest
             return std::unexpected (movieFailed ("encode", "no export session for the composition"));
         session.outputFileType = AVFileTypeMPEG4;
         session.outputURL = urlFor (partial.file);
-        session.timeRange = CMTimeRangeMake (samplesToTime (range.start, sampleRate), samplesToTime (range.length(), sampleRate));
+        session.timeRange = CMTimeRangeMake (samplesToTime (range.start - origin, sampleRate), samplesToTime (range.length(), sampleRate));
         session.videoComposition = blackOutside; // nil when trimmed: the frames keep their own times
 
         if (auto encoded = encode (session, progress, shouldStop); ! encoded.has_value())

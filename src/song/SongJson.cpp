@@ -530,6 +530,7 @@ Song readSong (const Reader& reader)
     song.exportFormat = readNamed (reader, "exportFormat", exportFormatNames, "expected \"wav\", \"m4a\" or \"mp4\"");
     song.exportLength = readNamed (reader, "exportLength", videoLengthNames, "expected \"trim_to_video_take\" or \"full_song\"");
     song.exportDestination = reader.string ("exportDestination");
+    song.exportLoopId = readOptionalId (reader, "exportLoopId");
     song.focusTrackId = readOptionalId (reader, "focusTrackId");
     song.activeLoopId = readOptionalId (reader, "activeLoopId");
     song.looping = reader.boolean ("looping");
@@ -560,6 +561,7 @@ nlohmann::json songToJson (const Song& song)
         { "exportFormat", nameOf (song.exportFormat, exportFormatNames) },
         { "exportLength", nameOf (song.exportLength, videoLengthNames) },
         { "exportDestination", song.exportDestination },
+        { "exportLoopId", song.exportLoopId.has_value() ? json (*song.exportLoopId) : json (nullptr) },
         { "focusTrackId", song.focusTrackId.has_value() ? json (*song.focusTrackId) : json (nullptr) },
         { "activeLoopId", song.activeLoopId.has_value() ? json (*song.activeLoopId) : json (nullptr) },
         { "looping", song.looping },

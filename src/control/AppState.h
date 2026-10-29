@@ -40,7 +40,8 @@ class Workspace;
 //                "timeline" {"first_sample", "samples_per_pixel", "vertical_scroll",
 //                "take_lanes_unfolded": [track ids]}, "mixer_visible", "mixer_height",
 //                "passes_panel_open", "export_sheet_shown", "export_form" {"format", "length",
-//                "destination", "video_take", "replaces_existing"}
+//                "destination", "video_take", "loop" (the Loop id whose range is written, null for
+//                the whole Song), "replaces_existing"}
 //   window       {"video_preview_shown", "run_dialog": {"showing",
 //                "title", "status", "progress"}}
 //   messages     {"notice", "alerts_shown", "alerts_deferred"}; each message is {"code", "tier",

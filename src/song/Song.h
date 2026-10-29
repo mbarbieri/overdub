@@ -27,7 +27,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 13;
+inline constexpr int songFormatVersion = 14;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -314,6 +314,9 @@ struct Song
     ExportFormat exportFormat = ExportFormat::wav;
     VideoLength exportLength = VideoLength::trimToVideoTake;
     std::string exportDestination; // an absolute path; empty = <export folder>/<Song name>.<ext>
+    // The Loop whose range Export writes, for every format (issue #235); none, or a Loop the Song
+    // no longer has, = the whole Song. Deleting that Loop clears it. Format 14.
+    std::optional<Id> exportLoopId;
     // Transcribe mode's Focus Track (ADR 0010, issue #226); none = no Focus Track. Format 7.
     std::optional<Id> focusTrackId;
     // The active Loop and whether Transcribe mode loops it (issue #228); looping needs an active
@@ -345,7 +348,7 @@ core::Expected<Track*> lookupTrack (Song& song, const Id& trackId);
 // Undo and redo restore a snapshot's undoable content but keep the current state that lives
 // outside history: pre-roll, camera arm and device, playhead (converted to the snapshot's rate), the
 // export format, length and destination, the export's Video Take (unless the snapshot does not
-// have it), the Focus Track (unless the snapshot does not have it), the active Loop and looping
+// have it), the export's Loop (unless the snapshot does not have that Loop: then the whole Song), the Focus Track (unless the snapshot does not have it), the active Loop and looping
 // (unless the snapshot does not have that Loop: then none, not looping), per Loop id its Practice
 // Speed (a Loop only the snapshot has keeps the snapshot's), per Track id Armed, input
 // channels, the Transcribe Mix's mute and solo, the octave shift and the band filter, and per

@@ -608,6 +608,26 @@ TEST_CASE ("add_loop replies with the new Loop's id, select_loop activates it in
     CHECK (refused.at ("error").at ("code") == "ui.record_mode");
 }
 
+TEST_CASE ("set_export_length takes a loop_id outside history, and refuses a Loop the Song does not have", "[control][intent_ops][loops][export]")
+{
+    SocketToWindow socket;
+    REQUIRE (socket.request (R"({"id":1,"op":"show_mode","mode":"transcribe"})").at ("ok") == true);
+    const auto loopId = socket.request (R"({"id":2,"op":"add_loop","start":4800,"end":9600})").at ("created_id").get<std::string>();
+    const auto undoLabel = socket.f.openSong->package().undoLabel();
+
+    CHECK (socket.request (R"({"id":3,"op":"set_export_length","length":"full_song","loop_id":")" + loopId + R"("})").at ("ok") == true);
+    CHECK (socket.f.song().exportLoopId == loopId);
+    CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
+
+    const auto gone = socket.request (R"({"id":5,"op":"set_export_length","length":"full_song","loop_id":"loop-gone"})");
+    CHECK (gone.at ("ok") == false);
+    CHECK (gone.at ("error").at ("code") == "song.loop_not_found");
+    CHECK (socket.f.song().exportLoopId == loopId);
+
+    CHECK (socket.request (R"({"id":6,"op":"set_export_length","length":"full_song"})").at ("ok") == true);
+    CHECK_FALSE (socket.f.song().exportLoopId.has_value());
+}
+
 TEST_CASE ("the socket shows Transcribe mode, and a Clip edit there answers ui.transcribing with its reason", "[control][intent_ops][transcribe]")
 {
     SocketToWindow socket;

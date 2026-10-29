@@ -14,6 +14,15 @@ namespace overdub::exporting
 {
 using song::ExportFormat; // a Song setting (issue #201)
 
+// A Loop's range, which an export writes instead of the whole Song (issue #235).
+struct ExportLoop
+{
+    song::Id loopId;
+    SampleRange range; // the Loop's [start, end)
+
+    bool operator== (const ExportLoop&) const = default;
+};
+
 struct ExportRequest
 {
     ExportFormat format = ExportFormat::wav;
@@ -21,6 +30,9 @@ struct ExportRequest
     // MP4 only: the Video Take shown, and the movie's length.
     std::optional<song::Id> videoTakeId = std::nullopt;
     VideoLength videoLength = VideoLength::trimToVideoTake;
+    // Every format: exactly this Loop's range, Song sample loop->range.start at file sample 0 (an
+    // MP4 black where the Video Take does not cover it, videoLength unused); none: the whole Song.
+    std::optional<ExportLoop> loop = std::nullopt;
 
     bool operator== (const ExportRequest&) const = default;
 };

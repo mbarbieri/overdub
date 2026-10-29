@@ -191,7 +191,7 @@ private:
     exporting::ExportRequest exportRequest() const;
     IntentResult exportSong();
     IntentResult setExportFormat (exporting::ExportFormat format);
-    IntentResult setExportLength (exporting::VideoLength length);
+    IntentResult setExportLength (exporting::VideoLength length, const std::optional<song::Id>& loopId);
     // Errors: export.folder_missing (the file's folder does not exist; nothing is stored).
     IntentResult setExportDestination (const juce::File& file);
     IntentResult setExportVideoTake (const song::Id& videoTakeId);

@@ -165,12 +165,17 @@ core::Expected<nlohmann::json> addBandFilters (nlohmann::json document)
             track["bandFilter"] = { { "on", defaults.on }, { "lowHz", defaults.lowHz }, { "highHz", defaults.highHz } };
     return document;
 }
+core::Expected<nlohmann::json> addExportLoop (nlohmann::json document)
+{
+    document["exportLoopId"] = nullptr;
+    return document;
+}
 } // namespace
 
 std::span<const MigrationStep> songMigrationSteps()
 {
     // songFormatVersion must equal songMigrationSteps().size() + 1.
-    static const std::array<MigrationStep, 12> steps {
+    static const std::array<MigrationStep, 13> steps {
         addVideoTakeOutputDevice,
         addBackingTrackSeparatedFrom,
         addTrackColours,
@@ -183,6 +188,7 @@ std::span<const MigrationStep> songMigrationSteps()
         addTransposeCents,
         addOctaveShifts,
         addBandFilters,
+        addExportLoop,
     };
     static_assert (std::tuple_size_v<decltype (steps)> + 1 == songFormatVersion);
     return steps;

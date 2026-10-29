@@ -108,11 +108,13 @@ TEST_CASE ("the fully populated test Song sets every field away from its default
     checkListsHoldTwoOrMore (document, "$");
 }
 
-TEST_CASE ("song.json carries formatVersion 13 and the key names fixed by issues #8, #14, #68, #114, #137, #201, #209, #226, #227, #228, #230, #232, #233 and #234", "[song][json]")
+TEST_CASE ("song.json carries formatVersion 14 and the key names fixed by issues #8, #14, #68, #114, #137, #201, #209, #226, #227, #228, #230, #232, #233, #234 and #235", "[song][json]")
 {
     const auto document = songToJson (overdub::song::testing::fullyPopulatedSong());
 
-    CHECK (document.at ("formatVersion") == 13);
+    CHECK (document.at ("formatVersion") == 14);
+    CHECK (document.at ("exportLoopId") == "loop-1");
+    CHECK (songToJson (overdub::song::Song {}).at ("exportLoopId").is_null());
     CHECK (document.at ("loops").at (0) == nlohmann::json { { "id", "loop-1" }, { "name", "Intro riff" }, { "start", 24000 }, { "end", 72000 }, { "practiceSpeedPercent", 40 } });
     CHECK (document.at ("loops").size() == 2);
     CHECK (document.at ("activeLoopId") == "loop-2");
