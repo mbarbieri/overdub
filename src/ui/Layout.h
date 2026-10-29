@@ -363,10 +363,14 @@ TranscribePageLayout transcribePageLayout (juce::Rectangle<int> page, bool colum
 
 // Inside the Transcribe column, in its own coordinates: the "LISTENING" heading, then Practice
 // Speed and Transpose, each a caption over its field, unit and spinner (Transpose's "st" followed
-// by its cents field and "ct", issue #232), then the "TRANSCRIBE MIX"
+// by its cents field and "ct", issue #232), then the Focus Track's octave shift (issue #233): an
+// "OCTAVE" caption over four buttons (−1, 0, +1, +2, transcribeOctaveButtonWidth each) and a
+// spinner, then the "TRANSCRIBE MIX"
 // caption over the Track list (issue #226): one row of transcribeTrackRowHeight per Track, in Song
 // order, from the top of `tracks`.
 inline constexpr int transcribeTrackRowHeight = 26;
+inline constexpr int transcribeOctaveButtonWidth = 30;
+inline constexpr int transcribeOctaveButtonCount = 4;
 
 struct TranscribeColumnLayout
 {
@@ -381,6 +385,9 @@ struct TranscribeColumnLayout
     juce::Rectangle<int> transposeCentsField;
     juce::Rectangle<int> transposeCentsUnit;
     juce::Rectangle<int> transposeSpinner;
+    juce::Rectangle<int> octaveCaption;
+    std::array<juce::Rectangle<int>, transcribeOctaveButtonCount> octaveButtons;
+    juce::Rectangle<int> octaveSpinner;
     juce::Rectangle<int> mixCaption;
     juce::Rectangle<int> tracks;
 };

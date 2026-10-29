@@ -239,7 +239,26 @@ TEST_CASE ("a v10 Song migrates to v11 with no fine tune, its semitones kept", "
 
     REQUIRE (migrated.has_value());
     CHECK (migrated->fromVersion == 10);
-    CHECK (migrated->document.at ("formatVersion") == 11);
+    CHECK (migrated->document.at ("formatVersion") == overdub::song::songFormatVersion);
     CHECK (migrated->document.at ("transpose") == -3);
     CHECK (migrated->document.at ("transposeCents") == 0);
+}
+
+TEST_CASE ("a v11 Song migrates to v12 with every Track's octave shift 0", "[song][migration][transcribe]")
+{
+    const json document = {
+        { "formatVersion", 11 },
+        { "sampleRate", 48000 },
+        { "tracks", { { { "id", "track-1" }, { "transcribeSolo", true } }, { { "id", "track-2" } } } },
+    };
+
+    const auto migrated = overdub::song::migrateSongDocument (document);
+
+    REQUIRE (migrated.has_value());
+    CHECK (migrated->fromVersion == 11);
+    CHECK (migrated->document.at ("formatVersion") == 12);
+    REQUIRE (migrated->document.at ("tracks").size() == 2);
+    for (const auto& track : migrated->document.at ("tracks"))
+        CHECK (track.at ("octaveShift") == 0);
+    CHECK (migrated->document.at ("tracks").at (0).at ("transcribeSolo") == true);
 }

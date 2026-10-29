@@ -263,6 +263,8 @@ void TranscribeTrackRow::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+static_assert (transcribeOctaveButtonCount == song::maxOctaveShift - song::minOctaveShift + 1, "one octave button per shift");
+
 TranscribeColumn::TranscribeColumn()
 {
     heading.setColour (juce::Label::textColourId, colours::text);
@@ -270,7 +272,7 @@ TranscribeColumn::TranscribeColumn()
     heading.setBorderSize ({});
     heading.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (heading);
-    for (auto* caption : { &practiceSpeedCaption, &transposeCaption, &mixCaption })
+    for (auto* caption : { &practiceSpeedCaption, &transposeCaption, &octaveCaption, &mixCaption })
     {
         styleCaption (*caption);
         addAndMakeVisible (caption);
@@ -291,7 +293,19 @@ TranscribeColumn::TranscribeColumn()
     transposeField.onTextChange = [this] { transposeEntered(); };
     transposeCentsField.setText ("0", juce::dontSendNotification);
     transposeCentsField.onTextChange = [this] { transposeCentsEntered(); };
-    for (auto* spinner : { &practiceSpeedSpinner, &transposeSpinner })
+    for (std::size_t i = 0; i < octaveButtons.size(); ++i)
+    {
+        const auto octaves = song::minOctaveShift + (int) i;
+        octaveButtons[i].setButtonText (juce::String::fromUTF8 (song::signedText (octaves).c_str()));
+        octaveButtons[i].setClickingTogglesState (false);
+        octaveButtons[i].setColour (juce::TextButton::buttonOnColourId, colours::accent);
+        octaveButtons[i].onClick = [this, octaves] {
+            if (shownFocusTrackId.has_value() && onIntent)
+                onIntent (SongIntent { intent::SetOctaveShift { *shownFocusTrackId, octaves } });
+        };
+        addAndMakeVisible (octaveButtons[i]);
+    }
+    for (auto* spinner : { &practiceSpeedSpinner, &transposeSpinner, &octaveSpinner })
     {
         spinner->setInterceptsMouseClicks (false, false);
         addChildComponent (spinner);
@@ -343,7 +357,20 @@ void TranscribeColumn::show (const TranscribePageState& state)
     transposeCentsField.setEnabled (state.canTranspose);
     transposeSpinner.setVisible (state.transposeRendering);
 
+    showOctaveShift (state);
     showTracks (state);
+}
+
+void TranscribeColumn::showOctaveShift (const TranscribePageState& state)
+{
+    const auto* focus = song::focusTrack (state.song);
+    shownFocusTrackId = focus != nullptr ? std::optional (focus->id) : std::nullopt;
+    for (std::size_t i = 0; i < octaveButtons.size(); ++i)
+    {
+        octaveButtons[i].setToggleState (focus != nullptr && focus->octaveShift == song::minOctaveShift + (int) i, juce::dontSendNotification);
+        octaveButtons[i].setEnabled (focus != nullptr && state.canSetTranscribeMix);
+    }
+    octaveSpinner.setVisible (state.octaveRendering);
 }
 
 void TranscribeColumn::showTracks (const TranscribePageState& state)
@@ -402,6 +429,10 @@ void TranscribeColumn::resized()
     transposeCentsField.setBounds (layout.transposeCentsField);
     transposeCentsUnit.setBounds (layout.transposeCentsUnit);
     transposeSpinner.setBounds (layout.transposeSpinner);
+    octaveCaption.setBounds (layout.octaveCaption);
+    for (std::size_t i = 0; i < octaveButtons.size(); ++i)
+        octaveButtons[i].setBounds (layout.octaveButtons[i]);
+    octaveSpinner.setBounds (layout.octaveSpinner);
     mixCaption.setBounds (layout.mixCaption);
     layOutTrackRows();
 }

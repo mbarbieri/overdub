@@ -656,7 +656,7 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
         for (auto& backingTrack : document.at ("backingTracks"))
             backingTrack.erase ("separatedFrom");
         for (auto& track : document.at ("tracks"))
-            for (const auto* key : { "colour", "transcribeMute", "transcribeSolo" })
+            for (const auto* key : { "colour", "transcribeMute", "transcribeSolo", "octaveShift" })
                 track.erase (key);
         for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId", "markers", "loops", "activeLoopId", "looping" })
             document.erase (key);
@@ -689,7 +689,10 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
     expected.activeLoopId.reset();
     expected.looping = false;
     for (auto& track : expected.tracks)
+    {
         track.transcribeMute = track.transcribeSolo = false;
+        track.octaveShift = 0;
+    }
     CHECK (opened.package->song() == expected);
     CHECK (firstEvent (capture, "song.migrated").at ("from_version") == 1);
     CHECK (noticesWithCode (opened, "song.history_dropped").empty()); // the v1 snapshot migrates too
@@ -745,7 +748,7 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
         for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId", "markers", "loops", "activeLoopId", "looping" })
             document.erase (key);
         for (auto& track : document.at ("tracks"))
-            for (const auto* key : { "transcribeMute", "transcribeSolo" })
+            for (const auto* key : { "transcribeMute", "transcribeSolo", "octaveShift" })
                 track.erase (key);
         return document;
     };
@@ -770,7 +773,10 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
     expected.activeLoopId.reset();
     expected.looping = false;
     for (auto& track : expected.tracks)
+    {
         track.transcribeMute = track.transcribeSolo = false;
+        track.octaveShift = 0;
+    }
     CHECK (opened.package->song() == expected);
     CHECK (firstEvent (capture, "song.migrated").at ("from_version") == 4);
     CHECK (noticesWithCode (opened, "song.history_dropped").empty());

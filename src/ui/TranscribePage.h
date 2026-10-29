@@ -3,6 +3,7 @@
 #include "song/Peaks.h"
 #include "song/Song.h"
 #include "ui/Intent.h"
+#include "ui/Layout.h"
 #include "ui/MarkerStrip.h"
 #include "ui/PeaksLookup.h"
 #include "ui/TimelineGeometry.h"
@@ -10,6 +11,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <array>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -29,7 +31,8 @@
 // pinch zooms around the pointer (set_transcribe_view), in until about 2 s fills the width;
 // clicking or dragging the ruler or the waveform seeks (seek); a whole number typed into the
 // column's fields runs set_practice_speed or set_transpose, as the top bar's do (the Transpose
-// cents field, issue #232, runs set_transpose with the Song's semitones kept); a Track row's ◎
+// cents field, issue #232, runs set_transpose with the Song's semitones kept); the octave buttons
+// (−1, 0, +1, +2, issue #233) run set_octave_shift for the Focus Track; a Track row's ◎
 // runs set_focus_track (none on the Focus Track's own ◎), its M set_transcribe_mute and its S
 // set_transcribe_solo. The Loop/Marker strip over the ruler (ui/MarkerStrip.h) runs the Marker and
 // Loop gestures (issues #227, #228); the left column's Loop cards (ui/LoopViews.h) run select_loop
@@ -50,6 +53,8 @@ struct TranscribePageState
     bool canTranspose = false;
     // The Focus Track and Transcribe Mix controls are enabled (ui/Availability.h).
     bool canSetTranscribeMix = false;
+    // An octave-shift render of the Focus Track runs (OpenSong::isOctaveRendering).
+    bool octaveRendering = false;
     // The selected Marker (SongView::selectedMarker), and whether the strip edits Markers.
     std::optional<song::Id> selectedMarker;
     bool markersEditable = false;
@@ -141,7 +146,8 @@ private:
 };
 
 // The right column: "LISTENING", then Practice Speed and Transpose, as the top bar shows them,
-// then "TRANSCRIBE MIX" over one TranscribeTrackRow per Track in Song order.
+// then the Focus Track's octave shift (−1, 0, +1, +2: the one it has is on; all disabled without a
+// Focus Track), then "TRANSCRIBE MIX" over one TranscribeTrackRow per Track in Song order.
 class TranscribeColumn final : public juce::Component
 {
 public:
@@ -164,6 +170,10 @@ public:
     juce::Label transposeCentsField;
     juce::Label transposeCentsUnit { {}, "ct" };
     Spinner transposeSpinner;
+    juce::Label octaveCaption { {}, "OCTAVE" };
+    // −1, 0, +1, +2: octaveButtons[i] sets song::minOctaveShift + i.
+    std::array<juce::TextButton, transcribeOctaveButtonCount> octaveButtons;
+    Spinner octaveSpinner;
     juce::Label mixCaption { {}, "TRANSCRIBE MIX" };
     std::vector<std::unique_ptr<TranscribeTrackRow>> trackRows;
 
@@ -171,12 +181,14 @@ private:
     void practiceSpeedEntered();
     void transposeEntered();
     void transposeCentsEntered();
+    void showOctaveShift (const TranscribePageState& state);
     // One row per Track, rebuilt only when the Track ids or their order change.
     void showTracks (const TranscribePageState& state);
     void layOutTrackRows();
 
     int shownPracticeSpeed = 100;
     song::Transpose shownTranspose;
+    std::optional<song::Id> shownFocusTrackId;
 };
 
 class TranscribePage final : public juce::Component

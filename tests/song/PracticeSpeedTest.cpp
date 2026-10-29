@@ -113,6 +113,32 @@ TEST_CASE ("each source a Clip plays needs one render at a Practice Speed, a Bac
     CHECK (missingPracticeRenders (f.root, f.folder, f.song(), {}).empty());
 }
 
+TEST_CASE ("an octave shift needs a render of every source even at 100%, shifted by 12 semitones per octave on top of the Transpose", "[song][practice_speed][octave]")
+{
+    PracticeFixture f;
+    CHECK_FALSE (needsPracticeRender ({}));
+    CHECK (needsPracticeRender ({ .octaveShift = -1 }));
+    CHECK (needsPracticeRender ({ .speedPercent = 80 }));
+
+    const PracticeRenderKey key { .speedPercent = 100, .transpose = { .semitones = 2, .cents = 10 }, .octaveShift = 1 };
+    const auto missing = missingPracticeRenders (f.root, f.folder, f.song(), key);
+
+    REQUIRE (missing.size() == 2);
+    CHECK (missing[0].source == f.band());
+    CHECK (missing[0].to == f.folder.getChildFile ("backing-" + f.band().id + ".transpose+2+10c.octave+1.speed100.wav"));
+    CHECK (missing[0].transpose == overdub::song::Transpose { .semitones = 14, .cents = 10 });
+    CHECK (missing[1].source == PracticeFixture::takeA());
+    CHECK (missing[1].to == f.folder.getChildFile ("take-take-a.octave+1.speed100.wav"));
+    CHECK (missing[1].transpose == overdub::song::Transpose { .semitones = 12 });
+
+    const auto down = missingPracticeRenders (f.root, f.folder, f.song(), { .speedPercent = 80, .octaveShift = -1 });
+    REQUIRE (down.size() == 2);
+    CHECK (down[1].to.getFileName() == "take-take-a.octave-1.speed80.wav");
+    CHECK (down[1].transpose == overdub::song::Transpose { .semitones = -12 });
+    // The unshifted renders are other files.
+    CHECK (practiceRenderFileFor (f.folder, PracticeFixture::takeA(), { .speedPercent = 80 }).getFileName() == "take-take-a.speed80.wav");
+}
+
 TEST_CASE ("a Take's render serves every Transpose, a Backing Track's only its own", "[song][practice_speed]")
 {
     PracticeFixture f;

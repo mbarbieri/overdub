@@ -27,6 +27,7 @@ class Workspace;
 //                "heard_transpose_cents" (issue #232),
 //                "practice_speed", "heard_practice_speed", "practice_rendering" (issue #212),
 //                "transcribe_mix_heard" (issue #226: the engine plays the Transcribe Mix),
+//                "octave_shifted_track": null | a Track id, "octave_rendering" (issue #233),
 //                "heard_loop": null | {"start", "end"} (issue #228: the range the engine loops)}
 //   activity     {"kind", "progress" 0..1, "counter", "last_finish": null | {"kind", "counter",
 //                "error_code"}}; kind is ui::activityKindNames'; counter counts the activities

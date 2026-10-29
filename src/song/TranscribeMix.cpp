@@ -35,6 +35,21 @@ core::Expected<Song> setTranscribeSolo (Song song, const Id& trackId, bool solo)
     return song;
 }
 
+core::Expected<Song> setOctaveShift (Song song, const Id& trackId, int octaves)
+{
+    if (octaves < minOctaveShift || octaves > maxOctaveShift)
+        return std::unexpected (core::Error {
+            "song.octave_shift_out_of_range",
+            "the octave shift is a whole number of octaves from -1 to +2",
+            { { "octaves", octaves }, { "min", minOctaveShift }, { "max", maxOctaveShift } },
+        });
+    auto track = lookupTrack (song, trackId);
+    if (! track.has_value())
+        return std::unexpected (track.error());
+    (*track)->octaveShift = octaves;
+    return song;
+}
+
 Song withTranscribeMix (Song song)
 {
     for (auto& track : song.tracks)
@@ -48,5 +63,11 @@ Song withTranscribeMix (Song song)
 const Track* focusTrack (const Song& song)
 {
     return song.focusTrackId.has_value() ? findTrack (song, *song.focusTrackId) : nullptr;
+}
+
+int focusOctaveShift (const Song& song)
+{
+    const auto* track = focusTrack (song);
+    return track != nullptr ? track->octaveShift : 0;
 }
 } // namespace overdub::song

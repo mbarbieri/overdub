@@ -12,6 +12,8 @@ namespace overdub::song
 {
 namespace
 {
+constexpr int semitonesPerOctave = 12;
+
 // The distinct sources some Clip plays, in Track and Clip order.
 std::vector<ClipSource> playedSources (const Song& song)
 {
@@ -72,9 +74,15 @@ core::Expected<int> checkPracticeSpeed (int speedPercent)
     return speedPercent;
 }
 
+bool needsPracticeRender (PracticeRenderKey key)
+{
+    return key.speedPercent != normalPracticeSpeed || key.octaveShift != 0;
+}
+
 juce::File practiceRenderFileFor (const juce::File& folder, const ClipSource& source, PracticeRenderKey key)
 {
-    const auto speed = ".speed" + juce::String (key.speedPercent) + ".wav";
+    const auto octave = key.octaveShift != 0 ? ".octave" + juce::String (key.octaveShift > 0 ? "+" : "") + juce::String (key.octaveShift) : juce::String();
+    const auto speed = octave + ".speed" + juce::String (key.speedPercent) + ".wav";
     if (source.kind == ClipSourceKind::take)
         return folder.getChildFile ("take-" + juce::String (source.id) + speed);
     const auto transpose = ".transpose" + juce::String (transposeFileTag (key.transpose));
@@ -91,14 +99,15 @@ juce::File practiceRangeRenderFileFor (const juce::File& folder, const ClipSourc
 std::vector<PracticeRenderJob> missingPracticeRenders (const juce::File& packageRoot, const juce::File& folder, const Song& song, PracticeRenderKey key, std::optional<SampleRange> window)
 {
     std::vector<PracticeRenderJob> missing;
-    if (key.speedPercent == normalPracticeSpeed)
+    if (! needsPracticeRender (key))
         return missing;
     for (const auto& source : playedSources (song))
     {
         const auto from = mediaFileFor (packageRoot, song, source);
         if (! from.has_value() || ! from->existsAsFile() || practiceRenderFileFor (folder, source, key).existsAsFile())
             continue;
-        const auto transpose = source.kind == ClipSourceKind::backing ? key.transpose : Transpose {};
+        auto transpose = source.kind == ClipSourceKind::backing ? key.transpose : Transpose {};
+        transpose.semitones += semitonesPerOctave * key.octaveShift;
         if (! window.has_value())
         {
             missing.push_back ({ source, *from, practiceRenderFileFor (folder, source, key), transpose });
@@ -116,7 +125,7 @@ std::vector<PracticeRenderJob> missingPracticeRenders (const juce::File& package
 std::map<ClipSource, juce::File> practiceRendersOf (const juce::File& folder, const Song& song, PracticeRenderKey key, std::optional<SampleRange> window)
 {
     std::map<ClipSource, juce::File> renders;
-    if (key.speedPercent == normalPracticeSpeed)
+    if (! needsPracticeRender (key))
         return renders;
     for (const auto& source : playedSources (song))
         if (const auto file = renderPlaying (folder, song, source, key, window))
@@ -177,6 +186,7 @@ core::Fields PracticeSpeedRun::fields (Clock::time_point now) const
     core::Fields logged { { "speed_percent", target.speedPercent },
                           { "semitones", target.transpose.semitones },
                           { "cents", target.transpose.cents },
+                          { "octave_shift", target.octaveShift },
                           { "renders", jobs.size() },
                           { "scope", "song" },
                           { "duration_ms", std::chrono::duration_cast<std::chrono::milliseconds> (now - startedAt).count() } };

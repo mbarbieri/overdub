@@ -27,7 +27,7 @@ using SampleCount = std::int64_t;
 
 // The only format version this build reads and writes. Older documents are migrated
 // (song/SongMigration.h); newer ones are refused.
-inline constexpr int songFormatVersion = 11;
+inline constexpr int songFormatVersion = 12;
 
 // Pre-roll is a Song setting, persisted but not undoable (ADR 0004, issue #15 amendment).
 // Stored in song.json as whole seconds: 0, 1, 2 or 4.
@@ -137,6 +137,9 @@ struct Track
     // in Transcribe mode, never by Record, Edit or Export. Persisted, not undoable. Format 7.
     bool transcribeMute = false;
     bool transcribeSolo = false;
+    // Its octave shift in Transcribe mode, -1..+2 (ADR 0010, issue #233): heard only while it is
+    // the Focus Track in Transcribe mode. Persisted, not undoable. Format 12.
+    int octaveShift = 0;
     std::vector<int> inputChannels;  // 0-based device input channel indices, 1 (mono) or 2 (stereo); empty = none. Not undoable.
     std::vector<InsertSlot> insertChain;
     std::vector<Clip> clips; // layer order: the last Clip is on top
@@ -328,7 +331,7 @@ core::Expected<Track*> lookupTrack (Song& song, const Id& trackId);
 // have it), the Focus Track (unless the snapshot does not have it), the active Loop and looping
 // (unless the snapshot does not have that Loop: then none, not looping), per Loop id its Practice
 // Speed (a Loop only the snapshot has keeps the snapshot's), per Track id Armed, input
-// channels and the Transcribe Mix's mute and solo, and per
+// channels, the Transcribe Mix's mute and solo and the octave shift, and per
 // Insert Chain slot id (Master's included) the plugin state hash: plugin parameters are outside
 // history. A slot only the snapshot has keeps the snapshot's hash.
 Song keepStateOutsideHistory (Song snapshot, const Song& current);

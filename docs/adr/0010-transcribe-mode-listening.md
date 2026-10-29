@@ -12,7 +12,7 @@ Transcribe mode is for learning a part by ear, so what you do there to *hear* a 
 
 ## Consequences
 
-- **The octave shift is an offline render**, like Practice Speed: a temporary file outside the package, made from the Focus Track's sources in the same single pass as Transpose and Practice Speed (ADR 0009's "one render from the original").
+- **The octave shift is an offline render**, like Practice Speed: a temporary file outside the package, made from the Focus Track's sources in the same single pass as Transpose and Practice Speed (ADR 0009's "one render from the original"). Unlike a Practice Speed change, the new shift is heard at once: the Focus Track plays silent, with a spinner, until its render is there (issue #233). Its render is always of the whole Song, even while a Loop loops.
 - **The band filter is real-time** on the Focus Track (two biquads, no render), so it follows its controls instantly.
 - **Changing the Focus Track** re-solos the Transcribe Mix and may start an octave-shift render. Like any pending render, the source plays silent until it's ready.
 - **Loops never play outside Transcribe mode.** In Record, clicking a Loop or a Marker only moves the record point. In Edit, it selects the Loop or Marker for editing.

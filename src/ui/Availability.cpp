@@ -64,6 +64,7 @@ constexpr SongOpGesture songOpGestures[] {
     { "set_focus_track", Gesture::setTranscribeMix },
     { "set_transcribe_mute", Gesture::setTranscribeMix },
     { "set_transcribe_solo", Gesture::setTranscribeMix },
+    { "set_octave_shift", Gesture::setTranscribeMix },
     { "add_marker", Gesture::edit },
     { "select_marker", Gesture::seek },
     { "add_loop", Gesture::edit },

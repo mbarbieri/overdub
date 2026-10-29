@@ -158,3 +158,46 @@ TEST_CASE ("undo and redo keep the Focus Track and the Transcribe Mix as they ar
         CHECK_FALSE (keepStateOutsideHistory (withoutGuitar, current).focusTrackId.has_value());
     }
 }
+
+TEST_CASE ("each Track keeps its own octave shift from -1 to +2; the Focus Track's is the one heard", "[song][transcribe][octave]")
+{
+    auto song = setFocusTrack (threeTracks(), "track-guitar").value();
+    CHECK (focusOctaveShift (song) == 0);
+
+    song = setOctaveShift (song, "track-guitar", 1).value();
+    song = setOctaveShift (song, "track-band", -1).value();
+
+    CHECK (findTrack (song, "track-guitar")->octaveShift == 1);
+    CHECK (findTrack (song, "track-band")->octaveShift == -1);
+    CHECK (focusOctaveShift (song) == 1);
+    CHECK (focusOctaveShift (setFocusTrack (song, "track-band").value()) == -1);
+    CHECK (focusOctaveShift (setFocusTrack (song, "track-vocals").value()) == 0);
+    CHECK (focusOctaveShift (setFocusTrack (song, std::nullopt).value()) == 0);
+    // The Transcribe Mix's own mute and solo, and the Song's mix, are untouched.
+    CHECK (transcribeSolos (song) == std::vector { false, true, false });
+    CHECK_FALSE (findTrack (song, "track-guitar")->solo);
+
+    for (const auto octaves : { -2, 3 })
+    {
+        const auto refused = setOctaveShift (song, "track-guitar", octaves);
+        REQUIRE_FALSE (refused.has_value());
+        CHECK (refused.error().code == "song.octave_shift_out_of_range");
+        CHECK (refused.error().fields.at ("octaves") == octaves);
+        CHECK (refused.error().fields.at ("min") == -1);
+        CHECK (refused.error().fields.at ("max") == 2);
+    }
+    CHECK (setOctaveShift (song, "track-gone", 1).error().code == "song.track_not_found");
+}
+
+TEST_CASE ("undo and redo keep every Track's octave shift as it is now", "[song][transcribe][octave][history]")
+{
+    const auto snapshot = threeTracks();
+    auto current = setOctaveShift (snapshot, "track-guitar", 2).value();
+    current = setOctaveShift (current, "track-band", -1).value();
+
+    const auto restored = keepStateOutsideHistory (snapshot, current);
+
+    CHECK (findTrack (restored, "track-guitar")->octaveShift == 2);
+    CHECK (findTrack (restored, "track-band")->octaveShift == -1);
+    CHECK (findTrack (restored, "track-vocals")->octaveShift == 0);
+}
