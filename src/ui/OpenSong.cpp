@@ -375,6 +375,7 @@ void OpenSong::setTranscribing (bool on)
     if (! on && practiceTarget != song::normalPracticeSpeed && practiceSpeedMayChange())
         changePracticeTarget (song::normalPracticeSpeed);
     applyHeardLoopPracticeSpeed();
+    followPracticeSpeed(); // the Loop's window renders first
 }
 
 core::Expected<void> OpenSong::setActiveLoop (const std::optional<song::Id>& loopId, bool looping)
@@ -386,6 +387,7 @@ core::Expected<void> OpenSong::setActiveLoop (const std::optional<song::Id>& loo
         return changed;
     core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().looping } });
     applyHeardLoopPracticeSpeed();
+    followPracticeSpeed(); // the Loop's window renders first
     return changed;
 }
 
@@ -398,6 +400,7 @@ core::Expected<void> OpenSong::setLooping (bool looping)
         return changed;
     core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
     applyHeardLoopPracticeSpeed();
+    followPracticeSpeed(); // the Loop's window renders first
     return changed;
 }
 
@@ -1085,7 +1088,26 @@ std::optional<core::Error> OpenSong::advanceTranspose (song::SongPackage::Clock:
 
 engine::PracticePlayback OpenSong::heardPracticePlayback() const
 {
-    return { .speedPercent = heardPractice.speedPercent, .renders = song::practiceRendersOf (practiceFolder, song(), heardPractice) };
+    return { .speedPercent = heardPractice.speedPercent, .renders = song::practiceRendersOf (practiceFolder, song(), heardPractice, practiceLoopWindow()) };
+}
+
+std::optional<song::SampleRange> OpenSong::practiceLoopWindow() const
+{
+    const auto loop = heardLoop();
+    if (! loop.has_value() || practiceTarget == song::normalPracticeSpeed)
+        return std::nullopt;
+    return song::loopRenderWindow (loop->start, loop->end, song().sampleRate);
+}
+
+bool OpenSong::practiceRunIsWanted() const
+{
+    return practiceRun->key() == practiceKey() && practiceRun->loopWindow() == practiceLoopWindow();
+}
+
+void OpenSong::deleteUnheardPracticeRenders()
+{
+    if (const auto deleted = song::deletePracticeRendersExcept (practiceFolder, song(), heardPractice, practiceLoopWindow()); deleted > 0)
+        core::logEvent (core::Level::info, "ui.practice_renders_deleted", { { "count", deleted } });
 }
 
 song::PracticeRenderKey OpenSong::practiceKey() const
@@ -1098,12 +1120,13 @@ song::PracticeRenderKey OpenSong::practiceKey() const
 std::optional<core::Error> OpenSong::advancePracticeSpeed (song::SongPackage::Clock::time_point now)
 {
     const auto target = practiceKey();
+    const auto window = practiceLoopWindow();
     if (target != failedPracticeKey)
         failedPracticeRenders.clear();
     std::optional<core::Error> failure;
     if (practiceRun != nullptr)
     {
-        if (practiceRun->key() != target)
+        if (! practiceRunIsWanted())
         {
             practiceRun->cancel (now);
             practiceRun.reset();
@@ -1119,37 +1142,51 @@ std::optional<core::Error> OpenSong::advancePracticeSpeed (song::SongPackage::Cl
                 failedPracticeRenders.insert (*failedSource);
             }
             else if (heardPractice == target)
-                reloadEngine(); // sources that had no render play theirs now
+            {
+                reloadEngine(); // sources that had no render, or only a Loop's, play theirs now
+                deleteUnheardPracticeRenders();
+            }
         }
         else
             return std::nullopt;
     }
 
-    auto missing = song::missingPracticeRenders (package_->location(), practiceFolder, song(), target);
-    std::erase_if (missing, [this] (const song::PracticeRenderJob& job) { return failedPracticeRenders.contains (job.source); });
-    if (! missing.empty())
-    {
+    const auto missingOf = [&] (std::optional<song::SampleRange> rendersWindow) {
+        auto missing = song::missingPracticeRenders (package_->location(), practiceFolder, song(), target, rendersWindow);
+        std::erase_if (missing, [this] (const song::PracticeRenderJob& job) { return failedPracticeRenders.contains (job.source); });
+        return missing;
+    };
+    const auto startRun = [&] (std::vector<song::PracticeRenderJob> jobs) {
         // A folder that cannot be made fails the render's write, handed back by the run.
         practiceFolder.createDirectory();
-        practiceRun = song::PracticeSpeedRun::start (song().sampleRate, target, std::move (missing), now);
-        return failure;
-    }
-    if (heardPractice != target && failedPracticeRenders.empty())
+        practiceRun = song::PracticeSpeedRun::start (song().sampleRate, target, window, std::move (jobs), now);
+    };
+    // While a Loop loops, its range renders first (issue #231); the whole Song's after.
+    if (window.has_value())
+        if (auto missingInLoop = missingOf (window); ! missingInLoop.empty())
+        {
+            startRun (std::move (missingInLoop));
+            return failure;
+        }
+    auto missing = missingOf (std::nullopt);
+    // While a Loop loops it is heard once its renders are there; otherwise once every render is.
+    if (heardPractice != target && failedPracticeRenders.empty() && (missing.empty() || window.has_value()))
     {
         core::logEvent (core::Level::info,
                         "ui.practice_speed_heard",
                         { { "from_percent", heardPractice.speedPercent }, { "to_percent", target.speedPercent }, { "semitones", target.semitones } });
         heardPractice = target;
         reloadEngine();
-        if (const auto deleted = song::deletePracticeRendersExcept (practiceFolder, song(), target); deleted > 0)
-            core::logEvent (core::Level::info, "ui.practice_renders_deleted", { { "count", deleted } });
+        deleteUnheardPracticeRenders();
     }
+    if (! missing.empty())
+        startRun (std::move (missing));
     return failure;
 }
 
 void OpenSong::followPracticeSpeed()
 {
-    if (practiceRun != nullptr && practiceRun->key() == practiceKey())
+    if (practiceRun != nullptr && practiceRunIsWanted())
         return;
     // Only a run that ends fails: here none runs, or advancePracticeSpeed cancels it.
     const auto failure = advancePracticeSpeed (song::SongPackage::Clock::now());

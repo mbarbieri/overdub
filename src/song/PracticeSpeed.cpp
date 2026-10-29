@@ -5,6 +5,7 @@
 #include "song/TransposeRender.h"
 
 #include <algorithm>
+#include <cmath>
 #include <set>
 
 namespace overdub::song
@@ -21,7 +22,44 @@ std::vector<ClipSource> playedSources (const Song& song)
                 sources.push_back (clip.source);
     return sources;
 }
+
+// The file playing `source` at `key`: its whole render, or else its range render in `window`.
+std::optional<juce::File> renderPlaying (const juce::File& folder, const Song& song, const ClipSource& source, PracticeRenderKey key, std::optional<SampleRange> window)
+{
+    if (const auto whole = practiceRenderFileFor (folder, source, key); whole.existsAsFile())
+        return whole;
+    if (! window.has_value())
+        return std::nullopt;
+    const auto range = sourceRangeIn (song, source, *window);
+    if (! range.has_value())
+        return std::nullopt;
+    if (const auto partial = practiceRangeRenderFileFor (folder, source, key, *range); partial.existsAsFile())
+        return partial;
+    return std::nullopt;
+}
 } // namespace
+
+SampleRange loopRenderWindow (SampleCount loopStart, SampleCount loopEnd, int sampleRate)
+{
+    const auto margin = (SampleCount) std::llround (loopRenderMarginSeconds * sampleRate);
+    return { std::max<SampleCount> (0, loopStart - margin), loopEnd + margin };
+}
+
+std::optional<SampleRange> sourceRangeIn (const Song& song, const ClipSource& source, SampleRange window)
+{
+    std::optional<SampleRange> range;
+    for (const auto& track : song.tracks)
+        for (const auto& clip : track.clips)
+        {
+            const auto from = std::max (clip.timelineStart, window.start);
+            const auto to = std::min (clip.timelineStart + clip.length, window.end);
+            if (clip.source != source || from >= to)
+                continue;
+            const SampleRange played { clip.sourceOffset + from - clip.timelineStart, clip.sourceOffset + to - clip.timelineStart };
+            range = range.has_value() ? SampleRange { std::min (range->start, played.start), std::max (range->end, played.end) } : played;
+        }
+    return range;
+}
 
 core::Expected<int> checkPracticeSpeed (int speedPercent)
 {
@@ -43,7 +81,14 @@ juce::File practiceRenderFileFor (const juce::File& folder, const ClipSource& so
     return folder.getChildFile ("backing-" + juce::String (source.id) + transpose + speed);
 }
 
-std::vector<PracticeRenderJob> missingPracticeRenders (const juce::File& packageRoot, const juce::File& folder, const Song& song, PracticeRenderKey key)
+juce::File practiceRangeRenderFileFor (const juce::File& folder, const ClipSource& source, PracticeRenderKey key, SampleRange sourceRange)
+{
+    const auto whole = practiceRenderFileFor (folder, source, key);
+    const auto range = ".range" + juce::String (sourceRange.start) + "-" + juce::String (sourceRange.end);
+    return folder.getChildFile (whole.getFileNameWithoutExtension() + range + ".wav");
+}
+
+std::vector<PracticeRenderJob> missingPracticeRenders (const juce::File& packageRoot, const juce::File& folder, const Song& song, PracticeRenderKey key, std::optional<SampleRange> window)
 {
     std::vector<PracticeRenderJob> missing;
     if (key.speedPercent == normalPracticeSpeed)
@@ -51,28 +96,38 @@ std::vector<PracticeRenderJob> missingPracticeRenders (const juce::File& package
     for (const auto& source : playedSources (song))
     {
         const auto from = mediaFileFor (packageRoot, song, source);
-        const auto to = practiceRenderFileFor (folder, source, key);
-        if (from.has_value() && from->existsAsFile() && ! to.existsAsFile())
-            missing.push_back ({ source, *from, to, source.kind == ClipSourceKind::backing ? key.semitones : 0 });
+        if (! from.has_value() || ! from->existsAsFile() || practiceRenderFileFor (folder, source, key).existsAsFile())
+            continue;
+        const auto semitones = source.kind == ClipSourceKind::backing ? key.semitones : 0;
+        if (! window.has_value())
+        {
+            missing.push_back ({ source, *from, practiceRenderFileFor (folder, source, key), semitones });
+            continue;
+        }
+        const auto range = sourceRangeIn (song, source, *window);
+        if (! range.has_value())
+            continue;
+        if (const auto to = practiceRangeRenderFileFor (folder, source, key, *range); ! to.existsAsFile())
+            missing.push_back ({ source, *from, to, semitones, range });
     }
     return missing;
 }
 
-std::map<ClipSource, juce::File> practiceRendersOf (const juce::File& folder, const Song& song, PracticeRenderKey key)
+std::map<ClipSource, juce::File> practiceRendersOf (const juce::File& folder, const Song& song, PracticeRenderKey key, std::optional<SampleRange> window)
 {
     std::map<ClipSource, juce::File> renders;
     if (key.speedPercent == normalPracticeSpeed)
         return renders;
     for (const auto& source : playedSources (song))
-        if (const auto file = practiceRenderFileFor (folder, source, key); file.existsAsFile())
-            renders.emplace (source, file);
+        if (const auto file = renderPlaying (folder, song, source, key, window))
+            renders.emplace (source, *file);
     return renders;
 }
 
-int deletePracticeRendersExcept (const juce::File& folder, const Song& song, PracticeRenderKey key)
+int deletePracticeRendersExcept (const juce::File& folder, const Song& song, PracticeRenderKey key, std::optional<SampleRange> window)
 {
     std::set<juce::File> kept;
-    for (const auto& [source, file] : practiceRendersOf (folder, song, key))
+    for (const auto& [source, file] : practiceRendersOf (folder, song, key, window))
         kept.insert (file);
     int deleted = 0;
     for (const auto& file : folder.findChildFiles (juce::File::findFiles, false))
@@ -83,16 +138,16 @@ int deletePracticeRendersExcept (const juce::File& folder, const Song& song, Pra
 
 //==============================================================================
 
-std::unique_ptr<PracticeSpeedRun> PracticeSpeedRun::start (int sampleRate, PracticeRenderKey key, std::vector<PracticeRenderJob> jobs, Clock::time_point now)
+std::unique_ptr<PracticeSpeedRun> PracticeSpeedRun::start (int sampleRate, PracticeRenderKey key, std::optional<SampleRange> loopWindow, std::vector<PracticeRenderJob> jobs, Clock::time_point now)
 {
-    std::unique_ptr<PracticeSpeedRun> run (new PracticeSpeedRun (key, std::move (jobs), now));
+    std::unique_ptr<PracticeSpeedRun> run (new PracticeSpeedRun (key, loopWindow, std::move (jobs), now));
     auto started = run->fields (now);
     started.erase ("duration_ms");
     core::logEvent (core::Level::info, "song.practice_speed_started", started);
     std::vector<RenderWorker::Render> renders;
     for (const auto& job : run->jobs)
         renders.push_back ([job, sampleRate, speedPercent = key.speedPercent] (std::stop_token stop) -> core::Expected<void> {
-            auto rendered = renderAtPracticeSpeed (job.from, job.to, sampleRate, job.semitones, speedPercent, stop);
+            auto rendered = renderAtPracticeSpeed (job.from, job.to, sampleRate, job.semitones, speedPercent, stop, job.sourceRange);
             if (! rendered.has_value())
             {
                 rendered.error().fields["source_kind"] = toString (job.source.kind);
@@ -104,8 +159,9 @@ std::unique_ptr<PracticeSpeedRun> PracticeSpeedRun::start (int sampleRate, Pract
     return run;
 }
 
-PracticeSpeedRun::PracticeSpeedRun (PracticeRenderKey key, std::vector<PracticeRenderJob> renderJobs, Clock::time_point now)
+PracticeSpeedRun::PracticeSpeedRun (PracticeRenderKey key, std::optional<SampleRange> loopWindow, std::vector<PracticeRenderJob> renderJobs, Clock::time_point now)
     : target (key),
+      window (loopWindow),
       jobs (std::move (renderJobs)),
       startedAt (now)
 {
@@ -118,10 +174,20 @@ PracticeSpeedRun::~PracticeSpeedRun()
 
 core::Fields PracticeSpeedRun::fields (Clock::time_point now) const
 {
-    return { { "speed_percent", target.speedPercent },
-             { "semitones", target.semitones },
-             { "renders", jobs.size() },
-             { "duration_ms", std::chrono::duration_cast<std::chrono::milliseconds> (now - startedAt).count() } };
+    core::Fields logged { { "speed_percent", target.speedPercent },
+                          { "semitones", target.semitones },
+                          { "renders", jobs.size() },
+                          { "scope", "song" },
+                          { "duration_ms", std::chrono::duration_cast<std::chrono::milliseconds> (now - startedAt).count() } };
+    // A run's jobs are all range renders of its Loop's window, or none is.
+    if (std::ranges::any_of (jobs, [] (const PracticeRenderJob& job) { return job.sourceRange.has_value(); }))
+    {
+        OVERDUB_CHECK (window.has_value(), "song.practice_range_render_without_loop");
+        logged["scope"] = "loop";
+        logged["window_start"] = window->start;
+        logged["window_end"] = window->end;
+    }
+    return logged;
 }
 
 std::optional<core::Expected<void>> PracticeSpeedRun::advance (Clock::time_point now)

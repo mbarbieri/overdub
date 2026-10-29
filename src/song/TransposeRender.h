@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Error.h"
+#include "song/PracticeSpeed.h"
 #include "song/RenderWorker.h"
 #include "song/Transpose.h"
 
@@ -29,9 +30,18 @@ core::Expected<void> renderTransposed (const juce::File& source, const juce::Fil
 // at its own pitch, shifted by `semitones` (a Backing Track's Transpose; 0 for a Take), in one pass.
 // Written to `destination` as a float WAV at `sampleRate` (temp + rename), llround (length × 100 /
 // speedPercent) samples long: source sample s sounds at about s × 100 / speedPercent. As
-// renderTransposed otherwise. Errors: song.practice_render_failed (path, semitones, speed_percent,
-// step read|write, cause), song.practice_render_cancelled (path, semitones, speed_percent).
-core::Expected<void> renderAtPracticeSpeed (const juce::File& source, const juce::File& destination, int sampleRate, int semitones, int speedPercent, std::stop_token stop);
+// renderTransposed otherwise. With a `sourceRange` (a Loop's render, issue #231), only those source
+// samples (clamped to the source) are stretched, from their own first sample, and written where
+// the whole render has them, from llround (start × 100 / speedPercent); the rest of the same length
+// is silent. Errors: song.practice_render_failed (path, semitones, speed_percent, step read|write,
+// cause), song.practice_render_cancelled (path, semitones, speed_percent).
+core::Expected<void> renderAtPracticeSpeed (const juce::File& source,
+                                            const juce::File& destination,
+                                            int sampleRate,
+                                            int semitones,
+                                            int speedPercent,
+                                            std::stop_token stop,
+                                            std::optional<SampleRange> sourceRange = std::nullopt);
 
 // The renders of one Transpose (missingTransposeRenders' jobs), made one after another by
 // renderTransposed on a worker thread; advance() (message thread) hands back how it ended. It

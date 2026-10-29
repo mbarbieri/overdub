@@ -114,7 +114,7 @@ target_sources(overdub_tests PRIVATE
     ui/OpenSongCameraTest.cpp
     ui/OpenSongDeviceChangeTest.cpp
     ui/OpenSongInsertsTest.cpp
-    ui/OpenSongTest.cpp ui/OpenSongTransposeTest.cpp ui/OpenSongPracticeSpeedTest.cpp
+    ui/OpenSongTest.cpp ui/OpenSongTransposeTest.cpp ui/OpenSongPracticeSpeedTest.cpp ui/OpenSongLoopRenderTest.cpp
     ui/PreRollTest.cpp
     ui/RecordCameraTest.cpp
     ui/RecordInsertsTest.cpp
