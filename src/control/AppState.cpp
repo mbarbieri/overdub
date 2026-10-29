@@ -49,6 +49,12 @@ json historySection (const ui::OpenSong* song)
     return { { "can_undo", package.canUndo() }, { "undo_label", package.undoLabel() }, { "can_redo", package.canRedo() }, { "redo_label", package.redoLabel() } };
 }
 
+// The range the engine loops, or null.
+json heardLoopJson (const std::optional<engine::LoopRange>& loop)
+{
+    return loop.has_value() ? json { { "start", loop->start }, { "end", loop->end } } : json (nullptr);
+}
+
 json transportSection (const ui::OpenSong* song)
 {
     if (song == nullptr)
@@ -67,6 +73,7 @@ json transportSection (const ui::OpenSong* song)
         { "heard_practice_speed", song->heardPracticeSpeed() },
         { "practice_rendering", song->isPracticeRendering() },
         { "transcribe_mix_heard", song->isTranscribing() },
+        { "heard_loop", heardLoopJson (song->heardLoop()) },
     };
 }
 
@@ -131,6 +138,9 @@ json viewSection (const ui::MainComponent& window)
     view["selected_clip"] = orNull (editPage.timeline.selectedClip());
     view["selected_video_take"] = orNull (editPage.timeline.selectedVideoTake());
     view["selected_marker"] = orNull (songView->selectedMarker());
+    view["selected_loop"] = orNull (songView->selectedLoop());
+    const auto pending = songView->loopStartPending();
+    view["loop_start_pending"] = pending.has_value() ? json (*pending) : json (nullptr);
     view["timeline"] = timelineView (*songView);
     const auto transcribe = songView->transcribePage.view();
     view["transcribe"] = { { "first_sample", transcribe.firstSample }, { "samples_per_pixel", transcribe.samplesPerPixel } };

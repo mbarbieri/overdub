@@ -11,6 +11,7 @@ target_sources(overdub_song PRIVATE
     BackingTrackImport.cpp
     ClipEdits.cpp
     InsertEdits.cpp
+    LoopEdits.cpp
     MarkerEdits.cpp
     MixEdits.cpp
     TakeEdits.cpp

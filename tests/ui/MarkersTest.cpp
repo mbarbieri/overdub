@@ -213,7 +213,7 @@ TEST_CASE ("Record mode refuses add_marker and the Marker edits with ui.record_m
     pressKey (f, 'k', 'k');
     CHECK (f.song().markers.size() == 1);
     CHECK (isShown (f.window->noticeLine));
-    CHECK (f.window->noticeLine.text() == juce::String ("Add and edit Markers in Transcribe or Edit mode."));
+    CHECK (f.window->noticeLine.text() == juce::String ("Make and edit Loops and Markers in Transcribe or Edit mode."));
 
     const std::vector<Intent> refused {
         SongIntent { intent::AddMarker {} },

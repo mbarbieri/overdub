@@ -478,7 +478,48 @@ TEST_CASE ("add_marker replies with the new Marker's id, select_marker seeks to 
     const auto refused = socket.request (R"({"id":12,"op":"add_marker"})");
     CHECK (refused.at ("ok") == false);
     CHECK (refused.at ("error").at ("code") == "ui.record_mode");
-    CHECK (refused.at ("error").at ("message") == "Markers are added and edited in Transcribe and Edit mode");
+    CHECK (refused.at ("error").at ("message") == "Loops and Markers are made and edited in Transcribe and Edit mode");
+}
+
+TEST_CASE ("add_loop replies with the new Loop's id, select_loop activates it in Transcribe mode, set_looping turns it off, and resize_loop, rename_loop and delete_loop each take one undo step", "[control][intent_ops][loops]")
+{
+    SocketToWindow socket;
+    REQUIRE (socket.request (R"({"id":1,"op":"show_mode","mode":"transcribe"})").at ("ok") == true);
+
+    const auto added = socket.request (R"({"id":2,"op":"add_loop","start":9600,"end":4800})");
+    REQUIRE (added.at ("ok") == true);
+    const auto loopId = added.at ("created_id").get<std::string>();
+    REQUIRE (socket.f.song().loops.size() == 1);
+    CHECK (socket.f.song().loops[0] == song::Loop { loopId, "Loop 1", 4800, 9600 });
+    CHECK (socket.f.song().activeLoopId == loopId);
+    CHECK (socket.f.song().looping);
+
+    CHECK (socket.request (R"({"id":3,"op":"set_looping","looping":false})").at ("ok") == true);
+    CHECK_FALSE (socket.f.song().looping);
+    CHECK (socket.request (R"({"id":4,"op":"select_loop","loop_id":")" + loopId + R"("})").at ("ok") == true);
+    CHECK (socket.f.song().looping);
+    CHECK (socket.f.openSong->position() == 4800);
+
+    CHECK (socket.request (R"({"id":5,"op":"resize_loop","loop_id":")" + loopId + R"(","start":0,"end":24000})").at ("ok") == true);
+    CHECK (socket.request (R"({"id":6,"op":"rename_loop","loop_id":")" + loopId + R"(","name":"Riff"})").at ("ok") == true);
+    CHECK (socket.f.song().loops[0] == song::Loop { loopId, "Riff", 0, 24000 });
+    CHECK (socket.f.openSong->package().undoLabel() == "Rename Loop");
+
+    CHECK (socket.request (R"({"id":7,"op":"mark_loop_start"})").at ("ok") == true);
+    CHECK (socket.request (R"({"id":8,"op":"cancel_loop_start"})").at ("ok") == true);
+    CHECK (socket.request (R"({"id":9,"op":"select_adjacent_loop","direction":"back"})").at ("ok") == true);
+
+    CHECK (socket.request (R"({"id":10,"op":"delete_loop","loop_id":")" + loopId + R"("})").at ("ok") == true);
+    CHECK (socket.f.song().loops.empty());
+    const auto gone = socket.request (R"({"id":11,"op":"select_loop","loop_id":")" + loopId + R"("})");
+    CHECK (gone.at ("ok") == false);
+    CHECK (gone.at ("error").at ("code") == "song.loop_not_found");
+    const auto noLoop = socket.request (R"({"id":12,"op":"set_looping","looping":true})");
+    CHECK (noLoop.at ("error").at ("code") == "song.no_active_loop");
+
+    REQUIRE (socket.request (R"({"id":13,"op":"show_mode","mode":"record"})").at ("ok") == true);
+    const auto refused = socket.request (R"({"id":14,"op":"add_loop","start":0,"end":100})");
+    CHECK (refused.at ("error").at ("code") == "ui.record_mode");
 }
 
 TEST_CASE ("the socket shows Transcribe mode, and a Clip edit there answers ui.transcribing with its reason", "[control][intent_ops][transcribe]")

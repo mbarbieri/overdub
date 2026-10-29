@@ -30,8 +30,9 @@
 // clicking or dragging the ruler or the waveform seeks (seek); a whole number typed into the
 // column's fields runs set_practice_speed or set_transpose, as the top bar's do; a Track row's ◎
 // runs set_focus_track (none on the Focus Track's own ◎), its M set_transcribe_mute and its S
-// set_transcribe_solo. The Loop/Marker strip over the ruler and the Markers list in the left
-// column (issue #227, ui/MarkerStrip.h) run select_marker, move_marker and rename_marker. The view is
+// set_transcribe_solo. The Loop/Marker strip over the ruler (ui/MarkerStrip.h) runs the Marker and
+// Loop gestures (issues #227, #228); the left column's Loop cards (ui/LoopViews.h) run select_loop
+// and its Markers list below them select_marker. The view is
 // transient UI state, never in the Song; the page changes it only when the handler calls setView.
 namespace overdub::ui
 {
@@ -51,6 +52,8 @@ struct TranscribePageState
     // The selected Marker (SongView::selectedMarker), and whether the strip edits Markers.
     std::optional<song::Id> selectedMarker;
     bool markersEditable = false;
+    // The pending Loop start ([), issue #228.
+    std::optional<song::SampleCount> pendingLoopStart;
 };
 
 // The overview strip: the heard mix across the whole Song, the visible window and the playhead.
@@ -195,6 +198,7 @@ public:
     TranscribeOverview overview;
     MarkerStrip markerStrip;
     TranscribeWave wave;
+    LoopList loopList;
     MarkerList markerList;
     TranscribeColumn column;
 

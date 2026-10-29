@@ -25,13 +25,15 @@ class Workspace;
 //                "running_pass_number" (0 when none), "saving_pass",
 //                "heard_transpose", "transposing", "transpose_rendering" (issue #209),
 //                "practice_speed", "heard_practice_speed", "practice_rendering" (issue #212),
-//                "transcribe_mix_heard" (issue #226: the engine plays the Transcribe Mix)}
+//                "transcribe_mix_heard" (issue #226: the engine plays the Transcribe Mix),
+//                "heard_loop": null | {"start", "end"} (issue #228: the range the engine loops)}
 //   activity     {"kind", "progress" 0..1, "counter", "last_finish": null | {"kind", "counter",
 //                "error_code"}}; kind is ui::activityKindNames'; counter counts the activities
 //                started, so it names the running or last one
 //   idle         activity.kind is "idle" (an export or a calibration run is not idle)
 //   view         {"mode"} and, with a Song open, "selected_clip", "selected_video_take",
-//                "selected_marker" (issue #227),
+//                "selected_marker" (issue #227), "selected_loop" and "loop_start_pending" (a Song
+//                sample or null, issue #228),
 //                "timeline" {"first_sample", "samples_per_pixel", "vertical_scroll",
 //                "take_lanes_unfolded": [track ids]}, "mixer_visible", "mixer_height",
 //                "passes_panel_open", "export_sheet_shown", "export_form" {"format", "length",

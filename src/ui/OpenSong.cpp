@@ -3,6 +3,7 @@
 #include "capture/CameraCalibration.h"
 #include "core/Log.h"
 #include "song/InsertEdits.h"
+#include "song/LoopEdits.h"
 #include "song/MixEdits.h"
 #include "song/TranscribeMix.h"
 #include "song/Transpose.h"
@@ -335,6 +336,41 @@ void OpenSong::setTranscribing (bool on)
     core::logEvent (core::Level::debug, "ui.transcribe_mix_heard", { { "heard", on } });
     if (binding.engine != nullptr && ! binding.engine->setMix (heardSong()))
         reloadEngine();
+    syncEngineLoop();
+}
+
+core::Expected<void> OpenSong::setActiveLoop (const std::optional<song::Id>& loopId, bool looping)
+{
+    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
+        return std::unexpected (std::move (*refused));
+    auto changed = changeTranscribeMix (song::setActiveLoop (song(), loopId, looping));
+    if (changed.has_value())
+        core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().looping } });
+    return changed;
+}
+
+core::Expected<void> OpenSong::setLooping (bool looping)
+{
+    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
+        return std::unexpected (std::move (*refused));
+    auto changed = changeTranscribeMix (song::setLooping (song(), looping));
+    if (changed.has_value())
+        core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
+    return changed;
+}
+
+std::optional<engine::LoopRange> OpenSong::heardLoop() const
+{
+    const auto* loop = song::activeLoop (song());
+    if (! transcribing || ! song().looping || loop == nullptr)
+        return std::nullopt;
+    return engine::LoopRange { loop->start, loop->end };
+}
+
+void OpenSong::syncEngineLoop()
+{
+    if (binding.engine != nullptr)
+        binding.engine->setLoop (heardLoop());
 }
 
 core::Expected<void> OpenSong::changeTranscribeMix (core::Expected<song::Song> changed)
@@ -346,6 +382,7 @@ core::Expected<void> OpenSong::changeTranscribeMix (core::Expected<song::Song> c
     package_->changeWithoutHistory (std::move (*changed));
     if (binding.engine != nullptr && ! binding.engine->setMix (heardSong()))
         reloadEngine();
+    syncEngineLoop();
     return {};
 }
 
@@ -396,9 +433,17 @@ core::Expected<void> OpenSong::playOrStop()
         return {};
     recordAgainAfterPass = false; // Space after Record Again stops for good
     if (isRecording() || binding.engine->isPlaying())
+    {
         stop();
-    else
-        binding.engine->play();
+        return {};
+    }
+    if (const auto loop = heardLoop(); loop.has_value())
+    {
+        const auto position = binding.engine->position();
+        if (position < loop->start || position >= loop->end)
+            binding.engine->seek (loop->start);
+    }
+    binding.engine->play();
     return {};
 }
 
@@ -906,7 +951,10 @@ void OpenSong::updateEngine (const song::Song& before)
         return;
     }
     if (binding.engine != nullptr && song::differsOnlyInMix (before, song()) && binding.engine->setMix (heardSong()))
+    {
+        syncEngineLoop();
         return;
+    }
     reloadEngine();
     followTranspose();
     followPracticeSpeed();
@@ -922,6 +970,7 @@ void OpenSong::reloadEngine()
     inserts.sync (song());
     if (binding.engine != nullptr)
         binding.engine->loadSong (heardSong(), package_->location(), inserts.insertFactory(), monitored, heardPracticePlayback());
+    syncEngineLoop();
 }
 
 song::Song OpenSong::heardSong() const

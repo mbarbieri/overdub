@@ -517,7 +517,13 @@ void RecordPage::showSong (const song::Song& song, const RecordTransport& newTra
     transport = newTransport;
     showLookAhead();
     overview.show (song, transport.playhead);
-    markerStrip.show (song.markers, stripScaleFitting (overview.length(), markerStrip.getWidth()), false, std::nullopt);
+    markerStrip.show (StripState {
+        .markers = song.markers,
+        .loops = song.loops,
+        .scale = stripScaleFitting (overview.length(), markerStrip.getWidth()),
+        .editable = false,
+        .activeLoop = song.activeLoopId,
+    });
 }
 
 void RecordPage::showStagePlayback (bool playback)

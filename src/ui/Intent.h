@@ -38,7 +38,10 @@
 // I shows or hides the Transcribe column, K adds a Marker at the playhead (issue #227), and S,
 // backspace (or forward delete) and the left and right arrows split, delete and nudge, which their
 // handlers refuse outside Edit mode (and ui/Availability.h refuses in Transcribe mode). While a
-// Marker is selected, backspace and forward delete delete it instead (delete_marker).
+// Marker is selected, backspace and forward delete delete it instead (delete_marker), or else the
+// Loop to delete (delete_loop). Loops (issue #228): [ marks a Loop start at the playhead, ] makes
+// the Loop up to the playhead, Esc cancels a pending start, L toggles looping, option-left and
+// option-right select the previous and next Loop, option-1..option-9 the n-th.
 namespace overdub::ui
 {
 enum class Mode
@@ -369,9 +372,37 @@ struct DeleteMarker // backspace or forward delete while a Marker is selected
     static constexpr auto fields = std::tuple { field ("marker_id", &DeleteMarker::markerId) };
 };
 
+struct ResizeLoop // a Loop's edge dragged along the Loop/Marker strip (issue #228)
+{
+    static constexpr std::string_view op = "resize_loop";
+    song::Id loopId;
+    song::SampleCount start = 0;
+    song::SampleCount end = 0;
+    bool operator== (const ResizeLoop&) const = default;
+    static constexpr auto fields = std::tuple { field ("loop_id", &ResizeLoop::loopId), field ("start", &ResizeLoop::start), field ("end", &ResizeLoop::end) };
+};
+
+struct RenameLoop // a name typed after double-clicking a Loop on the strip
+{
+    static constexpr std::string_view op = "rename_loop";
+    song::Id loopId;
+    std::string name;
+    bool operator== (const RenameLoop&) const = default;
+    static constexpr auto fields = std::tuple { field ("loop_id", &RenameLoop::loopId), field ("name", &RenameLoop::name) };
+};
+
+struct DeleteLoop // backspace or forward delete: the active Loop in Transcribe mode, the selected one in Edit
+{
+    static constexpr std::string_view op = "delete_loop";
+    song::Id loopId;
+    bool operator== (const DeleteLoop&) const = default;
+    static constexpr auto fields = std::tuple { field ("loop_id", &DeleteLoop::loopId) };
+};
+
 using Edit = std::variant<MoveClip, TrimClipStart, TrimClipEnd, SetClipFadeIn, SetClipFadeOut, SetClipGain, BringBackPass,
                           SetTrackVolume, SetTrackPan, SetMasterVolume, SetTrackMute, SetTrackSolo,
-                          RemoveInsert, MoveInsert, SetInsertBypassed, MoveMarker, RenameMarker, DeleteMarker>;
+                          RemoveInsert, MoveInsert, SetInsertBypassed, MoveMarker, RenameMarker, DeleteMarker,
+                          ResizeLoop, RenameLoop, DeleteLoop>;
 
 // The edits a Mixer gesture in progress can be heard with (OpenSong::previewMix).
 using MixEdit = std::variant<SetTrackVolume, SetTrackPan, SetMasterVolume>;
@@ -593,6 +624,67 @@ struct SelectMarker // a click on a Marker (strip or list) seeks to it; none: a 
     std::optional<song::Id> markerId;
     bool operator== (const SelectMarker&) const = default;
     static constexpr auto fields = std::tuple { field ("marker_id", &SelectMarker::markerId) };
+};
+
+//==============================================================================
+// Song: Loops (issue #228, ADR 0010). Resizing, renaming and deleting one are plain edits
+// (intent::Edit); Record mode refuses making and editing them (ui/Availability.h). Selecting a Loop
+// depends on the mode: Transcribe activates it (looping on, the waveform zoomed to fit it, the
+// playhead to its start unless inside it), Edit selects it for editing, Record moves the record
+// point to its start.
+
+struct AddLoop // a drag on an empty part of the strip: "Loop N" over that range, one undo step
+{
+    static constexpr std::string_view op = "add_loop";
+    song::SampleCount start = 0;
+    song::SampleCount end = 0;
+    bool operator== (const AddLoop&) const = default;
+    static constexpr auto fields = std::tuple { field ("start", &AddLoop::start), field ("end", &AddLoop::end) };
+};
+
+struct MarkLoopStart // [: a pending Loop start at the playhead
+{
+    static constexpr std::string_view op = "mark_loop_start";
+    bool operator== (const MarkLoopStart&) const = default;
+    static constexpr auto fields = std::tuple {};
+};
+
+struct MarkLoopEnd // ]: a Loop from the pending start to the playhead (add_loop)
+{
+    static constexpr std::string_view op = "mark_loop_end";
+    bool operator== (const MarkLoopEnd&) const = default;
+    static constexpr auto fields = std::tuple {};
+};
+
+struct CancelLoopStart // Esc while a Loop start is pending
+{
+    static constexpr std::string_view op = "cancel_loop_start";
+    bool operator== (const CancelLoopStart&) const = default;
+    static constexpr auto fields = std::tuple {};
+};
+
+struct SelectLoop // a click on a Loop (strip or card), or option-1..9; none: a click on empty strip
+{
+    static constexpr std::string_view op = "select_loop";
+    std::optional<song::Id> loopId;
+    bool operator== (const SelectLoop&) const = default;
+    static constexpr auto fields = std::tuple { field ("loop_id", &SelectLoop::loopId) };
+};
+
+struct SelectAdjacentLoop // option-left and option-right: the previous or next Loop in time order
+{
+    static constexpr std::string_view op = "select_adjacent_loop";
+    Direction direction = Direction::forward;
+    bool operator== (const SelectAdjacentLoop&) const = default;
+    static constexpr auto fields = std::tuple { enumField ("direction", &SelectAdjacentLoop::direction, core::EnumNames<Direction> { directionNames }) };
+};
+
+struct SetLooping // L: Transcribe mode loops the active Loop, or plays straight on
+{
+    static constexpr std::string_view op = "set_looping";
+    bool looping = false;
+    bool operator== (const SetLooping&) const = default;
+    static constexpr auto fields = std::tuple { field ("looping", &SetLooping::looping) };
 };
 
 //==============================================================================
@@ -864,6 +956,8 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::StartSeparation, intent::CancelRun, intent::SetTranspose, intent::SetPracticeSpeed,
                                 intent::SetFocusTrack, intent::SetTranscribeMute, intent::SetTranscribeSolo,
                                 intent::AddMarker, intent::SelectMarker,
+                                intent::AddLoop, intent::MarkLoopStart, intent::MarkLoopEnd, intent::CancelLoopStart,
+                                intent::SelectLoop, intent::SelectAdjacentLoop, intent::SetLooping,
                                 intent::SetPreRoll, intent::SetCameraArmed, intent::SetCameraDevice,
                                 intent::SplitSelectedClip, intent::DeleteSelection, intent::TakeLaneClick, intent::PreviewMix,
                                 intent::AddInsert, intent::OpenInsertEditor, intent::ClosePluginWindow,
@@ -917,6 +1011,8 @@ core::Error noSongOpen (std::string_view op);
 // The characters macOS delivers for the backspace key (labelled delete) and the forward delete
 // key, as JUCE's KeyPress::backspaceKey and KeyPress::deleteKey report them.
 inline constexpr char32_t backspaceCharacter = 0x7f;
+// The escape key, as JUCE's KeyPress::escapeKey reports it.
+inline constexpr char32_t escapeCharacter = 0x1b;
 inline constexpr char32_t forwardDeleteCharacter = 0xf728;
 // The characters macOS delivers for the left and right arrow keys (NSLeftArrowFunctionKey,
 // NSRightArrowFunctionKey), as JUCE's KeyPress::leftKey and KeyPress::rightKey report them.
@@ -930,14 +1026,21 @@ struct KeyChord
     char32_t character = 0;
     bool command = false;
     bool shift = false;
+    bool option = false;
 };
 
 // What the window shows that a key's Intent depends on: I sets the Transcribe column to the
-// opposite of what it is, and backspace deletes the selected Marker, when there is one.
+// opposite of what it is, backspace deletes the selected Marker, when there is one, or else the
+// Loop to delete (SongView::loopToDelete), L sets looping to the opposite of what it is, option-n
+// selects the n-th Loop in time order, and Esc cancels a pending Loop start.
 struct KeyContext
 {
     bool transcribeColumnVisible = true;
     std::optional<song::Id> selectedMarker;
+    std::optional<song::Id> loopToDelete;
+    bool looping = false;
+    std::vector<song::Id> loopIds; // in time order
+    bool loopStartPending = false;
 };
 
 // The Intent a key press runs, or none.

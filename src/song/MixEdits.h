@@ -35,8 +35,9 @@ std::string muteLabel (const Song& song, const Id& trackId, bool mute);
 std::string soloLabel (const Song& song, const Id& trackId, bool solo);
 
 // True when the two Songs are equal except for Track volumes, pans, mutes and solos, the Master
-// volume, the Transcribe Mix and Focus Track (song/TranscribeMix.h), and the Markers (which play
-// nothing, issue #227): the engine can then apply the mix without rebuilding its plan
+// volume, the Transcribe Mix and Focus Track (song/TranscribeMix.h), the Markers (which play
+// nothing, issue #227), and the Loops, active Loop and looping (Engine::setLoop, issue #228): the
+// engine can then apply the mix without rebuilding its plan
 // (Engine::setMix).
 bool differsOnlyInMix (const Song& a, const Song& b);
 } // namespace overdub::song

@@ -604,7 +604,7 @@ TEST_CASE ("a missing history folder or index drops history without blocking the
     }
     SECTION ("snapshot from a newer format")
     {
-        REQUIRE (temp.package().getChildFile ("history/000000.json").replaceWithText (R"({"label": "", "song": {"formatVersion": 9}})"));
+        REQUIRE (temp.package().getChildFile ("history/000000.json").replaceWithText (R"({"label": "", "song": {"formatVersion": 10}})"));
         expectedCause = "song.format_too_new";
         expectedPath = temp.package().getChildFile ("history/000000.json");
     }
@@ -658,7 +658,7 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
         for (auto& track : document.at ("tracks"))
             for (const auto* key : { "colour", "transcribeMute", "transcribeSolo" })
                 track.erase (key);
-        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId", "markers" })
+        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId", "markers", "loops", "activeLoopId", "looping" })
             document.erase (key);
         return document;
     };
@@ -685,6 +685,9 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
     expected.transpose = 0;
     expected.focusTrackId.reset();
     expected.markers.clear();
+    expected.loops.clear();
+    expected.activeLoopId.reset();
+    expected.looping = false;
     for (auto& track : expected.tracks)
         track.transcribeMute = track.transcribeSolo = false;
     CHECK (opened.package->song() == expected);
@@ -739,7 +742,7 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
     // Turn song.json and the history snapshot back into what a v4 build wrote.
     const auto toV4 = [] (nlohmann::json document) {
         document["formatVersion"] = 4;
-        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId", "markers" })
+        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId", "markers", "loops", "activeLoopId", "looping" })
             document.erase (key);
         for (auto& track : document.at ("tracks"))
             for (const auto* key : { "transcribeMute", "transcribeSolo" })
@@ -763,6 +766,9 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
     expected.transpose = 0;
     expected.focusTrackId.reset();
     expected.markers.clear();
+    expected.loops.clear();
+    expected.activeLoopId.reset();
+    expected.looping = false;
     for (auto& track : expected.tracks)
         track.transcribeMute = track.transcribeSolo = false;
     CHECK (opened.package->song() == expected);

@@ -381,7 +381,16 @@ void Timeline::setView (song::SampleCount firstSample, song::SampleCount samples
 
 void Timeline::showMarkerStrip()
 {
-    markerStrip.show (current.song.markers, stripScaleFor (timelineView), current.editable && current.markersEditable, current.selectedMarker);
+    markerStrip.show (StripState {
+        .markers = current.song.markers,
+        .loops = current.song.loops,
+        .scale = stripScaleFor (timelineView),
+        .editable = current.editable && current.markersEditable,
+        .selectedMarker = current.selectedMarker,
+        .selectedLoop = current.selectedLoop,
+        .activeLoop = current.song.activeLoopId,
+        .pendingLoopStart = current.pendingLoopStart,
+    });
 }
 
 std::optional<song::Id> Timeline::selectedClip() const

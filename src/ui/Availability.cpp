@@ -38,6 +38,9 @@ constexpr SongOpGesture songOpGestures[] {
     { "move_marker", Gesture::edit },
     { "rename_marker", Gesture::edit },
     { "delete_marker", Gesture::edit },
+    { "resize_loop", Gesture::edit },
+    { "rename_loop", Gesture::edit },
+    { "delete_loop", Gesture::edit },
     { "record", Gesture::record },
     { "record_again", Gesture::record },
     { "play_or_stop", Gesture::playOrStop },
@@ -63,6 +66,13 @@ constexpr SongOpGesture songOpGestures[] {
     { "set_transcribe_solo", Gesture::setTranscribeMix },
     { "add_marker", Gesture::edit },
     { "select_marker", Gesture::seek },
+    { "add_loop", Gesture::edit },
+    { "mark_loop_start", Gesture::edit },
+    { "mark_loop_end", Gesture::edit },
+    { "cancel_loop_start", std::nullopt },
+    { "select_loop", Gesture::seek },
+    { "select_adjacent_loop", Gesture::seek },
+    { "set_looping", Gesture::setTranscribeMix },
     { "set_pre_roll", Gesture::setPreRoll },
     { "set_camera_armed", Gesture::setCameraArmed },
     { "set_camera_device", Gesture::setCameraDevice },
@@ -114,8 +124,10 @@ constexpr std::array waitForTranspose { Record::op, RecordAgain::op, ShowExport:
 constexpr std::array refusedWhileTranscribing { MoveClip::op, TrimClipStart::op, TrimClipEnd::op, SetClipFadeIn::op, SetClipFadeOut::op,
                                                 SetClipGain::op, SplitSelectedClip::op, DeleteSelection::op, TakeLaneClick::op, Nudge::op };
 
-// What Record mode refuses: adding and editing Markers (issue #227); its strip is read-only.
-constexpr std::array refusedInRecordMode { AddMarker::op, MoveMarker::op, RenameMarker::op, DeleteMarker::op };
+// What Record mode refuses: adding and editing Markers (issue #227) and Loops (issue #228); its
+// strip is read-only.
+constexpr std::array refusedInRecordMode { AddMarker::op, MoveMarker::op, RenameMarker::op, DeleteMarker::op,
+                                           AddLoop::op, MarkLoopStart::op, MarkLoopEnd::op, ResizeLoop::op, RenameLoop::op, DeleteLoop::op };
 
 bool isAppOp (std::string_view op)
 {
@@ -164,7 +176,7 @@ std::optional<Refusal> refusalOfSongOp (std::string_view op, const Running& runn
     if (running.transcribing && running.song.has_value() && std::ranges::contains (refusedWhileTranscribing, op))
         return Refusal { core::Error { "ui.transcribing", "Transcribe mode never changes a Clip", { { "op", std::string (op) } } }, false };
     if (running.recordMode && running.song.has_value() && std::ranges::contains (refusedInRecordMode, op))
-        return Refusal { core::Error { "ui.record_mode", "Markers are added and edited in Transcribe and Edit mode", { { "op", std::string (op) } } }, true };
+        return Refusal { core::Error { "ui.record_mode", "Loops and Markers are made and edited in Transcribe and Edit mode", { { "op", std::string (op) } } }, true };
     const auto found = std::ranges::find (songOpGestures, op, &SongOpGesture::op);
     if (! running.song.has_value() || found == std::end (songOpGestures) || ! found->gesture.has_value())
         return std::nullopt;

@@ -93,7 +93,7 @@ TEST_CASE ("during a Pass only transport, view and plugin window ops, the Window
         "record", "record_again", "play_or_stop", "rewind", "cancel_run", "open_insert_editor", "close_plugin_window",
         "set_export_format", "set_export_length", "set_export_destination", "set_export_video_take", "reveal_export",
         "select_clip", "select_video_take", "set_timeline_view", "set_transcribe_view", "set_vertical_scroll", "set_take_lanes_unfolded",
-        "set_mixer_visible", "set_mixer_height", "set_passes_panel_open", "clear_clip_indicator",
+        "set_mixer_visible", "set_mixer_height", "set_passes_panel_open", "clear_clip_indicator", "cancel_loop_start",
         "show_mode", "dismiss_alerts", "set_transcribe_column_visible", "quit"
     };
 
@@ -280,4 +280,24 @@ TEST_CASE ("Record mode refuses adding and editing Markers with ui.record_mode, 
     // Seeking to a Marker works in every mode.
     CHECK_FALSE (refusalOf ("select_marker", Running { .song = ActivityKind::idle, .recordMode = true }).has_value());
     CHECK (refusalOf ("select_marker", Running { .song = ActivityKind::pass, .recordMode = true }).has_value());
+}
+
+TEST_CASE ("Record mode refuses making and editing Loops with ui.record_mode, presented; selecting one works in every mode", "[ui][availability][loops]")
+{
+    for (const auto* op : { "add_loop", "mark_loop_start", "mark_loop_end", "resize_loop", "rename_loop", "delete_loop" })
+    {
+        INFO (op);
+        const auto refused = refusalOf (op, Running { .song = ActivityKind::idle, .recordMode = true });
+        REQUIRE (refused.has_value());
+        CHECK (refused->error.code == "ui.record_mode");
+        CHECK (refused->presented);
+        CHECK_FALSE (refusalOf (op, Running { .song = ActivityKind::idle }).has_value());
+        CHECK_FALSE (refusalOf (op, Running { .song = ActivityKind::idle, .transcribing = true }).has_value());
+    }
+    for (const auto* op : { "select_loop", "select_adjacent_loop", "set_looping", "cancel_loop_start" })
+    {
+        INFO (op);
+        CHECK_FALSE (refusalOf (op, Running { .song = ActivityKind::idle, .recordMode = true }).has_value());
+    }
+    CHECK (refusalOf ("select_loop", Running { .song = ActivityKind::pass, .recordMode = true }).has_value());
 }

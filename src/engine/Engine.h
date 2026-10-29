@@ -28,6 +28,15 @@ namespace overdub::engine
 {
 using song::SampleCount;
 
+// A Loop's range in Song samples, [start, end) with start < end (issue #228, ADR 0010).
+struct LoopRange
+{
+    SampleCount start = 0;
+    SampleCount end = 0;
+
+    bool operator== (const LoopRange&) const = default;
+};
+
 class Engine
 {
 public:
@@ -69,6 +78,15 @@ public:
     // The device shape every plan is prepared for, fixed at construction. A device that starts
     // with a different shape needs a new Engine.
     const EngineConfig& configuration() const { return config; }
+
+    // Looping (issue #228), any non-audio thread; heard from the next block. While a range is set
+    // and the transport plays, playback that reaches its end goes on from its start in the same
+    // block: the graph renders the block in spans, so the wrap is sample-continuous, with no gap and
+    // no stale-output silence. The render-ahead wraps first (it reads latencySamples() ahead), and
+    // the position follows. Playback from before the start plays into the range; from at or past its
+    // end it plays straight on. At a Practice Speed the range is wrapped in plan samples
+    // (songToPlanSample). None: no looping. The UI sets it only in Transcribe mode.
+    void setLoop (std::optional<LoopRange> range);
 
     bool isPlaying() const;
     // True while the audio thread captures a Pass.
@@ -137,6 +155,20 @@ private:
     static constexpr SampleCount noSeek = std::numeric_limits<SampleCount>::min();
 
     // Audio thread.
+    // Reads the latest setLoop into heardLoop; keeps the previous one while a write is in progress.
+    void takeLoop() noexcept;
+    // The Loop in plan samples, while it wraps playback that is at plan sample planBase: a Loop is
+    // set, the transport plays and planBase is before the Loop's end.
+    struct PlanLoop
+    {
+        SampleCount start = 0;
+        SampleCount end = 0;
+    };
+    std::optional<PlanLoop> wrappingLoop (SampleCount planBase) const noexcept;
+    // Where plan sample `planBase + offset` plays while heardLoop wraps (see setLoop).
+    SampleCount loopedPlanSample (SampleCount planBase, SampleCount offset) const noexcept;
+    // Renders the block in spans, split where the render position wraps at the Loop's end.
+    std::uint64_t renderLooped (float* const* outputs, const LiveInput& input, int numSamples) noexcept;
     void takePendingPlan (std::uint64_t hostTimeNs) noexcept;
     // Returns true when a seek moved the position this block.
     bool applyTransportCommands (std::uint64_t hostTimeNs) noexcept;
@@ -228,6 +260,13 @@ private:
     std::atomic<bool> publishedRecording { false };
 
     std::atomic<bool> monitoringOn { false };
+
+    // The Loop, as a seqlock written by setLoop (odd sequence = write in progress); end 0 = none.
+    std::atomic<std::uint32_t> loopSequence { 0 };
+    std::atomic<SampleCount> loopStartRequest { 0 };
+    std::atomic<SampleCount> loopEndRequest { 0 };
+    std::optional<LoopRange> heardLoop; // audio thread only
+    std::mutex loopWriteMutex; // serialises setLoop writers; never taken by process()
 
     std::mutex nonRealtimeMutex; // serialises loadSong and housekeeping; never taken by process()
     std::optional<std::uint64_t> lastLoadSummaryNs;

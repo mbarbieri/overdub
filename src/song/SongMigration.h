@@ -46,6 +46,8 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
 //   6 -> 7 (issue #226): the Song gains "focusTrackId": null (no Focus Track), and every Track
 //           "transcribeMute": false and "transcribeSolo": false (the Transcribe Mix).
 //   7 -> 8 (issue #227): the Song gains "markers": [] (no Markers).
+//   8 -> 9 (issue #228): the Song gains "loops": [] (no Loops), "activeLoopId": null and
+//           "looping": false.
 std::span<const MigrationStep> songMigrationSteps();
 
 // migrateDocument with songMigrationSteps().

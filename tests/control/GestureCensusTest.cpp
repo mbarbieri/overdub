@@ -226,6 +226,12 @@ std::vector<Probe> keyProbes()
     addKey ("escape", juce::KeyPress (juce::KeyPress::escapeKey));
     addKey ("return", juce::KeyPress (juce::KeyPress::returnKey));
     addKey ("home", juce::KeyPress (juce::KeyPress::homeKey));
+    // Loops (issue #228): option-left, option-right and option-1..9 select a Loop.
+    const juce::ModifierKeys option { juce::ModifierKeys::altModifier };
+    addKey ("alt+left", juce::KeyPress (juce::KeyPress::leftKey, option, 0));
+    addKey ("alt+right", juce::KeyPress (juce::KeyPress::rightKey, option, 0));
+    for (const auto character : std::string ("123456789"))
+        addKey (std::string ("alt+") + character, juce::KeyPress ((int) character, option, 0));
     // Record mode's double-Space (issue #216): two Spaces at once are within any double-click interval.
     probes.push_back ({ "key:space,space", ComponentPath::windowContent(), [] (juce::Component& window) {
         window.keyPressed (juce::KeyPress (juce::KeyPress::spaceKey));
@@ -279,6 +285,9 @@ struct CensusWorkspace
         run (ui::SongIntent { AddMarker {} });
         run (ui::SongIntent { Seek { 30000 } });
         run (ui::SongIntent { AddMarker {} });
+        // Two Loops (issue #228); the second, made last, is active and looping.
+        run (ui::SongIntent { AddLoop { 2000, 8000 } });
+        run (ui::SongIntent { AddLoop { 20000, 26000 } });
         run (ui::WindowIntent { ShowMode { ui::Mode::record } });
         selectedClip = f.song().song().tracks.front().clips.front().id;
         run (ui::SongIntent { SelectClip { selectedClip } });
@@ -340,8 +349,9 @@ struct CensusWorkspace
         REQUIRE (songAsBuilt());
         const auto view = control::appState (f.content, *f.workspace, std::array<std::string_view, 1> { "view" })["view"];
         const auto differs = [&view, this] (const json::json_pointer& pointer) { return view.value (pointer, json()) != builtView.value (pointer, json()); };
-        // select_clip also clears the selected Marker.
-        if (differs ("/selected_clip"_json_pointer) || differs ("/selected_video_take"_json_pointer) || differs ("/selected_marker"_json_pointer))
+        // select_clip also clears the selected Marker and Loop.
+        if (differs ("/selected_clip"_json_pointer) || differs ("/selected_video_take"_json_pointer) || differs ("/selected_marker"_json_pointer)
+            || differs ("/selected_loop"_json_pointer))
         {
             f.content.run (ui::SongIntent { SelectVideoTake { std::nullopt } });
             f.content.run (ui::SongIntent { SelectClip { selectedClip } });
@@ -351,6 +361,8 @@ struct CensusWorkspace
             f.content.run (ui::SongIntent { SetTimelineView { timeline["first_sample"].get<song::SampleCount>(), timeline["samples_per_pixel"].get<song::SampleCount>() } });
         if (differs ("/transcribe"_json_pointer))
             f.content.run (ui::SongIntent { SetTranscribeView { builtView["transcribe"]["first_sample"].get<song::SampleCount>(), builtView["transcribe"]["samples_per_pixel"].get<song::SampleCount>() } });
+        if (differs ("/loop_start_pending"_json_pointer))
+            f.content.run (ui::SongIntent { CancelLoopStart {} });
         if (differs ("/transcribe_column_visible"_json_pointer))
             f.content.run (ui::WindowIntent { SetTranscribeColumnVisible { builtView["transcribe_column_visible"].get<bool>() } });
         if (differs ("/timeline/take_lanes_unfolded"_json_pointer))
@@ -370,6 +382,10 @@ struct CensusWorkspace
     // The Focus Track and the Transcribe Mix are outside history: ◎, M and S leave no undo step.
     void restoreTranscribeMix()
     {
+        // The active Loop and looping (issue #228) are outside history too: put back directly,
+        // since select_loop also moves the playhead and the view.
+        if (f.song().song().activeLoopId != builtSong.activeLoopId || f.song().song().looping != builtSong.looping)
+            REQUIRE (f.song().setActiveLoop (builtSong.activeLoopId, builtSong.looping).has_value());
         if (f.song().song().focusTrackId != builtSong.focusTrackId)
             f.content.run (ui::SongIntent { SetFocusTrack { builtSong.focusTrackId } });
         for (const auto& built : builtSong.tracks)
@@ -527,6 +543,20 @@ TEST_CASE ("no gesture changes the app state without running an Intent", "[contr
         CHECK (fired ("record/", std::string ("/RecordPage#0/MarkerStrip#0/MarkerFlag#0") + gesture));
     }
     CHECK (fired ("edit/", "/Timeline#0/MarkerStrip#0:click"));
+    // Loops (issue #228): the strip's empty-space drag, each strip's bars, the Loop cards and the keys.
+    CHECK (fired ("edit/", "/Timeline#0/MarkerStrip#0:drag"));
+    CHECK (fired ("transcribe/", "/TranscribePage#0/MarkerStrip#0:drag"));
+    for (const auto* gesture : { ":click", ":drag", ":double_click" })
+    {
+        CHECK (fired ("edit/", std::string ("/Timeline#0/MarkerStrip#0/LoopBar#1") + gesture));
+        CHECK (fired ("transcribe/", std::string ("/TranscribePage#0/MarkerStrip#0/LoopBar#0") + gesture));
+        CHECK (fired ("record/", std::string ("/RecordPage#0/MarkerStrip#0/LoopBar#0") + gesture));
+    }
+    CHECK (fired ("transcribe/", "/LoopList#0/LoopCard#0:click"));
+    CHECK (fired ("transcribe/", "/LoopList#0/LoopCard#1:click"));
+    for (const auto* key : { "key:[", "key:]", "key:l", "key:escape", "key:alt+left", "key:alt+right", "key:alt+1", "key:alt+2", "key:backspace" })
+        for (const auto* scene : { "record/", "edit/", "transcribe/" })
+            CHECK (fired (scene, key));
     CHECK (fired ("transcribe/", "/MarkerList#0/MarkerRow#1:click"));
 }
 

@@ -117,12 +117,20 @@ core::Expected<nlohmann::json> addMarkers (nlohmann::json document)
     document["markers"] = nlohmann::json::array();
     return document;
 }
+
+core::Expected<nlohmann::json> addLoops (nlohmann::json document)
+{
+    document["loops"] = nlohmann::json::array();
+    document["activeLoopId"] = nullptr;
+    document["looping"] = false;
+    return document;
+}
 } // namespace
 
 std::span<const MigrationStep> songMigrationSteps()
 {
     // songFormatVersion must equal songMigrationSteps().size() + 1.
-    static const std::array<MigrationStep, 7> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours, addExportChoices, addTranspose, addTranscribeMix, addMarkers };
+    static const std::array<MigrationStep, 8> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours, addExportChoices, addTranspose, addTranscribeMix, addMarkers, addLoops };
     static_assert (std::tuple_size_v<decltype (steps)> + 1 == songFormatVersion);
     return steps;
 }

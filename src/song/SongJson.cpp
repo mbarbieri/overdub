@@ -327,6 +327,16 @@ json markerToJson (const Marker& marker)
     };
 }
 
+json loopToJson (const Loop& loop)
+{
+    return {
+        { "id", loop.id },
+        { "name", loop.name },
+        { "start", loop.start },
+        { "end", loop.end },
+    };
+}
+
 json videoTakeToJson (const VideoTake& videoTake)
 {
     return {
@@ -435,6 +445,19 @@ Marker readMarker (const Reader& reader)
     };
 }
 
+Loop readLoop (const Reader& reader)
+{
+    auto loop = Loop {
+        .id = reader.string ("id"),
+        .name = reader.string ("name"),
+        .start = reader.integer ("start"),
+        .end = reader.integer ("end"),
+    };
+    if (loop.start < 0 || loop.end <= loop.start)
+        reader.report (reader.childPath ("end"), "expected 0 <= start < end");
+    return loop;
+}
+
 VideoTake readVideoTake (const Reader& reader)
 {
     return VideoTake {
@@ -481,6 +504,7 @@ Song readSong (const Reader& reader)
     song.videoTakes = reader.objects<VideoTake> ("videoTakes", readVideoTake);
     song.transpose = reader.smallInteger ("transpose");
     song.markers = reader.objects<Marker> ("markers", readMarker);
+    song.loops = reader.objects<Loop> ("loops", readLoop);
 
     song.preRoll = readPreRoll (reader, "preRollSeconds");
     song.cameraArmed = reader.boolean ("cameraArmed");
@@ -491,6 +515,8 @@ Song readSong (const Reader& reader)
     song.exportLength = readNamed (reader, "exportLength", videoLengthNames, "expected \"trim_to_video_take\" or \"full_song\"");
     song.exportDestination = reader.string ("exportDestination");
     song.focusTrackId = readOptionalId (reader, "focusTrackId");
+    song.activeLoopId = readOptionalId (reader, "activeLoopId");
+    song.looping = reader.boolean ("looping");
     return song;
 }
 } // namespace
@@ -508,6 +534,7 @@ nlohmann::json songToJson (const Song& song)
         { "videoTakes", arrayToJson (song.videoTakes, videoTakeToJson) },
         { "transpose", song.transpose },
         { "markers", arrayToJson (song.markers, markerToJson) },
+        { "loops", arrayToJson (song.loops, loopToJson) },
         { "preRollSeconds", preRollToSeconds (song.preRoll) },
         { "cameraArmed", song.cameraArmed },
         { "cameraDeviceId", song.cameraDeviceId },
@@ -517,6 +544,8 @@ nlohmann::json songToJson (const Song& song)
         { "exportLength", nameOf (song.exportLength, videoLengthNames) },
         { "exportDestination", song.exportDestination },
         { "focusTrackId", song.focusTrackId.has_value() ? json (*song.focusTrackId) : json (nullptr) },
+        { "activeLoopId", song.activeLoopId.has_value() ? json (*song.activeLoopId) : json (nullptr) },
+        { "looping", song.looping },
     };
 }
 

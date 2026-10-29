@@ -247,3 +247,38 @@ TEST_CASE ("K adds a Marker, and backspace or forward delete deletes the selecte
         CHECK (core::operationToJson (*intent) == songIntent (intent::Edit { intent::DeleteMarker { "marker-1" } }));
     }
 }
+
+TEST_CASE ("the bracket keys mark a Loop, Esc cancels a pending start, L toggles looping, option-arrows and option-1..9 select a Loop, and backspace deletes the Loop to delete", "[ui][intent][keys][loops]")
+{
+    const auto runs = [] (KeyChord key, const KeyContext& context) -> std::optional<nlohmann::json> {
+        const auto intent = intentForKey (key, context);
+        if (! intent.has_value())
+            return std::nullopt;
+        return core::operationToJson (*intent);
+    };
+    CHECK (keyRuns (KeyChord { '[' }) == songIntent (intent::MarkLoopStart {}));
+    CHECK (keyRuns (KeyChord { ']' }) == songIntent (intent::MarkLoopEnd {}));
+    CHECK (keyRuns (KeyChord { escapeCharacter }) == std::nullopt);
+    CHECK (runs (KeyChord { escapeCharacter }, KeyContext { .loopStartPending = true }) == songIntent (intent::CancelLoopStart {}));
+
+    CHECK (keyRuns (KeyChord { 'l' }) == songIntent (intent::SetLooping { true }));
+    CHECK (runs (KeyChord { 'L' }, KeyContext { .looping = true }) == songIntent (intent::SetLooping { false }));
+
+    const KeyContext loops { .loopIds = { "loop-a", "loop-b" } };
+    const KeyChord optionLeft { .character = leftArrowCharacter, .option = true };
+    const KeyChord optionRight { .character = rightArrowCharacter, .option = true };
+    CHECK (runs (optionLeft, loops) == songIntent (intent::SelectAdjacentLoop { Direction::back }));
+    CHECK (runs (optionRight, loops) == songIntent (intent::SelectAdjacentLoop { Direction::forward }));
+    CHECK (runs (KeyChord { .character = '1', .option = true }, loops) == songIntent (intent::SelectLoop { "loop-a" }));
+    CHECK (runs (KeyChord { .character = '2', .option = true }, loops) == songIntent (intent::SelectLoop { "loop-b" }));
+    CHECK (runs (KeyChord { .character = '3', .option = true }, loops) == std::nullopt);
+    CHECK (runs (KeyChord { .character = '0', .option = true }, loops) == std::nullopt);
+    // Option-1 is no mode key, and 1 alone still is.
+    CHECK (keyRuns (KeyChord { '1' }) == windowIntent (intent::ShowMode { Mode::record }));
+
+    const KeyContext toDelete { .loopToDelete = song::Id ("loop-a") };
+    CHECK (runs (KeyChord { backspaceCharacter }, toDelete) == songIntent (intent::Edit { intent::DeleteLoop { "loop-a" } }));
+    // A selected Marker goes first.
+    CHECK (runs (KeyChord { forwardDeleteCharacter }, KeyContext { .selectedMarker = song::Id ("m"), .loopToDelete = song::Id ("loop-a") })
+           == songIntent (intent::Edit { intent::DeleteMarker { "m" } }));
+}
