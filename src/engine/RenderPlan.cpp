@@ -97,27 +97,29 @@ SourceAudio loadSource (const song::ClipSource& source, const juce::File& file, 
     return audio;
 }
 
-    // Loads each distinct source file once per plan, keyed by its full path (empty when the Song
-    // lacks the source, or it has no render at a Practice Speed).
+// Loads each distinct source file once per plan, keyed by its full path (empty when the Song
+// lacks the source). A source with no render at a Practice Speed, or none on the octave-shifted
+// Track, plays silence.
 class SourceLoader
 {
 public:
     SourceLoader (const song::Song& s, const juce::File& root, const PracticePlayback& p) : song (s), packageRoot (root), practice (p) {}
 
-    SourceAudio load (const song::ClipSource& source)
+    SourceAudio load (const song::ClipSource& source, const song::Id& trackId)
     {
+        if (practice.octaveShifted.has_value() && practice.octaveShifted->trackId == trackId)
+        {
+            const auto& renders = practice.octaveShifted->renders;
+            const auto render = renders.find (source);
+            return render != renders.end() ? loadCached (source, render->second.getFullPathName().toStdString(), render->second) : nullptr;
+        }
         const auto atPracticeSpeed = practice.speedPercent != song::normalPracticeSpeed;
         if (atPracticeSpeed && ! practice.renders.contains (source))
             return nullptr;
         const auto mediaFile = atPracticeSpeed ? std::optional (practice.renders.at (source)) : song::playedFileFor (packageRoot, song, source);
-        const auto path = mediaFile.has_value() ? mediaFile->getFullPathName().toStdString() : std::string {};
-        if (const auto cached = loaded.find (path); cached != loaded.end())
-            return cached->second;
-
-        const auto file = mediaFile.value_or (packageRoot.getChildFile ("<unknown " + juce::String (std::string (song::toString (source.kind))) + " " + juce::String (source.id) + ">"));
-        auto audio = loadSource (source, file, song.sampleRate);
-        loaded.emplace (path, audio);
-        return audio;
+        if (mediaFile.has_value())
+            return loadCached (source, mediaFile->getFullPathName().toStdString(), *mediaFile);
+        return loadCached (source, {}, packageRoot.getChildFile ("<unknown " + juce::String (std::string (song::toString (source.kind))) + " " + juce::String (source.id) + ">"));
     }
 
 private:
@@ -125,6 +127,15 @@ private:
     juce::File packageRoot;
     const PracticePlayback& practice;
     std::map<std::string, SourceAudio> loaded;
+
+    SourceAudio loadCached (const song::ClipSource& source, const std::string& path, const juce::File& file)
+    {
+        if (const auto cached = loaded.find (path); cached != loaded.end())
+            return cached->second;
+        auto audio = loadSource (source, file, song.sampleRate);
+        loaded.emplace (path, audio);
+        return audio;
+    }
 };
 
 // The Clip in plan time at `speedPercent`: every Song time and length × 100 / speedPercent, so its
@@ -153,7 +164,7 @@ std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLo
     std::vector<SourceAudio> sources;
     for (const auto& clip : track.clips)
     {
-        auto audio = loader.load (clip.source);
+        auto audio = loader.load (clip.source, track.id);
         layered.push_back (layeredAt (clip, speedPercent, audio));
         if (audio != nullptr)
             sources.push_back (std::move (audio));

@@ -45,10 +45,22 @@ using MonitoredTracks = std::optional<std::set<song::Id>>;
 // speed the plan runs in plan time, Song time × 100 / speedPercent: each Clip source plays its
 // render listed here (a float WAV at the Song's rate, about length × 100 / speedPercent long), and a
 // source without one plays silence. Clips, fades and gains keep their Song times.
+//
+// `octaveShifted` (issue #233, ADR 0010): the one Track heard through octave-shift renders (the
+// Focus Track in Transcribe mode), at any speed. Each of its Clip sources plays its render listed
+// there (made at speedPercent, as long as `renders`' would be), and one without a render plays
+// silence; `renders` is not used for that Track.
+struct OctaveShiftedTrack
+{
+    song::Id trackId;
+    std::map<song::ClipSource, juce::File> renders;
+};
+
 struct PracticePlayback
 {
     int speedPercent = song::normalPracticeSpeed;
     std::map<song::ClipSource, juce::File> renders;
+    std::optional<OctaveShiftedTrack> octaveShifted;
 };
 
 // The plan sample that plays Song sample `songSample` at `speedPercent`, and back (rounded to the

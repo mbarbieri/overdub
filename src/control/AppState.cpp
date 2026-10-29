@@ -74,6 +74,8 @@ json transportSection (const ui::OpenSong* song)
         { "heard_practice_speed", song->heardPracticeSpeed() },
         { "practice_rendering", song->isPracticeRendering() },
         { "transcribe_mix_heard", song->isTranscribing() },
+        { "octave_shifted_track", orNull (song->octaveShiftedTrack()) },
+        { "octave_rendering", song->isOctaveRendering() },
         { "heard_loop", heardLoopJson (song->heardLoop()) },
     };
 }

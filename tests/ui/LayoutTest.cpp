@@ -643,6 +643,18 @@ TEST_CASE ("Transcribe mode stacks the overview over the ruler and the waveform,
     CHECK (column.transposeCentsField.getWidth() == column.transposeField.getWidth());
     CHECK (column.transposeCentsField.getRight() < column.transposeCentsUnit.getX());
     CHECK (column.transposeCentsUnit.getRight() <= column.transposeSpinner.getX());
+    // The Focus Track's octave shift (issue #233): a caption over −1, 0, +1, +2 and a spinner,
+    // between Transpose and the Transcribe Mix.
+    checkInsideAndApart (shown.column.withZeroOrigin(), { column.octaveButtons[0], column.octaveButtons[1], column.octaveButtons[2], column.octaveButtons[3], column.octaveSpinner });
+    CHECK (column.transposeField.getBottom() < column.octaveCaption.getY());
+    CHECK (column.octaveCaption.getBottom() <= column.octaveButtons[0].getY());
+    for (std::size_t i = 1; i < column.octaveButtons.size(); ++i)
+    {
+        CHECK (column.octaveButtons[i].getY() == column.octaveButtons[0].getY());
+        CHECK (column.octaveButtons[i - 1].getRight() < column.octaveButtons[i].getX());
+    }
+    CHECK (column.octaveButtons[3].getRight() <= column.octaveSpinner.getX());
+    CHECK (column.octaveButtons[0].getBottom() < column.mixCaption.getY());
 }
 
 TEST_CASE ("the Loop/Marker strip sits right above the ruler in Edit and Transcribe, and right above the overview in Record", "[ui][layout][markers]")

@@ -50,6 +50,7 @@ OpenSong::~OpenSong()
 {
     for (const auto& error : detachAudio())
         core::logError (error);
+    octaveRun.reset();
     practiceRun.reset();
     practiceFolder.deleteRecursively();
     // Closing the Song waits for a movie still completing (ADR 0003, issue #90 amendment).
@@ -366,10 +367,12 @@ void OpenSong::setTranscribing (bool on)
 {
     if (on == transcribing)
         return;
+    const auto shiftedBefore = octaveShiftedTrack();
     transcribing = on;
     core::logEvent (core::Level::debug, "ui.transcribe_mix_heard", { { "heard", on } });
-    if (binding.engine != nullptr && ! binding.engine->setMix (heardSong()))
+    if (binding.engine != nullptr && (octaveShiftedTrack() != shiftedBefore || ! binding.engine->setMix (heardSong())))
         reloadEngine();
+    followOctaveShift();
     syncEngineLoop();
     // Record and Edit play at 100%; Transcribe brings back the looping Loop's speed (ADR 0010).
     if (! on && practiceTarget != song::normalPracticeSpeed && practiceSpeedMayChange())
@@ -424,10 +427,13 @@ core::Expected<void> OpenSong::changeTranscribeMix (core::Expected<song::Song> c
         return std::unexpected (std::move (changed.error()));
     if (*changed == song())
         return {};
+    const auto shiftedBefore = std::pair (octaveShiftedTrack(), song::focusOctaveShift (song()));
     package_->changeWithoutHistory (std::move (*changed));
-    if (binding.engine != nullptr && ! binding.engine->setMix (heardSong()))
+    const auto shiftChanged = std::pair (octaveShiftedTrack(), song::focusOctaveShift (song())) != shiftedBefore;
+    if (binding.engine != nullptr && (shiftChanged || ! binding.engine->setMix (heardSong())))
         reloadEngine();
     syncEngineLoop();
+    followOctaveShift();
     return {};
 }
 
@@ -439,6 +445,24 @@ core::Expected<void> OpenSong::setFocusTrack (const std::optional<song::Id>& tra
     if (changed.has_value())
         core::logEvent (core::Level::info, "ui.focus_track_set", { { "track_id", trackId.value_or ("") } });
     return changed;
+}
+
+core::Expected<void> OpenSong::setOctaveShift (const song::Id& trackId, int octaves)
+{
+    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
+        return std::unexpected (std::move (*refused));
+    auto changed = changeTranscribeMix (song::setOctaveShift (song(), trackId, octaves));
+    if (changed.has_value())
+        core::logEvent (core::Level::info, "ui.octave_shift_set", { { "track_id", trackId }, { "octaves", octaves } });
+    return changed;
+}
+
+std::optional<song::Id> OpenSong::octaveShiftedTrack() const
+{
+    const auto* track = song::focusTrack (song());
+    if (! transcribing || track == nullptr || track->octaveShift == 0)
+        return std::nullopt;
+    return track->id;
 }
 
 core::Expected<void> OpenSong::setTranscribeMute (const song::Id& trackId, bool mute)
@@ -744,6 +768,8 @@ std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point no
         errors.push_back (std::move (*error));
     if (auto error = advancePracticeSpeed (now))
         errors.push_back (std::move (*error));
+    if (auto error = advanceOctaveShift (now))
+        errors.push_back (std::move (*error));
     for (auto& error : handleCameraChanges())
         errors.push_back (std::move (error));
     if (auto* exporting = std::get_if<ExportActivity> (&activity))
@@ -1003,6 +1029,7 @@ void OpenSong::updateEngine (const song::Song& before)
     reloadEngine();
     followTranspose();
     followPracticeSpeed();
+    followOctaveShift();
 }
 
 void OpenSong::reloadEngine()
@@ -1088,7 +1115,98 @@ std::optional<core::Error> OpenSong::advanceTranspose (song::SongPackage::Clock:
 
 engine::PracticePlayback OpenSong::heardPracticePlayback() const
 {
-    return { .speedPercent = heardPractice.speedPercent, .renders = song::practiceRendersOf (practiceFolder, song(), heardPractice, practiceLoopWindow()) };
+    return {
+        .speedPercent = heardPractice.speedPercent,
+        .renders = song::practiceRendersOf (practiceFolder, song(), heardPractice, practiceLoopWindow()),
+        .octaveShifted = heardOctaveShift(),
+    };
+}
+
+song::PracticeRenderKey OpenSong::octaveKey() const
+{
+    // At 100% the Backing Tracks play at the heard Transpose; at another speed, at the renders'.
+    const auto transpose = heardPractice.speedPercent == song::normalPracticeSpeed ? heardShift : heardPractice.transpose;
+    return { .speedPercent = heardPractice.speedPercent, .transpose = transpose, .octaveShift = song::focusOctaveShift (song()) };
+}
+
+song::Song OpenSong::octaveShiftedSong (const song::Id& trackId) const
+{
+    auto shifted = song();
+    std::erase_if (shifted.tracks, [&trackId] (const song::Track& track) { return track.id != trackId; });
+    return shifted;
+}
+
+std::optional<engine::OctaveShiftedTrack> OpenSong::heardOctaveShift() const
+{
+    const auto trackId = octaveShiftedTrack();
+    if (! trackId.has_value())
+        return std::nullopt;
+    return engine::OctaveShiftedTrack { .trackId = *trackId, .renders = song::practiceRendersOf (octaveRenderFolder(), octaveShiftedSong (*trackId), octaveKey()) };
+}
+
+bool OpenSong::octaveRunIsWanted() const
+{
+    return octaveShiftedTrack() == octaveRunTrackId && octaveRun->key() == octaveKey();
+}
+
+std::optional<core::Error> OpenSong::advanceOctaveShift (song::SongPackage::Clock::time_point now)
+{
+    const auto trackId = octaveShiftedTrack();
+    const auto key = trackId.has_value() ? octaveKey() : song::PracticeRenderKey {};
+    if (trackId != failedOctaveTrackId || key != failedOctaveKey)
+        failedOctaveRenders.clear();
+    std::optional<core::Error> failure;
+    if (octaveRun != nullptr)
+    {
+        if (! octaveRunIsWanted())
+        {
+            octaveRun->cancel (now);
+            octaveRun.reset();
+        }
+        else if (auto ended = octaveRun->advance (now))
+        {
+            const auto failedSource = octaveRun->failedSource();
+            octaveRun.reset();
+            if (! ended->has_value())
+            {
+                failure = ended->error();
+                failedOctaveTrackId = trackId;
+                failedOctaveKey = key;
+                failedOctaveRenders.insert (*failedSource);
+                reloadEngine(); // the renders made before the failed one play
+            }
+            else
+            {
+                reloadEngine(); // the renders made play now
+                if (const auto deleted = song::deletePracticeRendersExcept (octaveRenderFolder(), octaveShiftedSong (*trackId), key); deleted > 0)
+                    core::logEvent (core::Level::info, "ui.octave_renders_deleted", { { "count", deleted } });
+            }
+        }
+        else
+            return std::nullopt;
+    }
+    if (! trackId.has_value())
+        return failure;
+
+    auto missing = song::missingPracticeRenders (package_->location(), octaveRenderFolder(), octaveShiftedSong (*trackId), key);
+    std::erase_if (missing, [this] (const song::PracticeRenderJob& job) { return failedOctaveRenders.contains (job.source); });
+    if (! missing.empty())
+    {
+        // A folder that cannot be made fails the render's write, handed back by the run.
+        octaveRenderFolder().createDirectory();
+        octaveRun = song::PracticeSpeedRun::start (song().sampleRate, key, std::nullopt, std::move (missing), now);
+        octaveRunTrackId = *trackId;
+    }
+    return failure;
+}
+
+void OpenSong::followOctaveShift()
+{
+    if (octaveRun != nullptr && octaveRunIsWanted())
+        return;
+    // Only a run that ends fails: here none runs, or advanceOctaveShift cancels it.
+    const auto failure = advanceOctaveShift (song::SongPackage::Clock::now());
+    OVERDUB_CHECK (! failure.has_value(), "ui.octave_shift_failed_without_run");
 }
 
 std::optional<song::SampleRange> OpenSong::practiceLoopWindow() const

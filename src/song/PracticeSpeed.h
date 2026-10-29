@@ -26,6 +26,10 @@
 // outside them, named by that source range:
 //   take-<id>.speed80.range12000-96000.wav
 // A source's whole render, once there, is preferred to any range render.
+// The Focus Track's octave shift (issue #233, ADR 0010) is rendered the same way, in the same one
+// pass, into a key with an octaveShift, at any Practice Speed (100% included):
+//   take-<id>.octave+1.speed100.wav
+//   backing-<id>.transpose+3.octave-1.speed80.wav
 namespace overdub::song
 {
 inline constexpr int normalPracticeSpeed = 100; // the Song's own speed: nothing is rendered
@@ -57,15 +61,20 @@ SampleRange loopRenderWindow (SampleCount loopStart, SampleCount loopEnd, int sa
 // last, across every Track. None when no Clip of it plays there.
 std::optional<SampleRange> sourceRangeIn (const Song& song, const ClipSource& source, SampleRange window);
 
-// What a set of renders is made for: a Practice Speed, and the Transpose its Backing Tracks are at.
-// The default (100%) needs no render.
+// What a set of renders is made for: a Practice Speed, the Transpose its Backing Tracks are at, and
+// the octave shift every source is shifted by (the Focus Track's, issue #233). 100% with no octave
+// shift needs no render.
 struct PracticeRenderKey
 {
     int speedPercent = normalPracticeSpeed;
     Transpose transpose;
+    int octaveShift = 0;
 
     bool operator== (const PracticeRenderKey&) const = default;
 };
+
+// Whether sources play renders at `key`: not at 100% with no octave shift.
+bool needsPracticeRender (PracticeRenderKey key);
 
 // A source's render at `key` in `folder` (see the header comment).
 juce::File practiceRenderFileFor (const juce::File& folder, const ClipSource& source, PracticeRenderKey key);
@@ -78,7 +87,9 @@ struct PracticeRenderJob
     ClipSource source;
     juce::File from;   // the Take's file, or the Backing Track's derived WAV
     juce::File to;     // practiceRenderFileFor
-    Transpose transpose; // the key's for a Backing Track, none ({}) for a Take
+    // The key's Transpose for a Backing Track, none ({}) for a Take; with the key's octave shift
+    // as 12 semitones per octave added to either.
+    Transpose transpose;
     // Set for a Loop's render: only these source samples are rendered (renderAtPracticeSpeed).
     std::optional<SampleRange> sourceRange = std::nullopt;
 };
@@ -86,7 +97,7 @@ struct PracticeRenderJob
 // The renders `song` lacks at `key`, in Track and Clip order: one per distinct source some Clip
 // plays whose file is there and whose whole render is not. With a Loop's `window`
 // (loopRenderWindow), only those whose Clips play in it, each over sourceRangeIn (window), and only
-// when that range render is not there either. None at 100%.
+// when that range render is not there either. None unless needsPracticeRender (key).
 std::vector<PracticeRenderJob> missingPracticeRenders (const juce::File& packageRoot,
                                                        const juce::File& folder,
                                                        const Song& song,
@@ -106,7 +117,7 @@ int deletePracticeRendersExcept (const juce::File& folder, const Song& song, Pra
 // the Song may change while it runs. `loopWindow` is the Loop's window (loopRenderWindow) it was
 // started for, none outside a Loop: the owner cancels a run whose key or window is no longer
 // wanted. Its scope is "loop" when its jobs are range renders, else "song". Logs
-// song.practice_speed_started (info: speed_percent, semitones, cents, renders, scope, and for a "loop"
+// song.practice_speed_started (info: speed_percent, semitones, cents, octave_shift, renders, scope, and for a "loop"
 // run window_start and window_end in Song samples) and, once every render is written, song.practice_speed_rendered (info: the
 // same and duration_ms). The first failed render ends the run (its Error with source_kind and
 // source_id). cancel() stops the worker after its current block, logging

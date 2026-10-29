@@ -106,6 +106,7 @@ inline Song fullyPopulatedSong()
             .solo = true,
             .armed = true,
             .transcribeMute = true,
+            .octaveShift = 2,
             .inputChannels = { 2, 3 },
             .insertChain = { insertSlot ("slot-1", "aaaa"), insertSlot ("slot-2", "abab") },
             .clips = {

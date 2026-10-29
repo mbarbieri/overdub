@@ -609,6 +609,17 @@ struct SetTranscribeSolo // S on a row of the Transcribe column
     static constexpr auto fields = std::tuple { field ("track_id", &SetTranscribeSolo::trackId), field ("solo", &SetTranscribeSolo::solo) };
 };
 
+// −1, 0, +1 or +2 under the Focus Track in the right column (issue #233): the Track's own octave
+// shift, heard only while it is the Focus Track in Transcribe mode.
+struct SetOctaveShift
+{
+    static constexpr std::string_view op = "set_octave_shift";
+    song::Id trackId;
+    int octaves = 0;
+    bool operator== (const SetOctaveShift&) const = default;
+    static constexpr auto fields = std::tuple { field ("track_id", &SetOctaveShift::trackId), field ("octaves", &SetOctaveShift::octaves) };
+};
+
 //==============================================================================
 // Song: Markers (issue #227, ADR 0010). Moving, renaming and deleting one are plain edits
 // (intent::Edit); Record mode refuses all four (ui/Availability.h).
@@ -956,7 +967,7 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::AddTrack, intent::ImportFiles, intent::DeleteTrack, intent::MoveTrack,
                                 intent::SetArmed, intent::SetInputChannels, intent::SetMonitoring,
                                 intent::StartSeparation, intent::CancelRun, intent::SetTranspose, intent::SetPracticeSpeed,
-                                intent::SetFocusTrack, intent::SetTranscribeMute, intent::SetTranscribeSolo,
+                                intent::SetFocusTrack, intent::SetTranscribeMute, intent::SetTranscribeSolo, intent::SetOctaveShift,
                                 intent::AddMarker, intent::SelectMarker,
                                 intent::AddLoop, intent::MarkLoopStart, intent::MarkLoopEnd, intent::CancelLoopStart,
                                 intent::SelectLoop, intent::SelectAdjacentLoop, intent::SetLooping,

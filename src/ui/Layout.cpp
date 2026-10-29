@@ -527,6 +527,15 @@ TranscribeColumnLayout transcribeColumnLayout (juce::Rectangle<int> column)
     layout.transposeCentsField = cents.field;
     layout.transposeCentsUnit = cents.unit;
     layout.transposeSpinner = cents.spinner;
+    area.removeFromTop (gap);
+    auto octaveRow = area.removeFromTop (fieldRowHeight);
+    layout.octaveCaption = octaveRow.removeFromTop (fieldCaptionHeight);
+    for (auto& button : layout.octaveButtons)
+    {
+        button = octaveRow.removeFromLeft (transcribeOctaveButtonWidth);
+        octaveRow.removeFromLeft (2);
+    }
+    layout.octaveSpinner = octaveRow.removeFromLeft (fieldSpinnerWidth).withSizeKeepingCentre (fieldSpinnerWidth, fieldSpinnerWidth);
     area.removeFromTop (2 * gap);
     layout.mixCaption = area.removeFromTop (fieldCaptionHeight);
     area.removeFromTop (gap);

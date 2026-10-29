@@ -489,6 +489,27 @@ TEST_CASE ("set_focus_track takes a Track id, or null or no track_id for none, a
     CHECK (unknown.at ("error").at ("code") == "song.track_not_found");
 }
 
+TEST_CASE ("set_octave_shift takes a Track id and the octaves, -1 to +2, outside history", "[control][intent_ops][transcribe][octave]")
+{
+    SocketToWindow socket;
+    const auto bandId = socket.f.trackNamed ("Band Mix").id;
+    const auto undoLabel = socket.f.openSong->package().undoLabel();
+
+    CHECK (socket.request (R"({"id": 1, "op": "set_octave_shift", "track_id": ")" + bandId + R"(", "octaves": 2})").at ("ok") == true);
+    CHECK (socket.f.trackNamed ("Band Mix").octaveShift == 2);
+    CHECK (socket.request (R"({"id": 2, "op": "set_octave_shift", "track_id": ")" + bandId + R"(", "octaves": -1})").at ("ok") == true);
+    CHECK (socket.f.trackNamed ("Band Mix").octaveShift == -1);
+    CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
+
+    const auto tooHigh = socket.request (R"({"id": 3, "op": "set_octave_shift", "track_id": ")" + bandId + R"(", "octaves": 3})");
+    CHECK (tooHigh.at ("ok") == false);
+    CHECK (tooHigh.at ("error").at ("code") == "song.octave_shift_out_of_range");
+    const auto missing = socket.request (R"({"id": 4, "op": "set_octave_shift", "track_id": ")" + bandId + R"("})");
+    CHECK (missing.at ("ok") == false);
+    CHECK (missing.at ("error").at ("code") == "control.bad_field");
+    CHECK (socket.f.trackNamed ("Band Mix").octaveShift == -1);
+}
+
 TEST_CASE ("add_marker replies with the new Marker's id, select_marker seeks to it, and move_marker, rename_marker and delete_marker each take one undo step", "[control][intent_ops][markers]")
 {
     SocketToWindow socket;

@@ -140,6 +140,7 @@ target_sources(overdub_tests PRIVATE
     ui/TranscribeGeometryTest.cpp
     ui/TranscribeModeTest.cpp
     ui/TranscribeMixTest.cpp
+    ui/OctaveShiftTest.cpp
     ui/TrackColoursUiTest.cpp
     ui/TrackReorderUiTest.cpp
     ui/TrackRowEditsTest.cpp

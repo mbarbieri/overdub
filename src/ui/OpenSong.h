@@ -149,6 +149,16 @@
 // changes (another Loop, a moved one, looping or Transcribe mode turned off) and started again
 // for it; outside a Loop the whole Song renders as before.
 //
+// The octave shift (issue #233, ADR 0010): each Track keeps its own (song::Track::octaveShift,
+// outside history), and only the Focus Track's is heard, only while transcribing
+// (octaveShiftedTrack()). That Track's sources then play renders made by a second
+// song::PracticeSpeedRun into the "octave" folder inside practiceRenderFolder(), in one pass from the
+// derived audio at the heard Practice Speed and Transpose plus the octaves. Unlike a Practice Speed
+// change, the shift is heard at once: a source with no render yet plays silence until its run ends
+// (isOctaveRendering(), the spinner). A failed render is handed back by poll() once
+// (song.practice_render_failed; the renders made before it play) and not tried again until the Track, its shift or the heard key
+// changes.
+//
 // Message thread only.
 namespace overdub::ui
 {
@@ -324,6 +334,14 @@ public:
     core::Expected<void> setFocusTrack (const std::optional<song::Id>& trackId);
     core::Expected<void> setTranscribeMute (const song::Id& trackId, bool mute);
     core::Expected<void> setTranscribeSolo (const song::Id& trackId, bool solo);
+    // A Track's octave shift, -1..+2 (see the header comment): a Song setting outside history.
+    // Logs ui.octave_shift_set (info: track_id, octaves). Errors: refusal()'s,
+    // song.octave_shift_out_of_range, song.track_not_found.
+    core::Expected<void> setOctaveShift (const song::Id& trackId, int octaves);
+    // The Track heard octave-shifted: the Focus Track while transcribing, when its shift is not 0.
+    std::optional<song::Id> octaveShiftedTrack() const;
+    // An octave-shift render runs (the octave control's spinner).
+    bool isOctaveRendering() const { return octaveRun != nullptr; }
 
     // Loops (issue #228, ADR 0010). The active Loop and looping are Song settings outside history
     // (song.json, no undo step, song/LoopEdits.h). The engine loops (Engine::setLoop) only while
@@ -477,6 +495,20 @@ private:
     std::optional<core::Error> advancePracticeSpeed (song::SongPackage::Clock::time_point now);
     // advancePracticeSpeed now, unless a run for the wanted key runs (poll() hands back how it ends).
     void followPracticeSpeed();
+    // The key the octave-shifted Track's renders are made for: the heard Practice Speed and
+    // Transpose, and its octave shift.
+    song::PracticeRenderKey octaveKey() const;
+    // The Song with only the octave-shifted Track: the sources its renders are of.
+    song::Song octaveShiftedSong (const song::Id& trackId) const;
+    juce::File octaveRenderFolder() const { return practiceFolder.getChildFile ("octave"); }
+    // What the engine plays for the octave-shifted Track: its renders that are there.
+    std::optional<engine::OctaveShiftedTrack> heardOctaveShift() const;
+    // Starts, finishes or cancels octave-shift renders (see the header comment). Returns a failed
+    // render's Error.
+    std::optional<core::Error> advanceOctaveShift (song::SongPackage::Clock::time_point now);
+    // advanceOctaveShift now, unless the wanted run runs (poll() hands back how it ends).
+    void followOctaveShift();
+    bool octaveRunIsWanted() const;
     // Advances a running conversion; once it ends, updates the engine and returns its Error.
     std::optional<core::Error> advanceConversion (song::SongPackage::Clock::time_point now);
     // After a history change: detaches the audio when the rate changed since `before`, else setMix
@@ -545,6 +577,13 @@ private:
     juce::File practiceFolder;
     // After practiceFolder: its run writes there, and is cancelled before the folder is deleted.
     std::unique_ptr<song::PracticeSpeedRun> practiceRun;
+    // The octave-shifted Track's renders (see the header comment), after practiceFolder too.
+    std::unique_ptr<song::PracticeSpeedRun> octaveRun;
+    song::Id octaveRunTrackId;
+    // The sources whose render failed for that Track and key: not rendered again until either changes.
+    std::optional<song::Id> failedOctaveTrackId;
+    song::PracticeRenderKey failedOctaveKey;
+    std::set<song::ClipSource> failedOctaveRenders;
     // Last: destroyed first, so a running export stops rendering before the plugins and the package
     // go, and a running Separation (its helper killed, its output folder deleted) or conversion (its
     // files deleted) is cancelled before the package.

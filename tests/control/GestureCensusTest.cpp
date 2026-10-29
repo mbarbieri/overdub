@@ -379,7 +379,8 @@ struct CensusWorkspace
         restoreTranscribeMix();
     }
 
-    // The Focus Track and the Transcribe Mix are outside history: ◎, M and S leave no undo step.
+    // The Focus Track, the Transcribe Mix and the octave shifts are outside history: ◎, M, S and
+    // the octave buttons leave no undo step.
     void restoreTranscribeMix()
     {
         // The active Loop and looping (issue #228) are outside history too: put back directly,
@@ -397,6 +398,8 @@ struct CensusWorkspace
                 f.content.run (ui::SongIntent { SetTranscribeMute { built.id, built.transcribeMute } });
             if (current->transcribeSolo != built.transcribeSolo)
                 f.content.run (ui::SongIntent { SetTranscribeSolo { built.id, built.transcribeSolo } });
+            if (current->octaveShift != built.octaveShift)
+                f.content.run (ui::SongIntent { SetOctaveShift { built.id, built.octaveShift } });
         }
     }
 
