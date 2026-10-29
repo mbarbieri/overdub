@@ -36,7 +36,8 @@ struct DeletedTrack
     std::string label; // "Delete Track Guitar"
 };
 
-// The Song without the Track: its Clips, mix and Insert Chain go with it. The Song's Takes and
+// The Song without the Track: its Clips, mix, Transcribe Mix and Insert Chain go with it, and it is
+// no longer the Focus Track (issue #226). The Song's Takes and
 // Backing Tracks stay (media is never deleted), so a deleted Track's Takes dangle (Take::trackId).
 // Errors: song.track_not_found (track_id).
 core::Expected<DeletedTrack> deleteTrack (Song song, const Id& trackId);

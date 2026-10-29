@@ -1,14 +1,18 @@
 #include "ui/TranscribePage.h"
 
+#include "engine/MixLaw.h"
 #include "song/PracticeSpeed.h"
+#include "song/TranscribeMix.h"
 #include "song/Transpose.h"
 #include "ui/Colours.h"
 #include "ui/Layout.h"
+#include "ui/MuteSoloButtons.h"
 #include "ui/RecordView.h"
 #include "ui/TranscribeGeometry.h"
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 #include <utility>
 
 namespace overdub::ui
@@ -105,14 +109,16 @@ void TranscribeOverview::mouseDrag (const juce::MouseEvent& event)
 }
 
 //==============================================================================
-void TranscribeWave::show (std::vector<song::PeakRange> newColumns, TimelineView newView, int newSampleRate, song::SampleCount newPlayhead)
+void TranscribeWave::show (std::vector<song::PeakRange> newColumns, TimelineView newView, int newSampleRate, song::SampleCount newPlayhead, juce::String newLabel, juce::Colour newLabelColour)
 {
-    if (newColumns == columns && newView == view && newSampleRate == sampleRate && newPlayhead == playhead)
+    if (newColumns == columns && newView == view && newSampleRate == sampleRate && newPlayhead == playhead && newLabel == shownLabel && newLabelColour == shownLabelColour)
         return;
     columns = std::move (newColumns);
     view = newView;
     sampleRate = std::max (1, newSampleRate);
     playhead = newPlayhead;
+    shownLabel = std::move (newLabel);
+    shownLabelColour = newLabelColour;
     repaint();
 }
 
@@ -143,6 +149,15 @@ void TranscribeWave::paint (juce::Graphics& g)
     }
 
     paintColumns (g, columns, bounds.reduced (0, 8), colours::backingClip.brighter (0.4f));
+
+    // The name of what the waveform shows, over its top-left corner.
+    g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    const auto labelWidth = juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), shownLabel) + 12;
+    const juce::Rectangle<int> labelArea { bounds.getX() + 8, bounds.getY() + 8, labelWidth, 20 };
+    g.setColour (juce::Colours::black.withAlpha (0.65f));
+    g.fillRect (labelArea);
+    g.setColour (shownLabelColour);
+    g.drawText (shownLabel, labelArea.reduced (6, 0), juce::Justification::centredLeft);
 
     const auto x = xForSample (view, playhead);
     if (x >= 0 && x < getWidth())
@@ -188,6 +203,66 @@ void TranscribeWave::mouseMagnify (const juce::MouseEvent& event, float scaleFac
 }
 
 //==============================================================================
+TranscribeTrackRow::TranscribeTrackRow (song::Id trackId)
+    : focusButton (juce::String::fromUTF8 ("\xe2\x97\x8e")), // ◎
+      id (std::move (trackId))
+{
+    setUpMuteSoloButtons (muteButton, soloButton, [this] { return muted; }, [this] { return soloed; }, onMute, onSolo);
+    focusButton.setColour (juce::TextButton::buttonOnColourId, juce::Colours::white);
+    focusButton.setColour (juce::TextButton::textColourOnId, colours::background);
+    focusButton.setWantsKeyboardFocus (false);
+    focusButton.setTooltip ("Focus Track");
+    focusButton.onClick = [this] {
+        if (onFocus)
+            onFocus (! focused);
+    };
+    for (auto* button : { &focusButton, &muteButton, &soloButton })
+        addAndMakeVisible (button);
+}
+
+void TranscribeTrackRow::show (const song::Track& track, bool isFocus, bool isHeard, bool enabled)
+{
+    const auto newName = juce::String::fromUTF8 (track.name.c_str());
+    const auto newColour = trackColour (track);
+    if (newName != name || newColour != colour || isFocus != focused || isHeard != heard)
+        repaint();
+    name = newName;
+    colour = newColour;
+    focused = isFocus;
+    muted = track.transcribeMute;
+    soloed = track.transcribeSolo;
+    heard = isHeard;
+    focusButton.setToggleState (focused, juce::dontSendNotification);
+    muteButton.setToggleState (muted, juce::dontSendNotification);
+    soloButton.setToggleState (soloed, juce::dontSendNotification);
+    for (auto* button : { &focusButton, &muteButton, &soloButton })
+        button->setEnabled (enabled);
+}
+
+void TranscribeTrackRow::resized()
+{
+    const auto layout = transcribeTrackRowLayout (getLocalBounds());
+    focusButton.setBounds (layout.focus);
+    muteButton.setBounds (layout.mute);
+    soloButton.setBounds (layout.solo);
+}
+
+void TranscribeTrackRow::paint (juce::Graphics& g)
+{
+    const auto layout = transcribeTrackRowLayout (getLocalBounds());
+    if (focused)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.08f));
+        g.fillRoundedRectangle (getLocalBounds().toFloat(), 3.0f);
+    }
+    g.setColour (colour.withMultipliedAlpha (heard ? 1.0f : 0.4f));
+    g.fillRect (layout.swatch.reduced (0, 3));
+    g.setColour (heard ? colours::text : colours::dimText);
+    g.setFont (juce::FontOptions (12.0f, focused ? juce::Font::bold : juce::Font::plain));
+    g.drawText (name, layout.name, juce::Justification::centredLeft, true);
+}
+
+//==============================================================================
 TranscribeColumn::TranscribeColumn()
 {
     heading.setColour (juce::Label::textColourId, colours::text);
@@ -195,7 +270,7 @@ TranscribeColumn::TranscribeColumn()
     heading.setBorderSize ({});
     heading.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (heading);
-    for (auto* caption : { &practiceSpeedCaption, &transposeCaption })
+    for (auto* caption : { &practiceSpeedCaption, &transposeCaption, &mixCaption })
     {
         styleCaption (*caption);
         addAndMakeVisible (caption);
@@ -253,6 +328,50 @@ void TranscribeColumn::show (const TranscribePageState& state)
     transposeField.setColour (juce::Label::backgroundColourId, state.transpose != 0 ? colours::accent : colours::background);
     transposeField.setEnabled (state.canTranspose);
     transposeSpinner.setVisible (state.transposeRendering);
+
+    showTracks (state);
+}
+
+void TranscribeColumn::showTracks (const TranscribePageState& state)
+{
+    const auto& tracks = state.song.tracks;
+    const auto sameTracks = std::ranges::equal (trackRows, tracks, {}, [] (const auto& row) { return row->trackId(); }, &song::Track::id);
+    if (! sameTracks)
+    {
+        trackRows.clear();
+        for (const auto& track : tracks)
+        {
+            auto row = std::make_unique<TranscribeTrackRow> (track.id);
+            const auto trackId = track.id;
+            row->onFocus = [this, trackId] (bool focus) {
+                if (onIntent)
+                    onIntent (SongIntent { intent::SetFocusTrack { focus ? std::optional (trackId) : std::nullopt } });
+            };
+            row->onMute = [this, trackId] (bool mute) {
+                if (onIntent)
+                    onIntent (SongIntent { intent::SetTranscribeMute { trackId, mute } });
+            };
+            row->onSolo = [this, trackId] (bool solo) {
+                if (onIntent)
+                    onIntent (SongIntent { intent::SetTranscribeSolo { trackId, solo } });
+            };
+            addAndMakeVisible (*row);
+            trackRows.push_back (std::move (row));
+        }
+        layOutTrackRows();
+    }
+
+    const auto heardMix = song::withTranscribeMix (state.song);
+    const auto anySoloed = std::ranges::any_of (heardMix.tracks, &song::Track::solo);
+    for (std::size_t i = 0; i < tracks.size(); ++i)
+        trackRows[i]->show (tracks[i], state.song.focusTrackId == tracks[i].id, engine::isAudible (heardMix.tracks[i], anySoloed), state.canSetTranscribeMix);
+}
+
+void TranscribeColumn::layOutTrackRows()
+{
+    auto area = transcribeColumnLayout (getLocalBounds()).tracks;
+    for (auto& row : trackRows)
+        row->setBounds (area.removeFromTop (transcribeTrackRowHeight));
 }
 
 void TranscribeColumn::resized()
@@ -267,6 +386,8 @@ void TranscribeColumn::resized()
     transposeField.setBounds (layout.transposeField);
     transposeUnit.setBounds (layout.transposeUnit);
     transposeSpinner.setBounds (layout.transposeSpinner);
+    mixCaption.setBounds (layout.mixCaption);
+    layOutTrackRows();
 }
 
 void TranscribeColumn::paint (juce::Graphics& g)
@@ -351,7 +472,7 @@ void TranscribePage::showViews()
     const auto width = waveformWidth();
     if (shown.song != columnsSong || current != columnsView || width != columnsWidth)
     {
-        waveColumns = heardMixColumns (shown.song, peaks, current.firstSample, current.samplesPerPixel, width);
+        waveColumns = transcribeColumns (shown.song, peaks, current.firstSample, current.samplesPerPixel, width);
         columnsView = current;
         columnsWidth = width;
     }
@@ -360,12 +481,15 @@ void TranscribePage::showViews()
     if (shown.song != columnsSong || overviewWidth != overviewColumnsWidth || length != overviewColumnsLength)
     {
         const auto perPixel = std::max<song::SampleCount> (1, (length + overviewWidth - 1) / overviewWidth);
-        overviewColumns = heardMixColumns (shown.song, peaks, 0, perPixel, overviewWidth);
+        overviewColumns = transcribeColumns (shown.song, peaks, 0, perPixel, overviewWidth);
         overviewColumnsWidth = overviewWidth;
         overviewColumnsLength = length;
     }
     columnsSong = shown.song;
-    wave.show (waveColumns, current, shown.song.sampleRate, shown.playhead);
+    const auto* focus = song::focusTrack (shown.song);
+    const auto label = focus != nullptr ? juce::String::fromUTF8 (focus->name.c_str()) : juce::String ("Transcribe Mix");
+    const auto labelColour = focus != nullptr ? trackColour (*focus) : juce::Colours::white;
+    wave.show (waveColumns, current, shown.song.sampleRate, shown.playhead, label, labelColour);
     overview.show (overviewColumns, length, current, width, shown.playhead);
 }
 

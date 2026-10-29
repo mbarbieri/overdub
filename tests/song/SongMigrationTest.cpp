@@ -118,11 +118,11 @@ TEST_CASE ("each step function migrates one version and the scaffold stamps the 
 
 TEST_CASE ("a newer formatVersion is refused with an Error that names the version found", "[song][migration]")
 {
-    const auto migrated = overdub::song::migrateSongDocument ({ { "formatVersion", 7 } });
+    const auto migrated = overdub::song::migrateSongDocument ({ { "formatVersion", overdub::song::songFormatVersion + 1 } });
 
     REQUIRE_FALSE (migrated.has_value());
     CHECK (migrated.error().code == "song.format_too_new");
-    CHECK (migrated.error().fields.at ("version_found") == 7);
+    CHECK (migrated.error().fields.at ("version_found") == overdub::song::songFormatVersion + 1);
     CHECK (migrated.error().fields.at ("version_supported") == overdub::song::songFormatVersion);
 }
 
@@ -155,6 +155,30 @@ TEST_CASE ("a v5 Song migrates to v6 untransposed", "[song][migration][transpose
 
     REQUIRE (migrated.has_value());
     CHECK (migrated->fromVersion == 5);
-    CHECK (migrated->document.at ("formatVersion") == 6);
+    CHECK (migrated->document.at ("formatVersion") == overdub::song::songFormatVersion);
     CHECK (migrated->document.at ("transpose") == 0);
+}
+
+TEST_CASE ("a v6 Song migrates to v7 with no Focus Track and every Track unmuted and unsoloed in the Transcribe Mix", "[song][migration][transcribe]")
+{
+    const json document = {
+        { "formatVersion", 6 },
+        { "sampleRate", 48000 },
+        { "tracks", { { { "id", "track-1" }, { "mute", true }, { "solo", true } }, { { "id", "track-2" } } } },
+    };
+
+    const auto migrated = overdub::song::migrateSongDocument (document);
+
+    REQUIRE (migrated.has_value());
+    CHECK (migrated->fromVersion == 6);
+    CHECK (migrated->document.at ("formatVersion") == 7);
+    CHECK (migrated->document.at ("focusTrackId").is_null());
+    for (const auto& track : migrated->document.at ("tracks"))
+    {
+        CHECK (track.at ("transcribeMute") == false);
+        CHECK (track.at ("transcribeSolo") == false);
+    }
+    // The Song's own mix is untouched.
+    CHECK (migrated->document.at ("tracks").at (0).at ("mute") == true);
+    CHECK (migrated->document.at ("tracks").at (0).at ("solo") == true);
 }

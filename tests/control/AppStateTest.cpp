@@ -114,7 +114,7 @@ TEST_CASE ("the app state has every section, each with its keys, over a Song wit
 
     CHECK (state["history"] == json { { "can_undo", true }, { "undo_label", "Record Pass 1" }, { "can_redo", false }, { "redo_label", "" } });
 
-    CHECK (keysOf (state["transport"]) == std::set<std::string> { "playing", "position", "pre_roll_record_point", "running_pass_start", "running_pass_number", "saving_pass", "heard_transpose", "transposing", "transpose_rendering", "practice_speed", "heard_practice_speed", "practice_rendering" });
+    CHECK (keysOf (state["transport"]) == std::set<std::string> { "playing", "position", "pre_roll_record_point", "running_pass_start", "running_pass_number", "saving_pass", "heard_transpose", "transposing", "transpose_rendering", "practice_speed", "heard_practice_speed", "practice_rendering", "transcribe_mix_heard" });
     CHECK (state["transport"]["playing"] == false);
     CHECK (state["transport"]["running_pass_number"] == 0);
     CHECK (state["transport"]["pre_roll_record_point"] == nullptr);
@@ -357,6 +357,9 @@ struct SongForEveryOp
             { "start_separation", { { "track_id", bandTrack } } },
             { "set_transpose", { { "semitones", 2 } } },
             { "set_practice_speed", { { "speed_percent", 80 } } },
+            { "set_focus_track", { { "track_id", guitarId } } },
+            { "set_transcribe_mute", { { "track_id", guitarId }, { "mute", true } } },
+            { "set_transcribe_solo", { { "track_id", guitarId }, { "solo", true } } },
             { "set_pre_roll", { { "pre_roll", "one_second" } } },
             { "set_camera_armed", { { "armed", true } } },
             { "set_camera_device", { { "camera_id", "camera" } } },

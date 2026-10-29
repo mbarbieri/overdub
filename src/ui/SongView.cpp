@@ -94,6 +94,9 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const CancelRun&) { return cancelRun(); },
             [this] (const SetTranspose& i) { return setTranspose (i.semitones); },
             [this] (const SetPracticeSpeed& i) { return setPracticeSpeed (i.speedPercent); },
+            [this] (const SetFocusTrack& i) { return unlessRefused (openSong.setFocusTrack (i.trackId)); },
+            [this] (const SetTranscribeMute& i) { return unlessRefused (openSong.setTranscribeMute (i.trackId, i.mute)); },
+            [this] (const SetTranscribeSolo& i) { return unlessRefused (openSong.setTranscribeSolo (i.trackId, i.solo)); },
             [this] (const SetPreRoll& i) { return setPreRoll (i.preRoll); },
             [this] (const SetCameraArmed& i) { return armCamera (i.armed); },
             [this] (const SetCameraDevice& i) { return setCameraDevice (i.cameraId); },
@@ -794,6 +797,7 @@ void SongView::refresh (TopBarState& state)
             .transpose = state.transpose,
             .transposeRendering = state.transposeRendering,
             .canTranspose = state.canTranspose,
+            .canSetTranscribeMix = ! window.refusalOf (intent::SetFocusTrack::op).has_value(),
         });
     const auto request = exportRequest();
     exportSheet.show (ExportSheetState {

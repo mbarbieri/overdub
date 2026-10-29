@@ -50,9 +50,14 @@ float transcribeWheelZoomScale (float deltaY);
 // `songLength`): the visible span centred on the Song sample there, unclamped at the end.
 SampleCount overviewViewStart (int x, int width, SampleCount songLength, SampleCount visibleSamples);
 
-// The heard mix's waveform, one column per pixel from firstSample: per Track that sounds (mute and
-// solo as the Song's mix, engine::isAudible; the Transcribe Mix is a later slice), the top Clip at each column's first sample adds its
+// A mix's waveform, one column per pixel from firstSample: per Track that sounds (the Song's mute
+// and solo as given, engine::isAudible), the top Clip at each column's first sample adds its
 // source's peaks (ui::waveformColumns) times its gain, its Track's volume and the Master's. The
 // sum is clamped to [-1, 1]. Fades and pan are not drawn. Columns nothing sounds in are {0, 0}.
 std::vector<song::PeakRange> heardMixColumns (const song::Song& song, const PeaksLookup& peaksOf, SampleCount firstSample, SampleCount samplesPerPixel, int numColumns);
+
+// What Transcribe mode's waveform and overview draw (issue #226): the Focus Track alone, whatever
+// the Transcribe Mix says of it, or with no Focus Track the heard Transcribe Mix
+// (heardMixColumns of song::withTranscribeMix).
+std::vector<song::PeakRange> transcribeColumns (const song::Song& song, const PeaksLookup& peaksOf, SampleCount firstSample, SampleCount samplesPerPixel, int numColumns);
 } // namespace overdub::ui

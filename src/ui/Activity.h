@@ -75,6 +75,7 @@ enum class Gesture
     startSeparation,
     startSampleRateConversion,
     setPracticeSpeed,
+    setTranscribeMix, // the Focus Track, Transcribe Mix mute and solo (issue #226)
 };
 
 // The Error the running activity refuses the gesture with: ui.stop_recording_first (a Pass),

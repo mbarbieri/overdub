@@ -95,12 +95,28 @@ core::Expected<nlohmann::json> addTranspose (nlohmann::json document)
     document["transpose"] = 0;
     return document;
 }
+
+core::Expected<nlohmann::json> addTranscribeMix (nlohmann::json document)
+{
+    document["focusTrackId"] = nullptr;
+    const auto tracks = document.find ("tracks");
+    if (tracks == document.end() || ! tracks->is_array())
+        return document; // reading the migrated document reports what is missing
+    for (auto& track : *tracks)
+    {
+        if (! track.is_object())
+            continue;
+        track["transcribeMute"] = false;
+        track["transcribeSolo"] = false;
+    }
+    return document;
+}
 } // namespace
 
 std::span<const MigrationStep> songMigrationSteps()
 {
     // songFormatVersion must equal songMigrationSteps().size() + 1.
-    static const std::array<MigrationStep, 5> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours, addExportChoices, addTranspose };
+    static const std::array<MigrationStep, 6> steps { addVideoTakeOutputDevice, addBackingTrackSeparatedFrom, addTrackColours, addExportChoices, addTranspose, addTranscribeMix };
     static_assert (std::tuple_size_v<decltype (steps)> + 1 == songFormatVersion);
     return steps;
 }

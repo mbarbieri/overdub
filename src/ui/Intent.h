@@ -520,6 +520,36 @@ struct SetPracticeSpeed // the top bar's Practice Speed field, on Return
 };
 
 //==============================================================================
+// Song: the Focus Track and the Transcribe Mix (issue #226, ADR 0010): Transcribe mode's listening
+// only, saved in the Song outside history, never an undo step.
+
+struct SetFocusTrack // ◎ on a row of the Transcribe column; none: ◎ on the Focus Track again
+{
+    static constexpr std::string_view op = "set_focus_track";
+    std::optional<song::Id> trackId;
+    bool operator== (const SetFocusTrack&) const = default;
+    static constexpr auto fields = std::tuple { field ("track_id", &SetFocusTrack::trackId) };
+};
+
+struct SetTranscribeMute // M on a row of the Transcribe column
+{
+    static constexpr std::string_view op = "set_transcribe_mute";
+    song::Id trackId;
+    bool mute = true;
+    bool operator== (const SetTranscribeMute&) const = default;
+    static constexpr auto fields = std::tuple { field ("track_id", &SetTranscribeMute::trackId), field ("mute", &SetTranscribeMute::mute) };
+};
+
+struct SetTranscribeSolo // S on a row of the Transcribe column
+{
+    static constexpr std::string_view op = "set_transcribe_solo";
+    song::Id trackId;
+    bool solo = true;
+    bool operator== (const SetTranscribeSolo&) const = default;
+    static constexpr auto fields = std::tuple { field ("track_id", &SetTranscribeSolo::trackId), field ("solo", &SetTranscribeSolo::solo) };
+};
+
+//==============================================================================
 // Song: Record settings.
 
 struct SetPreRoll
@@ -786,6 +816,7 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::AddTrack, intent::ImportFiles, intent::DeleteTrack, intent::MoveTrack,
                                 intent::SetArmed, intent::SetInputChannels, intent::SetMonitoring,
                                 intent::StartSeparation, intent::CancelRun, intent::SetTranspose, intent::SetPracticeSpeed,
+                                intent::SetFocusTrack, intent::SetTranscribeMute, intent::SetTranscribeSolo,
                                 intent::SetPreRoll, intent::SetCameraArmed, intent::SetCameraDevice,
                                 intent::SplitSelectedClip, intent::DeleteSelection, intent::TakeLaneClick, intent::PreviewMix,
                                 intent::AddInsert, intent::OpenInsertEditor, intent::ClosePluginWindow,

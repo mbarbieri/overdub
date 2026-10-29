@@ -230,6 +230,20 @@ TEST_CASE ("set_practice_speed is refused while a Pass, a Separation or a conver
     CHECK_FALSE (refusalOf ("set_practice_speed", Running { .song = ActivityKind::idle, .transposing = true }).has_value());
 }
 
+TEST_CASE ("the Focus Track and Transcribe Mix ops are refused while a Pass, a Separation or a conversion runs, and allowed during an export and in every mode", "[ui][availability][transcribe]")
+{
+    for (const auto* op : { "set_focus_track", "set_transcribe_mute", "set_transcribe_solo" })
+    {
+        INFO (op);
+        CHECK (refusalOf (op, Running { .song = ActivityKind::pass })->error.code == "ui.stop_recording_first");
+        CHECK (refusalOf (op, Running { .song = ActivityKind::separation }).has_value());
+        CHECK (refusalOf (op, Running { .song = ActivityKind::conversion }).has_value());
+        CHECK_FALSE (refusalOf (op, Running { .song = ActivityKind::exportSong }).has_value());
+        CHECK_FALSE (refusalOf (op, Running { .song = ActivityKind::idle }).has_value());
+        CHECK_FALSE (refusalOf (op, Running { .song = ActivityKind::idle, .transcribing = true }).has_value());
+    }
+}
+
 TEST_CASE ("in Transcribe mode the Clip edits and nudge are refused quietly with ui.transcribing", "[ui][availability][transcribe]")
 {
     const std::set<std::string> clipOps { "move_clip", "trim_clip_start", "trim_clip_end", "set_clip_fade_in", "set_clip_fade_out", "set_clip_gain", "split_selected_clip", "delete_selection", "take_lane_click", "nudge" };

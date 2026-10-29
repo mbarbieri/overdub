@@ -85,7 +85,7 @@ TEST_CASE ("3 and the Transcribe button show Transcribe mode, named transcribe i
     CHECK (isShown (window.songView()->transcribePage));
 }
 
-TEST_CASE ("the waveform and the overview draw the heard mix", "[ui][transcribe][page]")
+TEST_CASE ("the waveform and the overview draw the heard Transcribe Mix", "[ui][transcribe][page]")
 {
     MainWindowFixture f;
     auto& page = showTranscribe (f);
@@ -101,9 +101,9 @@ TEST_CASE ("the waveform and the overview draw the heard mix", "[ui][transcribe]
     REQUIRE (afterBacking < columns.size());
     CHECK (columns.at (afterBacking).maximum == Catch::Approx (0.0f));
 
-    SECTION ("a muted Backing Track draws nothing")
+    SECTION ("a Backing Track muted in the Transcribe Mix draws nothing")
     {
-        REQUIRE (runControl (f, SongIntent { intent::SetTrackMute { f.trackNamed ("Band Mix").id, true } }).has_value());
+        REQUIRE (runControl (f, SongIntent { intent::SetTranscribeMute { f.trackNamed ("Band Mix").id, true } }).has_value());
         CHECK (page.waveformColumns().at (10).maximum == Catch::Approx (0.0f));
     }
 }

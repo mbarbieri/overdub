@@ -656,8 +656,9 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
         for (auto& backingTrack : document.at ("backingTracks"))
             backingTrack.erase ("separatedFrom");
         for (auto& track : document.at ("tracks"))
-            track.erase ("colour");
-        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose" })
+            for (const auto* key : { "colour", "transcribeMute", "transcribeSolo" })
+                track.erase (key);
+        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId" })
             document.erase (key);
         return document;
     };
@@ -682,6 +683,9 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
     expected.exportLength = overdub::song::VideoLength::trimToVideoTake;
     expected.exportDestination = "";
     expected.transpose = 0;
+    expected.focusTrackId.reset();
+    for (auto& track : expected.tracks)
+        track.transcribeMute = track.transcribeSolo = false;
     CHECK (opened.package->song() == expected);
     CHECK (firstEvent (capture, "song.migrated").at ("from_version") == 1);
     CHECK (noticesWithCode (opened, "song.history_dropped").empty()); // the v1 snapshot migrates too
@@ -734,8 +738,11 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
     // Turn song.json and the history snapshot back into what a v4 build wrote.
     const auto toV4 = [] (nlohmann::json document) {
         document["formatVersion"] = 4;
-        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose" })
+        for (const auto* key : { "exportFormat", "exportLength", "exportDestination", "transpose", "focusTrackId" })
             document.erase (key);
+        for (auto& track : document.at ("tracks"))
+            for (const auto* key : { "transcribeMute", "transcribeSolo" })
+                track.erase (key);
         return document;
     };
     const auto songJson = temp.package().getChildFile ("song.json");
@@ -753,6 +760,9 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
     expected.exportLength = overdub::song::VideoLength::trimToVideoTake;
     expected.exportDestination = "";
     expected.transpose = 0;
+    expected.focusTrackId.reset();
+    for (auto& track : expected.tracks)
+        track.transcribeMute = track.transcribeSolo = false;
     CHECK (opened.package->song() == expected);
     CHECK (firstEvent (capture, "song.migrated").at ("from_version") == 4);
     CHECK (noticesWithCode (opened, "song.history_dropped").empty());

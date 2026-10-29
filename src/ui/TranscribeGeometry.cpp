@@ -2,6 +2,7 @@
 
 #include "core/Decibels.h"
 #include "engine/MixLaw.h"
+#include "song/TranscribeMix.h"
 #include "ui/RecordView.h"
 
 #include <algorithm>
@@ -127,5 +128,17 @@ std::vector<song::PeakRange> heardMixColumns (const song::Song& song, const Peak
     for (auto& column : mix)
         column = { std::clamp (column.minimum, -1.0f, 1.0f), std::clamp (column.maximum, -1.0f, 1.0f) };
     return mix;
+}
+
+std::vector<song::PeakRange> transcribeColumns (const song::Song& song, const PeaksLookup& peaksOf, SampleCount firstSample, SampleCount samplesPerPixel, int numColumns)
+{
+    const auto* focus = song::focusTrack (song);
+    if (focus == nullptr)
+        return heardMixColumns (song::withTranscribeMix (song), peaksOf, firstSample, samplesPerPixel, numColumns);
+    auto focusOnly = song;
+    focusOnly.tracks = { *focus };
+    focusOnly.tracks.front().mute = false;
+    focusOnly.tracks.front().solo = false;
+    return heardMixColumns (focusOnly, peaksOf, firstSample, samplesPerPixel, numColumns);
 }
 } // namespace overdub::ui

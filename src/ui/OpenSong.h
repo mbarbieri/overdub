@@ -305,6 +305,20 @@ public:
     void setExportLength (song::VideoLength length);
     void setExportDestination (const std::string& path);
 
+    // Transcribe mode (issue #226, ADR 0010). While transcribing, the engine plays the Transcribe
+    // Mix's mute and solo instead of the Song's (song::withTranscribeMix); otherwise the Song's own
+    // mix. The window sets it as its mode changes; it is not in the Song. Changing it applies the mix
+    // (Engine::setMix) without rebuilding the plan. Logs ui.transcribe_mix_heard (debug: heard).
+    void setTranscribing (bool transcribing);
+    bool isTranscribing() const { return transcribing; }
+    // The Focus Track and the Transcribe Mix: Song settings outside history (song.json, no undo
+    // step), song/TranscribeMix.h, heard at once while transcribing. Log ui.focus_track_set (info:
+    // track_id, "" for none), ui.transcribe_mute_set and ui.transcribe_solo_set (debug: track_id,
+    // mute / solo). Errors: refusal()'s, song.track_not_found.
+    core::Expected<void> setFocusTrack (const std::optional<song::Id>& trackId);
+    core::Expected<void> setTranscribeMute (const song::Id& trackId, bool mute);
+    core::Expected<void> setTranscribeSolo (const song::Id& trackId, bool solo);
+
     // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
     // Errors: refusal()'s.
     core::Expected<void> setPreRoll (song::PreRoll preRoll);
@@ -406,8 +420,13 @@ private:
     std::optional<core::Error> advanceTranspose (song::SongPackage::Clock::time_point now);
     // advanceTranspose now, unless a render runs (poll() hands back how it ends).
     void followTranspose();
-    // The Song as the engine plays it: at heardTranspose().
+    // The Song as the engine plays it: at heardTranspose(), with the Transcribe Mix while
+    // transcribing.
     song::Song heardSong() const;
+    // `song` with the Transcribe Mix's mute and solo while transcribing; as it is otherwise.
+    song::Song withHeardMix (song::Song song) const;
+    // Stores a Transcribe Mix or Focus Track change outside history and plays it.
+    core::Expected<void> changeTranscribeMix (core::Expected<song::Song> changed);
     // What the engine plays at heardPracticeSpeed(): the renders there are of the heard key.
     engine::PracticePlayback heardPracticePlayback() const;
     // The key the Practice Speed renders are wanted for: the Practice Speed and the Song's Transpose
@@ -468,6 +487,7 @@ private:
     video::VideoPlayback playback;
     std::optional<juce::File> lastExport;
     int heardSemitones = 0;
+    bool transcribing = false;
     // The Backing Tracks whose render of failedSemitones failed: not rendered again until the
     // Song's Transpose changes.
     int failedSemitones = 0;

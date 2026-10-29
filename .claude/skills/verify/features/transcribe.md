@@ -9,6 +9,7 @@ Transcribe mode is the third mode, beside Record and Edit, for learning a part b
 - `transcribe-zoom`: the wheel scrolls time, and ⌘-wheel or a trackpad pinch zooms around the pointer (`set_transcribe_view`), in until about 2 s fills the width and out until the whole Song fits. The socket's values are clamped the same way.
 - `transcribe-seek`: clicking the ruler or the waveform seeks (`seek`). Space plays and stops, as in the other modes.
 - `transcribe-column`: the right column's Practice Speed and Transpose run `set_practice_speed` and `set_transpose`, as the top bar's fields do. `I` runs `set_transcribe_column_visible` with the opposite of `/view/transcribe_column_visible`. The choice is remembered per Mac in `window-settings.json` beside the Last Song (`OVERDUB_WINDOW_SETTINGS_FILE`; a scripted launch without it neither reads nor writes it), never in the Song.
+- `transcribe-focus-mix` (issue #226): the right column lists every Track in Song order with ◎ (Focus), M and S. ◎ runs `set_focus_track track_id=<id>` (◎ on the Focus Track again, or `track_id` null or absent, clears it), M `set_transcribe_mute`, S `set_transcribe_solo`. Picking a Focus Track solos it alone in the Transcribe Mix; mutes stay. The Focus Track is `/song/song/focusTrackId`, the mix each Track's `transcribeMute` and `transcribeSolo`; none is an undo step, and `song.json` keeps them. While the mode is `transcribe`, `/transport/transcribe_mix_heard` is true and the engine plays the Transcribe Mix's mute and solo instead of the Song's; Record, Edit and Export play the Song's own mix. The waveform shows the Focus Track under its name, or "Transcribe Mix" when there is none.
 - `transcribe-refusals`: in Transcribe mode `split_selected_clip`, `delete_selection`, `nudge`, `move_clip`, the trims, fades, gain and `take_lane_click` answer `ui.transcribing` (field `op`, message "Transcribe mode never changes a Clip") and change nothing.
 
 ## How to get to it (user POV)
@@ -27,9 +28,11 @@ Preconditions:
 3. `seek sample=48000`: `/transport/position` is 48000.
 4. `set_transcribe_column_visible visible=false`: `/view/transcribe_column_visible` is false.
 5. `split_selected_clip` answers `ui.transcribing`, and `song.json` is unchanged.
+6. `set_transcribe_mute track_id=<the imported Track> mute=true`: `/transport/transcribe_mix_heard` is true, the Master meter falls to silence while playing, and the Track's own `mute` stays false. `show_mode mode=edit` and it is heard again.
+7. `set_focus_track track_id=<id>`: `/song/song/focusTrackId` is that id and only that Track has `transcribeSolo` true.
 
 ## Gotchas
 
-- No journey script drives Transcribe mode yet: every sub-feature is **unverified** in the real app. Tests cover them (`tests/ui/TranscribeModeTest.cpp`, `tests/ui/TranscribeGeometryTest.cpp`, `tests/control/IntentOpsTest.cpp`, the gesture census).
-- The waveforms are drawn from the peaks cache with the Song's mute, solo, volumes and Clip gains, not from the audio heard: fades and pan are not drawn, and the Transcribe Mix, the Focus Track, Loops and Markers are later slices.
+- No journey script drives Transcribe mode yet: every sub-feature is **unverified** in the real app. Tests cover them (`tests/ui/TranscribeModeTest.cpp`, `tests/ui/TranscribeMixTest.cpp`, `tests/ui/TranscribeGeometryTest.cpp`, `tests/control/IntentOpsTest.cpp`, the gesture census).
+- The waveforms are drawn from the peaks cache with the Transcribe Mix's mute and solo (or the Focus Track alone), the Song's volumes and Clip gains, not from the audio heard: fades and pan are not drawn, and Loops and Markers are later slices.
 - The view does not follow the playhead during playback.

@@ -275,6 +275,8 @@ json trackToJson (const Track& track)
         { "mute", track.mute },
         { "solo", track.solo },
         { "armed", track.armed },
+        { "transcribeMute", track.transcribeMute },
+        { "transcribeSolo", track.transcribeSolo },
         { "inputChannels", track.inputChannels },
         { "insertChain", arrayToJson (track.insertChain, insertSlotToJson) },
         { "clips", arrayToJson (track.clips, clipToJson) },
@@ -371,6 +373,8 @@ Track readTrack (const Reader& reader)
         .mute = reader.boolean ("mute"),
         .solo = reader.boolean ("solo"),
         .armed = reader.boolean ("armed"),
+        .transcribeMute = reader.boolean ("transcribeMute"),
+        .transcribeSolo = reader.boolean ("transcribeSolo"),
         .inputChannels = reader.integers ("inputChannels"),
         .insertChain = reader.objects<InsertSlot> ("insertChain", readInsertSlot),
         .clips = reader.objects<Clip> ("clips", readClip),
@@ -467,6 +471,7 @@ Song readSong (const Reader& reader)
     song.exportFormat = readNamed (reader, "exportFormat", exportFormatNames, "expected \"wav\", \"m4a\" or \"mp4\"");
     song.exportLength = readNamed (reader, "exportLength", videoLengthNames, "expected \"trim_to_video_take\" or \"full_song\"");
     song.exportDestination = reader.string ("exportDestination");
+    song.focusTrackId = readOptionalId (reader, "focusTrackId");
     return song;
 }
 } // namespace
@@ -491,6 +496,7 @@ nlohmann::json songToJson (const Song& song)
         { "exportFormat", nameOf (song.exportFormat, exportFormatNames) },
         { "exportLength", nameOf (song.exportLength, videoLengthNames) },
         { "exportDestination", song.exportDestination },
+        { "focusTrackId", song.focusTrackId.has_value() ? json (*song.focusTrackId) : json (nullptr) },
     };
 }
 

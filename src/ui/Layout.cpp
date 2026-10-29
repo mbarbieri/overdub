@@ -512,6 +512,27 @@ TranscribeColumnLayout transcribeColumnLayout (juce::Rectangle<int> column)
     layout.transposeField = transpose.field;
     layout.transposeUnit = transpose.unit;
     layout.transposeSpinner = transpose.spinner;
+    area.removeFromTop (2 * gap);
+    layout.mixCaption = area.removeFromTop (fieldCaptionHeight);
+    area.removeFromTop (gap);
+    layout.tracks = area;
+    return layout;
+}
+
+TranscribeTrackRowLayout transcribeTrackRowLayout (juce::Rectangle<int> row)
+{
+    constexpr int buttonWidth = 22;
+    TranscribeTrackRowLayout layout;
+    auto area = row.reduced (0, 2);
+    layout.solo = area.removeFromRight (buttonWidth);
+    area.removeFromRight (2);
+    layout.mute = area.removeFromRight (buttonWidth);
+    area.removeFromRight (2);
+    layout.focus = area.removeFromRight (buttonWidth);
+    area.removeFromRight (gap);
+    layout.swatch = area.removeFromLeft (4);
+    area.removeFromLeft (gap);
+    layout.name = area;
     return layout;
 }
 } // namespace overdub::ui

@@ -43,6 +43,8 @@ core::Expected<MigratedDocument> migrateDocument (nlohmann::json document, std::
 //   4 -> 5 (issue #201): the Song gains "exportFormat": "wav", "exportLength":
 //           "trim_to_video_take" and "exportDestination": "" (the export folder).
 //   5 -> 6 (issue #209): the Song gains "transpose": 0.
+//   6 -> 7 (issue #226): the Song gains "focusTrackId": null (no Focus Track), and every Track
+//           "transcribeMute": false and "transcribeSolo": false (the Transcribe Mix).
 std::span<const MigrationStep> songMigrationSteps();
 
 // migrateDocument with songMigrationSteps().
