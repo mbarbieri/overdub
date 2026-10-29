@@ -7,6 +7,7 @@
 #include "ui/Layout.h"
 #include "ui/SongFiles.h"
 #include "ui/SongMenuItems.h"
+#include "ui/WindowSettings.h"
 
 #include <cstdlib>
 
@@ -113,6 +114,7 @@ MainWindow::MainWindow (const juce::String& name,
     // A scripted launch (its socket moved) never touches the user's Last Song (issue #206).
     auto files = ui::WorkspaceFiles::defaults();
     files.lastSong = ui::lastSongFileFor (std::getenv ("OVERDUB_LAST_SONG_FILE"), controlConfig.enabled && ! controlConfig.privateFolder);
+    content.useWindowSettingsFile (ui::windowSettingsFileFor (std::getenv ("OVERDUB_WINDOW_SETTINGS_FILE"), controlConfig.enabled && ! controlConfig.privateFolder));
 
     // Before the menu: installing it asks getMenuForIndex at once, which reads the Workspace.
     workspace = std::make_unique<ui::Workspace> (

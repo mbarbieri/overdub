@@ -33,20 +33,22 @@
 // Each owner visits its group with core::visitExhaustively, so an alternative without a handler does
 // not compile, and a struct without `op` and `fields` cannot be an alternative.
 //
-// Keys (issue #9 resolution, issues #27, #28, #128, #200): 1 and 2 pick a mode, R records, Space
-// plays or stops, command-Z / shift-command-Z undo and redo, command-E opens the Export sheet, and
-// S, backspace (or forward delete) and the left and right arrows split, delete and nudge, which
-// their handlers refuse outside Edit mode.
+// Keys (issue #9 resolution, issues #27, #28, #128, #200, #225): 1, 2 and 3 pick a mode, R records,
+// Space plays or stops, command-Z / shift-command-Z undo and redo, command-E opens the Export sheet,
+// I shows or hides the Transcribe column, and S, backspace (or forward delete) and the left and
+// right arrows split, delete and nudge, which their handlers refuse outside Edit mode (and
+// ui/Availability.h refuses in Transcribe mode).
 namespace overdub::ui
 {
 enum class Mode
 {
     record,
-    edit
+    edit,
+    transcribe
 };
-inline constexpr std::pair<Mode, std::string_view> modeNames[] { { Mode::record, "record" }, { Mode::edit, "edit" } };
+inline constexpr std::pair<Mode, std::string_view> modeNames[] { { Mode::record, "record" }, { Mode::edit, "edit" }, { Mode::transcribe, "transcribe" } };
 
-// "record" or "edit": the name in ui.* event fields and in the Intent's JSON.
+// "record", "edit" or "transcribe": the name in ui.* event fields and in the Intent's JSON.
 const char* modeName (Mode mode);
 
 enum class Direction
@@ -181,7 +183,7 @@ struct Quit // the window's close button, command-Q
 //==============================================================================
 // Window: what the main window shows besides the Song. Needs no Song.
 
-struct ShowMode // keys 1 and 2, the top bar's mode buttons
+struct ShowMode // keys 1, 2 and 3, the top bar's mode buttons
 {
     static constexpr std::string_view op = "show_mode";
     Mode mode = Mode::record;
@@ -194,6 +196,14 @@ struct DismissAlerts // OK on every open Alert
     static constexpr std::string_view op = "dismiss_alerts";
     bool operator== (const DismissAlerts&) const = default;
     static constexpr auto fields = std::tuple {};
+};
+
+struct SetTranscribeColumnVisible // I (issue #225): remembered per Mac (ui/WindowSettings.h), not in the Song
+{
+    static constexpr std::string_view op = "set_transcribe_column_visible";
+    bool visible = true;
+    bool operator== (const SetTranscribeColumnVisible&) const = default;
+    static constexpr auto fields = std::tuple { field ("visible", &SetTranscribeColumnVisible::visible) };
 };
 
 //==============================================================================
@@ -700,6 +710,17 @@ struct SetTimelineView // zoom, pinch and horizontal scroll; clamped as Timeline
                                                 field ("samples_per_pixel", &SetTimelineView::samplesPerPixel) };
 };
 
+struct SetTranscribeView // Transcribe mode's wheel, command-wheel, pinch and overview (issue #225); clamped as TranscribePage::setView clamps
+{
+    static constexpr std::string_view op = "set_transcribe_view";
+    static constexpr bool runsPerFrame = true;
+    song::SampleCount firstSample = 0;
+    song::SampleCount samplesPerPixel = 0;
+    bool operator== (const SetTranscribeView&) const = default;
+    static constexpr auto fields = std::tuple { field ("first_sample", &SetTranscribeView::firstSample),
+                                                field ("samples_per_pixel", &SetTranscribeView::samplesPerPixel) };
+};
+
 struct SetVerticalScroll
 {
     static constexpr std::string_view op = "set_vertical_scroll";
@@ -757,7 +778,7 @@ using AppIntent = std::variant<intent::NewSongAt, intent::OpenSongAt, intent::Re
                                intent::SaveLatencyCalibration, intent::MeasureClapPass, intent::SaveCameraCalibration,
                                intent::Quit>;
 
-using WindowIntent = std::variant<intent::ShowMode, intent::DismissAlerts>;
+using WindowIntent = std::variant<intent::ShowMode, intent::DismissAlerts, intent::SetTranscribeColumnVisible>;
 
 using SongIntent = std::variant<intent::Edit,
                                 intent::Record, intent::RecordAgain, intent::PlayOrStop, intent::Rewind, intent::Undo, intent::Redo,
@@ -770,7 +791,7 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::AddInsert, intent::OpenInsertEditor, intent::ClosePluginWindow,
                                 intent::ShowExport, intent::SetExportFormat, intent::SetExportLength, intent::SetExportDestination,
                                 intent::SetExportVideoTake, intent::Export, intent::CancelExport, intent::RevealExport,
-                                intent::SelectClip, intent::SelectVideoTake, intent::SetTimelineView,
+                                intent::SelectClip, intent::SelectVideoTake, intent::SetTimelineView, intent::SetTranscribeView,
                                 intent::SetVerticalScroll, intent::SetTakeLanesUnfolded, intent::SetMixerVisible,
                                 intent::SetMixerHeight, intent::SetPassesPanelOpen, intent::ClearClipIndicator>;
 
@@ -833,6 +854,13 @@ struct KeyChord
     bool shift = false;
 };
 
+// What the window shows that a key's Intent depends on: I sets the Transcribe column to the
+// opposite of what it is.
+struct KeyContext
+{
+    bool transcribeColumnVisible = true;
+};
+
 // The Intent a key press runs, or none.
-std::optional<Intent> intentForKey (KeyChord key);
+std::optional<Intent> intentForKey (KeyChord key, KeyContext context = {});
 } // namespace overdub::ui

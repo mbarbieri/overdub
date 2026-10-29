@@ -35,12 +35,14 @@ SongView::SongView (OpenSong& song, MainComponent& mainWindow)
       window (mainWindow),
       recordPage ([this] (const song::ClipSource& source) -> const song::Peaks& { return openSong.peaks (source); }),
       editPage ([this] (const song::ClipSource& source) -> const song::Peaks& { return openSong.peaks (source); }),
+      transcribePage ([this] (const song::ClipSource& source) -> const song::Peaks& { return openSong.peaks (source); }),
       pluginWindows (mainWindow.showPluginWindowsOnDesktop)
 {
     wirePages();
 
     addChildComponent (recordPage);
     addChildComponent (editPage);
+    addChildComponent (transcribePage);
 }
 
 SongView::~SongView() = default;
@@ -60,6 +62,7 @@ void SongView::wirePages()
     editPage.onDeleteTrack = [this] (const song::Id& trackId) { askToDeleteTrack (trackId); };
     editPage.timeline.canImportFiles = [this] { return ! window.refusalOf (intent::ImportFiles::op).has_value(); };
 
+    transcribePage.onIntent = [this] (const Intent& intent) { window.run (intent); };
     exportSheet.onIntent = [this] (const Intent& intent) { window.run (intent); };
     exportSheet.onChooseDestination = [this] (juce::File current) { chooseExportFile (current); };
 }
@@ -112,6 +115,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const SelectClip& i) -> IntentResult { editPage.timeline.selectClip (i.clipId); return IntentDone {}; },
             [this] (const SelectVideoTake& i) -> IntentResult { editPage.timeline.selectVideoTake (i.videoTakeId); return IntentDone {}; },
             [this] (const SetTimelineView& i) -> IntentResult { editPage.timeline.setView (i.firstSample, i.samplesPerPixel); return IntentDone {}; },
+            [this] (const SetTranscribeView& i) -> IntentResult { transcribePage.setView (i.firstSample, i.samplesPerPixel); return IntentDone {}; },
             [this] (const SetVerticalScroll& i) -> IntentResult { editPage.timeline.setVerticalScroll (i.pixels); return IntentDone {}; },
             [this] (const SetTakeLanesUnfolded& i) -> IntentResult { editPage.timeline.setTakeLanesUnfolded (i.trackId, i.unfolded); return IntentDone {}; },
             [this] (const SetMixerVisible& i) -> IntentResult { editPage.setMixerVisible (i.visible); return IntentDone {}; },
@@ -779,6 +783,18 @@ void SongView::refresh (TopBarState& state)
             .videoTakes = openSong.videoPlayback().spans (song),
             .canArmCamera = cameraControls.canArm && ! window.refusalOf (intent::SetCameraArmed::op).has_value(),
         });
+    if (mode == Mode::transcribe)
+        transcribePage.show (TranscribePageState {
+            .song = song,
+            .playhead = position,
+            .columnVisible = window.isTranscribeColumnVisible(),
+            .practiceSpeed = state.practiceSpeed,
+            .practiceRendering = state.practiceRendering,
+            .canSetPracticeSpeed = state.canSetPracticeSpeed,
+            .transpose = state.transpose,
+            .transposeRendering = state.transposeRendering,
+            .canTranspose = state.canTranspose,
+        });
     const auto request = exportRequest();
     exportSheet.show (ExportSheetState {
         .clipsEnd = exporting::lastClipEnd (song),
@@ -792,6 +808,7 @@ void SongView::refresh (TopBarState& state)
 
     recordPage.setVisible (mode == Mode::record);
     editPage.setVisible (mode == Mode::edit);
+    transcribePage.setVisible (mode == Mode::transcribe);
     exportSheet.setVisible (exportSheetShown);
 }
 
@@ -923,7 +940,7 @@ void SongView::takeKeyboardFocus()
 
 void SongView::resized()
 {
-    for (auto* page : std::initializer_list<juce::Component*> { &recordPage, &editPage })
+    for (auto* page : std::initializer_list<juce::Component*> { &recordPage, &editPage, &transcribePage })
         page->setBounds (getLocalBounds());
 }
 } // namespace overdub::ui

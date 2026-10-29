@@ -10,6 +10,7 @@
 #include "ui/SongView.h"
 #include "ui/TopBar.h"
 #include "ui/UserMessages.h"
+#include "ui/WindowSettings.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -22,7 +23,7 @@
 #include <vector>
 
 // The main window's content (issue #27, issue #9 resolution): the top bar over the current mode's
-// page (Record or Edit (issue #28)), the Export sheet while it shows (issue #200), the Notice line,
+// page (Record, Edit (issue #28) or Transcribe (issue #225)), the Export sheet while it shows (issue #200), the Notice line,
 // and Alerts.
 // In Edit mode S splits the selected Clip at the playhead and backspace deletes the selected Clip
 // or Video Take (issue #128), each one undo step through OpenSong::edit; in the other modes both
@@ -124,6 +125,13 @@ public:
     SongView* songView() const { return songContent.get(); }
 
     Mode mode() const { return currentMode; }
+    // Whether Transcribe mode's right column shows (set_transcribe_column_visible, I), remembered
+    // per Mac in the window settings file.
+    bool isTranscribeColumnVisible() const { return windowSettings.transcribeColumnVisible; }
+    // Reads the window settings from `file` (ui/WindowSettings.h) and writes them there whenever
+    // they change; an empty file: neither read nor written. An unreadable file is logged (warn)
+    // and the defaults are kept.
+    void useWindowSettingsFile (const juce::File& file);
 
     IntentResult run (const Intent& intent, Origin origin = Origin::user);
     // How many Intents run has run, every one counted, per-frame ones too (GestureCensusTest).
@@ -247,6 +255,7 @@ private:
     IntentResult dispatch (const Intent& intent, const std::string& op);
     IntentResult refused (Refusal refusal);
     void showMode (Mode mode);
+    IntentResult setTranscribeColumnVisible (bool visible);
     void post (UserMessage message);
     void presentMessages();
     void showAlertNow (const UserMessage& message, const juce::String& sentence);
@@ -258,6 +267,8 @@ private:
     bool runShowing() const { return songContent != nullptr && songContent->runShowing(); }
 
     Mode currentMode = Mode::record;
+    WindowSettings windowSettings;
+    juce::File windowSettingsFile;
     UserMessageQueue messages;
     std::optional<ShownNotice> notice;
     struct OpenAlert

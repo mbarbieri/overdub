@@ -29,16 +29,6 @@ juce::String takesToggleText (int numTakes, bool unfolded)
     return juce::String::fromUTF8 (std::format ("{} {} {}", arrow, numTakes, numTakes == 1 ? "Take" : "Takes").c_str());
 }
 
-// Seconds between labelled ruler ticks: the first that puts them at least 70 pixels apart.
-double rulerStepSeconds (song::SampleCount samplesPerPixel, int sampleRate)
-{
-    constexpr std::array steps { 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0 };
-    for (const auto step : steps)
-        if (step * sampleRate / (double) samplesPerPixel >= 70.0)
-            return step;
-    return steps.back();
-}
-
 PixelRect handleRect (const ClipHandleBounds& handles, ClipPart part)
 {
     switch (part)
@@ -62,10 +52,6 @@ juce::Rectangle<int> toRectangle (PixelRect rect)
     return { rect.x, rect.y, rect.width, rect.height };
 }
 
-std::string rulerLabel (double seconds)
-{
-    return std::format ("{:g} s", seconds); // "0.25 s", "1.5 s", "10 s"
-}
 } // namespace
 
 std::string clipName (const song::Song& song, const song::Clip& clip)

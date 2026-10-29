@@ -20,7 +20,9 @@
 // presented for record, export and start_separation, logged at debug for the others, whose
 // controls already show they are unavailable: show_export, which opens the Export sheet, waits until
 // nothing runs (issue #200), and cancel_export waits for an export (ui.no_export_running, field
-// `op`, issue #202). Window ops other than under the run dialog are never refused.
+// `op`, issue #202). In Transcribe mode the Clip edits and nudge are refused (ui.transcribing, field
+// `op`, logged at debug, issue #225): Transcribe mode is for listening and never changes a Clip.
+// Window ops other than under the run dialog are never refused.
 namespace overdub::ui
 {
 // What runs in the app, as the refusals read it.
@@ -38,6 +40,8 @@ struct Running
     // record_again and export wait for it (ui.transposing, field `op`, presented as its Notice), and
     // so does show_export (logged at debug) (issues #209, #210).
     bool transposing = false;
+    // The window shows Transcribe mode: the Clip edits and nudge are refused (ui.transcribing).
+    bool transcribing = false;
 };
 
 struct Refusal

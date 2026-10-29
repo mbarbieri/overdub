@@ -24,6 +24,7 @@ const char* modeName (Mode mode)
     {
         case Mode::record: return "record";
         case Mode::edit: return "edit";
+        case Mode::transcribe: return "transcribe";
     }
     return "unknown";
 }
@@ -54,7 +55,7 @@ core::Error noSongOpen (std::string_view op)
     return core::Error { "ui.no_song_open", "no Song is open", { { "op", std::string (op) } } };
 }
 
-std::optional<Intent> intentForKey (KeyChord key)
+std::optional<Intent> intentForKey (KeyChord key, KeyContext context)
 {
     const auto character = lowerCase (key.character);
 
@@ -73,6 +74,8 @@ std::optional<Intent> intentForKey (KeyChord key)
     {
         case U'1': return WindowIntent { intent::ShowMode { Mode::record } };
         case U'2': return WindowIntent { intent::ShowMode { Mode::edit } };
+        case U'3': return WindowIntent { intent::ShowMode { Mode::transcribe } };
+        case U'i': return WindowIntent { intent::SetTranscribeColumnVisible { ! context.transcribeColumnVisible } };
         case U'r': return SongIntent { intent::Record {} };
         case U' ': return SongIntent { intent::PlayOrStop {} };
         case U's': return SongIntent { intent::SplitSelectedClip {} };

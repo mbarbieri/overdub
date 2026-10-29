@@ -131,18 +131,19 @@ TEST_CASE ("the Export sheet says under the destination when Export replaces a f
     CHECK (! isShown (sheet.replacesLabel));
 }
 
-TEST_CASE ("Export is no mode: the top bar offers Record, Edit and Export..., and key 3 does nothing", "[ui][export][main]")
+TEST_CASE ("Export is no mode: the top bar offers Record, Edit, Transcribe and Export..., and key 4 does nothing", "[ui][export][main]")
 {
     MainWindowFixture f;
     auto& window = *f.window;
     CHECK (isShown (window.topBar.recordModeButton));
     CHECK (isShown (window.topBar.editModeButton));
+    CHECK (isShown (window.topBar.transcribeModeButton));
     REQUIRE (isShown (window.topBar.exportButton));
     CHECK (window.topBar.exportButton.getButtonText() == juce::String::fromUTF8 ("Export\xe2\x80\xa6"));
     CHECK (window.topBar.exportButton.isEnabled());
     CHECK (! sheetShown (f));
 
-    CHECK (! pressKey (window, '3'));
+    CHECK (! pressKey (window, '4'));
     CHECK (window.mode() == overdub::ui::Mode::record);
     CHECK (! sheetShown (f));
 }

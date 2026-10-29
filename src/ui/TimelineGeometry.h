@@ -69,14 +69,16 @@ TimelineView zoomedOut (TimelineView view);
 // pixel) around anchorX: the sample under anchorX (or under laneX, left of it) stays there, and
 // firstSample never goes below 0. The pinch is counted in levels, log2 of JUCE's scale factor
 // (above 1: fingers spreading, zoom in), added to pendingLevels; each half level reached takes a
-// level, so pendingLevels stays within (-0.5, 0.5). At a limit it is reset to 0.
+// level, so pendingLevels stays within (-0.5, 0.5). At a limit it is reset to 0. The limits are
+// Edit's unless given (Transcribe mode's depend on its width, ui/TranscribeGeometry.h).
 struct PinchZoom
 {
     TimelineView view;
     double pendingLevels = 0.0;
 };
 
-PinchZoom pinchZoomed (TimelineView view, double pendingLevels, float scaleFactor, int anchorX);
+PinchZoom pinchZoomed (TimelineView view, double pendingLevels, float scaleFactor, int anchorX,
+                       SampleCount minimum = minSamplesPerPixel, SampleCount maximum = maxSamplesPerPixel);
 
 // A Clip's column range [left, right) in a lane: at least 2 pixels wide so it stays visible.
 struct ClipColumns
@@ -158,6 +160,12 @@ core::Expected<intent::Edit> intentForDrag (const song::Song& songAtDown, const 
 // The Song intentForDrag's edit makes (ui/SongEdits.h editedSong), clamped as the song/ClipEdits.h
 // operations clamp: what the drag previews is what its release commits.
 core::Expected<song::Song> songForDrag (const song::Song& songAtDown, const ClipDrag& drag, const TimelineView& view, int x, int y);
+
+// Seconds between labelled ruler ticks (Edit's and Transcribe's rulers): the first of 0.1, 0.25,
+// 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300 that puts them at least 70 pixels apart.
+double rulerStepSeconds (SampleCount samplesPerPixel, int sampleRate);
+// A ruler tick's label: "0.25 s", "1.5 s", "10 s".
+std::string rulerLabel (double seconds);
 
 // "+2.5 dB", "0.0 dB", "-12.0 dB": a Clip gain rounded to 0.1 dB, signed unless zero.
 std::string decibelsText (double gainDb);

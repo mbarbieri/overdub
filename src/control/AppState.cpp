@@ -122,7 +122,7 @@ json exportForm (const ui::SongView& view)
 
 json viewSection (const ui::MainComponent& window)
 {
-    json view { { "mode", nameOf<ui::Mode> (ui::modeNames, window.mode()) } };
+    json view { { "mode", nameOf<ui::Mode> (ui::modeNames, window.mode()) }, { "transcribe_column_visible", window.isTranscribeColumnVisible() } };
     const auto* songView = window.songView();
     if (songView == nullptr)
         return view;
@@ -130,6 +130,8 @@ json viewSection (const ui::MainComponent& window)
     view["selected_clip"] = orNull (editPage.timeline.selectedClip());
     view["selected_video_take"] = orNull (editPage.timeline.selectedVideoTake());
     view["timeline"] = timelineView (*songView);
+    const auto transcribe = songView->transcribePage.view();
+    view["transcribe"] = { { "first_sample", transcribe.firstSample }, { "samples_per_pixel", transcribe.samplesPerPixel } };
     view["mixer_visible"] = editPage.isMixerVisible();
     view["mixer_height"] = editPage.mixerHeight();
     view["passes_panel_open"] = editPage.isPassesPanelOpen();

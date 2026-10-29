@@ -76,6 +76,7 @@ constexpr SongOpGesture songOpGestures[] {
     { "select_clip", std::nullopt },
     { "select_video_take", std::nullopt },
     { "set_timeline_view", std::nullopt },
+    { "set_transcribe_view", std::nullopt },
     { "set_vertical_scroll", std::nullopt },
     { "set_take_lanes_unfolded", std::nullopt },
     { "set_mixer_visible", std::nullopt },
@@ -100,6 +101,10 @@ constexpr std::array presentedSongOps { Record::op, RecordAgain::op, Export::op,
 
 // What plays while Transposing is not the Song's Transpose: a Pass or an export would not match it.
 constexpr std::array waitForTranspose { Record::op, RecordAgain::op, ShowExport::op, Export::op };
+
+// What Transcribe mode refuses: every gesture that changes a Clip, and the arrow keys' nudge.
+constexpr std::array refusedWhileTranscribing { MoveClip::op, TrimClipStart::op, TrimClipEnd::op, SetClipFadeIn::op, SetClipFadeOut::op,
+                                                SetClipGain::op, SplitSelectedClip::op, DeleteSelection::op, TakeLaneClick::op, Nudge::op };
 
 bool isAppOp (std::string_view op)
 {
@@ -145,6 +150,8 @@ std::optional<Refusal> refusalOfSongOp (std::string_view op, const Running& runn
         return Refusal { core::Error { "ui.no_export_running", "no export is running", { { "op", std::string (op) } } }, false };
     if (op == RecordAgain::op && running.songHasNoPass && running.song == ActivityKind::idle)
         return Refusal { core::Error { "ui.no_pass_to_record_again", "the Song has no Pass to record again from", { { "op", std::string (op) } } }, false };
+    if (running.transcribing && running.song.has_value() && std::ranges::contains (refusedWhileTranscribing, op))
+        return Refusal { core::Error { "ui.transcribing", "Transcribe mode never changes a Clip", { { "op", std::string (op) } } }, false };
     const auto found = std::ranges::find (songOpGestures, op, &SongOpGesture::op);
     if (! running.song.has_value() || found == std::end (songOpGestures) || ! found->gesture.has_value())
         return std::nullopt;
@@ -189,6 +196,8 @@ std::string unavailableReason (std::string_view code)
         return "Stop recording first";
     if (code == "ui.export_running")
         return "Wait for the export to finish";
+    if (code == "ui.transcribing")
+        return "Unavailable in Transcribe mode";
     return "Wait for what runs to finish";
 }
 } // namespace overdub::ui

@@ -40,12 +40,15 @@ TEST_CASE ("the top bar's controls fit side by side at the smallest window width
     const Rectangle<int> bar { 0, 0, minimumWindowWidth, topBarHeight };
     const auto layout = topBarLayout (bar);
 
-    checkInsideAndApart (bar, { layout.modeButtons[0], layout.modeButtons[1], layout.controlIndicator, layout.rewind, layout.playStop, layout.record, layout.clock, layout.undo, layout.redo, layout.practiceSpeed, layout.transpose, layout.exportSlot });
+    checkInsideAndApart (bar, { layout.modeButtons[0], layout.modeButtons[1], layout.modeButtons[2], layout.controlIndicator, layout.rewind, layout.playStop, layout.record, layout.clock, layout.undo, layout.redo, layout.practiceSpeed, layout.transpose, layout.exportSlot });
     CHECK (layout.modeButtons[0].getX() < layout.modeButtons[1].getX());
-    CHECK (layout.modeButtons[1].getRight() < layout.controlIndicator.getX());
+    CHECK (layout.modeButtons[1].getX() < layout.modeButtons[2].getX());
+    // Record · Edit · Transcribe (issue #225): Transcribe is the widest label.
+    CHECK (layout.modeButtons[2].getWidth() == 80);
+    CHECK (layout.modeButtons[2].getRight() < layout.controlIndicator.getX());
     CHECK (layout.controlIndicator.getRight() < layout.rewind.getX());
     CHECK (layout.controlIndicator.getWidth() == 130);
-    CHECK (layout.undo.getWidth() == 70);
+    CHECK (layout.undo.getWidth() == 49);
     CHECK (layout.clock.getRight() < layout.undo.getX());
     // Transpose between Redo and Export... (issue #209): its caption over the field, "st" and the
     // spinner.
@@ -69,15 +72,15 @@ TEST_CASE ("the top bar's controls fit side by side at the smallest window width
     CHECK (layout.exportSlot.getRight() <= bar.getRight());
 }
 
-TEST_CASE ("at the fixture width Undo and Redo are 150 wide beside the control indicator and the Practice Speed field", "[ui][layout]")
+TEST_CASE ("at the fixture width Undo and Redo are 129 wide beside the control indicator and the Practice Speed field", "[ui][layout]")
 {
     const Rectangle<int> bar { 0, 0, 1200, topBarHeight };
     const auto layout = topBarLayout (bar);
 
-    checkInsideAndApart (bar, { layout.modeButtons[1], layout.controlIndicator, layout.rewind, layout.clock, layout.undo, layout.redo, layout.practiceSpeed, layout.transpose, layout.exportSlot });
+    checkInsideAndApart (bar, { layout.modeButtons[2], layout.controlIndicator, layout.rewind, layout.clock, layout.undo, layout.redo, layout.practiceSpeed, layout.transpose, layout.exportSlot });
     CHECK (layout.controlIndicator.getRight() < layout.rewind.getX());
-    CHECK (layout.undo.getWidth() == 150);
-    CHECK (layout.redo.getWidth() == 150);
+    CHECK (layout.undo.getWidth() == 129);
+    CHECK (layout.redo.getWidth() == 129);
 }
 
 TEST_CASE ("Record mode stacks one row per Track, the Import button and the Passes list in the right column", "[ui][layout]")
@@ -601,4 +604,34 @@ TEST_CASE ("revealing Tracks scrolls just enough to bring them into view, their 
     CHECK (revealTimelineScroll (250, 100, 180, 200) == 100);
     // Taller than the viewport: their top.
     CHECK (revealTimelineScroll (0, 300, 700, 200) == 300);
+}
+
+TEST_CASE ("Transcribe mode stacks the overview over the ruler and the waveform, beside the column while it shows", "[ui][layout][transcribe]")
+{
+    const Rectangle<int> page { 0, topBarHeight, 1200, 700 };
+    const auto shown = transcribePageLayout (page, true);
+
+    checkInsideAndApart (page, { shown.overview, shown.ruler, shown.waveform, shown.column });
+    CHECK (shown.overview.getHeight() == transcribeOverviewHeight);
+    CHECK (shown.ruler.getHeight() == transcribeRulerHeight);
+    CHECK (shown.overview.getBottom() < shown.ruler.getY());
+    CHECK (shown.ruler.getBottom() == shown.waveform.getY());
+    CHECK (shown.overview.getX() == shown.waveform.getX());
+    CHECK (shown.overview.getWidth() == shown.waveform.getWidth());
+    CHECK (shown.waveform.getHeight() > 400);
+    CHECK (shown.column.getWidth() == transcribeColumnWidth);
+    CHECK (shown.waveform.getRight() < shown.column.getX());
+    CHECK (shown.column.getHeight() == page.getHeight() - 20);
+
+    const auto hidden = transcribePageLayout (page, false);
+    CHECK (hidden.column.isEmpty());
+    CHECK (hidden.waveform.getWidth() == shown.waveform.getWidth() + transcribeColumnWidth + 10);
+    CHECK (hidden.overview.getWidth() == hidden.waveform.getWidth());
+
+    const auto column = transcribeColumnLayout (shown.column.withZeroOrigin());
+    checkInsideAndApart (shown.column.withZeroOrigin(), { column.heading, column.practiceSpeedField, column.practiceSpeedUnit, column.transposeField, column.transposeUnit });
+    CHECK (column.heading.getBottom() < column.practiceSpeedCaption.getY());
+    CHECK (column.practiceSpeedCaption.getBottom() <= column.practiceSpeedField.getY());
+    CHECK (column.practiceSpeedField.getBottom() < column.transposeCaption.getY());
+    CHECK (column.transposeCaption.getBottom() <= column.transposeField.getY());
 }
