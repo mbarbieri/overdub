@@ -43,7 +43,7 @@ Splitting one Backing Track into new Backing Tracks, one per instrument (vocals,
 _Avoid_: Stem split, demix, unmix
 
 **Transpose**:
-The Song's lasting pitch shift of every Backing Track, in whole semitones (0 by default). Takes are never transposed: they are recorded in the key you hear. Export plays it as heard.
+The Song's lasting pitch shift of every Backing Track, in semitones plus a fine tune of up to 50 cents either way (0 by default). Takes are never transposed: they are recorded in the key you hear. Export plays it as heard.
 _Avoid_: Key shift, pitch shift, key change
 
 **Practice Speed**:
@@ -69,6 +69,26 @@ _Avoid_: Comp lane, playlist, take folder
 **Pre-roll**:
 Playback that starts a few seconds before the record point so you can come in on time. The Pass still starts at the record point.
 _Avoid_: Count-in (that implies a tempo)
+
+**Transcribe mode**:
+The third mode, beside Record and Edit, for learning a part by ear from the Song's Backing Tracks before recording it.
+_Avoid_: Practice mode, learn mode
+
+**Focus Track**:
+The one Track being transcribed in Transcribe mode. Analysis and listening aids act on it, and picking it solos it in the Transcribe Mix.
+_Avoid_: Selected track, target track, active track
+
+**Transcribe Mix**:
+Transcribe mode's own mute and solo per Track, for listening only. The Song's mix and its Export are unaffected.
+_Avoid_: Practice mix, monitor mix, listening mix
+
+**Marker**:
+A labelled point in time on the Song, saved with it and shown in every mode.
+_Avoid_: Cue, flag, locator, section
+
+**Loop**:
+A named range of the Song, saved with it and shown in every mode, that plays over and over in Transcribe mode. A Song can have any number of Loops, and one is active at a time. Each Loop remembers the Practice Speed it is drilled at.
+_Avoid_: Cycle, region, section, repeat
 
 ### Signal flow
 
