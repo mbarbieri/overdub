@@ -569,7 +569,7 @@ struct SetTranspose // the top bar's Transpose field, on Return
 // Song: Practice Speed (issue #212): rehearsal only, never an undo step nor saved; renders that
 // playback switches to once ready.
 
-struct SetPracticeSpeed // the top bar's Practice Speed field, on Return
+struct SetPracticeSpeed // the Practice Speed fields, on Return, and H, - and =
 {
     static constexpr std::string_view op = "set_practice_speed";
     int speedPercent = 100;
@@ -1032,7 +1032,8 @@ struct KeyChord
 // What the window shows that a key's Intent depends on: I sets the Transcribe column to the
 // opposite of what it is, backspace deletes the selected Marker, when there is one, or else the
 // Loop to delete (SongView::loopToDelete), L sets looping to the opposite of what it is, option-n
-// selects the n-th Loop in time order, and Esc cancels a pending Loop start.
+// selects the n-th Loop in time order, Esc cancels a pending Loop start, and H, - and = set the
+// Practice Speed from the one wanted now (OpenSong::practiceSpeed).
 struct KeyContext
 {
     bool transcribeColumnVisible = true;
@@ -1041,6 +1042,7 @@ struct KeyContext
     bool looping = false;
     std::vector<song::Id> loopIds; // in time order
     bool loopStartPending = false;
+    int practiceSpeed = 100;
 };
 
 // The Intent a key press runs, or none.

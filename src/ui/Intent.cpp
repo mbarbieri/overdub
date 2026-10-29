@@ -1,5 +1,8 @@
 #include "ui/Intent.h"
 
+#include "song/PracticeSpeed.h"
+
+#include <algorithm>
 #include <type_traits>
 #include <variant>
 
@@ -12,6 +15,18 @@ char32_t lowerCase (char32_t character)
     if (character >= U'A' && character <= U'Z')
         return character - U'A' + U'a';
     return character;
+}
+
+// H: half speed, or back to normal from half speed.
+int halfOrNormalPracticeSpeed (int speedPercent)
+{
+    return speedPercent == song::halfPracticeSpeed ? song::normalPracticeSpeed : song::halfPracticeSpeed;
+}
+
+// - and =: one step down or up, clamped to the range.
+int steppedPracticeSpeed (int speedPercent, int steps)
+{
+    return std::clamp (speedPercent + steps * song::practiceSpeedStep, song::minPracticeSpeed, song::maxPracticeSpeed);
 }
 
 template <typename Leaf>
@@ -95,6 +110,9 @@ std::optional<Intent> intentForKey (KeyChord key, KeyContext context)
         case U'l': return SongIntent { intent::SetLooping { ! context.looping } };
         case U'[': return SongIntent { intent::MarkLoopStart {} };
         case U']': return SongIntent { intent::MarkLoopEnd {} };
+        case U'h': return SongIntent { intent::SetPracticeSpeed { halfOrNormalPracticeSpeed (context.practiceSpeed) } };
+        case U'-': return SongIntent { intent::SetPracticeSpeed { steppedPracticeSpeed (context.practiceSpeed, -1) } };
+        case U'=': return SongIntent { intent::SetPracticeSpeed { steppedPracticeSpeed (context.practiceSpeed, 1) } };
         case escapeCharacter:
             if (context.loopStartPending)
                 return SongIntent { intent::CancelLoopStart {} };

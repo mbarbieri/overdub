@@ -11,7 +11,7 @@ git submodule update --init --recursive   # external/JUCE (9.0.3), external/Catc
 ## Build and test
 
 ```sh
-cmake --preset debug            # configure into build/debug; applies the JUCE patch
+cmake --preset debug            # configure into build/debug; applies the JUCE and Signalsmith patches
 cmake --build --preset debug    # builds Overdub.app, overdub_core and overdub_tests
 ctest --preset debug            # runs every Catch2 test case, 12 in parallel (about 85 s; ~7 min serial with -j1)
 open build/debug/src/app/Overdub_artefacts/Debug/Overdub.app
@@ -137,9 +137,13 @@ The selftests (`--selftest`) never listen. The log reports the socket as `contro
 - `patches/juce-force-auv2-oop.patch` makes JUCE load AUv2 plugins out-of-process through `AUHostingService`, as it already does for AUv3 (ADR 0002), and counts those instantiations (`juce::getAudioUnitOutOfProcessInstantiationCount()`, declared in `juce_AudioUnitPluginFormatHeadless.h`).
 - `patches/juce-graph-realtime-safe.patch` makes `AudioProcessorGraph::processBlock` pass the realtime guard (ADR 0001, ADR 0005). Unpatched, each node's `processBlock` runs under a blocking `ScopedLock` on its callback lock (one `pthread_mutex_lock` per node per block), and the graph reallocates its output buffer whenever the block size changes. The patch takes the callback lock with `ScopedTryLock` (a node whose lock is held elsewhere outputs silence for that block, counted by `juce::getAudioProcessorGraphBusyNodeBlockCount()` and reported as `engine.nodes_silenced`; ADR 0001 amendment) and resizes the output buffer with `avoidReallocating`. Without it the `[engine][rt]` tests fail.
 
-Configuring applies each patch listed in `external/CMakeLists.txt` to `external/JUCE` idempotently: if it is already applied nothing happens, if it applies cleanly it is applied, otherwise configure stops with an error. `external/JUCE` shows as modified inside the submodule; `.gitmodules` sets `ignore = dirty` so the superproject stays clean.
+### The Signalsmith Stretch patch
 
-When a patch file itself changes (a pull that edits `patches/`), a checkout that applied the old version fails configure because neither version matches. Reset the submodule and configure again: `git -C external/JUCE checkout -- . && cmake --preset debug`.
+- `patches/signalsmith-stretch-clean-to-4x.patch` raises Signalsmith Stretch's `maxCleanStretch` from 2 to 4 (ADR 0009, issue #229). Upstream randomises phases past a 2x stretch, which smears an impulse rendered at 25% Practice Speed over about 70 ms and puts its loudest sample up to 18 ms off; at 4 the 25% render keeps the impulse sample-exact, as 50% already did. Renders at 50…125% and Transpose renders (at most a 2x stretch) are unchanged. Without it the 25% `[practice_speed][render]` tests fail. To re-apply after a bump: `git -C external/signalsmith-stretch checkout -- .`, bump, configure; if it fails, redo the one-line `OVERDUB PATCH` edit in `signalsmith-stretch.h` and regenerate with `git -C external/signalsmith-stretch diff > patches/signalsmith-stretch-clean-to-4x.patch`.
+
+Configuring applies each patch listed in `external/CMakeLists.txt` to its submodule (`external/JUCE`, `external/signalsmith-stretch`) idempotently: if it is already applied nothing happens, if it applies cleanly it is applied, otherwise configure stops with an error. Both submodules show as modified inside; `.gitmodules` sets `ignore = dirty` on them so the superproject stays clean.
+
+When a patch file itself changes (a pull that edits `patches/`), a checkout that applied the old version fails configure because neither version matches. Reset the submodule and configure again: `git -C external/JUCE checkout -- . && cmake --preset debug` (or `external/signalsmith-stretch`).
 
 ### Re-applying the JUCE patch (after bumping JUCE)
 

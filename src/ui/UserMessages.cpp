@@ -49,7 +49,7 @@ constexpr std::array codeTable {
     CodeEntry { "song.transpose_out_of_range", Tier::notice, "Transpose is a whole number of semitones from \xe2\x88\x92"
                                                              "12 to +12." },
     CodeEntry { "song.transpose_render_failed", Tier::notice, "A Backing Track could not be transposed. Set Transpose again to try again." },
-    CodeEntry { "song.practice_speed_out_of_range", Tier::notice, "Practice Speed is a whole percent from 50 to 125." },
+    CodeEntry { "song.practice_speed_out_of_range", Tier::notice, "Practice Speed is a whole percent from 25 to 125." },
     CodeEntry { "song.practice_render_failed", Tier::notice, "A Track could not be slowed down or sped up. Set Practice Speed again to try again." },
     CodeEntry { "ui.export_finished", Tier::notice, "The export is written." },
     CodeEntry { "ui.export_cancelled", Tier::notice, "The export was cancelled." },

@@ -20,32 +20,42 @@ foreach(submodule_file JUCE/CMakeLists.txt Catch2/CMakeLists.txt json/CMakeLists
     endif()
 endforeach()
 
-# Apply each patch idempotently at every configure:
-# already applied -> nothing; applies cleanly -> apply; neither -> stop (JUCE was bumped or edited).
-function(overdub_apply_juce_patch OVERDUB_JUCE_PATCH)
+# The patch applied to Signalsmith Stretch, with the ADR that requires it:
+#   signalsmith-stretch-clean-to-4x.patch  ADR 0009: phases stay coherent up to a 4x stretch (25%
+#                                          Practice Speed), so an impulse lands where it should.
+set(OVERDUB_SIGNALSMITH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/signalsmith-stretch")
+set(OVERDUB_SIGNALSMITH_PATCHES
+    "${PROJECT_SOURCE_DIR}/patches/signalsmith-stretch-clean-to-4x.patch")
+
+# Apply each patch to its submodule idempotently at every configure:
+# already applied -> nothing; applies cleanly -> apply; neither -> stop (the submodule was bumped or edited).
+function(overdub_apply_patch OVERDUB_PATCH_DIR OVERDUB_PATCH)
     execute_process(
-        COMMAND git apply --reverse --check "${OVERDUB_JUCE_PATCH}"
-        WORKING_DIRECTORY "${OVERDUB_JUCE_DIR}"
+        COMMAND git apply --reverse --check "${OVERDUB_PATCH}"
+        WORKING_DIRECTORY "${OVERDUB_PATCH_DIR}"
         RESULT_VARIABLE already_applied_result
         OUTPUT_QUIET ERROR_QUIET)
     if(already_applied_result EQUAL 0)
-        message(STATUS "overdub: JUCE patch already applied: ${OVERDUB_JUCE_PATCH}")
+        message(STATUS "overdub: patch already applied: ${OVERDUB_PATCH}")
         return()
     endif()
 
     execute_process(
-        COMMAND git apply "${OVERDUB_JUCE_PATCH}"
-        WORKING_DIRECTORY "${OVERDUB_JUCE_DIR}"
+        COMMAND git apply "${OVERDUB_PATCH}"
+        WORKING_DIRECTORY "${OVERDUB_PATCH_DIR}"
         RESULT_VARIABLE apply_result
         ERROR_VARIABLE apply_error)
     if(NOT apply_result EQUAL 0)
-        message(FATAL_ERROR "overdub: could not apply ${OVERDUB_JUCE_PATCH} to ${OVERDUB_JUCE_DIR}:\n${apply_error}\nSee docs/building.md, 'Re-applying the JUCE patch'.")
+        message(FATAL_ERROR "overdub: could not apply ${OVERDUB_PATCH} to ${OVERDUB_PATCH_DIR}:\n${apply_error}\nSee docs/building.md, 'The JUCE patches' and 'The Signalsmith Stretch patch'.")
     endif()
-    message(STATUS "overdub: applied JUCE patch: ${OVERDUB_JUCE_PATCH}")
+    message(STATUS "overdub: applied patch: ${OVERDUB_PATCH}")
 endfunction()
 
 foreach(patch IN LISTS OVERDUB_JUCE_PATCHES)
-    overdub_apply_juce_patch("${patch}")
+    overdub_apply_patch("${OVERDUB_JUCE_DIR}" "${patch}")
+endforeach()
+foreach(patch IN LISTS OVERDUB_SIGNALSMITH_PATCHES)
+    overdub_apply_patch("${OVERDUB_SIGNALSMITH_DIR}" "${patch}")
 endforeach()
 
 add_subdirectory(JUCE EXCLUDE_FROM_ALL)
@@ -95,7 +105,7 @@ target_include_directories(overdub_pocketfft SYSTEM INTERFACE "${CMAKE_CURRENT_S
 # The helper's parallelism is ONNX Runtime's; pocketfft's own thread pool is not needed.
 target_compile_definitions(overdub_pocketfft INTERFACE POCKETFFT_NO_MULTITHREADING)
 
-# Signalsmith Stretch 1.4.0 and its Signalsmith Linear 0.6.4 (both MIT, header-only): the
+# Signalsmith Stretch 1.4.0 (patched, above) and its Signalsmith Linear 0.6.4 (both MIT, header-only): the
 # Transpose render (ADR 0009). Only overdub_song links it, privately, and only song/TransposeRender.cpp
 # includes it: it never runs on the audio thread. Its own CMakeLists fetches Linear over the network,
 # so the submodules' headers are used directly instead.

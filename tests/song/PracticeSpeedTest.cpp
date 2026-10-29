@@ -71,17 +71,18 @@ std::optional<overdub::core::Expected<void>> runToEnd (PracticeSpeedRun& run)
 }
 } // namespace
 
-TEST_CASE ("Practice Speed is a whole percent from 50 to 125", "[song][practice_speed]")
+TEST_CASE ("Practice Speed is a whole percent from 25 to 125", "[song][practice_speed]")
 {
+    CHECK (checkPracticeSpeed (25) == 25);
     CHECK (checkPracticeSpeed (50) == 50);
     CHECK (checkPracticeSpeed (125) == 125);
-    for (const int outside : { 49, 126, 0, -80 })
+    for (const int outside : { 24, 126, 0, -80 })
     {
         const auto refused = checkPracticeSpeed (outside);
         REQUIRE_FALSE (refused.has_value());
         CHECK (refused.error().code == "song.practice_speed_out_of_range");
         CHECK (refused.error().fields.at ("speed_percent") == outside);
-        CHECK (refused.error().fields.at ("min") == 50);
+        CHECK (refused.error().fields.at ("min") == 25);
         CHECK (refused.error().fields.at ("max") == 125);
     }
 }

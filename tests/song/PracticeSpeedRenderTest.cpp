@@ -59,7 +59,7 @@ int peakIndex (const float* samples, int length)
 
 TEST_CASE ("a sine rendered at a Practice Speed keeps its pitch and lasts its length divided by the speed", "[song][practice_speed][render]")
 {
-    const auto speedPercent = GENERATE (80, 50, 125);
+    const auto speedPercent = GENERATE (80, 50, 25, 125);
     INFO (speedPercent << "%");
     const ScratchFolder scratch;
     const auto source = scratch.write ("take.wav", sineBuffer (2, 2 * sampleRate, 440.0));
@@ -97,7 +97,7 @@ TEST_CASE ("a render at a Practice Speed also applies a Transpose, in one pass",
 
 TEST_CASE ("an impulse rendered at a Practice Speed lands at its time divided by the speed", "[song][practice_speed][render]")
 {
-    const auto speedPercent = GENERATE (80, 125);
+    const auto speedPercent = GENERATE (80, 125, 25);
     INFO (speedPercent << "%");
     juce::AudioBuffer<float> click { 1, 2 * sampleRate };
     click.clear();
@@ -110,7 +110,7 @@ TEST_CASE ("an impulse rendered at a Practice Speed lands at its time divided by
 
     const auto rendered = overdub::song::readWavFile (destination);
     REQUIRE (rendered.has_value());
-    const auto expected = 48000.0 * 100.0 / speedPercent; // 60000 at 80%, 38400 at 125%
+    const auto expected = 48000.0 * 100.0 / speedPercent; // 60000 at 80%, 38400 at 125%, 192000 (4t) at 25%
     // ADR 0005: within 1 ms (48 samples) of its time divided by the speed.
     CHECK_THAT ((double) peakIndex (rendered->getReadPointer (0), rendered->getNumSamples()), WithinAbs (expected, 48.0));
 }

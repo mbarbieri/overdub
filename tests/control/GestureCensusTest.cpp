@@ -558,6 +558,10 @@ TEST_CASE ("no gesture changes the app state without running an Intent", "[contr
         for (const auto* scene : { "record/", "edit/", "transcribe/" })
             CHECK (fired (scene, key));
     CHECK (fired ("transcribe/", "/MarkerList#0/MarkerRow#1:click"));
+    // Practice Speed keys (issue #229): H, - and = in every mode.
+    for (const auto* key : { "key:h", "key:-", "key:=" })
+        for (const auto* scene : { "record/", "edit/", "transcribe/" })
+            CHECK (fired (scene, key));
 }
 
 TEST_CASE ("the census fails on a button that edits the Song without an Intent", "[control][census]")
