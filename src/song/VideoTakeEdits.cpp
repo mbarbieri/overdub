@@ -16,8 +16,8 @@ core::Expected<Song> deleteVideoTake (Song song, const Id& videoTakeId)
     if (found == song.videoTakes.end())
         return std::unexpected (core::Error { "song.video_take_not_found", "no Video Take with this id in the Song", { { "video_take_id", videoTakeId } } });
     song.videoTakes.erase (found);
-    if (song.exportVideoTakeId == videoTakeId)
-        song.exportVideoTakeId.reset();
+    if (song.settings.exportVideoTakeId == videoTakeId)
+        song.settings.exportVideoTakeId.reset();
     return song;
 }
 } // namespace overdub::song

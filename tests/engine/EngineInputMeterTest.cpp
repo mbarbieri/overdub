@@ -37,8 +37,8 @@ EngineConfig stereoConfig()
 overdub::song::Track armedTrack (const std::string& id, std::vector<int> inputChannels)
 {
     auto track = trackWith (id, {});
-    track.armed = true;
-    track.inputChannels = std::move (inputChannels);
+    track.settings.armed = true;
+    track.settings.inputChannels = std::move (inputChannels);
     return track;
 }
 
@@ -60,7 +60,7 @@ overdub::song::Song meteredSong()
     song.tracks.push_back (guitar);
     song.tracks.push_back (armedTrack ("stereo", { 0, 1 }));
     auto bass = trackWith ("bass", {});
-    bass.inputChannels = { 0 };
+    bass.settings.inputChannels = { 0 };
     song.tracks.push_back (bass);
     return song;
 }

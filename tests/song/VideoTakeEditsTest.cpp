@@ -35,15 +35,15 @@ TEST_CASE ("deleting a Video Take removes only it, keeping Passes and Takes", "[
 TEST_CASE ("deleting the export's chosen Video Take clears the choice; deleting another keeps it", "[song][video_takes]")
 {
     auto song = songWithTwoVideoTakes();
-    song.exportVideoTakeId = "v2";
+    song.settings.exportVideoTakeId = "v2";
 
     const auto other = deleteVideoTake (song, "v1");
     REQUIRE (other.has_value());
-    CHECK (other->exportVideoTakeId == std::optional<Id> ("v2"));
+    CHECK (other->settings.exportVideoTakeId == std::optional<Id> ("v2"));
 
     const auto chosen = deleteVideoTake (song, "v2");
     REQUIRE (chosen.has_value());
-    CHECK (! chosen->exportVideoTakeId.has_value());
+    CHECK (! chosen->settings.exportVideoTakeId.has_value());
 }
 
 TEST_CASE ("deleting an unknown Video Take is a song.video_take_not_found Error", "[song][video_takes]")

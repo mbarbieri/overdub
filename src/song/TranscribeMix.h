@@ -7,7 +7,7 @@
 
 // Transcribe mode's Focus Track, Transcribe Mix (ADR 0010, issue #226) and each Track's octave
 // shift (issue #233) and band filter (issue #234) as pure functions. All are Song state outside
-// history (Song::focusTrackId, Track::transcribeMute / transcribeSolo / octaveShift / bandFilter):
+// history (SongSettings::focusTrackId, TrackSettings::transcribeMute / transcribeSolo / octaveShift / bandFilter):
 // the caller stores the returned Song with SongPackage::changeWithoutHistory, never as an undo
 // step. What Transcribe mode hears is withTranscribeMix; the Song's own mix never changes.
 // Errors: song.track_not_found (track_id).

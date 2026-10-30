@@ -1,4 +1,5 @@
 #include "song/Song.h"
+#include "song/FullSong.h"
 #include "song/InsertEdits.h"
 #include "song/MixEdits.h"
 #include "song/Separation.h"
@@ -77,19 +78,35 @@ TEST_CASE ("every edit of a Track the Song does not have is song.track_not_found
     }
 }
 
+TEST_CASE ("undo and redo keep every settings group whole, whatever fields it has", "[song][history]")
+{
+    // fullyPopulatedSong has every field away from its default, so a field added to a settings
+    // group is covered here once FullSong sets it.
+    const auto current = testing::fullyPopulatedSong();
+    auto snapshot = current;
+    snapshot.settings = {};
+    for (auto& track : snapshot.tracks)
+        track.settings = {};
+    for (auto& loop : snapshot.loops)
+        loop.settings = {};
+    REQUIRE (snapshot != current);
+
+    CHECK (keepStateOutsideHistory (snapshot, current) == current);
+}
+
 TEST_CASE ("undo and redo keep the export format, length and destination as they are now", "[song][history][export]")
 {
     auto snapshot = songWithGuitar();
     auto current = snapshot;
     current.tracks.front().name = "Bass";
-    current.exportFormat = ExportFormat::m4a;
-    current.exportLength = VideoLength::fullSong;
-    current.exportDestination = "/Volumes/Share/Mixes/Band Mix.m4a";
+    current.settings.exportFormat = ExportFormat::m4a;
+    current.settings.exportLength = VideoLength::fullSong;
+    current.settings.exportDestination = "/Volumes/Share/Mixes/Band Mix.m4a";
 
     const auto restored = keepStateOutsideHistory (snapshot, current);
 
     CHECK (restored.tracks.front().name == "Guitar");
-    CHECK (restored.exportFormat == ExportFormat::m4a);
-    CHECK (restored.exportLength == VideoLength::fullSong);
-    CHECK (restored.exportDestination == "/Volumes/Share/Mixes/Band Mix.m4a");
+    CHECK (restored.settings.exportFormat == ExportFormat::m4a);
+    CHECK (restored.settings.exportLength == VideoLength::fullSong);
+    CHECK (restored.settings.exportDestination == "/Volumes/Share/Mixes/Band Mix.m4a");
 }

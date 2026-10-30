@@ -230,8 +230,8 @@ void TranscribeTrackRow::show (const song::Track& track, bool isFocus, bool isHe
     name = newName;
     colour = newColour;
     focused = isFocus;
-    muted = track.transcribeMute;
-    soloed = track.transcribeSolo;
+    muted = track.settings.transcribeMute;
+    soloed = track.settings.transcribeSolo;
     heard = isHeard;
     focusButton.setToggleState (focused, juce::dontSendNotification);
     muteButton.setToggleState (muted, juce::dontSendNotification);
@@ -399,7 +399,7 @@ void TranscribeColumn::showOctaveShift (const TranscribePageState& state)
     shownFocusTrackId = focus != nullptr ? std::optional (focus->id) : std::nullopt;
     for (std::size_t i = 0; i < octaveButtons.size(); ++i)
     {
-        octaveButtons[i].setToggleState (focus != nullptr && focus->octaveShift == song::minOctaveShift + (int) i, juce::dontSendNotification);
+        octaveButtons[i].setToggleState (focus != nullptr && focus->settings.octaveShift == song::minOctaveShift + (int) i, juce::dontSendNotification);
         octaveButtons[i].setEnabled (focus != nullptr && state.canSetTranscribeMix);
     }
     octaveSpinner.setVisible (state.octaveRendering);
@@ -408,7 +408,7 @@ void TranscribeColumn::showOctaveShift (const TranscribePageState& state)
 void TranscribeColumn::showBandFilter (const TranscribePageState& state)
 {
     const auto* focus = song::focusTrack (state.song);
-    shownBandFilter = focus != nullptr ? focus->bandFilter : song::BandFilter {};
+    shownBandFilter = focus != nullptr ? focus->settings.bandFilter : song::BandFilter {};
     const auto enabled = focus != nullptr && state.canSetTranscribeMix;
     filterToggle.setToggleState (focus != nullptr && shownBandFilter.on, juce::dontSendNotification);
     filterToggle.setEnabled (enabled);
@@ -452,7 +452,7 @@ void TranscribeColumn::showTracks (const TranscribePageState& state)
     const auto heardMix = song::withTranscribeMix (state.song);
     const auto anySoloed = std::ranges::any_of (heardMix.tracks, &song::Track::solo);
     for (std::size_t i = 0; i < tracks.size(); ++i)
-        trackRows[i]->show (tracks[i], state.song.focusTrackId == tracks[i].id, engine::isAudible (heardMix.tracks[i], anySoloed), state.canSetTranscribeMix);
+        trackRows[i]->show (tracks[i], state.song.settings.focusTrackId == tracks[i].id, engine::isAudible (heardMix.tracks[i], anySoloed), state.canSetTranscribeMix);
 }
 
 void TranscribeColumn::layOutTrackRows()
@@ -603,10 +603,10 @@ void TranscribePage::showViews()
         .scale = stripScaleFor (current),
         .editable = shown.markersEditable,
         .selectedMarker = shown.selectedMarker,
-        .activeLoop = shown.song.activeLoopId,
+        .activeLoop = shown.song.settings.activeLoopId,
         .pendingLoopStart = shown.pendingLoopStart,
     });
-    loopList.show (shown.song.loops, shown.song.sampleRate, shown.song.activeLoopId);
+    loopList.show (shown.song.loops, shown.song.sampleRate, shown.song.settings.activeLoopId);
     markerList.show (shown.song.markers, shown.song.sampleRate, shown.selectedMarker);
 }
 

@@ -41,7 +41,7 @@ std::string loopLengthText (const song::Loop& loop, int sampleRate)
 
 std::string loopSpeedText (const song::Loop& loop)
 {
-    return std::to_string (loop.practiceSpeedPercent) + "%";
+    return std::to_string (loop.settings.practiceSpeedPercent) + "%";
 }
 
 std::string loopKeyText (std::size_t index)
@@ -154,7 +154,7 @@ void LoopCard::show (const song::Loop& loop, int sampleRate, std::size_t index, 
     const auto newLength = fromUtf8 (loopLengthText (loop, sampleRate));
     const auto newSpeed = fromUtf8 (loopSpeedText (loop));
     const auto newKey = fromUtf8 (loopKeyText (index));
-    const bool newAtNormalSpeed = loop.practiceSpeedPercent == song::normalPracticeSpeed;
+    const bool newAtNormalSpeed = loop.settings.practiceSpeedPercent == song::normalPracticeSpeed;
     if (newName == name && newRange == range && newLength == length && newSpeed == speed && newKey == key && isActive == active)
         return;
     atNormalSpeed = newAtNormalSpeed;

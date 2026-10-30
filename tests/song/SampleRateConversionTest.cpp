@@ -79,7 +79,7 @@ struct ConversionFixture
         guitar.name = "Guitar";
         guitar.clips.push_back ({ .id = "clip-take", .source = { ClipSourceKind::take, takeId }, .timelineStart = takeOrigin, .sourceOffset = 0, .length = takeLength });
         song.tracks.push_back (guitar);
-        song.playhead = 44100;
+        song.settings.playhead = 44100;
         REQUIRE (package->edit (song, "Record Pass 1").has_value());
     }
 
@@ -173,7 +173,7 @@ TEST_CASE ("converting a Song scales every sample position and length to the new
     const auto converted = convertedSong (song, 48000, {});
 
     CHECK (converted.sampleRate == 48000);
-    CHECK (converted.playhead == 144000);
+    CHECK (converted.settings.playhead == 144000);
     CHECK (converted.passes[0].startSample == 96000);
     CHECK (converted.passes[1].startSample == 192000);
 
@@ -200,7 +200,7 @@ TEST_CASE ("converting a Song scales every sample position and length to the new
     CHECK (converted.tracks.size() == song.tracks.size());
     CHECK (converted.tracks[0].insertChain == song.tracks[0].insertChain);
     CHECK (converted.master == song.master);
-    CHECK (converted.exportVideoTakeId == song.exportVideoTakeId);
+    CHECK (converted.settings.exportVideoTakeId == song.settings.exportVideoTakeId);
 }
 
 TEST_CASE ("converting a Song points its Clips and Separation origins at the new media", "[song][conversion]")
@@ -254,10 +254,10 @@ TEST_CASE ("Clips that touch still touch after a conversion, and a Clip stays in
 TEST_CASE ("an undo or redo across a conversion keeps the playhead at the same time", "[song][conversion][history]")
 {
     auto at48k = convertedSong (fullyPopulatedSong(), 48000, {});
-    at48k.playhead = 96000;
+    at48k.settings.playhead = 96000;
     const auto restored = overdub::song::keepStateOutsideHistory (fullyPopulatedSong(), at48k);
     CHECK (restored.sampleRate == 44100);
-    CHECK (restored.playhead == 88200);
+    CHECK (restored.settings.playhead == 88200);
 }
 
 //==============================================================================

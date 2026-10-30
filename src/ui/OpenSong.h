@@ -125,11 +125,11 @@
 // 100% (a Loop heard in Transcribe mode then brings back its own, issue #230). While a Loop is heard
 // (heard().loop), its window renders first.
 //
-// The octave shift (issue #233): each Track keeps its own (song::Track::octaveShift, outside
+// The octave shift (issue #233): each Track keeps its own (song::TrackSettings::octaveShift, outside
 // history), and only the Focus Track's is heard, only while transcribing (heard().octaveShiftedTrack).
 // It is heard at once: a source with no render yet plays silence until its run ends (the spinner).
 //
-// The band filter (issue #234, ADR 0010): each Track keeps its own (song::Track::bandFilter, outside
+// The band filter (issue #234, ADR 0010): each Track keeps its own (song::TrackSettings::bandFilter, outside
 // history), and only the Focus Track's is heard, only while transcribing and while it is on
 // (heard().bandFilter). It runs live in the engine (Engine::setBandFilter, set with the Loop), so a
 // change is heard from the next block, with no render or rebuild.

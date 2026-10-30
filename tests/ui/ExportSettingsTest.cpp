@@ -36,8 +36,8 @@ TEST_CASE ("an export format is stored as given", "[ui][export_settings]")
 {
     const auto song = exportSong();
 
-    CHECK (changed (song, SetExportFormat { ExportFormat::m4a }).exportFormat == ExportFormat::m4a);
-    CHECK (changed (song, SetExportFormat { ExportFormat::mp4 }).exportFormat == ExportFormat::mp4);
+    CHECK (changed (song, SetExportFormat { ExportFormat::m4a }).settings.exportFormat == ExportFormat::m4a);
+    CHECK (changed (song, SetExportFormat { ExportFormat::mp4 }).settings.exportFormat == ExportFormat::mp4);
 }
 
 TEST_CASE ("an export length stores the MP4 length and the Loop whose range is written", "[ui][export_settings]")
@@ -45,12 +45,12 @@ TEST_CASE ("an export length stores the MP4 length and the Loop whose range is w
     const auto song = exportSong();
 
     const auto ofLoop = changed (song, SetExportLength { VideoLength::fullSong, "loop-1" });
-    CHECK (ofLoop.exportLength == VideoLength::fullSong);
-    CHECK (ofLoop.exportLoopId == "loop-1");
+    CHECK (ofLoop.settings.exportLength == VideoLength::fullSong);
+    CHECK (ofLoop.settings.exportLoopId == "loop-1");
 
     const auto whole = changed (ofLoop, SetExportLength { VideoLength::trimToVideoTake, std::nullopt });
-    CHECK (whole.exportLength == VideoLength::trimToVideoTake);
-    CHECK_FALSE (whole.exportLoopId.has_value());
+    CHECK (whole.settings.exportLength == VideoLength::trimToVideoTake);
+    CHECK_FALSE (whole.settings.exportLoopId.has_value());
 }
 
 TEST_CASE ("an export length of a Loop the Song does not have is song.loop_not_found", "[ui][export_settings]")
@@ -70,7 +70,7 @@ TEST_CASE ("an export destination in an existing folder is stored as its full pa
 
     const auto song = changed (exportSong(), SetExportDestination { { file.getFullPathName().toStdString() } });
 
-    CHECK (song.exportDestination == file.getFullPathName().toStdString());
+    CHECK (song.settings.exportDestination == file.getFullPathName().toStdString());
     folder.getFile().deleteRecursively();
 }
 
@@ -90,6 +90,6 @@ TEST_CASE ("an export Video Take of the Song is stored, and any other id is igno
 {
     const auto song = exportSong();
 
-    CHECK (changed (song, SetExportVideoTake { "video-1" }).exportVideoTakeId == "video-1");
+    CHECK (changed (song, SetExportVideoTake { "video-1" }).settings.exportVideoTakeId == "video-1");
     CHECK (changed (song, SetExportVideoTake { "video-gone" }) == song);
 }

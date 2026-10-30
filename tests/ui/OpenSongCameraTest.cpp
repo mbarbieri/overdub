@@ -40,11 +40,11 @@ struct CameraFixture
     {
         auto song = overdub::song::makeEmptySong (testSampleRate);
         auto guitar = trackWith ("guitar", {});
-        guitar.armed = true;
-        guitar.inputChannels = { 0 };
+        guitar.settings.armed = true;
+        guitar.settings.inputChannels = { 0 };
         song.tracks = { guitar };
-        song.cameraArmed = cameraArmed;
-        song.cameraDeviceId = cameraArmed ? "camera-usb" : "";
+        song.settings.cameraArmed = cameraArmed;
+        song.settings.cameraDeviceId = cameraArmed ? "camera-usb" : "";
         auto created = SongPackage::create (folder.root.getChildFile ("Song.overdub"), song);
         REQUIRE (created.has_value());
         openSong = std::make_unique<OpenSong> (std::move (*created), AudioBinding { &engine, RecordLatency { 0, 120, 0 }, { "In 1", "In 2" }, "Speakers" });
@@ -82,14 +82,14 @@ TEST_CASE ("arming the camera opens the default camera, which becomes the Song's
     CHECK (fixture.openSong->cameraDevices().size() == 2);
 
     REQUIRE (fixture.openSong->setCameraArmed (true).has_value());
-    CHECK (fixture.openSong->song().cameraArmed);
+    CHECK (fixture.openSong->song().settings.cameraArmed);
     REQUIRE (fixture.camera.opened.has_value());
-    CHECK (fixture.openSong->song().cameraDeviceId == "camera-facetime");
+    CHECK (fixture.openSong->song().settings.cameraDeviceId == "camera-facetime");
     // Arming is outside history.
     CHECK_FALSE (fixture.openSong->package().canUndo());
 
     REQUIRE (fixture.openSong->setCameraArmed (false).has_value());
-    CHECK_FALSE (fixture.openSong->song().cameraArmed);
+    CHECK_FALSE (fixture.openSong->song().settings.cameraArmed);
     CHECK_FALSE (fixture.camera.opened.has_value());
 }
 
@@ -112,7 +112,7 @@ TEST_CASE ("a chosen camera that is gone falls back to the default one, and says
     REQUIRE (fixture.openSong->attachCamera (&fixture.camera, fixture.calibrationFile).has_value());
     REQUIRE (fixture.camera.opened.has_value());
     CHECK (fixture.camera.opened->id == "camera-facetime");
-    CHECK (fixture.openSong->song().cameraDeviceId == "camera-facetime");
+    CHECK (fixture.openSong->song().settings.cameraDeviceId == "camera-facetime");
 
     int fallbacks = 0;
     for (const auto& event : capture.events())
@@ -130,7 +130,7 @@ TEST_CASE ("choosing another camera reopens it while Armed", "[ui][camera]")
     CameraFixture fixture;
     REQUIRE (fixture.openSong->attachCamera (&fixture.camera, fixture.calibrationFile).has_value());
     REQUIRE (fixture.openSong->setCameraDevice ("camera-usb").has_value());
-    CHECK (fixture.openSong->song().cameraDeviceId == "camera-usb");
+    CHECK (fixture.openSong->song().settings.cameraDeviceId == "camera-usb");
     CHECK_FALSE (fixture.camera.opened.has_value()); // not Armed: stays closed
 
     REQUIRE (fixture.openSong->setCameraArmed (true).has_value());
@@ -148,7 +148,7 @@ TEST_CASE ("a camera that cannot open leaves the camera disarmed and says why", 
     const auto armed = fixture.openSong->setCameraArmed (true);
     REQUIRE_FALSE (armed.has_value());
     CHECK (armed.error().code == "capture.camera_access_denied");
-    CHECK_FALSE (fixture.openSong->song().cameraArmed);
+    CHECK_FALSE (fixture.openSong->song().settings.cameraArmed);
 }
 
 TEST_CASE ("with the camera Armed each Pass records a Video Take, placed with this machine's calibration", "[ui][camera][record]")
@@ -204,8 +204,8 @@ TEST_CASE ("the camera arm and choice are refused while a Pass runs", "[ui][came
 
     CHECK (fixture.openSong->setCameraArmed (true).error().code == "ui.stop_recording_first");
     CHECK (fixture.openSong->setCameraDevice ("camera-usb").error().code == "ui.stop_recording_first");
-    CHECK_FALSE (fixture.openSong->song().cameraArmed);
-    CHECK (fixture.openSong->song().cameraDeviceId.empty());
+    CHECK_FALSE (fixture.openSong->song().settings.cameraArmed);
+    CHECK (fixture.openSong->song().settings.cameraDeviceId.empty());
 }
 
 TEST_CASE ("the window does not wait while a slow movie completes; the Pass is added once it has", "[ui][camera][record]")

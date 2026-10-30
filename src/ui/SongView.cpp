@@ -407,7 +407,7 @@ IntentResult SongView::selectLoop (const std::optional<song::Id>& loopId)
 
 IntentResult SongView::selectAdjacentLoop (Direction direction)
 {
-    const auto from = window.mode() == Mode::edit ? selectedLoop() : openSong.song().activeLoopId;
+    const auto from = window.mode() == Mode::edit ? selectedLoop() : openSong.song().settings.activeLoopId;
     const auto next = song::adjacentLoop (openSong.song(), from, direction == Direction::back ? song::LoopDirection::previous : song::LoopDirection::next);
     if (! next.has_value())
         return IntentDone {};
@@ -427,7 +427,7 @@ std::optional<song::Id> SongView::loopToDelete() const
     if (mode == Mode::edit)
         return selectedLoop();
     if (mode == Mode::transcribe && song::activeLoop (openSong.song()) != nullptr)
-        return openSong.song().activeLoopId;
+        return openSong.song().settings.activeLoopId;
     return std::nullopt;
 }
 
@@ -491,7 +491,7 @@ IntentResult SongView::addTrack()
     // Ready to record: Armed on the device's first input, or on none when it has no inputs.
     auto inputChannels = openSong.audio().inputChannelNames.empty() ? std::vector<int> {} : std::vector<int> { 0 };
     auto added = song::addTrack (openSong.song(), std::move (inputChannels), song::randomPick());
-    const core::Fields fields { { "track_id", added.trackId }, { "input_channels", added.song.tracks.back().inputChannels } };
+    const core::Fields fields { { "track_id", added.trackId }, { "input_channels", added.song.tracks.back().settings.inputChannels } };
     if (auto applied = applyEdit (std::move (added.song), added.label); ! applied.has_value())
         return applied;
     core::logEvent (core::Level::info, "ui.track_added", fields);
@@ -883,19 +883,19 @@ void SongView::refresh (TopBarState& state)
                          [this] (const song::Id& slotId) { return openSong.insertStatus (slotId); }),
                      song);
     const auto cameraControls = cameraControlsStateFor (song, openSong.cameraDevices(), recording);
-    const auto playback = ! stageShowsLiveFeed (song.cameraArmed, recording, state.playing);
-    const auto cameraMessage = juce::String::fromUTF8 (cameraStageMessage (song.cameraArmed).c_str());
+    const auto playback = ! stageShowsLiveFeed (song.settings.cameraArmed, recording, state.playing);
+    const auto cameraMessage = juce::String::fromUTF8 (cameraStageMessage (song.settings.cameraArmed).c_str());
     // The camera's preview layer can sit in one view at a time: the page out of view lets go of it
     // before the page in view takes it.
     auto* const previewLayer = openSong.cameraPreviewLayer();
     if (mode == Mode::edit)
     {
         recordPage.showCamera (cameraControls, nullptr);
-        editPage.showVideoPreview (song.cameraArmed, previewLayer, cameraMessage, playback);
+        editPage.showVideoPreview (song.settings.cameraArmed, previewLayer, cameraMessage, playback);
     }
     else
     {
-        editPage.showVideoPreview (song.cameraArmed, nullptr, cameraMessage, playback);
+        editPage.showVideoPreview (song.settings.cameraArmed, nullptr, cameraMessage, playback);
         recordPage.showCamera (cameraControls, mode == Mode::record ? previewLayer : nullptr);
     }
     recordPage.showStagePlayback (playback);

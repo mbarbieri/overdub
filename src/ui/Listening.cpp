@@ -14,15 +14,15 @@ namespace
 // a change of them alone is no change of the heard Song.
 song::Song withoutTranscribeSettings (song::Song song)
 {
-    song.focusTrackId.reset();
-    song.activeLoopId.reset();
-    song.looping = false;
+    song.settings.focusTrackId.reset();
+    song.settings.activeLoopId.reset();
+    song.settings.looping = false;
     for (auto& track : song.tracks)
     {
-        track.transcribeMute = false;
-        track.transcribeSolo = false;
-        track.octaveShift = 0;
-        track.bandFilter = {};
+        track.settings.transcribeMute = false;
+        track.settings.transcribeSolo = false;
+        track.settings.octaveShift = 0;
+        track.settings.bandFilter = {};
     }
     return song;
 }
@@ -39,9 +39,9 @@ Heard Listening::heard (const song::Song& song) const
     heard.song.transpose = listeningRenders.heardTranspose();
     const auto* focus = song::focusTrack (song);
     if (heard.octaveShiftedTrack.has_value())
-        heard.octaveShift = focus->octaveShift;
-    if (transcribing && focus != nullptr && focus->bandFilter.on)
-        heard.bandFilter = engine::HeardBandFilter { .trackId = focus->id, .lowHz = focus->bandFilter.lowHz, .highHz = focus->bandFilter.highHz };
+        heard.octaveShift = focus->settings.octaveShift;
+    if (transcribing && focus != nullptr && focus->settings.bandFilter.on)
+        heard.bandFilter = engine::HeardBandFilter { .trackId = focus->id, .lowHz = focus->settings.bandFilter.lowHz, .highHz = focus->settings.bandFilter.highHz };
     return heard;
 }
 
@@ -84,7 +84,7 @@ std::optional<song::Song> Listening::setPracticeSpeed (const song::Song& song, i
     // The same value again tries the renders that failed again.
     setPracticeTarget (speedPercent);
     const auto* loop = heardActiveLoop (song);
-    if (loop == nullptr || loop->practiceSpeedPercent == practiceTarget)
+    if (loop == nullptr || loop->settings.practiceSpeedPercent == practiceTarget)
         return std::nullopt;
     auto changed = song::setLoopPracticeSpeed (song, loop->id, practiceTarget);
     OVERDUB_CHECK (changed.has_value(), "ui.loop_practice_speed_unset");
@@ -94,8 +94,8 @@ std::optional<song::Song> Listening::setPracticeSpeed (const song::Song& song, i
 void Listening::hearLoopPracticeSpeed (const song::Song& song, bool practiceSpeedMayChange)
 {
     const auto* loop = heardActiveLoop (song);
-    if (practiceSpeedMayChange && loop != nullptr && loop->practiceSpeedPercent != practiceTarget)
-        setPracticeTarget (loop->practiceSpeedPercent);
+    if (practiceSpeedMayChange && loop != nullptr && loop->settings.practiceSpeedPercent != practiceTarget)
+        setPracticeTarget (loop->settings.practiceSpeedPercent);
 }
 
 bool Listening::isTransposing (const song::Song& song) const
@@ -106,7 +106,7 @@ bool Listening::isTransposing (const song::Song& song) const
 std::optional<engine::LoopRange> Listening::heardLoop (const song::Song& song) const
 {
     const auto* loop = song::activeLoop (song);
-    if (! transcribing || ! song.looping || loop == nullptr)
+    if (! transcribing || ! song.settings.looping || loop == nullptr)
         return std::nullopt;
     return engine::LoopRange { loop->start, loop->end };
 }
@@ -119,7 +119,7 @@ const song::Loop* Listening::heardActiveLoop (const song::Song& song) const
 std::optional<song::Id> Listening::octaveShiftedTrack (const song::Song& song) const
 {
     const auto* track = song::focusTrack (song);
-    if (! transcribing || track == nullptr || track->octaveShift == 0)
+    if (! transcribing || track == nullptr || track->settings.octaveShift == 0)
         return std::nullopt;
     return track->id;
 }

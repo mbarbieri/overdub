@@ -30,7 +30,7 @@ std::vector<bool> transcribeSolos (const Song& song)
 {
     std::vector<bool> solos;
     for (const auto& track : song.tracks)
-        solos.push_back (track.transcribeSolo);
+        solos.push_back (track.settings.transcribeSolo);
     return solos;
 }
 
@@ -38,7 +38,7 @@ std::vector<bool> transcribeMutes (const Song& song)
 {
     std::vector<bool> mutes;
     for (const auto& track : song.tracks)
-        mutes.push_back (track.transcribeMute);
+        mutes.push_back (track.settings.transcribeMute);
     return mutes;
 }
 
@@ -51,13 +51,13 @@ std::size_t firstColour (std::size_t)
 TEST_CASE ("picking a Focus Track solos it in the Transcribe Mix and unsolos every other Track; mutes stay", "[song][transcribe][focus]")
 {
     auto song = threeTracks();
-    song.tracks[0].transcribeSolo = true;
-    song.tracks[2].transcribeMute = true;
+    song.tracks[0].settings.transcribeSolo = true;
+    song.tracks[2].settings.transcribeMute = true;
 
     const auto focused = setFocusTrack (song, "track-guitar");
 
     REQUIRE (focused.has_value());
-    CHECK (focused->focusTrackId == "track-guitar");
+    CHECK (focused->settings.focusTrackId == "track-guitar");
     CHECK (focusTrack (*focused)->name == "Guitar");
     CHECK (transcribeSolos (*focused) == std::vector { false, true, false });
     CHECK (transcribeMutes (*focused) == std::vector { false, false, true });
@@ -77,7 +77,7 @@ TEST_CASE ("clearing the Focus Track leaves the Transcribe Mix as it is", "[song
     const auto cleared = setFocusTrack (song, std::nullopt);
 
     REQUIRE (cleared.has_value());
-    CHECK_FALSE (cleared->focusTrackId.has_value());
+    CHECK_FALSE (cleared->settings.focusTrackId.has_value());
     CHECK (focusTrack (*cleared) == nullptr);
     CHECK (transcribeSolos (*cleared) == std::vector { false, false, true });
     CHECK (transcribeMutes (*cleared) == std::vector { true, false, false });
@@ -99,8 +99,8 @@ TEST_CASE ("the Song Transcribe mode hears takes mute and solo from the Transcri
     auto song = threeTracks();
     song.tracks[0].mute = true;
     song.tracks[1].solo = true;
-    song.tracks[1].transcribeMute = true;
-    song.tracks[2].transcribeSolo = true;
+    song.tracks[1].settings.transcribeMute = true;
+    song.tracks[2].settings.transcribeSolo = true;
 
     const auto heard = withTranscribeMix (song);
 
@@ -119,8 +119,8 @@ TEST_CASE ("deleting the Focus Track clears it; deleting another Track keeps it"
 {
     const auto song = setFocusTrack (threeTracks(), "track-guitar").value();
 
-    CHECK (deleteTrack (song, "track-vocals")->song.focusTrackId == "track-guitar");
-    CHECK_FALSE (deleteTrack (song, "track-guitar")->song.focusTrackId.has_value());
+    CHECK (deleteTrack (song, "track-vocals")->song.settings.focusTrackId == "track-guitar");
+    CHECK_FALSE (deleteTrack (song, "track-guitar")->song.settings.focusTrackId.has_value());
 }
 
 TEST_CASE ("a new Track joins the Transcribe Mix unmuted and unsoloed", "[song][transcribe][mix]")
@@ -132,9 +132,9 @@ TEST_CASE ("a new Track joins the Transcribe Mix unmuted and unsoloed", "[song][
 
     const auto* track = findTrack (added.song, added.trackId);
     REQUIRE (track != nullptr);
-    CHECK_FALSE (track->transcribeMute);
-    CHECK_FALSE (track->transcribeSolo);
-    CHECK (added.song.focusTrackId == "track-guitar");
+    CHECK_FALSE (track->settings.transcribeMute);
+    CHECK_FALSE (track->settings.transcribeSolo);
+    CHECK (added.song.settings.focusTrackId == "track-guitar");
 }
 
 TEST_CASE ("undo and redo keep the Focus Track and the Transcribe Mix as they are now", "[song][transcribe][history]")
@@ -147,7 +147,7 @@ TEST_CASE ("undo and redo keep the Focus Track and the Transcribe Mix as they ar
     const auto restored = keepStateOutsideHistory (snapshot, current);
 
     CHECK (restored.tracks[2].name == "Vocals");
-    CHECK (restored.focusTrackId == "track-guitar");
+    CHECK (restored.settings.focusTrackId == "track-guitar");
     CHECK (transcribeSolos (restored) == std::vector { false, true, false });
     CHECK (transcribeMutes (restored) == std::vector { true, false, false });
 
@@ -155,7 +155,7 @@ TEST_CASE ("undo and redo keep the Focus Track and the Transcribe Mix as they ar
     {
         auto withoutGuitar = snapshot;
         withoutGuitar.tracks.erase (withoutGuitar.tracks.begin() + 1);
-        CHECK_FALSE (keepStateOutsideHistory (withoutGuitar, current).focusTrackId.has_value());
+        CHECK_FALSE (keepStateOutsideHistory (withoutGuitar, current).settings.focusTrackId.has_value());
     }
 }
 
@@ -167,8 +167,8 @@ TEST_CASE ("each Track keeps its own octave shift from -1 to +2; the Focus Track
     song = setOctaveShift (song, "track-guitar", 1).value();
     song = setOctaveShift (song, "track-band", -1).value();
 
-    CHECK (findTrack (song, "track-guitar")->octaveShift == 1);
-    CHECK (findTrack (song, "track-band")->octaveShift == -1);
+    CHECK (findTrack (song, "track-guitar")->settings.octaveShift == 1);
+    CHECK (findTrack (song, "track-band")->settings.octaveShift == -1);
     CHECK (focusOctaveShift (song) == 1);
     CHECK (focusOctaveShift (setFocusTrack (song, "track-band").value()) == -1);
     CHECK (focusOctaveShift (setFocusTrack (song, "track-vocals").value()) == 0);
@@ -197,9 +197,9 @@ TEST_CASE ("undo and redo keep every Track's octave shift as it is now", "[song]
 
     const auto restored = keepStateOutsideHistory (snapshot, current);
 
-    CHECK (findTrack (restored, "track-guitar")->octaveShift == 2);
-    CHECK (findTrack (restored, "track-band")->octaveShift == -1);
-    CHECK (findTrack (restored, "track-vocals")->octaveShift == 0);
+    CHECK (findTrack (restored, "track-guitar")->settings.octaveShift == 2);
+    CHECK (findTrack (restored, "track-band")->settings.octaveShift == -1);
+    CHECK (findTrack (restored, "track-vocals")->settings.octaveShift == 0);
 }
 
 TEST_CASE ("each Track keeps its own band filter, its low cut below its high cut within 20..20000 Hz, and undo keeps it", "[song][transcribe][band_filter]")
@@ -209,13 +209,13 @@ TEST_CASE ("each Track keeps its own band filter, its low cut below its high cut
     auto current = setBandFilter (snapshot, "track-guitar", guitar).value();
     current = setBandFilter (current, "track-band", { .on = false, .lowHz = 20, .highHz = 20000 }).value();
 
-    CHECK (findTrack (current, "track-guitar")->bandFilter == guitar);
-    CHECK (findTrack (current, "track-vocals")->bandFilter == BandFilter {});
-    CHECK (findTrack (current, "track-guitar")->octaveShift == 0);
+    CHECK (findTrack (current, "track-guitar")->settings.bandFilter == guitar);
+    CHECK (findTrack (current, "track-vocals")->settings.bandFilter == BandFilter {});
+    CHECK (findTrack (current, "track-guitar")->settings.octaveShift == 0);
 
     const auto restored = keepStateOutsideHistory (snapshot, current);
-    CHECK (findTrack (restored, "track-guitar")->bandFilter == guitar);
-    CHECK (findTrack (restored, "track-band")->bandFilter == BandFilter { .on = false, .lowHz = 20, .highHz = 20000 });
+    CHECK (findTrack (restored, "track-guitar")->settings.bandFilter == guitar);
+    CHECK (findTrack (restored, "track-band")->settings.bandFilter == BandFilter { .on = false, .lowHz = 20, .highHz = 20000 });
 
     const auto equal = setBandFilter (current, "track-guitar", { .on = true, .lowHz = 500, .highHz = 500 });
     REQUIRE_FALSE (equal.has_value());

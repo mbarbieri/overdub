@@ -77,41 +77,41 @@ TEST_CASE ("the active Loop and looping: deleting the active Loop turns looping 
     CHECK (setActiveLoop (song, "loop-gone", true).error().code == "song.loop_not_found");
 
     song = *setActiveLoop (song, "loop-b", true);
-    CHECK (song.activeLoopId == "loop-b");
-    CHECK (song.looping);
+    CHECK (song.settings.activeLoopId == "loop-b");
+    CHECK (song.settings.looping);
     CHECK (activeLoop (song)->name == "Loop 1");
     song = *setLooping (song, false);
-    CHECK_FALSE (song.looping);
+    CHECK_FALSE (song.settings.looping);
     song = *setLooping (song, true);
 
     // Deleting another Loop keeps it; deleting it clears both.
-    CHECK (deleteLoop (song, "loop-a")->activeLoopId == "loop-b");
+    CHECK (deleteLoop (song, "loop-a")->settings.activeLoopId == "loop-b");
     const auto deleted = deleteLoop (song, "loop-b");
     REQUIRE (deleted.has_value());
-    CHECK_FALSE (deleted->activeLoopId.has_value());
-    CHECK_FALSE (deleted->looping);
+    CHECK_FALSE (deleted->settings.activeLoopId.has_value());
+    CHECK_FALSE (deleted->settings.looping);
 }
 
 TEST_CASE ("deleting the Loop Export writes sends Export back to the whole Song; deleting another keeps it", "[song][loops][export]")
 {
     auto song = songWithLoops();
-    song.exportLoopId = "loop-b";
+    song.settings.exportLoopId = "loop-b";
 
-    CHECK (deleteLoop (song, "loop-a")->exportLoopId == "loop-b");
+    CHECK (deleteLoop (song, "loop-a")->settings.exportLoopId == "loop-b");
     const auto deleted = deleteLoop (song, "loop-b");
     REQUIRE (deleted.has_value());
-    CHECK_FALSE (deleted->exportLoopId.has_value());
+    CHECK_FALSE (deleted->settings.exportLoopId.has_value());
 }
 
 TEST_CASE ("undo and redo keep the export's Loop, unless the restored Song lacks that Loop", "[song][loops][history][export]")
 {
     const auto before = makeEmptySong (48000);
     auto withLoop = *addLoop (before, 0, 100, "loop-a", 100);
-    withLoop.exportLoopId = "loop-a";
+    withLoop.settings.exportLoopId = "loop-a";
 
-    CHECK_FALSE (keepStateOutsideHistory (before, withLoop).exportLoopId.has_value());
+    CHECK_FALSE (keepStateOutsideHistory (before, withLoop).settings.exportLoopId.has_value());
     const auto renamed = *renameLoop (withLoop, "loop-a", "Riff");
-    CHECK (keepStateOutsideHistory (*addLoop (before, 0, 100, "loop-a", 100), renamed).exportLoopId == "loop-a");
+    CHECK (keepStateOutsideHistory (*addLoop (before, 0, 100, "loop-a", 100), renamed).settings.exportLoopId == "loop-a");
 }
 
 TEST_CASE ("the previous and next Loop go by time order and stop at the ends", "[song][loops]")
@@ -141,24 +141,24 @@ TEST_CASE ("undo and redo keep the active Loop and looping, unless the restored 
     const auto withLoop = *setActiveLoop (*addLoop (before, 0, 100, "loop-a", 100), "loop-a", true);
 
     const auto undone = keepStateOutsideHistory (before, withLoop);
-    CHECK_FALSE (undone.activeLoopId.has_value());
-    CHECK_FALSE (undone.looping);
+    CHECK_FALSE (undone.settings.activeLoopId.has_value());
+    CHECK_FALSE (undone.settings.looping);
 
     const auto renamed = *renameLoop (withLoop, "loop-a", "Riff");
     const auto restored = keepStateOutsideHistory (*addLoop (before, 0, 100, "loop-a", 100), renamed);
-    CHECK (restored.activeLoopId == "loop-a");
-    CHECK (restored.looping);
+    CHECK (restored.settings.activeLoopId == "loop-a");
+    CHECK (restored.settings.looping);
 }
 
 TEST_CASE ("a new Loop takes the Practice Speed it is made at, and its speed changes outside history", "[song][loops][practice]")
 {
     auto song = *addLoop (makeEmptySong (48000), 0, 100, "loop-a", 40);
     REQUIRE (findLoop (song, "loop-a") != nullptr);
-    CHECK (findLoop (song, "loop-a")->practiceSpeedPercent == 40);
+    CHECK (findLoop (song, "loop-a")->settings.practiceSpeedPercent == 40);
     CHECK (addLoop (song, 0, 100, "loop-b", 20).error().code == "song.practice_speed_out_of_range");
 
     const auto faster = *setLoopPracticeSpeed (song, "loop-a", 75);
-    CHECK (findLoop (faster, "loop-a")->practiceSpeedPercent == 75);
+    CHECK (findLoop (faster, "loop-a")->settings.practiceSpeedPercent == 75);
     CHECK (setLoopPracticeSpeed (song, "loop-a", 130).error().code == "song.practice_speed_out_of_range");
     CHECK (setLoopPracticeSpeed (song, "loop-z", 75).error().code == "song.loop_not_found");
 
@@ -167,7 +167,7 @@ TEST_CASE ("a new Loop takes the Practice Speed it is made at, and its speed cha
     const auto renamedFaster = *setLoopPracticeSpeed (renamed, "loop-a", 75);
     const auto undone = keepStateOutsideHistory (song, renamedFaster);
     CHECK (findLoop (undone, "loop-a")->name == "Loop 1");
-    CHECK (findLoop (undone, "loop-a")->practiceSpeedPercent == 75);
+    CHECK (findLoop (undone, "loop-a")->settings.practiceSpeedPercent == 75);
     const auto broughtBack = keepStateOutsideHistory (song, makeEmptySong (48000));
-    CHECK (findLoop (broughtBack, "loop-a")->practiceSpeedPercent == 40);
+    CHECK (findLoop (broughtBack, "loop-a")->settings.practiceSpeedPercent == 40);
 }

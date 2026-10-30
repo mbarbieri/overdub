@@ -128,8 +128,8 @@ TEST_CASE ("dragging on an empty part of the strip makes Loop N over that range 
     CHECK (loop.start == stripSample (scale, 20));
     CHECK (loop.end == stripSample (scale, 70));
     CHECK (f.openSong->package().undoLabel() == song::addLoopLabel);
-    CHECK (f.song().activeLoopId == loop.id);
-    CHECK (f.song().looping);
+    CHECK (f.song().settings.activeLoopId == loop.id);
+    CHECK (f.song().settings.looping);
     REQUIRE (eventsNamed (capture, "ui.loop_added").size() == 1);
     CHECK (eventsNamed (capture, "ui.loop_added")[0].at ("loop_id") == loop.id);
     REQUIRE (strip.bars.size() == 1);
@@ -143,7 +143,7 @@ TEST_CASE ("dragging on an empty part of the strip makes Loop N over that range 
     REQUIRE (f.song().loops.size() == 2);
     CHECK (f.song().loops[1].name == "Loop 2");
     CHECK (f.song().loops[1].start < f.song().loops[1].end);
-    CHECK (f.song().activeLoopId == f.song().loops[1].id);
+    CHECK (f.song().settings.activeLoopId == f.song().loops[1].id);
 
     // A click on the empty strip makes no Loop.
     clickAt (strip, { strip.getWidth() - 4, strip.getHeight() / 2 });
@@ -165,7 +165,7 @@ TEST_CASE ("the open bracket marks a pending start at the playhead, the close br
     REQUIRE (f.song().loops.size() == 1);
     CHECK (f.song().loops[0].start == 12000);
     CHECK (f.song().loops[0].end == 36000);
-    CHECK (f.song().activeLoopId == f.song().loops[0].id);
+    CHECK (f.song().settings.activeLoopId == f.song().loops[0].id);
     CHECK_FALSE (f.window->songView()->loopStartPending().has_value());
 
     // While listening: [ and ] at the playhead as it moves, without stopping playback.
@@ -279,7 +279,7 @@ TEST_CASE ("dragging a Loop's edge resizes it, double-clicking renames it and De
     pressKey (f, juce::KeyPress::backspaceKey);
     CHECK (f.song().loops.empty());
     CHECK (f.openSong->package().undoLabel() == song::deleteLoopLabel);
-    CHECK_FALSE (f.song().activeLoopId.has_value());
+    CHECK_FALSE (f.song().settings.activeLoopId.has_value());
 
     run (f, SongIntent { intent::Undo {} });
     CHECK (loopWithId (f, loopId).name == "Solo");
@@ -326,8 +326,8 @@ TEST_CASE ("Transcribe mode's left column shows a card per Loop above the Marker
     CHECK (list.cards[0]->isActive()); // just made, so active
 
     click (*list.cards[1]);
-    CHECK (f.song().activeLoopId == late);
-    CHECK (f.song().looping);
+    CHECK (f.song().settings.activeLoopId == late);
+    CHECK (f.song().settings.looping);
     CHECK (list.cards[1]->isActive());
     CHECK_FALSE (list.cards[0]->isActive());
 }
@@ -343,8 +343,8 @@ TEST_CASE ("in Transcribe mode a click, option-arrows and option-1..9 activate a
     auto& page = f.window->songView()->transcribePage;
 
     click (barOf (page.markerStrip, second));
-    CHECK (f.song().activeLoopId == second);
-    CHECK (f.song().looping);
+    CHECK (f.song().settings.activeLoopId == second);
+    CHECK (f.song().settings.looping);
     // Zoomed to fit with a small margin: the whole Loop shows, and it fills most of the width.
     const auto view = page.view();
     const auto shownEnd = view.firstSample + view.samplesPerPixel * page.wave.getWidth();
@@ -364,30 +364,30 @@ TEST_CASE ("in Transcribe mode a click, option-arrows and option-1..9 activate a
     const auto undoLabel = f.openSong->package().undoLabel();
 
     pressOption (f, juce::KeyPress::leftKey);
-    CHECK (f.song().activeLoopId == first);
+    CHECK (f.song().settings.activeLoopId == first);
     pressOption (f, juce::KeyPress::leftKey); // the first has no previous
-    CHECK (f.song().activeLoopId == first);
+    CHECK (f.song().settings.activeLoopId == first);
     pressOption (f, juce::KeyPress::rightKey);
-    CHECK (f.song().activeLoopId == second);
+    CHECK (f.song().settings.activeLoopId == second);
     pressOption (f, '3');
-    CHECK (f.song().activeLoopId == third);
+    CHECK (f.song().settings.activeLoopId == third);
     pressOption (f, '1');
-    CHECK (f.song().activeLoopId == first);
+    CHECK (f.song().settings.activeLoopId == first);
     pressOption (f, '9'); // no ninth Loop
-    CHECK (f.song().activeLoopId == first);
+    CHECK (f.song().settings.activeLoopId == first);
 
     pressKey (f, 'l', 'l');
-    CHECK_FALSE (f.song().looping);
+    CHECK_FALSE (f.song().settings.looping);
     pressKey (f, 'L', 'L');
-    CHECK (f.song().looping);
+    CHECK (f.song().settings.looping);
     // Activating and L take no undo step.
     CHECK (f.openSong->package().undoLabel() == undoLabel);
 
     pressOption (f, '2');
     pressKey (f, 'l', 'l');
     reopenSong (f);
-    CHECK (f.song().activeLoopId == second);
-    CHECK_FALSE (f.song().looping);
+    CHECK (f.song().settings.activeLoopId == second);
+    CHECK_FALSE (f.song().settings.looping);
 
     // Without an active Loop, L cannot turn looping on.
     run (f, SongIntent { intent::Edit { intent::DeleteLoop { second } } });
@@ -443,12 +443,12 @@ TEST_CASE ("Record and Edit never loop; in Record a click on a Loop moves the re
     const auto mode = GENERATE (Mode::edit, Mode::record);
     showMode (f, mode);
     CHECK_FALSE (f.openSong->heard().loop.has_value());
-    CHECK (f.song().looping); // kept for when Transcribe mode is back
+    CHECK (f.song().settings.looping); // kept for when Transcribe mode is back
 
     run (f, SongIntent { intent::Seek { 0 } });
     click (barOf (stripOf (f, mode), loopId));
     CHECK (f.openSong->position() == 24000);
-    CHECK (f.song().activeLoopId == loopId);
+    CHECK (f.song().settings.activeLoopId == loopId);
     run (f, SongIntent { intent::PlayOrStop {} });
     f.runBlocks (40);
     CHECK (f.openSong->position() == 24000 + 40 * deviceBlockSize);

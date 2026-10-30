@@ -90,7 +90,7 @@ void OpenSong::attachAudio (AudioBinding audio)
     binding.engine->stop();
     binding.engine->setMonitoring (true); // which Tracks are heard is decided by `monitored`
     reloadEngine();
-    binding.engine->seek (song().playhead);
+    binding.engine->seek (song().settings.playhead);
 }
 
 std::vector<core::Error> OpenSong::detachAudio()
@@ -134,7 +134,7 @@ bool OpenSong::isPlaying() const
 
 song::SampleCount OpenSong::position() const
 {
-    return binding.engine != nullptr ? binding.engine->position() : song().playhead;
+    return binding.engine != nullptr ? binding.engine->position() : song().settings.playhead;
 }
 
 video::PlaybackClock OpenSong::playbackClock() const
@@ -177,13 +177,13 @@ core::Expected<void> OpenSong::record()
 core::Expected<void> OpenSong::startPass (song::SampleCount recordPoint, bool playing)
 {
     const auto passNumber = nextPassNumber (song());
-    const auto preRollSamples = (song::SampleCount) song::preRollSeconds (song().preRoll) * song().sampleRate;
+    const auto preRollSamples = (song::SampleCount) song::preRollSeconds (song().settings.preRoll) * song().sampleRate;
     const auto usePreRoll = ! playing && preRollSamples > 0;
 
     capture::PassRecorderOptions options;
     if (usePreRoll)
         options.recordPoint = recordPoint;
-    if (song().cameraArmed && camera != nullptr && camera->openCamera().has_value())
+    if (song().settings.cameraArmed && camera != nullptr && camera->openCamera().has_value())
     {
         options.camera = camera;
         options.cameraCalibrationSamples = cameraCalibrationSamples (camera->openCamera()->id);
@@ -200,7 +200,7 @@ core::Expected<void> OpenSong::startPass (song::SampleCount recordPoint, bool pl
     {
         const auto playFrom = std::max<song::SampleCount> (0, recordPoint - preRollSamples);
         binding.engine->seek (playFrom);
-        core::logEvent (core::Level::info, "ui.pre_roll_started", { { "record_point", recordPoint }, { "play_from", playFrom }, { "pre_roll_seconds", song::preRollSeconds (song().preRoll) } });
+        core::logEvent (core::Level::info, "ui.pre_roll_started", { { "record_point", recordPoint }, { "play_from", playFrom }, { "pre_roll_seconds", song::preRollSeconds (song().settings.preRoll) } });
     }
     if (! playing)
         binding.engine->play();
@@ -257,10 +257,10 @@ core::Expected<void> OpenSong::setPreRoll (song::PreRoll preRoll)
 {
     if (auto refused = refusal (activity, Gesture::setPreRoll))
         return std::unexpected (std::move (*refused));
-    if (preRoll == song().preRoll)
+    if (preRoll == song().settings.preRoll)
         return {};
     auto changed = song();
-    changed.preRoll = preRoll;
+    changed.settings.preRoll = preRoll;
     package_->changeWithoutHistory (std::move (changed));
     return {};
 }
@@ -274,7 +274,7 @@ core::Expected<void> OpenSong::setPracticeSpeed (int speedPercent)
     if (auto withLoopSpeed = listening_.setPracticeSpeed (song(), speedPercent))
     {
         package_->changeWithoutHistory (std::move (*withLoopSpeed));
-        core::logEvent (core::Level::info, "ui.loop_practice_speed_set", { { "loop_id", song().activeLoopId.value_or ("") }, { "speed_percent", speedPercent } });
+        core::logEvent (core::Level::info, "ui.loop_practice_speed_set", { { "loop_id", song().settings.activeLoopId.value_or ("") }, { "speed_percent", speedPercent } });
     }
     listening_.follow (song());
     return {};
@@ -309,7 +309,7 @@ core::Expected<void> OpenSong::setActiveLoop (const std::optional<song::Id>& loo
         return std::unexpected (std::move (*refused));
     auto changed = changeHeardLoop (song::setActiveLoop (song(), loopId, looping));
     if (changed.has_value())
-        core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().looping } });
+        core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().settings.looping } });
     return changed;
 }
 
@@ -419,7 +419,7 @@ core::Expected<void> OpenSong::seek (song::SampleCount sample)
         return {};
     }
     auto changed = song();
-    changed.playhead = position;
+    changed.settings.playhead = position;
     package_->changeWithoutHistory (std::move (changed));
     return {};
 }
@@ -681,10 +681,10 @@ std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point no
     if (! isRecording() && binding.engine != nullptr && ! binding.engine->isPlaying())
     {
         const auto position = binding.engine->position();
-        if (position != song().playhead)
+        if (position != song().settings.playhead)
         {
             auto changed = song();
-            changed.playhead = position;
+            changed.settings.playhead = position;
             package_->changeWithoutHistory (std::move (changed), now);
         }
     }
@@ -788,7 +788,7 @@ std::vector<core::Error> OpenSong::handleCameraChanges()
 
     auto* pass = std::get_if<PassActivity> (&activity);
     const auto open = camera->openCamera();
-    if (! song().cameraArmed || ! open.has_value() || (pass != nullptr && pass->cameraLost) || std::ranges::contains (cameras, open->id, &capture::CameraDevice::id))
+    if (! song().settings.cameraArmed || ! open.has_value() || (pass != nullptr && pass->cameraLost) || std::ranges::contains (cameras, open->id, &capture::CameraDevice::id))
         return {};
 
     // The Armed camera is gone. A running Pass keeps its movie (written until the camera went) and
@@ -805,11 +805,11 @@ void OpenSong::disarmLostCamera()
 {
     if (camera != nullptr)
         camera->close();
-    if (! song().cameraArmed)
+    if (! song().settings.cameraArmed)
         return;
     // The choice stays: the camera is offered again when it comes back, and arming reopens it.
     auto changed = song();
-    changed.cameraArmed = false;
+    changed.settings.cameraArmed = false;
     package_->changeWithoutHistory (std::move (changed));
 }
 
@@ -817,10 +817,10 @@ core::Expected<void> OpenSong::setCameraArmed (bool armed)
 {
     if (auto refused = refusal (activity, Gesture::setCameraArmed))
         return std::unexpected (std::move (*refused));
-    if (camera == nullptr || armed == song().cameraArmed)
+    if (camera == nullptr || armed == song().settings.cameraArmed)
         return {};
     auto changed = song();
-    changed.cameraArmed = armed;
+    changed.settings.cameraArmed = armed;
     package_->changeWithoutHistory (std::move (changed));
     cameras = camera->devices();
     return syncCamera();
@@ -830,22 +830,22 @@ core::Expected<void> OpenSong::setCameraDevice (const std::string& cameraId)
 {
     if (auto refused = refusal (activity, Gesture::setCameraDevice))
         return std::unexpected (std::move (*refused));
-    if (cameraId == song().cameraDeviceId)
+    if (cameraId == song().settings.cameraDeviceId)
         return {};
     auto changed = song();
-    changed.cameraDeviceId = cameraId;
+    changed.settings.cameraDeviceId = cameraId;
     package_->changeWithoutHistory (std::move (changed));
     if (camera == nullptr)
         return {};
     cameras = camera->devices();
-    if (song().cameraArmed)
+    if (song().settings.cameraArmed)
         camera->close(); // reopened on the new choice
     return syncCamera();
 }
 
 void* OpenSong::cameraPreviewLayer() const
 {
-    if (camera == nullptr || ! song().cameraArmed || ! camera->openCamera().has_value())
+    if (camera == nullptr || ! song().settings.cameraArmed || ! camera->openCamera().has_value())
         return nullptr;
     return camera->previewLayer();
 }
@@ -854,26 +854,26 @@ core::Expected<void> OpenSong::syncCamera()
 {
     if (camera == nullptr)
         return {};
-    if (! song().cameraArmed)
+    if (! song().settings.cameraArmed)
     {
         camera->close();
         return {};
     }
-    if (const auto open = camera->openCamera(); open.has_value() && open->id == song().cameraDeviceId)
+    if (const auto open = camera->openCamera(); open.has_value() && open->id == song().settings.cameraDeviceId)
         return {};
 
-    auto opened = camera->open (song().cameraDeviceId);
+    auto opened = camera->open (song().settings.cameraDeviceId);
     auto changed = song();
     if (! opened.has_value())
     {
-        changed.cameraArmed = false;
+        changed.settings.cameraArmed = false;
         package_->changeWithoutHistory (std::move (changed));
         return std::unexpected (opened.error());
     }
     // The default camera opened for no (or a missing) choice becomes the choice.
-    if (! song().cameraDeviceId.empty() && opened->id != song().cameraDeviceId)
-        core::logEvent (core::Level::warn, "ui.camera_fallback", { { "chosen_camera_id", song().cameraDeviceId }, { "opened_camera_id", opened->id } });
-    changed.cameraDeviceId = opened->id;
+    if (! song().settings.cameraDeviceId.empty() && opened->id != song().settings.cameraDeviceId)
+        core::logEvent (core::Level::warn, "ui.camera_fallback", { { "chosen_camera_id", song().settings.cameraDeviceId }, { "opened_camera_id", opened->id } });
+    changed.settings.cameraDeviceId = opened->id;
     if (changed != song())
         package_->changeWithoutHistory (std::move (changed));
     return {};

@@ -277,12 +277,12 @@ json trackToJson (const Track& track)
         { "pan", track.pan },
         { "mute", track.mute },
         { "solo", track.solo },
-        { "armed", track.armed },
-        { "transcribeMute", track.transcribeMute },
-        { "transcribeSolo", track.transcribeSolo },
-        { "octaveShift", track.octaveShift },
-        { "bandFilter", { { "on", track.bandFilter.on }, { "lowHz", track.bandFilter.lowHz }, { "highHz", track.bandFilter.highHz } } },
-        { "inputChannels", track.inputChannels },
+        { "armed", track.settings.armed },
+        { "transcribeMute", track.settings.transcribeMute },
+        { "transcribeSolo", track.settings.transcribeSolo },
+        { "octaveShift", track.settings.octaveShift },
+        { "bandFilter", { { "on", track.settings.bandFilter.on }, { "lowHz", track.settings.bandFilter.lowHz }, { "highHz", track.settings.bandFilter.highHz } } },
+        { "inputChannels", track.settings.inputChannels },
         { "insertChain", arrayToJson (track.insertChain, insertSlotToJson) },
         { "clips", arrayToJson (track.clips, clipToJson) },
     };
@@ -339,7 +339,7 @@ json loopToJson (const Loop& loop)
         { "name", loop.name },
         { "start", loop.start },
         { "end", loop.end },
-        { "practiceSpeedPercent", loop.practiceSpeedPercent },
+        { "practiceSpeedPercent", loop.settings.practiceSpeedPercent },
     };
 }
 
@@ -402,12 +402,14 @@ Track readTrack (const Reader& reader)
         .pan = reader.number ("pan"),
         .mute = reader.boolean ("mute"),
         .solo = reader.boolean ("solo"),
-        .armed = reader.boolean ("armed"),
-        .transcribeMute = reader.boolean ("transcribeMute"),
-        .transcribeSolo = reader.boolean ("transcribeSolo"),
-        .octaveShift = reader.smallInteger ("octaveShift"),
-        .bandFilter = readBandFilter (reader.object ("bandFilter")),
-        .inputChannels = reader.integers ("inputChannels"),
+        .settings = {
+            .armed = reader.boolean ("armed"),
+            .transcribeMute = reader.boolean ("transcribeMute"),
+            .transcribeSolo = reader.boolean ("transcribeSolo"),
+            .octaveShift = reader.smallInteger ("octaveShift"),
+            .bandFilter = readBandFilter (reader.object ("bandFilter")),
+            .inputChannels = reader.integers ("inputChannels"),
+        },
         .insertChain = reader.objects<InsertSlot> ("insertChain", readInsertSlot),
         .clips = reader.objects<Clip> ("clips", readClip),
     };
@@ -465,11 +467,11 @@ Loop readLoop (const Reader& reader)
         .name = reader.string ("name"),
         .start = reader.integer ("start"),
         .end = reader.integer ("end"),
-        .practiceSpeedPercent = reader.smallInteger ("practiceSpeedPercent"),
+        .settings = { .practiceSpeedPercent = reader.smallInteger ("practiceSpeedPercent") },
     };
     if (loop.start < 0 || loop.end <= loop.start)
         reader.report (reader.childPath ("end"), "expected 0 <= start < end");
-    if (! checkPracticeSpeed (loop.practiceSpeedPercent).has_value())
+    if (! checkPracticeSpeed (loop.settings.practiceSpeedPercent).has_value())
         reader.report (reader.childPath ("practiceSpeedPercent"), "expected a whole percent from " + std::to_string (minPracticeSpeed) + " to " + std::to_string (maxPracticeSpeed));
     return loop;
 }
@@ -522,18 +524,18 @@ Song readSong (const Reader& reader)
     song.markers = reader.objects<Marker> ("markers", readMarker);
     song.loops = reader.objects<Loop> ("loops", readLoop);
 
-    song.preRoll = readPreRoll (reader, "preRollSeconds");
-    song.cameraArmed = reader.boolean ("cameraArmed");
-    song.cameraDeviceId = reader.string ("cameraDeviceId");
-    song.playhead = reader.integer ("playhead");
-    song.exportVideoTakeId = readOptionalId (reader, "exportVideoTakeId");
-    song.exportFormat = readNamed (reader, "exportFormat", exportFormatNames, "expected \"wav\", \"m4a\" or \"mp4\"");
-    song.exportLength = readNamed (reader, "exportLength", videoLengthNames, "expected \"trim_to_video_take\" or \"full_song\"");
-    song.exportDestination = reader.string ("exportDestination");
-    song.exportLoopId = readOptionalId (reader, "exportLoopId");
-    song.focusTrackId = readOptionalId (reader, "focusTrackId");
-    song.activeLoopId = readOptionalId (reader, "activeLoopId");
-    song.looping = reader.boolean ("looping");
+    song.settings.preRoll = readPreRoll (reader, "preRollSeconds");
+    song.settings.cameraArmed = reader.boolean ("cameraArmed");
+    song.settings.cameraDeviceId = reader.string ("cameraDeviceId");
+    song.settings.playhead = reader.integer ("playhead");
+    song.settings.exportVideoTakeId = readOptionalId (reader, "exportVideoTakeId");
+    song.settings.exportFormat = readNamed (reader, "exportFormat", exportFormatNames, "expected \"wav\", \"m4a\" or \"mp4\"");
+    song.settings.exportLength = readNamed (reader, "exportLength", videoLengthNames, "expected \"trim_to_video_take\" or \"full_song\"");
+    song.settings.exportDestination = reader.string ("exportDestination");
+    song.settings.exportLoopId = readOptionalId (reader, "exportLoopId");
+    song.settings.focusTrackId = readOptionalId (reader, "focusTrackId");
+    song.settings.activeLoopId = readOptionalId (reader, "activeLoopId");
+    song.settings.looping = reader.boolean ("looping");
     return song;
 }
 } // namespace
@@ -553,18 +555,18 @@ nlohmann::json songToJson (const Song& song)
         { "transposeCents", song.transpose.cents },
         { "markers", arrayToJson (song.markers, markerToJson) },
         { "loops", arrayToJson (song.loops, loopToJson) },
-        { "preRollSeconds", preRollToSeconds (song.preRoll) },
-        { "cameraArmed", song.cameraArmed },
-        { "cameraDeviceId", song.cameraDeviceId },
-        { "playhead", song.playhead },
-        { "exportVideoTakeId", song.exportVideoTakeId.has_value() ? json (*song.exportVideoTakeId) : json (nullptr) },
-        { "exportFormat", nameOf (song.exportFormat, exportFormatNames) },
-        { "exportLength", nameOf (song.exportLength, videoLengthNames) },
-        { "exportDestination", song.exportDestination },
-        { "exportLoopId", song.exportLoopId.has_value() ? json (*song.exportLoopId) : json (nullptr) },
-        { "focusTrackId", song.focusTrackId.has_value() ? json (*song.focusTrackId) : json (nullptr) },
-        { "activeLoopId", song.activeLoopId.has_value() ? json (*song.activeLoopId) : json (nullptr) },
-        { "looping", song.looping },
+        { "preRollSeconds", preRollToSeconds (song.settings.preRoll) },
+        { "cameraArmed", song.settings.cameraArmed },
+        { "cameraDeviceId", song.settings.cameraDeviceId },
+        { "playhead", song.settings.playhead },
+        { "exportVideoTakeId", song.settings.exportVideoTakeId.has_value() ? json (*song.settings.exportVideoTakeId) : json (nullptr) },
+        { "exportFormat", nameOf (song.settings.exportFormat, exportFormatNames) },
+        { "exportLength", nameOf (song.settings.exportLength, videoLengthNames) },
+        { "exportDestination", song.settings.exportDestination },
+        { "exportLoopId", song.settings.exportLoopId.has_value() ? json (*song.settings.exportLoopId) : json (nullptr) },
+        { "focusTrackId", song.settings.focusTrackId.has_value() ? json (*song.settings.focusTrackId) : json (nullptr) },
+        { "activeLoopId", song.settings.activeLoopId.has_value() ? json (*song.settings.activeLoopId) : json (nullptr) },
+        { "looping", song.settings.looping },
     };
 }
 

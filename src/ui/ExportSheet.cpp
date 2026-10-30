@@ -121,22 +121,22 @@ std::optional<song::Id> defaultExportVideoTake (const std::vector<video::VideoTa
 
 juce::File exportDestinationFor (const song::Song& song, const juce::File& exportFolder, const std::string& songName, bool fallBackWhenFolderGone)
 {
-    if (juce::File::isAbsolutePath (song.exportDestination))
+    if (juce::File::isAbsolutePath (song.settings.exportDestination))
     {
-        const auto stored = exporting::withFormatExtension (juce::File (song.exportDestination), song.exportFormat);
+        const auto stored = exporting::withFormatExtension (juce::File (song.settings.exportDestination), song.settings.exportFormat);
         if (! fallBackWhenFolderGone || stored.getParentDirectory().isDirectory())
             return stored;
     }
-    return exporting::defaultExportFile (exportFolder, songName, song.exportFormat);
+    return exporting::defaultExportFile (exportFolder, songName, song.settings.exportFormat);
 }
 
 exporting::ExportRequest exportRequestFor (const song::Song& song, const std::vector<video::VideoTakeSpan>& videoTakes, const juce::File& destination)
 {
-    const auto mp4 = song.exportFormat == exporting::ExportFormat::mp4;
+    const auto mp4 = song.settings.exportFormat == exporting::ExportFormat::mp4;
     std::optional<exporting::ExportLoop> loop;
-    if (const auto* found = song.exportLoopId.has_value() ? song::findLoop (song, *song.exportLoopId) : nullptr)
+    if (const auto* found = song.settings.exportLoopId.has_value() ? song::findLoop (song, *song.settings.exportLoopId) : nullptr)
         loop = exporting::ExportLoop { found->id, { found->start, found->end } };
-    return { song.exportFormat, destination, mp4 ? defaultExportVideoTake (videoTakes, song.exportVideoTakeId) : std::nullopt, song.exportLength, loop };
+    return { song.settings.exportFormat, destination, mp4 ? defaultExportVideoTake (videoTakes, song.settings.exportVideoTakeId) : std::nullopt, song.settings.exportLength, loop };
 }
 
 std::string replacesExistingText (const juce::File& destination)

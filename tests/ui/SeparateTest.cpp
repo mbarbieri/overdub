@@ -194,7 +194,7 @@ TEST_CASE ("while a Separation runs, arm, input, pre-roll, Monitoring, the camer
     quieter.master.volumeDb = -60.0;
     CHECK (s.f.openSong->setArmed (guitarId, false).error().code == "ui.separation_running");
     CHECK (s.f.openSong->setInputChannels (guitarId, { 1 }).error().code == "ui.separation_running");
-    CHECK (s.f.openSong->setPreRoll (before.preRoll == song::PreRoll::off ? song::PreRoll::oneSecond : song::PreRoll::off).error().code == "ui.separation_running");
+    CHECK (s.f.openSong->setPreRoll (before.settings.preRoll == song::PreRoll::off ? song::PreRoll::oneSecond : song::PreRoll::off).error().code == "ui.separation_running");
     CHECK (s.f.openSong->setMonitoring (guitarId, true).error().code == "ui.separation_running");
     CHECK (s.f.openSong->previewMix (quieter).error().code == "ui.separation_running");
     CHECK (s.f.openSong->setCameraArmed (true).error().code == "ui.separation_running");
@@ -234,7 +234,7 @@ TEST_CASE ("a finished Separation adds six Backing Tracks on six Tracks below th
         CHECK_THAT (track.pan, Catch::Matchers::WithinAbs (0.0, 0.0));
         CHECK_FALSE (track.mute);
         CHECK_FALSE (track.solo);
-        CHECK_FALSE (track.armed);
+        CHECK_FALSE (track.settings.armed);
         CHECK (track.insertChain.empty());
         REQUIRE (track.clips.size() == source.clips.size());
         auto copy = track.clips.front();

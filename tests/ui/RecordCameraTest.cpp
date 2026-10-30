@@ -57,8 +57,8 @@ TEST_CASE ("clicking the camera arm arms the Song's camera without an undo step,
     const auto undoBefore = f.openSong->package().undoLabel();
     click (f.page().cameraArmButton);
 
-    CHECK (f.song().cameraArmed);
-    CHECK (f.song().cameraDeviceId == "camera-facetime"); // the default camera became the choice
+    CHECK (f.song().settings.cameraArmed);
+    CHECK (f.song().settings.cameraDeviceId == "camera-facetime"); // the default camera became the choice
     REQUIRE (f.camera.opened.has_value());
     CHECK (f.openSong->package().undoLabel() == undoBefore);
     CHECK (f.page().cameraArmButton.getToggleState());
@@ -66,7 +66,7 @@ TEST_CASE ("clicking the camera arm arms the Song's camera without an undo step,
     CHECK (f.page().cameraStage.message() == juce::String (cameraStageMessage (true)));
 
     click (f.page().cameraArmButton);
-    CHECK_FALSE (f.song().cameraArmed);
+    CHECK_FALSE (f.song().settings.cameraArmed);
     CHECK_FALSE (f.camera.opened.has_value());
 }
 
@@ -76,7 +76,7 @@ TEST_CASE ("picking a camera makes it the Song's camera", "[ui][record_page][cam
     click (f.page().cameraArmButton);
     choose (f.page().cameraPicker, 1);
 
-    CHECK (f.song().cameraDeviceId == "camera-usb");
+    CHECK (f.song().settings.cameraDeviceId == "camera-usb");
     REQUIRE (f.camera.opened.has_value());
     CHECK (f.camera.opened->id == "camera-usb");
     CHECK (f.page().cameraPicker.getSelectedItemIndex() == 1);
@@ -89,7 +89,7 @@ TEST_CASE ("refused camera access leaves the camera disarmed and shows a Notice"
     f.cameraAccessGranted = false;
     click (f.page().cameraArmButton);
 
-    CHECK_FALSE (f.song().cameraArmed);
+    CHECK_FALSE (f.song().settings.cameraArmed);
     CHECK_FALSE (f.camera.opened.has_value());
     const auto notices = eventsNamed (capture, "ui.notice_shown");
     REQUIRE (notices.size() == 1);
@@ -104,7 +104,7 @@ TEST_CASE ("a camera that cannot open shows a Notice and stays disarmed", "[ui][
     f.camera.openError = overdub::core::Error { "capture.camera_unavailable", "the camera could not be opened", { { "camera_id", "" }, { "reason", "no camera found" } } };
     click (f.page().cameraArmButton);
 
-    CHECK_FALSE (f.song().cameraArmed);
+    CHECK_FALSE (f.song().settings.cameraArmed);
     CHECK_FALSE (f.page().cameraArmButton.getToggleState());
     const auto notices = eventsNamed (capture, "ui.notice_shown");
     REQUIRE (notices.size() == 1);
@@ -173,8 +173,8 @@ TEST_CASE ("the top bar stops reading REC once the Pass is stopped, while its mo
 TEST_CASE ("the camera controls follow the Song and the camera list", "[ui][record_page][camera]")
 {
     overdub::song::Song song;
-    song.cameraArmed = true;
-    song.cameraDeviceId = "camera-usb";
+    song.settings.cameraArmed = true;
+    song.settings.cameraDeviceId = "camera-usb";
     const std::vector<overdub::capture::CameraDevice> cameras { { "camera-facetime", "FaceTime HD Camera" }, { "camera-usb", "USB Camera" } };
 
     const auto armed = cameraControlsStateFor (song, cameras, false);
@@ -187,8 +187,8 @@ TEST_CASE ("the camera controls follow the Song and the camera list", "[ui][reco
     CHECK_FALSE (recording.canArm);
     CHECK_FALSE (recording.canChoose);
 
-    song.cameraArmed = false;
-    song.cameraDeviceId = "camera-gone";
+    song.settings.cameraArmed = false;
+    song.settings.cameraDeviceId = "camera-gone";
     const auto noCameras = cameraControlsStateFor (song, {}, false);
     CHECK_FALSE (noCameras.selected.has_value());
     CHECK_FALSE (noCameras.canArm); // nothing to arm

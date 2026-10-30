@@ -33,12 +33,12 @@ TEST_CASE ("each listening setting changes only its own Track's setting", "[ui][
 {
     const auto song = twoTracks();
 
-    CHECK (changed (song, SetFocusTrack { "track-bass" }).focusTrackId == "track-bass");
-    CHECK (changed (song, SetTranscribeMute { "track-drums", true }).tracks[1].transcribeMute);
-    CHECK (changed (song, SetTranscribeSolo { "track-drums", true }).tracks[1].transcribeSolo);
-    CHECK (changed (song, SetOctaveShift { "track-bass", -1 }).tracks[0].octaveShift == -1);
+    CHECK (changed (song, SetFocusTrack { "track-bass" }).settings.focusTrackId == "track-bass");
+    CHECK (changed (song, SetTranscribeMute { "track-drums", true }).tracks[1].settings.transcribeMute);
+    CHECK (changed (song, SetTranscribeSolo { "track-drums", true }).tracks[1].settings.transcribeSolo);
+    CHECK (changed (song, SetOctaveShift { "track-bass", -1 }).tracks[0].settings.octaveShift == -1);
     const auto filtered = changed (song, SetBandFilter { .trackId = "track-bass", .on = true, .lowHz = 200, .highHz = 3200 });
-    CHECK (filtered.tracks[0].bandFilter == overdub::song::BandFilter { .on = true, .lowHz = 200, .highHz = 3200 });
+    CHECK (filtered.tracks[0].settings.bandFilter == overdub::song::BandFilter { .on = true, .lowHz = 200, .highHz = 3200 });
     CHECK (filtered.tracks[1] == song.tracks[1]);
 }
 

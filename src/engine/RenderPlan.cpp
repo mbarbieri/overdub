@@ -170,7 +170,7 @@ std::unique_ptr<TrackPlayer> makeTrackPlayer (const song::Track& track, SourceLo
             sources.push_back (std::move (audio));
     }
     // Only a monitored Armed Track hears its input; any other Track's input channels stay silent.
-    auto monitorChannels = track.armed && monitored ? track.inputChannels : std::vector<int> {};
+    auto monitorChannels = track.settings.armed && monitored ? track.settings.inputChannels : std::vector<int> {};
     return std::make_unique<TrackPlayer> (juce::String (track.id), flattenClips (layered), std::move (sources), liveInput, std::move (monitorChannels));
 }
 
@@ -220,11 +220,11 @@ RenderPlan::RenderPlan (const song::Song& song, const juce::File& packageRoot, c
     {
         trackIds.push_back (track.id);
         trackStrips.push_back (std::make_unique<StripControl>());
-        if (track.armed)
+        if (track.settings.armed)
         {
             auto tap = std::make_unique<InputTap>();
             tap->trackId = track.id;
-            tap->channels = track.inputChannels;
+            tap->channels = track.settings.inputChannels;
             inputTaps.push_back (std::move (tap));
         }
     }

@@ -32,16 +32,16 @@ Song withMixOf (Song song, const Song& from)
         song.tracks[i].pan = from.tracks[i].pan;
         song.tracks[i].mute = from.tracks[i].mute;
         song.tracks[i].solo = from.tracks[i].solo;
-        song.tracks[i].transcribeMute = from.tracks[i].transcribeMute;
-        song.tracks[i].transcribeSolo = from.tracks[i].transcribeSolo;
+        song.tracks[i].settings.transcribeMute = from.tracks[i].settings.transcribeMute;
+        song.tracks[i].settings.transcribeSolo = from.tracks[i].settings.transcribeSolo;
     }
     song.master.volumeDb = from.master.volumeDb;
-    song.focusTrackId = from.focusTrackId;
+    song.settings.focusTrackId = from.settings.focusTrackId;
     song.markers = from.markers; // the engine never hears a Marker
     // Loops and looping reach the engine through Engine::setLoop, never its plan.
     song.loops = from.loops;
-    song.activeLoopId = from.activeLoopId;
-    song.looping = from.looping;
+    song.settings.activeLoopId = from.settings.activeLoopId;
+    song.settings.looping = from.settings.looping;
     return song;
 }
 } // namespace

@@ -385,23 +385,23 @@ struct CensusWorkspace
     {
         // The active Loop and looping (issue #228) are outside history too: put back directly,
         // since select_loop also moves the playhead and the view.
-        if (f.song().song().activeLoopId != builtSong.activeLoopId || f.song().song().looping != builtSong.looping)
-            REQUIRE (f.song().setActiveLoop (builtSong.activeLoopId, builtSong.looping).has_value());
-        if (f.song().song().focusTrackId != builtSong.focusTrackId)
-            f.content.run (ui::SongIntent { SetFocusTrack { builtSong.focusTrackId } });
+        if (f.song().song().settings.activeLoopId != builtSong.settings.activeLoopId || f.song().song().settings.looping != builtSong.settings.looping)
+            REQUIRE (f.song().setActiveLoop (builtSong.settings.activeLoopId, builtSong.settings.looping).has_value());
+        if (f.song().song().settings.focusTrackId != builtSong.settings.focusTrackId)
+            f.content.run (ui::SongIntent { SetFocusTrack { builtSong.settings.focusTrackId } });
         for (const auto& built : builtSong.tracks)
         {
             const auto* current = song::findTrack (f.song().song(), built.id);
             if (current == nullptr)
                 continue;
-            if (current->transcribeMute != built.transcribeMute)
-                f.content.run (ui::SongIntent { SetTranscribeMute { built.id, built.transcribeMute } });
-            if (current->transcribeSolo != built.transcribeSolo)
-                f.content.run (ui::SongIntent { SetTranscribeSolo { built.id, built.transcribeSolo } });
-            if (current->octaveShift != built.octaveShift)
-                f.content.run (ui::SongIntent { SetOctaveShift { built.id, built.octaveShift } });
-            if (current->bandFilter != built.bandFilter)
-                f.content.run (ui::SongIntent { SetBandFilter { built.id, built.bandFilter.on, built.bandFilter.lowHz, built.bandFilter.highHz } });
+            if (current->settings.transcribeMute != built.settings.transcribeMute)
+                f.content.run (ui::SongIntent { SetTranscribeMute { built.id, built.settings.transcribeMute } });
+            if (current->settings.transcribeSolo != built.settings.transcribeSolo)
+                f.content.run (ui::SongIntent { SetTranscribeSolo { built.id, built.settings.transcribeSolo } });
+            if (current->settings.octaveShift != built.settings.octaveShift)
+                f.content.run (ui::SongIntent { SetOctaveShift { built.id, built.settings.octaveShift } });
+            if (current->settings.bandFilter != built.settings.bandFilter)
+                f.content.run (ui::SongIntent { SetBandFilter { built.id, built.settings.bandFilter.on, built.settings.bandFilter.lowHz, built.settings.bandFilter.highHz } });
         }
     }
 

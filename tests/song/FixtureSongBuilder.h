@@ -82,8 +82,8 @@ public:
         Track added;
         added.id = makeId();
         added.name = name;
-        added.armed = armed;
-        added.inputChannels = std::move (inputChannels);
+        added.settings.armed = armed;
+        added.settings.inputChannels = std::move (inputChannels);
         tracks.push_back (std::move (added));
         return *this;
     }

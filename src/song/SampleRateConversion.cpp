@@ -73,7 +73,7 @@ Song convertedSong (const Song& song, int toRate, const ConvertedMedia& media)
 
     Song converted = song;
     converted.sampleRate = toRate;
-    converted.playhead = convert (song.playhead);
+    converted.settings.playhead = convert (song.settings.playhead);
     for (auto& pass : converted.passes)
         pass.startSample = convert (pass.startSample);
 

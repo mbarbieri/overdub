@@ -191,8 +191,8 @@ TEST_CASE ("AUPeakLimiter's latency is compensated sample-exact in Take placemen
     song.takes.push_back (backing);
     song.tracks.push_back (trackWith ("track-backing", { clipOf ("clip-backing", backing, 0, 0, 16000) }));
     auto armed = trackWith ("track-guitar", {});
-    armed.armed = true;
-    armed.inputChannels = { 0 };
+    armed.settings.armed = true;
+    armed.settings.inputChannels = { 0 };
     song.tracks.push_back (armed);
     REQUIRE (package.edit (song, "Set up").has_value());
 

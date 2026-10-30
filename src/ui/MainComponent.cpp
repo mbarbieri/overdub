@@ -456,7 +456,7 @@ KeyContext MainComponent::keyContext() const
     const auto& song = songContent->currentSong().song();
     context.selectedMarker = currentMode != Mode::record ? songContent->selectedMarker() : std::nullopt;
     context.loopToDelete = songContent->loopToDelete();
-    context.looping = song.looping;
+    context.looping = song.settings.looping;
     for (const auto& loop : song.loops)
         context.loopIds.push_back (loop.id);
     context.loopStartPending = songContent->loopStartPending().has_value();
