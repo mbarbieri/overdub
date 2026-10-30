@@ -15,6 +15,7 @@ target_sources(overdub_ui PRIVATE
     DeviceSettingsPanel.cpp
     DoubleClickInterval.mm
     EditPage.cpp
+    ExportSettings.cpp
     ExportSheet.cpp
     ExportRun.cpp
     FileDrop.cpp

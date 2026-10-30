@@ -287,15 +287,10 @@ public:
     // The file the last export wrote, once it finished; none before (or after one failed).
     const std::optional<juce::File>& lastExportedFile() const { return lastExport; }
 
-    // The Export sheet's choices (issue #201): Song settings outside history (song.json, no undo
-    // step). The Video Take an MP4 shows ignores an id that is not a Video Take of the Song. The
-    // destination is an absolute path, "" for the export folder; its folder is not checked here.
-    void setExportVideoTake (const song::Id& videoTakeId);
-    void setExportFormat (song::ExportFormat format);
-    // An MP4's length, and the Loop whose range every format writes (none: the whole Song).
-    // Errors: song.loop_not_found (loop_id), changing nothing.
-    core::Expected<void> setExportLength (song::VideoLength length, const std::optional<song::Id>& loopId);
-    void setExportDestination (const std::string& path);
+    // Stores a change of the Song's settings outside history (song.json, no undo step), such as
+    // the Export sheet's choices (ui/ExportSettings.h). Nothing when the Song is unchanged; the
+    // change's Error, changing nothing. Refuses nothing: no activity locks these settings.
+    core::Expected<void> changeSettings (core::Expected<song::Song> changed);
 
     // Transcribe mode (issue #226, ADR 0010). While transcribing, the engine plays the Transcribe
     // Mix's mute and solo instead of the Song's (song::withTranscribeMix); otherwise the Song's own

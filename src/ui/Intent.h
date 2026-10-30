@@ -29,7 +29,8 @@
 //
 // The three groups are the three owners: AppIntent (the app's File and settings operations),
 // WindowIntent (ui::MainComponent) and SongIntent (ui::SongView, refused with ui.no_song_open while
-// no Song is open). SongIntent nests intent::Edit, the plain one-undo-step edits (ui/SongEdits.h).
+// no Song is open). SongIntent nests intent::Edit, the plain one-undo-step edits (ui/SongEdits.h),
+// and intent::ExportSetting, the Export sheet's choices (ui/ExportSettings.h).
 // Each owner visits its group with core::visitExhaustively, so an alternative without a handler does
 // not compile, and a struct without `op` and `fields` cannot be an alternative.
 //
@@ -860,6 +861,9 @@ struct SetExportVideoTake // stored in the Song, outside history
     static constexpr auto fields = std::tuple { field ("video_take_id", &SetExportVideoTake::videoTakeId) };
 };
 
+// The Export sheet's choices: Song settings outside history (ui/ExportSettings.h).
+using ExportSetting = std::variant<SetExportFormat, SetExportLength, SetExportDestination, SetExportVideoTake>;
+
 struct Export
 {
     static constexpr std::string_view op = "export";
@@ -994,8 +998,7 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::SetPreRoll, intent::SetCameraArmed, intent::SetCameraDevice,
                                 intent::SplitSelectedClip, intent::DeleteSelection, intent::TakeLaneClick, intent::PreviewMix,
                                 intent::AddInsert, intent::OpenInsertEditor, intent::ClosePluginWindow,
-                                intent::ShowExport, intent::SetExportFormat, intent::SetExportLength, intent::SetExportDestination,
-                                intent::SetExportVideoTake, intent::Export, intent::CancelExport, intent::RevealExport,
+                                intent::ShowExport, intent::ExportSetting, intent::Export, intent::CancelExport, intent::RevealExport,
                                 intent::SelectClip, intent::SelectVideoTake, intent::SetTimelineView, intent::SetTranscribeView,
                                 intent::SetVerticalScroll, intent::SetTakeLanesUnfolded, intent::SetMixerVisible,
                                 intent::SetMixerHeight, intent::SetPassesPanelOpen, intent::ClearClipIndicator>;
