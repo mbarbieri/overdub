@@ -73,6 +73,12 @@ song::Song withInputChannels (song::Song song, const song::Id& trackId, std::vec
     return song;
 }
 
+song::Song withPreRoll (song::Song song, song::PreRoll preRoll)
+{
+    song.settings.preRoll = preRoll;
+    return song;
+}
+
 int nextPassNumber (const song::Song& song)
 {
     return (int) song.passes.size() + 1;

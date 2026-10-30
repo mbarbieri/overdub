@@ -5,6 +5,7 @@
 
 #include "engine/EngineFixture.h"
 #include "song/FixtureSongBuilder.h"
+#include "ui/TrackRowEdits.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -99,7 +100,7 @@ struct PreRollFixture
     // Records with pre-roll from `recordPoint` for `blocks` blocks, then stops and finishes the Pass.
     void recordFrom (SampleCount recordPoint, int blocks)
     {
-        openSong->setPreRoll (PreRoll::twoSeconds);
+        openSong->changeSettings (overdub::ui::withPreRoll (openSong->song(), PreRoll::twoSeconds));
         openSong->seek (recordPoint);
         REQUIRE (openSong->record().has_value());
         device.run (engine, blocks);
@@ -119,7 +120,7 @@ TEST_CASE ("with pre-roll 2 s, R plays from 2 s before the record point and the 
     constexpr SampleCount clickAfter = recordPoint + 3000;  // looped back into the Take
     PreRollFixture f { { clickBefore, clickAfter } };
 
-    f.openSong->setPreRoll (PreRoll::twoSeconds);
+    f.openSong->changeSettings (overdub::ui::withPreRoll (f.openSong->song(), PreRoll::twoSeconds));
     f.openSong->seek (recordPoint);
     REQUIRE (f.openSong->record().has_value());
 
@@ -178,7 +179,7 @@ TEST_CASE ("without pre-roll, or with the transport already playing, R records f
     }
     SECTION ("already playing")
     {
-        f.openSong->setPreRoll (PreRoll::fourSeconds);
+        f.openSong->changeSettings (overdub::ui::withPreRoll (f.openSong->song(), PreRoll::fourSeconds));
         f.openSong->seek (testSampleRate);
         f.openSong->playOrStop();
         f.device.run (f.engine, 1);
@@ -193,7 +194,7 @@ TEST_CASE ("without pre-roll, or with the transport already playing, R records f
 TEST_CASE ("stopping during the pre-roll ends the Pass with nothing recorded", "[ui][open_song][pre_roll]")
 {
     PreRollFixture f { {} };
-    f.openSong->setPreRoll (PreRoll::oneSecond);
+    f.openSong->changeSettings (overdub::ui::withPreRoll (f.openSong->song(), PreRoll::oneSecond));
     f.openSong->seek (2 * testSampleRate);
     ScopedLogCapture capture;
     REQUIRE (f.openSong->record().has_value());
@@ -222,7 +223,7 @@ TEST_CASE ("changing pre-roll writes the Song without a history step", "[ui][ope
     PreRollFixture f { {} };
     const auto stepBefore = f.openSong->package().undoLabel();
 
-    f.openSong->setPreRoll (PreRoll::fourSeconds);
+    f.openSong->changeSettings (overdub::ui::withPreRoll (f.openSong->song(), PreRoll::fourSeconds));
     CHECK (f.song().settings.preRoll == PreRoll::fourSeconds);
     CHECK (f.openSong->package().undoLabel() == stepBefore);
     CHECK (f.openSong->package().hasPendingWrite());

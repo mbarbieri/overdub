@@ -115,7 +115,7 @@ std::vector<nlohmann::json> eventsNamed (const overdub::core::ScopedLogCapture& 
 TEST_CASE ("while a Loop loops, a Practice Speed change renders the Loop's window before the rest of the Song", "[ui][open_song][practice_speed][loop]")
 {
     LoopRenderFixture f;
-    REQUIRE (f.openSong->setActiveLoop ("loop", true).has_value());
+    REQUIRE (f.openSong->changeSettings (overdub::song::setActiveLoop (f.openSong->song(), "loop", true)).has_value());
     overdub::core::ScopedLogCapture capture;
 
     REQUIRE (f.openSong->setPracticeSpeed (80).has_value());
@@ -141,7 +141,7 @@ TEST_CASE ("while a Loop loops, a Practice Speed change renders the Loop's windo
 TEST_CASE ("a Loop's audio at the new speed is heard before the whole Song is rendered, at the same Song time", "[ui][open_song][practice_speed][loop]")
 {
     LoopRenderFixture f;
-    REQUIRE (f.openSong->setActiveLoop ("loop", true).has_value());
+    REQUIRE (f.openSong->changeSettings (overdub::song::setActiveLoop (f.openSong->song(), "loop", true)).has_value());
 
     REQUIRE (f.openSong->setPracticeSpeed (80).has_value());
     f.pollUntil ([&] { return f.openSong->listening().renders().heardPracticeSpeed() == 80; });
@@ -166,7 +166,7 @@ TEST_CASE ("outside a Loop, with looping off or outside Transcribe mode, the who
 {
     LoopRenderFixture f;
     const auto looping = GENERATE (false, true);
-    REQUIRE (f.openSong->setActiveLoop ("loop", looping).has_value());
+    REQUIRE (f.openSong->changeSettings (overdub::song::setActiveLoop (f.openSong->song(), "loop", looping)).has_value());
     if (looping)
         f.openSong->setTranscribing (false); // the Loop is not heard outside Transcribe mode
     overdub::core::ScopedLogCapture capture;
@@ -184,13 +184,13 @@ TEST_CASE ("outside a Loop, with looping off or outside Transcribe mode, the who
 TEST_CASE ("turning looping on while the whole Song renders renders the Loop's window first", "[ui][open_song][practice_speed][loop]")
 {
     LoopRenderFixture f { 80 };
-    REQUIRE (f.openSong->setActiveLoop ("loop", false).has_value());
+    REQUIRE (f.openSong->changeSettings (overdub::song::setActiveLoop (f.openSong->song(), "loop", false)).has_value());
     REQUIRE (f.openSong->setPracticeSpeed (80).has_value());
     REQUIRE (f.openSong->listening().renders().isPracticeRendering());
     overdub::core::ScopedLogCapture capture;
 
     // The Loop is drilled at 80% too: looping changes only what renders first.
-    REQUIRE (f.openSong->setLooping (true).has_value());
+    REQUIRE (f.openSong->changeSettings (overdub::song::setLooping (f.openSong->song(), true)).has_value());
     f.pollUntil ([&] { return ! f.openSong->listening().renders().isPracticeRendering(); });
 
     CHECK (eventsNamed (capture, "song.practice_speed_cancelled").size() == 1);

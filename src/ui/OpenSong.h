@@ -280,9 +280,14 @@ public:
     // The file the last export wrote, once it finished; none before (or after one failed).
     const std::optional<juce::File>& lastExportedFile() const { return lastExport; }
 
-    // Stores a change of the Song's settings outside history (song.json, no undo step), such as
-    // the Export sheet's choices (ui/ExportSettings.h). Nothing when the Song is unchanged; the
-    // change's Error, changing nothing. Refuses nothing: no activity locks these settings.
+    // Stores a change of the Song's settings outside history (song.json, no undo step), from one of
+    // their pure functions: the Export sheet's choices (ui/ExportSettings.h), the Transcribe
+    // listening settings (ui/ListeningSettings.h), the active Loop and looping (song/LoopEdits.h),
+    // a Track's arm and inputs (ui/TrackRowEdits.h) and pre-roll. Then plays at the heard Loop's
+    // Practice Speed, when it may change (issue #230), and the engine follows what is heard
+    // (hearChange): nothing when that is unchanged, Engine::setMix when only its mix changed, else
+    // a plan rebuild. Nothing is stored when the Song is unchanged; the change's Error changes
+    // nothing.
     core::Expected<void> changeSettings (core::Expected<song::Song> changed);
 
     // Transcribe mode (issue #226, ADR 0010). While transcribing, the engine plays the Transcribe
@@ -290,26 +295,7 @@ public:
     // mix. The window sets it as its mode changes; it is not in the Song. Changing it applies the mix
     // (Engine::setMix) without rebuilding the plan unless the octave-shifted Track changes.
     void setTranscribing (bool transcribing);
-    // A Transcribe listening setting (ui/ListeningSettings.h): the Focus Track, the Transcribe Mix,
-    // a Track's octave shift or band filter (see the header comment). Stored outside history (no
-    // undo step) and heard at once (hearChange); nothing when the Song is unchanged. Logs
-    // logListeningSet's event. Errors: withListeningSetting's.
-    core::Expected<void> changeListening (const intent::ListeningSetting& setting);
 
-    // Loops (issue #228, ADR 0010). The active Loop and looping are Song settings outside history
-    // (song.json, no undo step, song/LoopEdits.h). The engine loops (Engine::setLoop) only while
-    // transcribing, looping and with an active Loop: heard().loop. Logs ui.active_loop_set (info:
-    // loop_id, "" for none, looping) and ui.looping_set (info: looping). Each Loop keeps its Practice
-    // Speed (issue #230, ui/Listening.h), except while a Pass, a Separation or a conversion runs.
-    // Errors: song.loop_not_found; setLooping: song.no_active_loop.
-    core::Expected<void> setActiveLoop (const std::optional<song::Id>& loopId, bool looping);
-    core::Expected<void> setLooping (bool looping);
-
-    // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
-    core::Expected<void> setPreRoll (song::PreRoll preRoll);
-
-    core::Expected<void> setArmed (const song::Id& trackId, bool armed);
-    core::Expected<void> setInputChannels (const song::Id& trackId, std::vector<int> inputChannels);
     // The camera Video Takes are recorded from (not owned; it must outlive this OpenSong, or be
     // detached with null first) and the camera calibration file. Opens the camera when the Song's
     // camera is Armed. Errors: the camera's open() Errors (the camera is then disarmed).
@@ -393,12 +379,9 @@ private:
     std::optional<core::Error> endExportIfEnded (std::optional<ExportEnd> end);
     // Advances a running Separation; once it ends, reloads the engine and returns its Error.
     std::optional<core::Error> advanceSeparation (song::SongPackage::Clock::time_point now);
-    // Stores an active Loop or looping change outside history, plays at the heard Loop's Practice
-    // Speed when it may change, and plays it (hearChange), also when the Song is unchanged.
-    core::Expected<void> changeHeardLoop (core::Expected<song::Song> changed);
-    // After the Song or the listening state changed from `before`: the engine plays heard() (with
-    // Engine::setMix when only the heard mix changed and the octave-shifted Track did not, else
-    // reloadEngine), and the renders follow.
+    // After the Song or the listening state changed from `before`: the engine plays heard() (nothing
+    // when it is unchanged, Engine::setMix when only the heard mix changed and the octave-shifted
+    // Track did not, else reloadEngine), and the renders follow.
     void hearChange (const Heard& before);
     // Neither a Pass, a Separation nor a conversion runs.
     bool practiceSpeedMayChange() const;

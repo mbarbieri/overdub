@@ -34,6 +34,8 @@ std::optional<std::size_t> choiceIndexFor (const std::vector<InputChoice>& choic
 // The Song with that Track's Armed flag / input channels set. An unknown Track id changes nothing.
 song::Song withArmed (song::Song song, const song::Id& trackId, bool armed);
 song::Song withInputChannels (song::Song song, const song::Id& trackId, std::vector<int> inputChannels);
+// The Song with the Record page's pre-roll set.
+song::Song withPreRoll (song::Song song, song::PreRoll preRoll);
 
 // One item of a Track row's menu (right-click, issue #114).
 enum class TrackMenuAction

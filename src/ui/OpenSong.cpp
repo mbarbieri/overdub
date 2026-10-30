@@ -1,12 +1,12 @@
 #include "ui/OpenSong.h"
 
+#include "ui/TrackRowEdits.h"
+
 #include "capture/CameraCalibration.h"
 #include "core/Log.h"
 #include "song/InsertEdits.h"
 #include "song/LoopEdits.h"
 #include "song/MixEdits.h"
-#include "ui/ListeningSettings.h"
-#include "ui/TrackRowEdits.h"
 
 #include <algorithm>
 #include <ranges>
@@ -251,16 +251,6 @@ std::optional<song::SampleCount> OpenSong::runningPassStart() const
     return pass != nullptr ? pass->recorder->runningPassStart() : std::nullopt;
 }
 
-core::Expected<void> OpenSong::setPreRoll (song::PreRoll preRoll)
-{
-    if (preRoll == song().settings.preRoll)
-        return {};
-    auto changed = song();
-    changed.settings.preRoll = preRoll;
-    package_->changeWithoutHistory (std::move (changed));
-    return {};
-}
-
 core::Expected<void> OpenSong::setPracticeSpeed (int speedPercent)
 {
     if (auto checked = song::checkPracticeSpeed (speedPercent); ! checked.has_value())
@@ -285,8 +275,11 @@ core::Expected<void> OpenSong::changeSettings (core::Expected<song::Song> change
 {
     if (! changed.has_value())
         return std::unexpected (std::move (changed.error()));
+    const auto before = heard();
     if (*changed != song())
         package_->changeWithoutHistory (std::move (*changed));
+    listening_.hearLoopPracticeSpeed (song(), practiceSpeedMayChange());
+    hearChange (before);
     return {};
 }
 
@@ -299,37 +292,14 @@ void OpenSong::setTranscribing (bool on)
     hearChange (before);
 }
 
-core::Expected<void> OpenSong::setActiveLoop (const std::optional<song::Id>& loopId, bool looping)
-{
-    auto changed = changeHeardLoop (song::setActiveLoop (song(), loopId, looping));
-    if (changed.has_value())
-        core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().settings.looping } });
-    return changed;
-}
-
-core::Expected<void> OpenSong::setLooping (bool looping)
-{
-    auto changed = changeHeardLoop (song::setLooping (song(), looping));
-    if (changed.has_value())
-        core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
-    return changed;
-}
-
-core::Expected<void> OpenSong::changeHeardLoop (core::Expected<song::Song> changed)
-{
-    if (! changed.has_value())
-        return std::unexpected (std::move (changed.error()));
-    const auto before = heard();
-    if (*changed != song())
-        package_->changeWithoutHistory (std::move (*changed));
-    listening_.hearLoopPracticeSpeed (song(), practiceSpeedMayChange());
-    hearChange (before);
-    return {};
-}
-
 void OpenSong::hearChange (const Heard& before)
 {
     const auto after = heard();
+    if (after == before)
+    {
+        listening_.follow (song());
+        return;
+    }
     const auto sameShift = before.octaveShiftedTrack == after.octaveShiftedTrack && before.octaveShift == after.octaveShift;
     const auto mixApplied = binding.engine != nullptr && sameShift && song::differsOnlyInMix (before.song, after.song) && binding.engine->setMix (after.song);
     if (mixApplied)
@@ -342,20 +312,6 @@ void OpenSong::hearChange (const Heard& before)
         reloadEngine(); // syncs the InsertHost, also without an engine
     }
     listening_.follow (song());
-}
-
-core::Expected<void> OpenSong::changeListening (const intent::ListeningSetting& setting)
-{
-    auto changed = withListeningSetting (song(), setting);
-    if (! changed.has_value())
-        return std::unexpected (std::move (changed.error()));
-    if (*changed == song())
-        return {};
-    const auto before = heard();
-    package_->changeWithoutHistory (std::move (*changed));
-    hearChange (before);
-    logListeningSet (setting);
-    return {};
 }
 
 void OpenSong::stop()
@@ -468,20 +424,6 @@ core::Expected<void> OpenSong::redo()
     auto result = package_->redo();
     updateEngine (before);
     return result;
-}
-
-core::Expected<void> OpenSong::setArmed (const song::Id& trackId, bool armed)
-{
-    package_->changeWithoutHistory (withArmed (song(), trackId, armed));
-    reloadEngine();
-    return {};
-}
-
-core::Expected<void> OpenSong::setInputChannels (const song::Id& trackId, std::vector<int> inputChannels)
-{
-    package_->changeWithoutHistory (withInputChannels (song(), trackId, std::move (inputChannels)));
-    reloadEngine();
-    return {};
 }
 
 void OpenSong::setMonitoring (const song::Id& trackId, bool on)

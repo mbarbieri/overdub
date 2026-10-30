@@ -39,15 +39,18 @@ namespace overdub::ui
 struct Heard
 {
     // The Song as the engine reads it: at the heard Transpose, with the Transcribe Mix's mute and
-    // solo while transcribing, and without the Transcribe settings (the Focus Track, the Transcribe
-    // Mix, each Track's octave shift and band filter, the active Loop and looping), which reach the
-    // engine only through the fields below.
+    // solo while transcribing, without the Song's settings (song::SongSettings, which the engine
+    // never reads, issue #256) and without each Track's Transcribe settings (the Transcribe Mix,
+    // octave shift and band filter). The Focus Track, the active Loop and looping reach the engine
+    // only through the fields below.
     song::Song song;
     std::optional<engine::LoopRange> loop;
     std::optional<engine::HeardBandFilter> bandFilter;
     std::optional<song::Id> octaveShiftedTrack;
     // The octave-shifted Track's shift; 0 when none is.
     int octaveShift = 0;
+
+    bool operator== (const Heard&) const = default;
 };
 
 class Listening
