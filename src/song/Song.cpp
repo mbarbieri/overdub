@@ -92,48 +92,39 @@ void keepCurrentStateHashes (std::vector<InsertSlot>& insertChain, const std::ma
         if (const auto current = currentHashes.find (slot.id); current != currentHashes.end())
             slot.stateHash = current->second;
 }
+
+// The current settings as a restored snapshot keeps them (see keepStateOutsideHistory).
+SongSettings keptSettings (const Song& snapshot, const Song& current)
+{
+    auto settings = current.settings;
+    // A step across a sample rate conversion keeps the playhead at the same time.
+    if (snapshot.sampleRate != current.sampleRate)
+        settings.playhead = convertedSamples (current.settings.playhead, current.sampleRate, snapshot.sampleRate);
+    const auto hasLoop = [&] (const std::optional<Id>& loopId) { return loopId.has_value() && std::ranges::contains (snapshot.loops, *loopId, &Loop::id); };
+    if (settings.exportVideoTakeId.has_value() && ! std::ranges::contains (snapshot.videoTakes, *settings.exportVideoTakeId, &VideoTake::id))
+        settings.exportVideoTakeId = snapshot.settings.exportVideoTakeId;
+    if (! hasLoop (settings.exportLoopId))
+        settings.exportLoopId.reset();
+    if (settings.focusTrackId.has_value() && findTrack (snapshot, *settings.focusTrackId) == nullptr)
+        settings.focusTrackId.reset();
+    if (! hasLoop (settings.activeLoopId))
+    {
+        settings.activeLoopId.reset();
+        settings.looping = false;
+    }
+    return settings;
+}
 } // namespace
 
 Song keepStateOutsideHistory (Song snapshot, const Song& current)
 {
-    snapshot.preRoll = current.preRoll;
-    snapshot.cameraArmed = current.cameraArmed;
-    snapshot.cameraDeviceId = current.cameraDeviceId;
-    // A step across a sample rate conversion keeps the playhead at the same time.
-    snapshot.playhead = snapshot.sampleRate == current.sampleRate ? current.playhead : convertedSamples (current.playhead, current.sampleRate, snapshot.sampleRate);
-
-    const bool exportChoiceExists = ! current.exportVideoTakeId.has_value()
-                                 || std::ranges::any_of (snapshot.videoTakes, [&] (const VideoTake& videoTake) { return videoTake.id == *current.exportVideoTakeId; });
-    if (exportChoiceExists)
-        snapshot.exportVideoTakeId = current.exportVideoTakeId;
-    snapshot.exportFormat = current.exportFormat;
-    snapshot.exportLength = current.exportLength;
-    snapshot.exportDestination = current.exportDestination;
-    const auto exportLoopExists = current.exportLoopId.has_value() && std::ranges::contains (snapshot.loops, *current.exportLoopId, &Loop::id);
-    snapshot.exportLoopId = exportLoopExists ? current.exportLoopId : std::nullopt;
-    snapshot.focusTrackId.reset();
-    if (current.focusTrackId.has_value() && findTrack (snapshot, *current.focusTrackId) != nullptr)
-        snapshot.focusTrackId = current.focusTrackId;
-    const auto activeLoopExists = current.activeLoopId.has_value()
-                               && std::ranges::contains (snapshot.loops, *current.activeLoopId, &Loop::id);
-    snapshot.activeLoopId = activeLoopExists ? current.activeLoopId : std::nullopt;
-    snapshot.looping = activeLoopExists && current.looping;
+    snapshot.settings = keptSettings (snapshot, current);
+    for (auto& track : snapshot.tracks)
+        if (const auto* currentTrack = findTrack (current, track.id); currentTrack != nullptr)
+            track.settings = currentTrack->settings;
     for (auto& loop : snapshot.loops)
         if (const auto found = std::ranges::find (current.loops, loop.id, &Loop::id); found != current.loops.end())
-            loop.practiceSpeedPercent = found->practiceSpeedPercent;
-
-    for (auto& track : snapshot.tracks)
-    {
-        const auto* currentTrack = findTrack (current, track.id);
-        if (currentTrack == nullptr)
-            continue;
-        track.armed = currentTrack->armed;
-        track.inputChannels = currentTrack->inputChannels;
-        track.transcribeMute = currentTrack->transcribeMute;
-        track.transcribeSolo = currentTrack->transcribeSolo;
-        track.octaveShift = currentTrack->octaveShift;
-        track.bandFilter = currentTrack->bandFilter;
-    }
+            loop.settings = found->settings;
 
     const auto currentHashes = stateHashBySlotId (current);
     keepCurrentStateHashes (snapshot.master.insertChain, currentHashes);

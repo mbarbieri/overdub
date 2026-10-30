@@ -16,8 +16,8 @@ Track track (const std::string& id, bool armed, std::vector<int> inputs)
     Track t;
     t.id = id;
     t.name = id;
-    t.armed = armed;
-    t.inputChannels = std::move (inputs);
+    t.settings.armed = armed;
+    t.settings.inputChannels = std::move (inputs);
     return t;
 }
 
@@ -53,11 +53,11 @@ TEST_CASE ("arming and picking an input change only that Track", "[ui][inputs]")
     const auto song = twoTrackSong();
 
     const auto armed = withArmed (song, "guitar", true);
-    CHECK (armed.tracks[0].armed);
+    CHECK (armed.tracks[0].settings.armed);
     CHECK (armed.tracks[1] == song.tracks[1]);
 
     const auto stereo = withInputChannels (song, "vocals", { 2, 3 });
-    CHECK (stereo.tracks[1].inputChannels == std::vector<int> { 2, 3 });
+    CHECK (stereo.tracks[1].settings.inputChannels == std::vector<int> { 2, 3 });
     CHECK (stereo.tracks[0] == song.tracks[0]);
 
     CHECK (withArmed (song, "missing", true) == song);

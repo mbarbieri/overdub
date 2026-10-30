@@ -118,7 +118,7 @@ TEST_CASE ("changing pre-roll in Record mode writes the Song without a history s
     const auto canUndoBefore = f.openSong->package().canUndo();
 
     choose (f.page().preRollPicker, preRollChoiceIndex (PreRoll::twoSeconds));
-    CHECK (f.song().preRoll == PreRoll::twoSeconds);
+    CHECK (f.song().settings.preRoll == PreRoll::twoSeconds);
     CHECK (f.openSong->package().undoLabel() == stepBefore);
     CHECK (f.openSong->package().canUndo() == canUndoBefore);
     CHECK (f.openSong->package().hasPendingWrite());
@@ -126,7 +126,7 @@ TEST_CASE ("changing pre-roll in Record mode writes the Song without a history s
 
     // Undo leaves the pre-roll alone: it is outside history.
     REQUIRE (pressKey (*f.window, 'z', juce::ModifierKeys::commandModifier));
-    CHECK (f.song().preRoll == PreRoll::twoSeconds);
+    CHECK (f.song().settings.preRoll == PreRoll::twoSeconds);
     CHECK (f.page().preRollPicker.getSelectedItemIndex() == preRollChoiceIndex (PreRoll::twoSeconds));
 }
 

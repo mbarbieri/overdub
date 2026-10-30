@@ -135,11 +135,11 @@ TEST_CASE ("A from a Record row and from an Edit header arms the Track the same 
 {
     MainWindowFixture f;
     const auto before = f.song();
-    REQUIRE (f.trackNamed ("Guitar").armed);
+    REQUIRE (f.trackNamed ("Guitar").settings.armed);
 
     click (f.rowNamed ("Guitar").armButton);
     const auto viaRecord = f.song();
-    CHECK (! f.trackNamed ("Guitar").armed);
+    CHECK (! f.trackNamed ("Guitar").settings.armed);
     click (f.rowNamed ("Guitar").armButton);
     REQUIRE (f.song() == before);
 
@@ -294,7 +294,7 @@ TEST_CASE ("answers that arrive after the Song closed do nothing to the Song ope
 
     // The new Song's own gestures reach it.
     click (f.rowNamed ("Guitar").armButton);
-    CHECK (! f.trackNamed ("Guitar").armed);
+    CHECK (! f.trackNamed ("Guitar").settings.armed);
 }
 
 TEST_CASE ("closing a Song closes its plugin editor windows, and the next Song opens with none", "[ui][song_view]")

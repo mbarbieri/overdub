@@ -139,8 +139,8 @@ TEST_CASE ("the Transcribe column lists every Track in Song order with its name,
         REQUIRE (column.trackRows.size() == f.song().tracks.size());
         const auto& added = f.song().tracks.back();
         CHECK (column.trackRows.back()->trackId() == added.id);
-        CHECK_FALSE (added.transcribeMute);
-        CHECK_FALSE (added.transcribeSolo);
+        CHECK_FALSE (added.settings.transcribeMute);
+        CHECK_FALSE (added.settings.transcribeSolo);
         CHECK_FALSE (column.trackRows.back()->muteButton.getToggleState());
         CHECK_FALSE (column.trackRows.back()->soloButton.getToggleState());
     }
@@ -158,10 +158,10 @@ TEST_CASE ("â—Ž picks the Focus Track, soloing it alone in the Transcribe Mix; â
 
     click (rowNamed (f, "Guitar").focusButton);
 
-    CHECK (f.song().focusTrackId == f.trackNamed ("Guitar").id);
-    CHECK (f.trackNamed ("Guitar").transcribeSolo);
-    CHECK_FALSE (f.trackNamed ("Band Mix").transcribeSolo);
-    CHECK (f.trackNamed ("Vocals").transcribeMute);
+    CHECK (f.song().settings.focusTrackId == f.trackNamed ("Guitar").id);
+    CHECK (f.trackNamed ("Guitar").settings.transcribeSolo);
+    CHECK_FALSE (f.trackNamed ("Band Mix").settings.transcribeSolo);
+    CHECK (f.trackNamed ("Vocals").settings.transcribeMute);
     CHECK (rowNamed (f, "Guitar").focusButton.getToggleState());
     CHECK (rowNamed (f, "Guitar").soloButton.getToggleState());
     CHECK_FALSE (rowNamed (f, "Band Mix").soloButton.getToggleState());
@@ -169,15 +169,15 @@ TEST_CASE ("â—Ž picks the Focus Track, soloing it alone in the Transcribe Mix; â
 
     click (rowNamed (f, "Guitar").focusButton);
 
-    CHECK_FALSE (f.song().focusTrackId.has_value());
-    CHECK (f.trackNamed ("Guitar").transcribeSolo);
-    CHECK (f.trackNamed ("Vocals").transcribeMute);
+    CHECK_FALSE (f.song().settings.focusTrackId.has_value());
+    CHECK (f.trackNamed ("Guitar").settings.transcribeSolo);
+    CHECK (f.trackNamed ("Vocals").settings.transcribeMute);
     CHECK_FALSE (rowNamed (f, "Guitar").focusButton.getToggleState());
 
     click (rowNamed (f, "Band Mix").muteButton);
     click (rowNamed (f, "Guitar").soloButton);
-    CHECK (f.trackNamed ("Band Mix").transcribeMute);
-    CHECK_FALSE (f.trackNamed ("Guitar").transcribeSolo);
+    CHECK (f.trackNamed ("Band Mix").settings.transcribeMute);
+    CHECK_FALSE (f.trackNamed ("Guitar").settings.transcribeSolo);
     CHECK (rowNamed (f, "Band Mix").muteButton.getToggleState());
 
     // The Song's own mix and its history never change.
@@ -290,11 +290,11 @@ TEST_CASE ("reopening the Song restores the Focus Track and the Transcribe Mix",
 
     reopenSong (f);
 
-    CHECK (f.song().focusTrackId == guitarId);
-    CHECK (f.trackNamed ("Guitar").transcribeSolo);
-    CHECK (f.trackNamed ("Band Mix").transcribeMute);
-    CHECK (f.trackNamed ("Band Mix").transcribeSolo);
-    CHECK_FALSE (f.trackNamed ("Vocals").transcribeSolo);
+    CHECK (f.song().settings.focusTrackId == guitarId);
+    CHECK (f.trackNamed ("Guitar").settings.transcribeSolo);
+    CHECK (f.trackNamed ("Band Mix").settings.transcribeMute);
+    CHECK (f.trackNamed ("Band Mix").settings.transcribeSolo);
+    CHECK_FALSE (f.trackNamed ("Vocals").settings.transcribeSolo);
     CHECK (f.openSong->listening().isTranscribing()); // the window is still in Transcribe mode
     CHECK (rowNamed (f, "Guitar").focusButton.getToggleState());
     CHECK (rowNamed (f, "Band Mix").muteButton.getToggleState());
@@ -310,11 +310,11 @@ TEST_CASE ("deleting the Focus Track clears it, and undo brings the Track back w
 
     run (f, SongIntent { intent::DeleteTrack { guitarId } });
 
-    CHECK_FALSE (f.song().focusTrackId.has_value());
+    CHECK_FALSE (f.song().settings.focusTrackId.has_value());
     CHECK (f.window->songView()->transcribePage.wave.label() == "Transcribe Mix");
     CHECK (f.window->songView()->transcribePage.column.trackRows.size() == f.song().tracks.size());
 
     run (f, SongIntent { intent::Undo {} });
     REQUIRE (song::findTrack (f.song(), guitarId) != nullptr);
-    CHECK_FALSE (f.song().focusTrackId.has_value());
+    CHECK_FALSE (f.song().settings.focusTrackId.has_value());
 }

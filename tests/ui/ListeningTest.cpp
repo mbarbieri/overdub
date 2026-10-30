@@ -54,7 +54,7 @@ struct ListeningFixture
         return in.tracks.at (1);
     }
 
-    int loopSpeed (const Song& in) const { return overdub::song::findLoop (in, loopId)->practiceSpeedPercent; }
+    int loopSpeed (const Song& in) const { return overdub::song::findLoop (in, loopId)->settings.practiceSpeedPercent; }
 };
 } // namespace
 
@@ -65,7 +65,7 @@ TEST_CASE ("outside Transcribe mode the Song is heard with its own mix and no li
     const auto heard = f.listening->heard (f.song);
 
     CHECK_FALSE (f.bass (heard.song).solo);
-    CHECK_FALSE (heard.song.focusTrackId.has_value());
+    CHECK_FALSE (heard.song.settings.focusTrackId.has_value());
     CHECK_FALSE (heard.loop.has_value());
     CHECK_FALSE (heard.bandFilter.has_value());
     CHECK_FALSE (heard.octaveShiftedTrack.has_value());
@@ -81,7 +81,7 @@ TEST_CASE ("in Transcribe mode the Transcribe Mix, the active Loop and the Focus
 
     CHECK_FALSE (f.band (heard.song).solo);
     CHECK (f.bass (heard.song).solo); // the Transcribe Mix soloes the Focus Track
-    CHECK_FALSE (f.bass (heard.song).transcribeSolo);
+    CHECK_FALSE (f.bass (heard.song).settings.transcribeSolo);
     CHECK (heard.loop == LoopRange { f.song.sampleRate, 2 * f.song.sampleRate });
     CHECK (heard.bandFilter == HeardBandFilter { .trackId = f.bassId, .lowHz = 200, .highHz = 3200 });
     CHECK (heard.octaveShiftedTrack == f.bassId);

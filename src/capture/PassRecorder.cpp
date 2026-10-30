@@ -154,16 +154,16 @@ core::Expected<std::unique_ptr<PassRecorder>> PassRecorder::start (song::SongPac
     std::vector<engine::RecordInput> inputs;
     for (const auto& track : song.tracks)
     {
-        if (! track.armed)
+        if (! track.settings.armed)
             continue;
-        if (track.inputChannels.empty() || track.inputChannels.size() > 2)
+        if (track.settings.inputChannels.empty() || track.settings.inputChannels.size() > 2)
         {
-            core::logEvent (core::Level::warn, "capture.armed_track_skipped", { { "track_id", track.id }, { "input_channels", track.inputChannels }, { "reason", track.inputChannels.empty() ? "no_input_channels" : "more_than_two_input_channels" } });
+            core::logEvent (core::Level::warn, "capture.armed_track_skipped", { { "track_id", track.id }, { "input_channels", track.settings.inputChannels }, { "reason", track.settings.inputChannels.empty() ? "no_input_channels" : "more_than_two_input_channels" } });
             continue;
         }
 
         const auto takeId = song::makeId();
-        auto writer = std::make_unique<TakeWriter> (takeId, track.id, track.inputChannels, audioFolder.getChildFile (juce::String (takeId) + ".wav"));
+        auto writer = std::make_unique<TakeWriter> (takeId, track.id, track.settings.inputChannels, audioFolder.getChildFile (juce::String (takeId) + ".wav"));
         if (auto opened = writer->open (song.sampleRate); ! opened.has_value())
         {
             for (auto& earlier : recorder->writers)
@@ -174,7 +174,7 @@ core::Expected<std::unique_ptr<PassRecorder>> PassRecorder::start (song::SongPac
             writer->tempFile.deleteFile();
             return std::unexpected (opened.error());
         }
-        inputs.push_back (engine::RecordInput { track.id, track.inputChannels });
+        inputs.push_back (engine::RecordInput { track.id, track.settings.inputChannels });
         recorder->writers.push_back (std::move (writer));
     }
 

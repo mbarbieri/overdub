@@ -45,7 +45,7 @@ struct VideoWindowFixture : MainWindowFixture
     void armCamera (bool armed)
     {
         REQUIRE (window->run (SongIntent { intent::SetCameraArmed { armed } }, Origin::control).has_value());
-        REQUIRE (song().cameraArmed == armed);
+        REQUIRE (song().settings.cameraArmed == armed);
     }
 
     EditPage& editPage() { return window->songView()->editPage; }
@@ -127,7 +127,7 @@ TEST_CASE ("the Camera lane header's A arms and disarms the camera, and is disab
     const auto undoBefore = f.openSong->package().undoLabel();
 
     click (arm);
-    CHECK (f.song().cameraArmed);
+    CHECK (f.song().settings.cameraArmed);
     REQUIRE (f.camera.opened.has_value());
     CHECK (arm.getToggleState());
     CHECK (isShown (f.preview()));
@@ -145,7 +145,7 @@ TEST_CASE ("the Camera lane header's A arms and disarms the camera, and is disab
     CHECK (arm.isEnabled());
 
     click (arm);
-    CHECK_FALSE (f.song().cameraArmed);
+    CHECK_FALSE (f.song().settings.cameraArmed);
     CHECK_FALSE (f.camera.opened.has_value());
     CHECK_FALSE (arm.getToggleState());
 }
@@ -156,7 +156,7 @@ TEST_CASE ("the Camera lane header's A asks for camera access first, and stays d
     f.cameraAccessGranted = false;
     f.toEditMode();
     click (f.editPage().timeline.cameraArmButton);
-    CHECK_FALSE (f.song().cameraArmed);
+    CHECK_FALSE (f.song().settings.cameraArmed);
     CHECK_FALSE (f.camera.opened.has_value());
     CHECK_FALSE (f.editPage().timeline.cameraArmButton.getToggleState());
 }
@@ -258,7 +258,7 @@ TEST_CASE ("the Record stage shows playback when not recording, and the camera's
 
     // Armed and stopped: the live feed, to frame the shot.
     click (page.cameraArmButton);
-    REQUIRE (f.song().cameraArmed);
+    REQUIRE (f.song().settings.cameraArmed);
     CHECK_FALSE (page.showsStagePlayback());
     CHECK (isShown (page.cameraStage));
 

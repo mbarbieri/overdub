@@ -158,8 +158,8 @@ TEST_CASE ("the right column shows −1, 0, +1 and +2 for the Focus Track, its o
     const ScopedLogCapture capture;
     click (octaveButton (f, 2));
 
-    CHECK (f.trackNamed ("Bass").octaveShift == 2);
-    CHECK (f.trackNamed ("Drums").octaveShift == 0);
+    CHECK (f.trackNamed ("Bass").settings.octaveShift == 2);
+    CHECK (f.trackNamed ("Drums").settings.octaveShift == 0);
     CHECK (octaveButton (f, 2).getToggleState());
     CHECK_FALSE (octaveButton (f, 0).getToggleState());
     CHECK (f.openSong->package().undoLabel() == undoLabel);
@@ -205,7 +205,7 @@ TEST_CASE ("a 110 Hz sine on the Focus Track at +1 is heard at 220 Hz in Transcr
     {
         run (f, SongIntent { intent::SetTranscribeSolo { bassId, false } });
         run (f, SongIntent { intent::SetTranscribeSolo { drumsId, true } });
-        CHECK (f.song().focusTrackId == bassId);
+        CHECK (f.song().settings.focusTrackId == bassId);
         CHECK_THAT (centsBetween (heardFrequency (f), sineFrequency), WithinAbs (0.0, 5.0));
     }
 
@@ -264,8 +264,8 @@ TEST_CASE ("each Track keeps its own octave shift: moving the Focus brings back 
 
     CHECK (octaveButton (f, 1).getToggleState());
     CHECK (f.openSong->heard().octaveShiftedTrack == bassId);
-    CHECK (f.trackNamed ("Bass").octaveShift == 1);
-    CHECK (f.trackNamed ("Drums").octaveShift == -1);
+    CHECK (f.trackNamed ("Bass").settings.octaveShift == 1);
+    CHECK (f.trackNamed ("Drums").settings.octaveShift == -1);
     tickUntilOctaveRendered (f);
     CHECK_THAT (centsBetween (heardFrequency (f), 2.0 * sineFrequency), WithinAbs (0.0, 5.0));
 
@@ -273,8 +273,8 @@ TEST_CASE ("each Track keeps its own octave shift: moving the Focus brings back 
     {
         run (f, SongIntent { intent::Edit { intent::SetTrackMute { drumsId, true } } });
         run (f, SongIntent { intent::Undo {} });
-        CHECK (f.trackNamed ("Bass").octaveShift == 1);
-        CHECK (f.trackNamed ("Drums").octaveShift == -1);
+        CHECK (f.trackNamed ("Bass").settings.octaveShift == 1);
+        CHECK (f.trackNamed ("Drums").settings.octaveShift == -1);
     }
 
     SECTION ("reopening the Song restores every Track's shift")
@@ -282,9 +282,9 @@ TEST_CASE ("each Track keeps its own octave shift: moving the Focus brings back 
         reopenSong (f);
         showMode (f, Mode::edit);
         showMode (f, Mode::transcribe);
-        CHECK (f.trackNamed ("Bass").octaveShift == 1);
-        CHECK (f.trackNamed ("Drums").octaveShift == -1);
-        CHECK (f.song().focusTrackId == bassId);
+        CHECK (f.trackNamed ("Bass").settings.octaveShift == 1);
+        CHECK (f.trackNamed ("Drums").settings.octaveShift == -1);
+        CHECK (f.song().settings.focusTrackId == bassId);
         CHECK (octaveButton (f, 1).getToggleState());
         CHECK (f.openSong->heard().octaveShiftedTrack == bassId);
         tickUntilOctaveRendered (f);
@@ -307,5 +307,5 @@ TEST_CASE ("set_octave_shift refuses a shift outside −1..+2 and an unknown Tra
     const auto unknown = runControl (f, SongIntent { intent::SetOctaveShift { "track-gone", 1 } });
     REQUIRE_FALSE (unknown.has_value());
     CHECK (unknown.error().code == "song.track_not_found");
-    CHECK (f.trackNamed ("Bass").octaveShift == 0);
+    CHECK (f.trackNamed ("Bass").settings.octaveShift == 0);
 }

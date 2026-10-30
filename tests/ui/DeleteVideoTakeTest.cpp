@@ -191,16 +191,16 @@ TEST_CASE ("deleting the Export's chosen Video Take puts the choice back to the 
 {
     VideoTakeFixture f;
     REQUIRE (f.window->run (SongIntent { intent::SetExportVideoTake { f.olderTake } }, Origin::control).has_value());
-    REQUIRE (f.song().exportVideoTakeId == f.olderTake);
+    REQUIRE (f.song().settings.exportVideoTakeId == f.olderTake);
 
     f.selectOlderTake();
     REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::backspaceKey)));
-    CHECK (! f.song().exportVideoTakeId.has_value());
+    CHECK (! f.song().settings.exportVideoTakeId.has_value());
 
     // The choice is outside undo history: undo brings the Video Take back, the choice stays default.
     REQUIRE (pressKey (*f.window, 'z', juce::ModifierKeys::commandModifier));
     CHECK (overdub::song::findVideoTake (f.song(), f.olderTake) != nullptr);
-    CHECK (! f.song().exportVideoTakeId.has_value());
+    CHECK (! f.song().settings.exportVideoTakeId.has_value());
 }
 
 TEST_CASE ("the Video Preview stops showing a deleted Video Take", "[ui][edit][video_takes][preview]")

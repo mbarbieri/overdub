@@ -75,8 +75,8 @@ std::vector<nlohmann::json> eventsNamed (const ScopedLogCapture& capture, const 
 overdub::song::Track armedTrack (const std::string& id, std::vector<int> inputChannels)
 {
     auto track = trackWith (id, {});
-    track.armed = true;
-    track.inputChannels = std::move (inputChannels);
+    track.settings.armed = true;
+    track.settings.inputChannels = std::move (inputChannels);
     return track;
 }
 } // namespace
@@ -400,7 +400,7 @@ TEST_CASE ("with Monitoring on, an Armed Track hears its live input; otherwise i
     auto song = emptySong();
     song.tracks.push_back (armedTrack ("track-mono", { 1 }));
     auto unarmed = trackWith ("track-unarmed", {});
-    unarmed.inputChannels = { 0 };
+    unarmed.settings.inputChannels = { 0 };
     song.tracks.push_back (unarmed);
 
     Engine engine { stereoConfig() };

@@ -114,9 +114,9 @@ void TrackHeader::show (const song::Track& track, bool enabled, bool deletable, 
         stripeColour = colour;
         repaint();
     }
-    armed = track.armed;
+    armed = track.settings.armed;
     nameLabel.setText (juce::String::fromUTF8 (track.name.c_str()), juce::dontSendNotification);
-    armButton.setToggleState (track.armed, juce::dontSendNotification);
+    armButton.setToggleState (track.settings.armed, juce::dontSendNotification);
     armButton.setEnabled (enabled);
     grip.setEnabled (enabled);
     muted = track.mute;
@@ -166,7 +166,7 @@ Timeline::Timeline (PeaksLookup peaks)
     cameraArmButton.setColour (juce::TextButton::buttonOnColourId, colours::rec);
     cameraArmButton.setWantsKeyboardFocus (false);
     cameraArmButton.setTooltip ("Arm the camera");
-    cameraArmButton.onClick = [this] { emit (SongIntent { intent::SetCameraArmed { ! current.song.cameraArmed } }); };
+    cameraArmButton.onClick = [this] { emit (SongIntent { intent::SetCameraArmed { ! current.song.settings.cameraArmed } }); };
     scrollBar.setAutoHide (false);
     scrollBar.addListener (this);
     scrollBar.setWantsKeyboardFocus (false);
@@ -199,7 +199,7 @@ void Timeline::show (const TimelineState& state)
         for (const auto& track : current.song.tracks)
             previousTrackIds.push_back (track.id);
     current = state;
-    cameraArmButton.setToggleState (current.song.cameraArmed, juce::dontSendNotification);
+    cameraArmButton.setToggleState (current.song.settings.cameraArmed, juce::dontSendNotification);
     cameraArmButton.setEnabled (current.canArmCamera);
     if (! current.editable && std::holds_alternative<TrackDrag> (gesture))
         cancelGesture ("pass_running");
@@ -388,7 +388,7 @@ void Timeline::showMarkerStrip()
         .editable = current.editable && current.markersEditable,
         .selectedMarker = current.selectedMarker,
         .selectedLoop = current.selectedLoop,
-        .activeLoop = current.song.activeLoopId,
+        .activeLoop = current.song.settings.activeLoopId,
         .pendingLoopStart = current.pendingLoopStart,
     });
 }

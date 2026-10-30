@@ -8,14 +8,14 @@ core::Expected<Song> setFocusTrack (Song song, const std::optional<Id>& trackId)
 {
     if (! trackId.has_value())
     {
-        song.focusTrackId.reset();
+        song.settings.focusTrackId.reset();
         return song;
     }
     if (auto found = lookupTrack (song, *trackId); ! found.has_value())
         return std::unexpected (found.error());
-    song.focusTrackId = trackId;
+    song.settings.focusTrackId = trackId;
     for (auto& track : song.tracks)
-        track.transcribeSolo = track.id == *trackId;
+        track.settings.transcribeSolo = track.id == *trackId;
     return song;
 }
 
@@ -24,7 +24,7 @@ core::Expected<Song> setTranscribeMute (Song song, const Id& trackId, bool mute)
     auto track = lookupTrack (song, trackId);
     if (! track.has_value())
         return std::unexpected (track.error());
-    (*track)->transcribeMute = mute;
+    (*track)->settings.transcribeMute = mute;
     return song;
 }
 
@@ -33,7 +33,7 @@ core::Expected<Song> setTranscribeSolo (Song song, const Id& trackId, bool solo)
     auto track = lookupTrack (song, trackId);
     if (! track.has_value())
         return std::unexpected (track.error());
-    (*track)->transcribeSolo = solo;
+    (*track)->settings.transcribeSolo = solo;
     return song;
 }
 
@@ -48,7 +48,7 @@ core::Expected<Song> setOctaveShift (Song song, const Id& trackId, int octaves)
     auto track = lookupTrack (song, trackId);
     if (! track.has_value())
         return std::unexpected (track.error());
-    (*track)->octaveShift = octaves;
+    (*track)->settings.octaveShift = octaves;
     return song;
 }
 
@@ -70,7 +70,7 @@ core::Expected<Song> setBandFilter (Song song, const Id& trackId, BandFilter fil
     auto track = lookupTrack (song, trackId);
     if (! track.has_value())
         return std::unexpected (track.error());
-    (*track)->bandFilter = filter;
+    (*track)->settings.bandFilter = filter;
     return song;
 }
 
@@ -78,20 +78,20 @@ Song withTranscribeMix (Song song)
 {
     for (auto& track : song.tracks)
     {
-        track.mute = track.transcribeMute;
-        track.solo = track.transcribeSolo;
+        track.mute = track.settings.transcribeMute;
+        track.solo = track.settings.transcribeSolo;
     }
     return song;
 }
 
 const Track* focusTrack (const Song& song)
 {
-    return song.focusTrackId.has_value() ? findTrack (song, *song.focusTrackId) : nullptr;
+    return song.settings.focusTrackId.has_value() ? findTrack (song, *song.settings.focusTrackId) : nullptr;
 }
 
 int focusOctaveShift (const Song& song)
 {
     const auto* track = focusTrack (song);
-    return track != nullptr ? track->octaveShift : 0;
+    return track != nullptr ? track->settings.octaveShift : 0;
 }
 } // namespace overdub::song

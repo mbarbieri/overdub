@@ -20,8 +20,8 @@ AddedTrack addTrack (Song song, std::vector<int> inputChannels, const PickIndex&
     track.id = makeId();
     track.name = nextTrackName (song);
     track.colour = newTrackColour (trackColours (song), pickColour);
-    track.armed = true;
-    track.inputChannels = std::move (inputChannels);
+    track.settings.armed = true;
+    track.settings.inputChannels = std::move (inputChannels);
 
     AddedTrack added;
     added.trackId = track.id;
@@ -37,8 +37,8 @@ core::Expected<DeletedTrack> deleteTrack (Song song, const Id& trackId)
         return std::unexpected (track.error());
     auto label = "Delete Track " + (*track)->name;
     song.tracks.erase (song.tracks.begin() + (*track - song.tracks.data()));
-    if (song.focusTrackId == trackId)
-        song.focusTrackId.reset();
+    if (song.settings.focusTrackId == trackId)
+        song.settings.focusTrackId.reset();
     return DeletedTrack { std::move (song), std::move (label) };
 }
 

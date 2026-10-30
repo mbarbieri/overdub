@@ -148,7 +148,7 @@ TEST_CASE ("the Export sheet's length offers the Whole Song and each Loop for WA
     const auto undoLabel = f.openSong->package().undoLabel();
     const ScopedLogCapture capture;
     click (loopButtonNamed (sheet, "Loop: Solo"));
-    CHECK (f.song().exportLoopId == solo);
+    CHECK (f.song().settings.exportLoopId == solo);
     CHECK (f.openSong->package().undoLabel() == undoLabel);
     CHECK (std::ranges::any_of (capture.events(), [] (const nlohmann::json& event) { return event.at ("event") == "ui.intent_run" && event.at ("op") == "set_export_length"; }));
     CHECK (sheet.loopButtons[1]->getToggleState());
@@ -170,23 +170,23 @@ TEST_CASE ("the Export sheet's length offers the Whole Song and each Loop for WA
     CHECK (sheet.loopButtons[1]->getToggleState());
     CHECK (sheet.spanBar.state().blackOutsideVideo);
     click (loopButtonNamed (sheet, "Loop: Loop 1"));
-    CHECK (f.song().exportLoopId == verse);
+    CHECK (f.song().settings.exportLoopId == verse);
     click (sheet.fullSongButton);
-    CHECK_FALSE (f.song().exportLoopId.has_value());
-    CHECK (f.song().exportLength == VideoLength::fullSong);
+    CHECK_FALSE (f.song().settings.exportLoopId.has_value());
+    CHECK (f.song().settings.exportLength == VideoLength::fullSong);
     click (loopButtonNamed (sheet, "Loop: Solo"));
-    CHECK (f.song().exportLength == VideoLength::fullSong);
+    CHECK (f.song().settings.exportLength == VideoLength::fullSong);
 
     reopenSong (f);
-    CHECK (f.song().exportLoopId == solo);
+    CHECK (f.song().settings.exportLoopId == solo);
     auto& reopened = openExportSheet (*f.window);
     CHECK (loopButtonNamed (reopened, "Loop: Solo").getToggleState());
 
     // The Whole Song (WAV) goes back to the whole Song and keeps the MP4's length.
     click (reopened.wavButton);
     click (reopened.wholeSongButton);
-    CHECK_FALSE (f.song().exportLoopId.has_value());
-    CHECK (f.song().exportLength == VideoLength::fullSong);
+    CHECK_FALSE (f.song().settings.exportLoopId.has_value());
+    CHECK (f.song().settings.exportLength == VideoLength::fullSong);
     CHECK (reopened.spanBar.state().exported == SampleRange { 0, exporting::lastClipEnd (f.song()) });
 }
 
@@ -206,18 +206,18 @@ TEST_CASE ("set_export_length takes a Loop id; one the Song does not have is ref
     const auto solo = addLoop (f, impulseAt, impulseAt + loopLength);
 
     run (f, SongIntent { intent::SetExportLength { VideoLength::fullSong, solo } });
-    CHECK (f.song().exportLoopId == solo);
-    CHECK (f.song().exportLength == VideoLength::fullSong);
+    CHECK (f.song().settings.exportLoopId == solo);
+    CHECK (f.song().settings.exportLength == VideoLength::fullSong);
 
     const auto refused = f.window->run (SongIntent { intent::SetExportLength { VideoLength::trimToVideoTake, "loop-gone" } }, Origin::control);
     REQUIRE_FALSE (refused.has_value());
     CHECK (refused.error().code == "song.loop_not_found");
-    CHECK (f.song().exportLoopId == solo);
-    CHECK (f.song().exportLength == VideoLength::fullSong);
+    CHECK (f.song().settings.exportLoopId == solo);
+    CHECK (f.song().settings.exportLength == VideoLength::fullSong);
 
     // Without loop_id: the whole Song.
     run (f, SongIntent { intent::SetExportLength { VideoLength::fullSong } });
-    CHECK_FALSE (f.song().exportLoopId.has_value());
+    CHECK_FALSE (f.song().settings.exportLoopId.has_value());
 }
 
 TEST_CASE ("deleting the chosen Loop sends the length back to the whole Song, and undoing the delete keeps it there", "[ui][export][loop]")
@@ -230,14 +230,14 @@ TEST_CASE ("deleting the chosen Loop sends the length back to the whole Song, an
     REQUIRE (sheet.request().loop.has_value());
 
     run (f, SongIntent { intent::Edit { intent::DeleteLoop { solo } } });
-    CHECK_FALSE (f.song().exportLoopId.has_value());
+    CHECK_FALSE (f.song().settings.exportLoopId.has_value());
     CHECK_FALSE (sheet.request().loop.has_value());
     CHECK (sheet.loopButtons.empty());
     CHECK (sheet.spanBar.state().exported == SampleRange { 0, exporting::lastClipEnd (f.song()) });
 
     run (f, SongIntent { intent::Undo {} });
     REQUIRE (f.song().loops.size() == 1);
-    CHECK_FALSE (f.song().exportLoopId.has_value());
+    CHECK_FALSE (f.song().settings.exportLoopId.has_value());
     CHECK (sheet.wholeSongButton.getToggleState());
 }
 
@@ -253,8 +253,8 @@ TEST_CASE ("a Loop exported from Transcribe mode starts with the impulse at its 
     run (f, SongIntent { intent::SelectLoop { solo } });
     run (f, SongIntent { intent::SetLooping { true } });
     run (f, SongIntent { intent::SetPracticeSpeed { 50 } });
-    REQUIRE (f.song().loops.front().practiceSpeedPercent == 50);
-    REQUIRE (clickTrack (f).transcribeMute);
+    REQUIRE (f.song().loops.front().settings.practiceSpeedPercent == 50);
+    REQUIRE (clickTrack (f).settings.transcribeMute);
 
     run (f, SongIntent { intent::SetExportLength { VideoLength::trimToVideoTake, solo } });
     const auto destination = folder.root.getChildFile ("Solo.wav");

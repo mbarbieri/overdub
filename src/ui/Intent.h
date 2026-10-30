@@ -30,7 +30,8 @@
 // The three groups are the three owners: AppIntent (the app's File and settings operations),
 // WindowIntent (ui::MainComponent) and SongIntent (ui::SongView, refused with ui.no_song_open while
 // no Song is open). SongIntent nests intent::Edit, the plain one-undo-step edits (ui/SongEdits.h),
-// and intent::ExportSetting, the Export sheet's choices (ui/ExportSettings.h).
+// intent::ListeningSetting, Transcribe mode's listening settings (ui/ListeningSettings.h), and
+// intent::ExportSetting, the Export sheet's choices (ui/ExportSettings.h).
 // Each owner visits its group with core::visitExhaustively, so an alternative without a handler does
 // not compile, and a struct without `op` and `fields` cannot be an alternative.
 //
@@ -638,6 +639,9 @@ struct SetBandFilter
                                                 field ("high_hz", &SetBandFilter::highHz) };
 };
 
+// Transcribe mode's listening settings: Song settings outside history (ui/ListeningSettings.h).
+using ListeningSetting = std::variant<SetFocusTrack, SetTranscribeMute, SetTranscribeSolo, SetOctaveShift, SetBandFilter>;
+
 //==============================================================================
 // Song: Markers (issue #227, ADR 0010). Moving, renaming and deleting one are plain edits
 // (intent::Edit); Record mode refuses all four (ui/Availability.h).
@@ -991,7 +995,7 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::AddTrack, intent::ImportFiles, intent::DeleteTrack, intent::MoveTrack,
                                 intent::SetArmed, intent::SetInputChannels, intent::SetMonitoring,
                                 intent::StartSeparation, intent::CancelRun, intent::SetTranspose, intent::SetPracticeSpeed,
-                                intent::SetFocusTrack, intent::SetTranscribeMute, intent::SetTranscribeSolo, intent::SetOctaveShift, intent::SetBandFilter,
+                                intent::ListeningSetting,
                                 intent::AddMarker, intent::SelectMarker,
                                 intent::AddLoop, intent::MarkLoopStart, intent::MarkLoopEnd, intent::CancelLoopStart,
                                 intent::SelectLoop, intent::SelectAdjacentLoop, intent::SetLooping,

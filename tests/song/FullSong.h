@@ -104,11 +104,13 @@ inline Song fullyPopulatedSong()
             .pan = -0.25,
             .mute = true,
             .solo = true,
-            .armed = true,
-            .transcribeMute = true,
-            .octaveShift = 2,
-            .bandFilter = { .on = true, .lowHz = 250, .highHz = 2500 },
-            .inputChannels = { 2, 3 },
+            .settings = {
+                .armed = true,
+                .transcribeMute = true,
+                .octaveShift = 2,
+                .bandFilter = { .on = true, .lowHz = 250, .highHz = 2500 },
+                .inputChannels = { 2, 3 },
+            },
             .insertChain = { insertSlot ("slot-1", "aaaa"), insertSlot ("slot-2", "abab") },
             .clips = {
                 // Layer order: clip-b is below clip-a.
@@ -142,9 +144,11 @@ inline Song fullyPopulatedSong()
             .pan = 0.5,
             .mute = false,
             .solo = false,
-            .armed = false,
-            .transcribeSolo = true,
-            .inputChannels = { 0 },
+            .settings = {
+                .armed = false,
+                .transcribeSolo = true,
+                .inputChannels = { 0 },
+            },
             .insertChain = { insertSlot ("slot-3", "acac"), insertSlot ("slot-4", "adad") },
             .clips = {
                 Clip {
@@ -163,21 +167,21 @@ inline Song fullyPopulatedSong()
     };
     song.master = Master { .volumeDb = -1.0, .insertChain = { insertSlot ("slot-master", "bbbb"), insertSlot ("slot-master-2", "bcbc") } };
 
-    song.preRoll = PreRoll::twoSeconds;
-    song.cameraArmed = true;
-    song.cameraDeviceId = "camera-facetime";
-    song.playhead = 132300;
-    song.exportVideoTakeId = "video-1";
-    song.exportFormat = ExportFormat::mp4;
-    song.exportLength = VideoLength::fullSong;
-    song.exportDestination = "/Users/someone/Music/Mixes/Band Mix.mp4";
+    song.settings.preRoll = PreRoll::twoSeconds;
+    song.settings.cameraArmed = true;
+    song.settings.cameraDeviceId = "camera-facetime";
+    song.settings.playhead = 132300;
+    song.settings.exportVideoTakeId = "video-1";
+    song.settings.exportFormat = ExportFormat::mp4;
+    song.settings.exportLength = VideoLength::fullSong;
+    song.settings.exportDestination = "/Users/someone/Music/Mixes/Band Mix.mp4";
     song.transpose = { .semitones = -3, .cents = 25 };
     song.markers = { Marker { .id = "marker-1", .name = "Verse", .position = 48000 }, Marker { .id = "marker-2", .name = "Chorus", .position = 96000 } };
-    song.loops = { Loop { .id = "loop-1", .name = "Intro riff", .start = 24000, .end = 72000, .practiceSpeedPercent = 40 }, Loop { .id = "loop-2", .name = "Solo", .start = 96000, .end = 144000, .practiceSpeedPercent = 75 } };
-    song.focusTrackId = "track-backing";
-    song.activeLoopId = "loop-2";
-    song.looping = true;
-    song.exportLoopId = "loop-1";
+    song.loops = { Loop { .id = "loop-1", .name = "Intro riff", .start = 24000, .end = 72000, .settings = { .practiceSpeedPercent = 40 } }, Loop { .id = "loop-2", .name = "Solo", .start = 96000, .end = 144000, .settings = { .practiceSpeedPercent = 75 } } };
+    song.settings.focusTrackId = "track-backing";
+    song.settings.activeLoopId = "loop-2";
+    song.settings.looping = true;
+    song.settings.exportLoopId = "loop-1";
     return song;
 }
 } // namespace overdub::song::testing

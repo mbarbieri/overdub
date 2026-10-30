@@ -53,7 +53,7 @@ int loopSpeed (MainWindowFixture& f, const song::Id& loopId)
 {
     const auto* loop = song::findLoop (f.song(), loopId);
     REQUIRE (loop != nullptr);
-    return loop->practiceSpeedPercent;
+    return loop->settings.practiceSpeedPercent;
 }
 
 void press (MainWindowFixture& f, char character)
@@ -102,7 +102,7 @@ TEST_CASE ("a new Loop takes the current Practice Speed, and activating a Loop i
     run (f, SongIntent { intent::SelectLoop { solo } });
     CHECK (f.openSong->listening().practiceSpeed() == 40);
     run (f, SongIntent { intent::SelectAdjacentLoop { Direction::forward } });
-    CHECK (f.song().activeLoopId == riff);
+    CHECK (f.song().settings.activeLoopId == riff);
     CHECK (f.openSong->listening().practiceSpeed() == 75);
     CHECK (loopSpeed (f, solo) == 40);
     CHECK (loopSpeed (f, riff) == 75);
@@ -210,7 +210,7 @@ TEST_CASE ("each Loop's speed is saved in the Song and comes back after reopenin
     showMode (f, Mode::edit);
     reopenSong (f);
     CHECK (f.openSong->listening().practiceSpeed() == 100);
-    CHECK (f.song().activeLoopId == solo);
+    CHECK (f.song().settings.activeLoopId == solo);
     showMode (f, Mode::transcribe);
     CHECK (f.openSong->listening().practiceSpeed() == 40);
 }

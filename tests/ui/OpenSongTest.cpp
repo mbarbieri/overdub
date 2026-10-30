@@ -132,8 +132,8 @@ TEST_CASE ("arm, input and Monitoring change the Song without a history step", "
     f.openSong->setInputChannels (guitar, { 0, 1 });
     f.openSong->setMonitoring (guitar, true);
 
-    CHECK (! f.trackNamed ("Guitar").armed);
-    CHECK (f.trackNamed ("Guitar").inputChannels == std::vector<int> { 0, 1 });
+    CHECK (! f.trackNamed ("Guitar").settings.armed);
+    CHECK (f.trackNamed ("Guitar").settings.inputChannels == std::vector<int> { 0, 1 });
     CHECK (f.openSong->isMonitoring (guitar));
     CHECK (f.openSong->package().undoLabel() == stepBefore);
     CHECK (f.openSong->package().hasPendingWrite());
@@ -295,7 +295,7 @@ TEST_CASE ("seeking moves the playhead, which is saved once the transport is sto
     CHECK (f.openSong->position() == 12345);
     f.device.run (f.engine, 1);
     CHECK (f.openSong->poll().empty());
-    CHECK (f.song().playhead == 12345);
+    CHECK (f.song().settings.playhead == 12345);
 
     f.openSong->seek (-10);
     CHECK (f.openSong->position() == 0);

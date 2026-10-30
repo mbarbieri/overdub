@@ -52,8 +52,8 @@ struct VideoFixture
         package = std::move (*created);
         auto song = package->song();
         auto track = trackWith ("track-guitar", {});
-        track.armed = true;
-        track.inputChannels = { 0 };
+        track.settings.armed = true;
+        track.settings.inputChannels = { 0 };
         song.tracks.push_back (track);
         REQUIRE (package->edit (song, "Set up").has_value());
         engine.loadSong (package->song(), package->location());

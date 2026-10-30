@@ -84,7 +84,7 @@ TEST_CASE ("a Song with nothing saved opens the Export sheet on WAV, trimmed to 
     ExportFolder folder;
     MainWindowFixture f;
     f.window->exportFolder = folder.root;
-    REQUIRE (f.song().exportDestination.empty());
+    REQUIRE (f.song().settings.exportDestination.empty());
 
     auto& sheet = openExportSheet (*f.window);
     CHECK (sheet.wavButton.getToggleState());
@@ -103,9 +103,9 @@ TEST_CASE ("the format, the MP4 length and the destination are saved with the So
     run (f, SongIntent { SetExportFormat { ExportFormat::mp4 } });
     run (f, SongIntent { SetExportLength { VideoLength::fullSong } });
     setExportDestination (*f.window, folder.root.getChildFile ("Band Mix"));
-    CHECK (f.song().exportFormat == ExportFormat::mp4);
-    CHECK (f.song().exportLength == VideoLength::fullSong);
-    CHECK (f.song().exportDestination == folder.root.getChildFile ("Band Mix").getFullPathName().toStdString());
+    CHECK (f.song().settings.exportFormat == ExportFormat::mp4);
+    CHECK (f.song().settings.exportLength == VideoLength::fullSong);
+    CHECK (f.song().settings.exportDestination == folder.root.getChildFile ("Band Mix").getFullPathName().toStdString());
     CHECK (f.openSong->package().canUndo() == canUndo);
     CHECK (f.openSong->package().undoLabel() == undoLabel);
 
@@ -130,10 +130,10 @@ TEST_CASE ("a format chosen in the Export sheet is remembered when the sheet is 
     click (sheet.m4aButton);
     REQUIRE (pressKey (window, juce::KeyPress::escapeKey));
     REQUIRE (! window.songView()->isExportSheetShown());
-    CHECK (f.song().exportFormat == ExportFormat::m4a);
+    CHECK (f.song().settings.exportFormat == ExportFormat::m4a);
 
     reopenSong (f);
-    CHECK (f.song().exportFormat == ExportFormat::m4a);
+    CHECK (f.song().settings.exportFormat == ExportFormat::m4a);
     CHECK (openExportSheet (*f.window).m4aButton.getToggleState());
 }
 
@@ -186,7 +186,7 @@ TEST_CASE ("a saved destination whose folder is gone opens the sheet on <export 
     CHECK (sheet.m4aButton.getToggleState());
     CHECK (sheet.request().videoLength == VideoLength::fullSong);
     // The saved destination is kept: its folder may come back (a drive plugged in again).
-    CHECK (f.song().exportDestination == gone.getChildFile ("Band Mix.m4a").getFullPathName().toStdString());
+    CHECK (f.song().settings.exportDestination == gone.getChildFile ("Band Mix.m4a").getFullPathName().toStdString());
 
     click (sheet.exportButton);
     tickUntilExported (f);
@@ -223,13 +223,13 @@ TEST_CASE ("set_export_destination into a folder that does not exist is export.f
 {
     ExportFolder folder;
     MainWindowFixture f;
-    const auto kept = f.song().exportDestination;
+    const auto kept = f.song().settings.exportDestination;
     const auto gone = folder.root.getChildFile ("Mixes");
 
     const auto result = f.window->run (SongIntent { overdub::ui::intent::SetExportDestination { { gone.getChildFile ("Band Mix.wav").getFullPathName().toStdString() } } }, Origin::control);
     REQUIRE_FALSE (result.has_value());
     CHECK (result.error().code == "export.folder_missing");
-    CHECK (f.song().exportDestination == kept);
+    CHECK (f.song().settings.exportDestination == kept);
     CHECK (! gone.exists());
 }
 

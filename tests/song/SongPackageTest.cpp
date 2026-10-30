@@ -134,16 +134,16 @@ TEST_CASE ("a change without history reaches song.json only when its save delay 
     auto package = createPackage (temp.package(), song, PackageOptions { .saveDelay = 500ms });
     const auto start = SongPackage::Clock::time_point {};
 
-    song.playhead = 7;
+    song.settings.playhead = 7;
     package->changeWithoutHistory (song, start);
     CHECK (package->hasPendingWrite());
 
     REQUIRE (package->writeIfDue (start + 499ms).has_value());
-    CHECK (songOnDisk (temp.package()).playhead == 132300);
+    CHECK (songOnDisk (temp.package()).settings.playhead == 132300);
 
     ScopedLogCapture capture;
     REQUIRE (package->writeIfDue (start + 500ms).has_value());
-    CHECK (songOnDisk (temp.package()).playhead == 7);
+    CHECK (songOnDisk (temp.package()).settings.playhead == 7);
     CHECK_FALSE (package->hasPendingWrite());
     CHECK (firstEvent (capture, "song.saved").at ("lvl") == "debug");
 }
@@ -155,7 +155,7 @@ TEST_CASE ("an edit, undo or redo writes song.json at once, pending changes incl
     auto package = createPackage (temp.package(), song, PackageOptions { .saveDelay = 500ms });
 
     auto moved = song;
-    moved.playhead = 7;
+    moved.settings.playhead = 7;
     package->changeWithoutHistory (moved);
     REQUIRE (package->edit (renamedFirstTrack (moved, "Lead"), "Rename Track").has_value());
     CHECK_FALSE (package->hasPendingWrite());
@@ -255,7 +255,7 @@ TEST_CASE ("reopening after a crash before song.json keeps the state outside his
     CrashInjector crash;
     {
         auto package = createPackage (temp.package(), song, crash.options());
-        song.playhead = 7;
+        song.settings.playhead = 7;
         package->changeWithoutHistory (song);
         REQUIRE (package->flush().has_value());
         *crash.crashAt = "song.json";
@@ -278,34 +278,34 @@ TEST_CASE ("later changes do not push back a pending write", "[song][package]")
 
     for (int step = 0; step < 10; ++step)
     {
-        song.playhead = step;
+        song.settings.playhead = step;
         package->changeWithoutHistory (song, start + step * 100ms);
         REQUIRE (package->writeIfDue (start + step * 100ms).has_value());
     }
 
-    CHECK (songOnDisk (temp.package()).playhead >= 5);
+    CHECK (songOnDisk (temp.package()).settings.playhead >= 5);
 }
 
 TEST_CASE ("a change without history is saved but adds no undo step", "[song][package]")
 {
     TempDirectory temp;
     auto song = overdub::song::testing::fullyPopulatedSong();
-    song.tracks.at (0).armed = false;
+    song.tracks.at (0).settings.armed = false;
     createPackage (temp.package(), song);
 
     {
         auto opened = openPackage (temp.package());
         auto changed = opened.package->song();
-        changed.tracks.at (0).armed = true;
-        changed.tracks.at (0).inputChannels = { 0 };
+        changed.tracks.at (0).settings.armed = true;
+        changed.tracks.at (0).settings.inputChannels = { 0 };
         changed.tracks.at (0).insertChain.at (0).stateHash = "cccc"; // plugin parameters changed
         opened.package->changeWithoutHistory (changed);
         CHECK_FALSE (opened.package->canUndo());
     }
 
     const auto reopened = openPackage (temp.package());
-    CHECK (reopened.package->song().tracks.at (0).armed);
-    CHECK (reopened.package->song().tracks.at (0).inputChannels == std::vector<int> { 0 });
+    CHECK (reopened.package->song().tracks.at (0).settings.armed);
+    CHECK (reopened.package->song().tracks.at (0).settings.inputChannels == std::vector<int> { 0 });
     CHECK_FALSE (reopened.package->canUndo());
 }
 
@@ -428,18 +428,18 @@ TEST_CASE ("undo keeps Armed, input channels, playhead and the other state outsi
     auto package = createPackage (temp.package(), song);
     REQUIRE (package->edit (renamedFirstTrack (song, "Lead"), "Rename Track").has_value());
 
-    auto settings = package->song();
-    settings.tracks.at (0).armed = false;
-    settings.tracks.at (0).inputChannels = { 0 };
-    settings.playhead = 999;
-    settings.preRoll = overdub::song::PreRoll::fourSeconds;
-    settings.cameraArmed = false;
-    settings.cameraDeviceId = "camera-usb";
-    package->changeWithoutHistory (settings);
+    auto changed = package->song();
+    changed.tracks.at (0).settings.armed = false;
+    changed.tracks.at (0).settings.inputChannels = { 0 };
+    changed.settings.playhead = 999;
+    changed.settings.preRoll = overdub::song::PreRoll::fourSeconds;
+    changed.settings.cameraArmed = false;
+    changed.settings.cameraDeviceId = "camera-usb";
+    package->changeWithoutHistory (changed);
 
     REQUIRE (package->undo().has_value());
 
-    auto expected = settings;
+    auto expected = changed;
     expected.tracks.at (0).name = "Guitar";
     CHECK (package->song() == expected);
 }
@@ -496,7 +496,7 @@ TEST_CASE ("live plugin state is captured into every history step and every debo
     // A debounced write captures again, just before it writes song.json.
     const auto start = SongPackage::Clock::now();
     auto armed = package->song();
-    armed.tracks.at (0).armed = ! armed.tracks.at (0).armed;
+    armed.tracks.at (0).settings.armed = ! armed.tracks.at (0).settings.armed;
     package->changeWithoutHistory (armed, start);
     CHECK (captures == 1);
     REQUIRE (package->writeIfDue (start + 500ms).has_value());
@@ -679,21 +679,21 @@ TEST_CASE ("a v1 package opens with its Video Takes' output device unknown, its 
         backingTrack.separatedFrom = {};
     expected.tracks.at (0).colour = "#a8d8b9";
     expected.tracks.at (1).colour = "#f4a6a6";
-    expected.exportFormat = overdub::song::ExportFormat::wav;
-    expected.exportLength = overdub::song::VideoLength::trimToVideoTake;
-    expected.exportDestination = "";
+    expected.settings.exportFormat = overdub::song::ExportFormat::wav;
+    expected.settings.exportLength = overdub::song::VideoLength::trimToVideoTake;
+    expected.settings.exportDestination = "";
     expected.transpose = {};
-    expected.focusTrackId.reset();
+    expected.settings.focusTrackId.reset();
     expected.markers.clear();
     expected.loops.clear();
-    expected.activeLoopId.reset();
-    expected.looping = false;
-    expected.exportLoopId.reset();
+    expected.settings.activeLoopId.reset();
+    expected.settings.looping = false;
+    expected.settings.exportLoopId.reset();
     for (auto& track : expected.tracks)
     {
-        track.transcribeMute = track.transcribeSolo = false;
-        track.octaveShift = 0;
-        track.bandFilter = {};
+        track.settings.transcribeMute = track.settings.transcribeSolo = false;
+        track.settings.octaveShift = 0;
+        track.settings.bandFilter = {};
     }
     CHECK (opened.package->song() == expected);
     CHECK (firstEvent (capture, "song.migrated").at ("from_version") == 1);
@@ -765,21 +765,21 @@ TEST_CASE ("a v4 package, saved before the Song remembered its export, opens exp
     const auto opened = openPackage (temp.package());
 
     auto expected = original;
-    expected.exportFormat = overdub::song::ExportFormat::wav;
-    expected.exportLength = overdub::song::VideoLength::trimToVideoTake;
-    expected.exportDestination = "";
+    expected.settings.exportFormat = overdub::song::ExportFormat::wav;
+    expected.settings.exportLength = overdub::song::VideoLength::trimToVideoTake;
+    expected.settings.exportDestination = "";
     expected.transpose = {};
-    expected.focusTrackId.reset();
+    expected.settings.focusTrackId.reset();
     expected.markers.clear();
     expected.loops.clear();
-    expected.activeLoopId.reset();
-    expected.looping = false;
-    expected.exportLoopId.reset();
+    expected.settings.activeLoopId.reset();
+    expected.settings.looping = false;
+    expected.settings.exportLoopId.reset();
     for (auto& track : expected.tracks)
     {
-        track.transcribeMute = track.transcribeSolo = false;
-        track.octaveShift = 0;
-        track.bandFilter = {};
+        track.settings.transcribeMute = track.settings.transcribeSolo = false;
+        track.settings.octaveShift = 0;
+        track.settings.bandFilter = {};
     }
     CHECK (opened.package->song() == expected);
     CHECK (firstEvent (capture, "song.migrated").at ("from_version") == 4);

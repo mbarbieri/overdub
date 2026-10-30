@@ -230,7 +230,7 @@ TEST_CASE ("the Export sheet exports an MP4 of the chosen Video Take and stores 
     // The first Video Take is shown by default; choosing the second stores it, with no undo step.
     CHECK (sheet.videoTakePicker.getSelectedItemIndex() == 0);
     choose (sheet.videoTakePicker, 1);
-    CHECK (f.song().exportVideoTakeId == f.secondTake);
+    CHECK (f.song().settings.exportVideoTakeId == f.secondTake);
     CHECK (f.openSong->package().canUndo() == canUndo);
     CHECK (f.openSong->package().undoLabel() == "Add Video Takes");
     window.tick();

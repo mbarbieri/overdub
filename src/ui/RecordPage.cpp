@@ -26,12 +26,12 @@ std::string monitoringText (int activeInserts)
 CameraControlsState cameraControlsStateFor (const song::Song& song, const std::vector<capture::CameraDevice>& cameras, bool passRunning)
 {
     CameraControlsState state;
-    state.armed = song.cameraArmed;
+    state.armed = song.settings.cameraArmed;
     state.devices = cameras;
-    const auto chosen = std::ranges::find (cameras, song.cameraDeviceId, &capture::CameraDevice::id);
+    const auto chosen = std::ranges::find (cameras, song.settings.cameraDeviceId, &capture::CameraDevice::id);
     if (chosen != cameras.end())
         state.selected = (std::size_t) std::distance (cameras.begin(), chosen);
-    state.canArm = ! passRunning && (song.cameraArmed || ! cameras.empty());
+    state.canArm = ! passRunning && (song.settings.cameraArmed || ! cameras.empty());
     state.canChoose = ! passRunning;
     return state;
 }
@@ -54,7 +54,7 @@ RecordPageState recordPageStateFor (const song::Song& song,
 {
     RecordPageState state;
     state.canAddTracks = ! passRunning;
-    state.preRoll = song.preRoll;
+    state.preRoll = song.settings.preRoll;
     state.canChangePreRoll = ! passRunning;
     state.canChangeMix = ! passRunning;
     const auto choices = inputChoices (inputChannelNames);
@@ -64,11 +64,11 @@ RecordPageState recordPageStateFor (const song::Song& song,
             .trackId = track.id,
             .name = track.name,
             .colour = trackColour (track),
-            .armed = track.armed,
+            .armed = track.settings.armed,
             .mute = track.mute,
             .solo = track.solo,
             .choices = choices,
-            .selectedChoice = choiceIndexFor (choices, track.inputChannels),
+            .selectedChoice = choiceIndexFor (choices, track.settings.inputChannels),
             .monitoring = isMonitoring (track.id),
             .volumeDb = track.volumeDb,
             .inserts = insertChipsFor (track.insertChain, insertStatus),
@@ -522,7 +522,7 @@ void RecordPage::showSong (const song::Song& song, const RecordTransport& newTra
         .loops = song.loops,
         .scale = stripScaleFitting (overview.length(), markerStrip.getWidth()),
         .editable = false,
-        .activeLoop = song.activeLoopId,
+        .activeLoop = song.settings.activeLoopId,
     });
 }
 

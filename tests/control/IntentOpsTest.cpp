@@ -291,7 +291,7 @@ TEST_CASE ("set_input_channels takes only a choice the device's inputs offer, an
     {
         INFO (offered);
         CHECK (request (offered)["ok"] == true);
-        CHECK (socket.f.trackNamed ("Guitar").inputChannels == json::parse (offered).get<std::vector<int>>());
+        CHECK (socket.f.trackNamed ("Guitar").settings.inputChannels == json::parse (offered).get<std::vector<int>>());
     }
 
     const auto before = socket.f.song();
@@ -468,18 +468,18 @@ TEST_CASE ("set_focus_track takes a Track id, or null or no track_id for none, a
     const auto undoLabel = socket.f.openSong->package().undoLabel();
 
     CHECK (socket.request (R"({"id": 1, "op": "set_focus_track", "track_id": ")" + guitarId + R"("})").at ("ok") == true);
-    CHECK (socket.f.song().focusTrackId == guitarId);
-    CHECK (socket.f.trackNamed ("Guitar").transcribeSolo);
+    CHECK (socket.f.song().settings.focusTrackId == guitarId);
+    CHECK (socket.f.trackNamed ("Guitar").settings.transcribeSolo);
     CHECK (socket.request (R"({"id": 2, "op": "set_focus_track", "track_id": null})").at ("ok") == true);
-    CHECK_FALSE (socket.f.song().focusTrackId.has_value());
+    CHECK_FALSE (socket.f.song().settings.focusTrackId.has_value());
     CHECK (socket.request (R"({"id": 3, "op": "set_focus_track", "track_id": ")" + guitarId + R"("})").at ("ok") == true);
     CHECK (socket.request (R"({"id": 4, "op": "set_focus_track"})").at ("ok") == true);
-    CHECK_FALSE (socket.f.song().focusTrackId.has_value());
+    CHECK_FALSE (socket.f.song().settings.focusTrackId.has_value());
 
     CHECK (socket.request (R"({"id": 5, "op": "set_transcribe_mute", "track_id": ")" + bandId + R"(", "mute": true})").at ("ok") == true);
     CHECK (socket.request (R"({"id": 6, "op": "set_transcribe_solo", "track_id": ")" + bandId + R"(", "solo": true})").at ("ok") == true);
-    CHECK (socket.f.trackNamed ("Band Mix").transcribeMute);
-    CHECK (socket.f.trackNamed ("Band Mix").transcribeSolo);
+    CHECK (socket.f.trackNamed ("Band Mix").settings.transcribeMute);
+    CHECK (socket.f.trackNamed ("Band Mix").settings.transcribeSolo);
     CHECK_FALSE (socket.f.trackNamed ("Band Mix").mute);
     CHECK_FALSE (socket.f.trackNamed ("Band Mix").solo);
     CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
@@ -496,9 +496,9 @@ TEST_CASE ("set_octave_shift takes a Track id and the octaves, -1 to +2, outside
     const auto undoLabel = socket.f.openSong->package().undoLabel();
 
     CHECK (socket.request (R"({"id": 1, "op": "set_octave_shift", "track_id": ")" + bandId + R"(", "octaves": 2})").at ("ok") == true);
-    CHECK (socket.f.trackNamed ("Band Mix").octaveShift == 2);
+    CHECK (socket.f.trackNamed ("Band Mix").settings.octaveShift == 2);
     CHECK (socket.request (R"({"id": 2, "op": "set_octave_shift", "track_id": ")" + bandId + R"(", "octaves": -1})").at ("ok") == true);
-    CHECK (socket.f.trackNamed ("Band Mix").octaveShift == -1);
+    CHECK (socket.f.trackNamed ("Band Mix").settings.octaveShift == -1);
     CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
 
     const auto tooHigh = socket.request (R"({"id": 3, "op": "set_octave_shift", "track_id": ")" + bandId + R"(", "octaves": 3})");
@@ -507,7 +507,7 @@ TEST_CASE ("set_octave_shift takes a Track id and the octaves, -1 to +2, outside
     const auto missing = socket.request (R"({"id": 4, "op": "set_octave_shift", "track_id": ")" + bandId + R"("})");
     CHECK (missing.at ("ok") == false);
     CHECK (missing.at ("error").at ("code") == "control.bad_field");
-    CHECK (socket.f.trackNamed ("Band Mix").octaveShift == -1);
+    CHECK (socket.f.trackNamed ("Band Mix").settings.octaveShift == -1);
 }
 
 TEST_CASE ("set_band_filter takes a Track id, on, low_hz and high_hz, outside history, and refuses a low cut not below the high cut", "[control][intent_ops][transcribe][band_filter]")
@@ -517,7 +517,7 @@ TEST_CASE ("set_band_filter takes a Track id, on, low_hz and high_hz, outside hi
     const auto undoLabel = socket.f.openSong->package().undoLabel();
 
     CHECK (socket.request (R"({"id": 1, "op": "set_band_filter", "track_id": ")" + bandId + R"(", "on": true, "low_hz": 200, "high_hz": 3200})").at ("ok") == true);
-    CHECK (socket.f.trackNamed ("Band Mix").bandFilter == overdub::song::BandFilter { .on = true, .lowHz = 200, .highHz = 3200 });
+    CHECK (socket.f.trackNamed ("Band Mix").settings.bandFilter == overdub::song::BandFilter { .on = true, .lowHz = 200, .highHz = 3200 });
     CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
 
     const auto inverted = socket.request (R"({"id": 2, "op": "set_band_filter", "track_id": ")" + bandId + R"(", "on": true, "low_hz": 3200, "high_hz": 200})");
@@ -526,7 +526,7 @@ TEST_CASE ("set_band_filter takes a Track id, on, low_hz and high_hz, outside hi
     const auto missing = socket.request (R"({"id": 3, "op": "set_band_filter", "track_id": ")" + bandId + R"(", "on": true, "low_hz": 200})");
     CHECK (missing.at ("ok") == false);
     CHECK (missing.at ("error").at ("code") == "control.bad_field");
-    CHECK (socket.f.trackNamed ("Band Mix").bandFilter == overdub::song::BandFilter { .on = true, .lowHz = 200, .highHz = 3200 });
+    CHECK (socket.f.trackNamed ("Band Mix").settings.bandFilter == overdub::song::BandFilter { .on = true, .lowHz = 200, .highHz = 3200 });
 }
 
 TEST_CASE ("add_marker replies with the new Marker's id, select_marker seeks to it, and move_marker, rename_marker and delete_marker each take one undo step", "[control][intent_ops][markers]")
@@ -577,13 +577,13 @@ TEST_CASE ("add_loop replies with the new Loop's id, select_loop activates it in
     const auto loopId = added.at ("created_id").get<std::string>();
     REQUIRE (socket.f.song().loops.size() == 1);
     CHECK (socket.f.song().loops[0] == song::Loop { loopId, "Loop 1", 4800, 9600 });
-    CHECK (socket.f.song().activeLoopId == loopId);
-    CHECK (socket.f.song().looping);
+    CHECK (socket.f.song().settings.activeLoopId == loopId);
+    CHECK (socket.f.song().settings.looping);
 
     CHECK (socket.request (R"({"id":3,"op":"set_looping","looping":false})").at ("ok") == true);
-    CHECK_FALSE (socket.f.song().looping);
+    CHECK_FALSE (socket.f.song().settings.looping);
     CHECK (socket.request (R"({"id":4,"op":"select_loop","loop_id":")" + loopId + R"("})").at ("ok") == true);
-    CHECK (socket.f.song().looping);
+    CHECK (socket.f.song().settings.looping);
     CHECK (socket.f.openSong->position() == 4800);
 
     CHECK (socket.request (R"({"id":5,"op":"resize_loop","loop_id":")" + loopId + R"(","start":0,"end":24000})").at ("ok") == true);
@@ -616,16 +616,16 @@ TEST_CASE ("set_export_length takes a loop_id outside history, and refuses a Loo
     const auto undoLabel = socket.f.openSong->package().undoLabel();
 
     CHECK (socket.request (R"({"id":3,"op":"set_export_length","length":"full_song","loop_id":")" + loopId + R"("})").at ("ok") == true);
-    CHECK (socket.f.song().exportLoopId == loopId);
+    CHECK (socket.f.song().settings.exportLoopId == loopId);
     CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
 
     const auto gone = socket.request (R"({"id":5,"op":"set_export_length","length":"full_song","loop_id":"loop-gone"})");
     CHECK (gone.at ("ok") == false);
     CHECK (gone.at ("error").at ("code") == "song.loop_not_found");
-    CHECK (socket.f.song().exportLoopId == loopId);
+    CHECK (socket.f.song().settings.exportLoopId == loopId);
 
     CHECK (socket.request (R"({"id":6,"op":"set_export_length","length":"full_song"})").at ("ok") == true);
-    CHECK_FALSE (socket.f.song().exportLoopId.has_value());
+    CHECK_FALSE (socket.f.song().settings.exportLoopId.has_value());
 }
 
 TEST_CASE ("the socket shows Transcribe mode, and a Clip edit there answers ui.transcribing with its reason", "[control][intent_ops][transcribe]")

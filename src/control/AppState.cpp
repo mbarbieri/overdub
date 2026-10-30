@@ -296,8 +296,8 @@ json cameraSection (const ui::OpenSong* song)
     auto devices = json::array();
     for (const auto& device : song->cameraDevices())
         devices.push_back ({ { "id", device.id }, { "name", device.name } });
-    const auto& chosen = song->song().cameraDeviceId;
-    return { { "devices", std::move (devices) }, { "armed", song->song().cameraArmed }, { "chosen", chosen.empty() ? json (nullptr) : json (chosen) } };
+    const auto& chosen = song->song().settings.cameraDeviceId;
+    return { { "devices", std::move (devices) }, { "armed", song->song().settings.cameraArmed }, { "chosen", chosen.empty() ? json (nullptr) : json (chosen) } };
 }
 
 std::string_view insertStatusName (std::optional<plugin::InsertStatus> status)

@@ -137,14 +137,14 @@ TEST_CASE ("the right column shows the Focus Track's band filter, On and its cut
     const auto undoLabel = f.openSong->package().undoLabel();
     const ScopedLogCapture capture;
     click (c.filterToggle);
-    CHECK (f.trackNamed ("Bass").bandFilter.on);
+    CHECK (f.trackNamed ("Bass").settings.bandFilter.on);
     CHECK (c.filterToggle.getToggleState());
 
     c.filterLowField.setText ("250 Hz", juce::sendNotificationSync);
     c.filterHighField.setText ("2500", juce::sendNotificationSync);
 
-    CHECK (f.trackNamed ("Bass").bandFilter == song::BandFilter { .on = true, .lowHz = 250, .highHz = 2500 });
-    CHECK (f.trackNamed ("Drums").bandFilter == song::BandFilter {});
+    CHECK (f.trackNamed ("Bass").settings.bandFilter == song::BandFilter { .on = true, .lowHz = 250, .highHz = 2500 });
+    CHECK (f.trackNamed ("Drums").settings.bandFilter == song::BandFilter {});
     CHECK (c.filterLowField.getText() == "250");
     CHECK (c.filterHighField.getText() == "2500");
     CHECK (f.openSong->package().undoLabel() == undoLabel);
@@ -156,7 +156,7 @@ TEST_CASE ("the right column shows the Focus Track's band filter, On and its cut
     SECTION ("a high cut typed below the low cut is refused and the field shows the Track's again")
     {
         c.filterHighField.setText ("200", juce::sendNotificationSync);
-        CHECK (f.trackNamed ("Bass").bandFilter.highHz == 2500);
+        CHECK (f.trackNamed ("Bass").settings.bandFilter.highHz == 2500);
         CHECK (c.filterHighField.getText() == "2500");
     }
 }
@@ -185,10 +185,10 @@ TEST_CASE ("set_band_filter keeps the low cut below the high cut and both within
     const auto unknown = runControl (f, SongIntent { setBandFilter ("track-gone", band) });
     REQUIRE_FALSE (unknown.has_value());
     CHECK (unknown.error().code == "song.track_not_found");
-    CHECK (f.trackNamed ("Bass").bandFilter == song::BandFilter {});
+    CHECK (f.trackNamed ("Bass").settings.bandFilter == song::BandFilter {});
 
     run (f, SongIntent { setBandFilter (bassId, { .on = false, .lowHz = 20, .highHz = 20000 }) });
-    CHECK (f.trackNamed ("Bass").bandFilter == song::BandFilter { .on = false, .lowHz = 20, .highHz = 20000 });
+    CHECK (f.trackNamed ("Bass").settings.bandFilter == song::BandFilter { .on = false, .lowHz = 20, .highHz = 20000 });
 }
 
 TEST_CASE ("only the Focus Track's band filter is heard, only in Transcribe mode, live with no new plan", "[ui][transcribe][band_filter][engine]")
@@ -220,7 +220,7 @@ TEST_CASE ("only the Focus Track's band filter is heard, only in Transcribe mode
         run (f, SongIntent { setBandFilter (drumsId, band) });
         run (f, SongIntent { intent::SetTranscribeSolo { bassId, false } });
         run (f, SongIntent { intent::SetTranscribeSolo { drumsId, true } });
-        CHECK (f.song().focusTrackId == bassId);
+        CHECK (f.song().settings.focusTrackId == bassId);
         CHECK_FALSE (f.openSong->heard().bandFilter.has_value());
         CHECK (std::abs (dbBetween (heardRms (f), unfiltered)) < 0.01);
     }
@@ -283,8 +283,8 @@ TEST_CASE ("each Track keeps its own band filter: moving the Focus brings back t
     {
         run (f, SongIntent { intent::Edit { intent::SetTrackMute { drumsId, true } } });
         run (f, SongIntent { intent::Undo {} });
-        CHECK (f.trackNamed ("Bass").bandFilter == band);
-        CHECK (f.trackNamed ("Drums").bandFilter == drumsFilter);
+        CHECK (f.trackNamed ("Bass").settings.bandFilter == band);
+        CHECK (f.trackNamed ("Drums").settings.bandFilter == drumsFilter);
     }
 
     SECTION ("reopening the Song restores every Track's filter, heard again in Transcribe mode")
@@ -292,8 +292,8 @@ TEST_CASE ("each Track keeps its own band filter: moving the Focus brings back t
         reopenSong (f);
         showMode (f, Mode::edit);
         showMode (f, Mode::transcribe);
-        CHECK (f.trackNamed ("Bass").bandFilter == band);
-        CHECK (f.trackNamed ("Drums").bandFilter == drumsFilter);
+        CHECK (f.trackNamed ("Bass").settings.bandFilter == band);
+        CHECK (f.trackNamed ("Drums").settings.bandFilter == drumsFilter);
         CHECK (column (f).filterToggle.getToggleState());
         CHECK (f.openSong->heard().bandFilter == engine::HeardBandFilter { .trackId = bassId, .lowHz = 200, .highHz = 3200 });
     }

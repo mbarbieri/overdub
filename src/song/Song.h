@@ -138,6 +138,25 @@ struct BandFilter
     bool operator== (const BandFilter&) const = default;
 };
 
+// A Track's settings outside undo history: persisted, and kept whole by undo and redo
+// (keepStateOutsideHistory), so a field added here is kept with no other change.
+struct TrackSettings
+{
+    bool armed = false;
+    // Transcribe mode's own mute and solo (the Transcribe Mix, ADR 0010, issue #226): heard only
+    // in Transcribe mode, never by Record, Edit or Export. Format 7.
+    bool transcribeMute = false;
+    bool transcribeSolo = false;
+    // Its octave shift in Transcribe mode, -1..+2 (ADR 0010, issue #233): heard only while it is
+    // the Focus Track in Transcribe mode. Format 12.
+    int octaveShift = 0;
+    // Its band filter (issue #234), heard like the octave shift. Format 13.
+    BandFilter bandFilter;
+    std::vector<int> inputChannels; // 0-based device input channel indices, 1 (mono) or 2 (stereo); empty = none
+
+    bool operator== (const TrackSettings&) const = default;
+};
+
 struct Track
 {
     Id id;
@@ -147,17 +166,7 @@ struct Track
     double pan = 0.0; // -1 (left) .. +1 (right), 0 = centre
     bool mute = false;
     bool solo = false;
-    bool armed = false;              // persisted, not undoable
-    // Transcribe mode's own mute and solo (the Transcribe Mix, ADR 0010, issue #226): heard only
-    // in Transcribe mode, never by Record, Edit or Export. Persisted, not undoable. Format 7.
-    bool transcribeMute = false;
-    bool transcribeSolo = false;
-    // Its octave shift in Transcribe mode, -1..+2 (ADR 0010, issue #233): heard only while it is
-    // the Focus Track in Transcribe mode. Persisted, not undoable. Format 12.
-    int octaveShift = 0;
-    // Its band filter (issue #234), heard like the octave shift. Persisted, not undoable. Format 13.
-    BandFilter bandFilter;
-    std::vector<int> inputChannels;  // 0-based device input channel indices, 1 (mono) or 2 (stereo); empty = none. Not undoable.
+    TrackSettings settings;
     std::vector<InsertSlot> insertChain;
     std::vector<Clip> clips; // layer order: the last Clip is on top
 
@@ -261,6 +270,15 @@ struct Marker
     bool operator== (const Marker&) const = default;
 };
 
+// A Loop's settings outside undo history, kept whole by undo and redo like TrackSettings.
+struct LoopSettings
+{
+    // The Practice Speed it is drilled at, 25..125 (issue #230). Format 10.
+    int practiceSpeedPercent = 100;
+
+    bool operator== (const LoopSettings&) const = default;
+};
+
 // A named range of the Song (ADR 0010, issue #228), [start, end) with 0 <= start < end, shown in
 // every mode and played over and over in Transcribe mode. Undoable. Format 9.
 struct Loop
@@ -269,8 +287,7 @@ struct Loop
     std::string name; // "Loop 1" when made, never empty
     SampleCount start = 0;
     SampleCount end = 0;
-    // The Practice Speed it is drilled at, 25..125 (issue #230): outside history. Format 10.
-    int practiceSpeedPercent = 100;
+    LoopSettings settings;
 
     SampleCount length() const { return end - start; }
     bool operator== (const Loop&) const = default;
@@ -284,6 +301,33 @@ struct Transpose
     int cents = 0;
     bool isNone() const { return semitones == 0 && cents == 0; }
     bool operator== (const Transpose&) const = default;
+};
+
+// The Song's settings outside undo history: persisted, and kept whole by undo and redo
+// (keepStateOutsideHistory), so a field added here is kept with no other change. An id one names
+// that the restored snapshot lacks follows keepStateOutsideHistory's rule for it.
+struct SongSettings
+{
+    PreRoll preRoll = PreRoll::off;
+    bool cameraArmed = false;
+    std::string cameraDeviceId; // empty = no camera chosen
+    SampleCount playhead = 0;
+    // The Export sheet's choices (issue #201).
+    std::optional<Id> exportVideoTakeId;
+    ExportFormat exportFormat = ExportFormat::wav;
+    VideoLength exportLength = VideoLength::trimToVideoTake;
+    std::string exportDestination; // an absolute path; empty = <export folder>/<Song name>.<ext>
+    // The Loop whose range Export writes, for every format (issue #235); none, or a Loop the Song
+    // no longer has, = the whole Song. Deleting that Loop clears it. Format 14.
+    std::optional<Id> exportLoopId;
+    // Transcribe mode's Focus Track (ADR 0010, issue #226); none = no Focus Track. Format 7.
+    std::optional<Id> focusTrackId;
+    // The active Loop and whether Transcribe mode loops it (issue #228); looping needs an active
+    // Loop. Format 9.
+    std::optional<Id> activeLoopId;
+    bool looping = false;
+
+    bool operator== (const SongSettings&) const = default;
 };
 
 struct Song
@@ -304,25 +348,7 @@ struct Song
     // were made or moved there. Format 9.
     std::vector<Loop> loops;
 
-    // Persisted settings outside undo history.
-    PreRoll preRoll = PreRoll::off;
-    bool cameraArmed = false;
-    std::string cameraDeviceId; // empty = no camera chosen
-    SampleCount playhead = 0;
-    // The Export sheet's choices (issue #201).
-    std::optional<Id> exportVideoTakeId;
-    ExportFormat exportFormat = ExportFormat::wav;
-    VideoLength exportLength = VideoLength::trimToVideoTake;
-    std::string exportDestination; // an absolute path; empty = <export folder>/<Song name>.<ext>
-    // The Loop whose range Export writes, for every format (issue #235); none, or a Loop the Song
-    // no longer has, = the whole Song. Deleting that Loop clears it. Format 14.
-    std::optional<Id> exportLoopId;
-    // Transcribe mode's Focus Track (ADR 0010, issue #226); none = no Focus Track. Format 7.
-    std::optional<Id> focusTrackId;
-    // The active Loop and whether Transcribe mode loops it (issue #228); looping needs an active
-    // Loop. Format 9.
-    std::optional<Id> activeLoopId;
-    bool looping = false;
+    SongSettings settings;
 
     bool operator== (const Song&) const = default;
 };
@@ -346,14 +372,13 @@ core::Expected<const Track*> lookupTrack (const Song& song, const Id& trackId);
 core::Expected<Track*> lookupTrack (Song& song, const Id& trackId);
 
 // Undo and redo restore a snapshot's undoable content but keep the current state that lives
-// outside history: pre-roll, camera arm and device, playhead (converted to the snapshot's rate), the
-// export format, length and destination, the export's Video Take (unless the snapshot does not
-// have it), the export's Loop (unless the snapshot does not have that Loop: then the whole Song), the Focus Track (unless the snapshot does not have it), the active Loop and looping
-// (unless the snapshot does not have that Loop: then none, not looping), per Loop id its Practice
-// Speed (a Loop only the snapshot has keeps the snapshot's), per Track id Armed, input
-// channels, the Transcribe Mix's mute and solo, the octave shift and the band filter, and per
-// Insert Chain slot id (Master's included) the plugin state hash: plugin parameters are outside
-// history. A slot only the snapshot has keeps the snapshot's hash.
+// outside history: the current SongSettings, per Track id its TrackSettings and per Loop id its
+// LoopSettings (a Track or Loop only the snapshot has keeps the snapshot's), and per Insert Chain
+// slot id (Master's included) the plugin state hash: plugin parameters are outside history (a
+// slot only the snapshot has keeps the snapshot's hash). Of the SongSettings, the playhead is
+// converted to the snapshot's rate, and an id the snapshot lacks resolves as: the export's Video
+// Take keeps the snapshot's, the export's Loop is none (the whole Song), the Focus Track is none,
+// and the active Loop is none and not looping.
 Song keepStateOutsideHistory (Song snapshot, const Song& current);
 
 // The colour of every Track, in Song order: what a new Track's colour must not repeat.

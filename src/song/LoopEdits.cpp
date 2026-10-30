@@ -58,7 +58,7 @@ const Loop* findLoop (const Song& song, const Id& loopId)
 
 const Loop* activeLoop (const Song& song)
 {
-    return song.activeLoopId.has_value() ? findLoop (song, *song.activeLoopId) : nullptr;
+    return song.settings.activeLoopId.has_value() ? findLoop (song, *song.settings.activeLoopId) : nullptr;
 }
 
 core::Expected<Song> addLoop (Song song, SampleCount from, SampleCount to, const Id& loopId, int practiceSpeedPercent)
@@ -69,7 +69,7 @@ core::Expected<Song> addLoop (Song song, SampleCount from, SampleCount to, const
     if (auto checked = checkPracticeSpeed (practiceSpeedPercent); ! checked.has_value())
         return std::unexpected (std::move (checked.error()));
     auto name = nextLoopName (song);
-    insertInTimeOrder (song.loops, Loop { .id = loopId, .name = std::move (name), .start = range->first, .end = range->second, .practiceSpeedPercent = practiceSpeedPercent });
+    insertInTimeOrder (song.loops, Loop { .id = loopId, .name = std::move (name), .start = range->first, .end = range->second, .settings = { .practiceSpeedPercent = practiceSpeedPercent } });
     return song;
 }
 
@@ -107,13 +107,13 @@ core::Expected<Song> deleteLoop (Song song, const Id& loopId)
     if (found == song.loops.end())
         return std::unexpected (loopNotFound (loopId));
     song.loops.erase (found);
-    if (song.activeLoopId == loopId)
+    if (song.settings.activeLoopId == loopId)
     {
-        song.activeLoopId.reset();
-        song.looping = false;
+        song.settings.activeLoopId.reset();
+        song.settings.looping = false;
     }
-    if (song.exportLoopId == loopId)
-        song.exportLoopId.reset(); // Export goes back to the whole Song (issue #235)
+    if (song.settings.exportLoopId == loopId)
+        song.settings.exportLoopId.reset(); // Export goes back to the whole Song (issue #235)
     return song;
 }
 
@@ -121,7 +121,7 @@ core::Expected<Song> setExportLoop (Song song, const std::optional<Id>& loopId)
 {
     if (loopId.has_value() && findLoop (song, *loopId) == nullptr)
         return std::unexpected (loopNotFound (*loopId));
-    song.exportLoopId = loopId;
+    song.settings.exportLoopId = loopId;
     return song;
 }
 
@@ -129,8 +129,8 @@ core::Expected<Song> setActiveLoop (Song song, const std::optional<Id>& loopId, 
 {
     if (loopId.has_value() && findLoop (song, *loopId) == nullptr)
         return std::unexpected (loopNotFound (*loopId));
-    song.activeLoopId = loopId;
-    song.looping = loopId.has_value() && looping;
+    song.settings.activeLoopId = loopId;
+    song.settings.looping = loopId.has_value() && looping;
     return song;
 }
 
@@ -138,7 +138,7 @@ core::Expected<Song> setLooping (Song song, bool looping)
 {
     if (looping && activeLoop (song) == nullptr)
         return std::unexpected (core::Error { "song.no_active_loop", "looping needs an active Loop", {} });
-    song.looping = looping;
+    song.settings.looping = looping;
     return song;
 }
 
@@ -149,7 +149,7 @@ core::Expected<Song> setLoopPracticeSpeed (Song song, const Id& loopId, int prac
         return std::unexpected (loopNotFound (loopId));
     if (auto checked = checkPracticeSpeed (practiceSpeedPercent); ! checked.has_value())
         return std::unexpected (std::move (checked.error()));
-    found->practiceSpeedPercent = practiceSpeedPercent;
+    found->settings.practiceSpeedPercent = practiceSpeedPercent;
     return song;
 }
 
