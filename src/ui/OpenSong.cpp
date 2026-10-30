@@ -5,7 +5,7 @@
 #include "song/InsertEdits.h"
 #include "song/LoopEdits.h"
 #include "song/MixEdits.h"
-#include "song/TranscribeMix.h"
+#include "ui/ListeningSettings.h"
 #include "ui/TrackRowEdits.h"
 
 #include <algorithm>
@@ -323,18 +323,6 @@ core::Expected<void> OpenSong::setLooping (bool looping)
     return changed;
 }
 
-core::Expected<void> OpenSong::changeListening (core::Expected<song::Song> changed)
-{
-    if (! changed.has_value())
-        return std::unexpected (std::move (changed.error()));
-    if (*changed == song())
-        return {};
-    const auto before = heard();
-    package_->changeWithoutHistory (std::move (*changed));
-    hearChange (before);
-    return {};
-}
-
 core::Expected<void> OpenSong::changeHeardLoop (core::Expected<song::Song> changed)
 {
     if (! changed.has_value())
@@ -364,54 +352,20 @@ void OpenSong::hearChange (const Heard& before)
     listening_.follow (song());
 }
 
-core::Expected<void> OpenSong::setFocusTrack (const std::optional<song::Id>& trackId)
+core::Expected<void> OpenSong::changeListening (const intent::ListeningSetting& setting)
 {
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
-    auto changed = changeListening (song::setFocusTrack (song(), trackId));
-    if (changed.has_value())
-        core::logEvent (core::Level::info, "ui.focus_track_set", { { "track_id", trackId.value_or ("") } });
-    return changed;
-}
-
-core::Expected<void> OpenSong::setOctaveShift (const song::Id& trackId, int octaves)
-{
-    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
-        return std::unexpected (std::move (*refused));
-    auto changed = changeListening (song::setOctaveShift (song(), trackId, octaves));
-    if (changed.has_value())
-        core::logEvent (core::Level::info, "ui.octave_shift_set", { { "track_id", trackId }, { "octaves", octaves } });
-    return changed;
-}
-
-core::Expected<void> OpenSong::setBandFilter (const song::Id& trackId, song::BandFilter filter)
-{
-    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
-        return std::unexpected (std::move (*refused));
-    auto changed = changeListening (song::setBandFilter (song(), trackId, filter));
-    if (changed.has_value())
-        core::logEvent (core::Level::info, "ui.band_filter_set", { { "track_id", trackId }, { "on", filter.on }, { "low_hz", filter.lowHz }, { "high_hz", filter.highHz } });
-    return changed;
-}
-
-core::Expected<void> OpenSong::setTranscribeMute (const song::Id& trackId, bool mute)
-{
-    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
-        return std::unexpected (std::move (*refused));
-    auto changed = changeListening (song::setTranscribeMute (song(), trackId, mute));
-    if (changed.has_value())
-        core::logEvent (core::Level::debug, "ui.transcribe_mute_set", { { "track_id", trackId }, { "mute", mute } });
-    return changed;
-}
-
-core::Expected<void> OpenSong::setTranscribeSolo (const song::Id& trackId, bool solo)
-{
-    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
-        return std::unexpected (std::move (*refused));
-    auto changed = changeListening (song::setTranscribeSolo (song(), trackId, solo));
-    if (changed.has_value())
-        core::logEvent (core::Level::debug, "ui.transcribe_solo_set", { { "track_id", trackId }, { "solo", solo } });
-    return changed;
+    auto changed = withListeningSetting (song(), setting);
+    if (! changed.has_value())
+        return std::unexpected (std::move (changed.error()));
+    if (*changed == song())
+        return {};
+    const auto before = heard();
+    package_->changeWithoutHistory (std::move (*changed));
+    hearChange (before);
+    logListeningSet (setting);
+    return {};
 }
 
 void OpenSong::stop()

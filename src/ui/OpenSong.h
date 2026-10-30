@@ -13,6 +13,7 @@
 #include "song/SongPackage.h"
 #include "ui/Activity.h"
 #include "ui/ExportRun.h"
+#include "ui/Intent.h"
 #include "ui/Listening.h"
 #include "video/FrameSelection.h"
 #include "video/VideoPlayback.h"
@@ -297,21 +298,11 @@ public:
     // mix. The window sets it as its mode changes; it is not in the Song. Changing it applies the mix
     // (Engine::setMix) without rebuilding the plan unless the octave-shifted Track changes.
     void setTranscribing (bool transcribing);
-    // The Focus Track and the Transcribe Mix: Song settings outside history (song.json, no undo
-    // step), song/TranscribeMix.h, heard at once while transcribing. Log ui.focus_track_set (info:
-    // track_id, "" for none), ui.transcribe_mute_set and ui.transcribe_solo_set (debug: track_id,
-    // mute / solo). Errors: refusal()'s, song.track_not_found.
-    core::Expected<void> setFocusTrack (const std::optional<song::Id>& trackId);
-    core::Expected<void> setTranscribeMute (const song::Id& trackId, bool mute);
-    core::Expected<void> setTranscribeSolo (const song::Id& trackId, bool solo);
-    // A Track's octave shift, -1..+2 (see the header comment): a Song setting outside history.
-    // Logs ui.octave_shift_set (info: track_id, octaves). Errors: refusal()'s,
-    // song.octave_shift_out_of_range, song.track_not_found.
-    core::Expected<void> setOctaveShift (const song::Id& trackId, int octaves);
-    // A Track's band filter (issue #234, see the header comment): a Song setting outside history.
-    // Logs ui.band_filter_set (info: track_id, on, low_hz, high_hz). Errors: refusal()'s,
-    // song.band_filter_out_of_range, song.band_filter_low_not_below_high, song.track_not_found.
-    core::Expected<void> setBandFilter (const song::Id& trackId, song::BandFilter filter);
+    // A Transcribe listening setting (ui/ListeningSettings.h): the Focus Track, the Transcribe Mix,
+    // a Track's octave shift or band filter (see the header comment). Stored outside history (no
+    // undo step) and heard at once (hearChange); nothing when the Song is unchanged. Logs
+    // logListeningSet's event. Errors: refusal()'s, withListeningSetting's.
+    core::Expected<void> changeListening (const intent::ListeningSetting& setting);
 
     // Loops (issue #228, ADR 0010). The active Loop and looping are Song settings outside history
     // (song.json, no undo step, song/LoopEdits.h). The engine loops (Engine::setLoop) only while
@@ -413,9 +404,6 @@ private:
     std::optional<core::Error> endExportIfEnded (std::optional<ExportEnd> end);
     // Advances a running Separation; once it ends, reloads the engine and returns its Error.
     std::optional<core::Error> advanceSeparation (song::SongPackage::Clock::time_point now);
-    // Stores a Transcribe Mix, Focus Track, octave shift or band filter change outside history and
-    // plays it (hearChange). Nothing when the Song is unchanged.
-    core::Expected<void> changeListening (core::Expected<song::Song> changed);
     // Stores an active Loop or looping change outside history, plays at the heard Loop's Practice
     // Speed when it may change, and plays it (hearChange), also when the Song is unchanged.
     core::Expected<void> changeHeardLoop (core::Expected<song::Song> changed);

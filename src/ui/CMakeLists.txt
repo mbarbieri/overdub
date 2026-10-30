@@ -25,6 +25,7 @@ target_sources(overdub_ui PRIVATE
     Layout.cpp
     Listening.cpp
     ListeningRenders.cpp
+    ListeningSettings.cpp
     LookAheadStrip.cpp
     LoopViews.cpp
     MarkerStrip.cpp

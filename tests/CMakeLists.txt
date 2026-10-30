@@ -98,6 +98,7 @@ target_sources(overdub_tests PRIVATE
     ui/ExportChoicesTest.cpp
     ui/ExportLoopTest.cpp
     ui/ExportSettingsTest.cpp
+    ui/ListeningSettingsTest.cpp
     ui/ExportSheetTest.cpp
     ui/CancelExportTest.cpp
     ui/ExportRunTest.cpp
