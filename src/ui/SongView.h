@@ -192,7 +192,7 @@ private:
     exporting::ExportRequest exportRequest() const;
     IntentResult exportSong();
     // Errors: withExportSetting's, presented; nothing is stored.
-    IntentResult changeExportSetting (const ExportSetting& setting);
+    IntentResult changeExportSetting (const intent::ExportSetting& setting);
     // Cancels the running export (issue #202): the ui.export_cancelled Notice; when the export had
     // written its file already, the ui.export_finished Notice; when its render had failed, that
     // Error, presented and returned.

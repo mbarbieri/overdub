@@ -121,10 +121,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const OpenInsertEditor& i) { return openInsertEditor (i.slotId); },
             [this] (const ClosePluginWindow& i) { return closePluginWindow (i.slotId); },
             [this] (const ShowExport& i) { return showExport (i.shown); },
-            [this] (const SetExportFormat& i) { return changeExportSetting (i); },
-            [this] (const SetExportLength& i) { return changeExportSetting (i); },
-            [this] (const SetExportDestination& i) { return changeExportSetting (i); },
-            [this] (const SetExportVideoTake& i) { return changeExportSetting (i); },
+            [this] (const ExportSetting& i) { return changeExportSetting (i); },
             [this] (const Export&) { return exportSong(); },
             [this] (const CancelExport&) { return cancelExport(); },
             [this] (const RevealExport&) { return revealExport(); },
@@ -699,7 +696,7 @@ IntentResult SongView::exportSong()
     return started;
 }
 
-IntentResult SongView::changeExportSetting (const ExportSetting& setting)
+IntentResult SongView::changeExportSetting (const intent::ExportSetting& setting)
 {
     auto changed = presented (openSong.changeSettings (withExportSetting (openSong.song(), setting)));
     window.refresh();

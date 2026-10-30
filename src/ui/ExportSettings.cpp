@@ -9,7 +9,7 @@
 
 namespace overdub::ui
 {
-core::Expected<song::Song> withExportSetting (song::Song song, const ExportSetting& setting)
+core::Expected<song::Song> withExportSetting (song::Song song, const intent::ExportSetting& setting)
 {
     using namespace intent;
     return core::visitExhaustively (

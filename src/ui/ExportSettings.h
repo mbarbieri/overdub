@@ -4,8 +4,6 @@
 #include "song/Song.h"
 #include "ui/Intent.h"
 
-#include <variant>
-
 // The Export sheet's choices (issues #201, #235) as one function from a Song to the changed Song,
 // the way ui/SongEdits.h pairs each history edit with its Song. They are Song settings outside
 // history: the caller stores the result with OpenSong::changeSettings, never as an undo step.
@@ -19,7 +17,5 @@
 // - set_export_video_take ignores an id that is not a Video Take of the Song.
 namespace overdub::ui
 {
-using ExportSetting = std::variant<intent::SetExportFormat, intent::SetExportLength, intent::SetExportDestination, intent::SetExportVideoTake>;
-
-core::Expected<song::Song> withExportSetting (song::Song song, const ExportSetting& setting);
+core::Expected<song::Song> withExportSetting (song::Song song, const intent::ExportSetting& setting);
 } // namespace overdub::ui

@@ -24,7 +24,7 @@ Song exportSong()
     return song;
 }
 
-Song changed (const Song& song, const overdub::ui::ExportSetting& setting)
+Song changed (const Song& song, const ExportSetting& setting)
 {
     auto result = withExportSetting (song, setting);
     REQUIRE (result.has_value());
