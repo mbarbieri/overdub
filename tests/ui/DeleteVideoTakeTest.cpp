@@ -190,7 +190,7 @@ TEST_CASE ("backspace, forward delete and the Delete button each delete the sele
 TEST_CASE ("deleting the Export's chosen Video Take puts the choice back to the default", "[ui][edit][video_takes][export]")
 {
     VideoTakeFixture f;
-    f.openSong->setExportVideoTake (f.olderTake);
+    REQUIRE (f.window->run (SongIntent { intent::SetExportVideoTake { f.olderTake } }, Origin::control).has_value());
     REQUIRE (f.song().exportVideoTakeId == f.olderTake);
 
     f.selectOlderTake();

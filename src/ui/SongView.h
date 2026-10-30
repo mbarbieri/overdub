@@ -2,6 +2,7 @@
 
 #include "core/Error.h"
 #include "ui/EditPage.h"
+#include "ui/ExportSettings.h"
 #include "ui/ExportSheet.h"
 #include "ui/InsertChain.h"
 #include "ui/Intent.h"
@@ -190,11 +191,8 @@ private:
     // What Export writes now, from the Song's choices (exportRequestFor, exportDestinationFor).
     exporting::ExportRequest exportRequest() const;
     IntentResult exportSong();
-    IntentResult setExportFormat (exporting::ExportFormat format);
-    IntentResult setExportLength (exporting::VideoLength length, const std::optional<song::Id>& loopId);
-    // Errors: export.folder_missing (the file's folder does not exist; nothing is stored).
-    IntentResult setExportDestination (const juce::File& file);
-    IntentResult setExportVideoTake (const song::Id& videoTakeId);
+    // Errors: withExportSetting's, presented; nothing is stored.
+    IntentResult changeExportSetting (const ExportSetting& setting);
     // Cancels the running export (issue #202): the ui.export_cancelled Notice; when the export had
     // written its file already, the ui.export_finished Notice; when its render had failed, that
     // Error, presented and returned.

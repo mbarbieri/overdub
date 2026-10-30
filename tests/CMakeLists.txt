@@ -97,6 +97,7 @@ target_sources(overdub_tests PRIVATE
     ui/ExportMp4SheetTest.cpp
     ui/ExportChoicesTest.cpp
     ui/ExportLoopTest.cpp
+    ui/ExportSettingsTest.cpp
     ui/ExportSheetTest.cpp
     ui/CancelExportTest.cpp
     ui/ExportRunTest.cpp

@@ -285,43 +285,13 @@ bool OpenSong::practiceSpeedMayChange() const
     return ! refusal (activity, Gesture::setPracticeSpeed).has_value();
 }
 
-void OpenSong::setExportVideoTake (const song::Id& videoTakeId)
+core::Expected<void> OpenSong::changeSettings (core::Expected<song::Song> changed)
 {
-    if (song().exportVideoTakeId == videoTakeId || ! std::ranges::contains (song().videoTakes, videoTakeId, &song::VideoTake::id))
-        return;
-    auto changed = song();
-    changed.exportVideoTakeId = videoTakeId;
-    package_->changeWithoutHistory (std::move (changed));
-}
-
-void OpenSong::setExportFormat (song::ExportFormat format)
-{
-    if (song().exportFormat == format)
-        return;
-    auto changed = song();
-    changed.exportFormat = format;
-    package_->changeWithoutHistory (std::move (changed));
-}
-
-core::Expected<void> OpenSong::setExportLength (song::VideoLength length, const std::optional<song::Id>& loopId)
-{
-    auto changed = song::setExportLoop (song(), loopId);
     if (! changed.has_value())
-        return std::unexpected (changed.error());
-    if (song().exportLength == length && song().exportLoopId == loopId)
-        return {};
-    changed->exportLength = length;
-    package_->changeWithoutHistory (std::move (*changed));
+        return std::unexpected (std::move (changed.error()));
+    if (*changed != song())
+        package_->changeWithoutHistory (std::move (*changed));
     return {};
-}
-
-void OpenSong::setExportDestination (const std::string& path)
-{
-    if (song().exportDestination == path)
-        return;
-    auto changed = song();
-    changed.exportDestination = path;
-    package_->changeWithoutHistory (std::move (changed));
 }
 
 void OpenSong::setTranscribing (bool on)

@@ -121,10 +121,10 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const OpenInsertEditor& i) { return openInsertEditor (i.slotId); },
             [this] (const ClosePluginWindow& i) { return closePluginWindow (i.slotId); },
             [this] (const ShowExport& i) { return showExport (i.shown); },
-            [this] (const SetExportFormat& i) { return setExportFormat (i.format); },
-            [this] (const SetExportLength& i) { return setExportLength (i.length, i.loopId); },
-            [this] (const SetExportDestination& i) { return setExportDestination (juce::File (i.path.value)); },
-            [this] (const SetExportVideoTake& i) { return setExportVideoTake (i.videoTakeId); },
+            [this] (const SetExportFormat& i) { return changeExportSetting (i); },
+            [this] (const SetExportLength& i) { return changeExportSetting (i); },
+            [this] (const SetExportDestination& i) { return changeExportSetting (i); },
+            [this] (const SetExportVideoTake& i) { return changeExportSetting (i); },
             [this] (const Export&) { return exportSong(); },
             [this] (const CancelExport&) { return cancelExport(); },
             [this] (const RevealExport&) { return revealExport(); },
@@ -699,34 +699,11 @@ IntentResult SongView::exportSong()
     return started;
 }
 
-IntentResult SongView::setExportFormat (exporting::ExportFormat format)
+IntentResult SongView::changeExportSetting (const ExportSetting& setting)
 {
-    openSong.setExportFormat (format);
+    auto changed = presented (openSong.changeSettings (withExportSetting (openSong.song(), setting)));
     window.refresh();
-    return IntentDone {};
-}
-
-IntentResult SongView::setExportLength (exporting::VideoLength length, const std::optional<song::Id>& loopId)
-{
-    auto set = presented (openSong.setExportLength (length, loopId));
-    window.refresh();
-    return set;
-}
-
-IntentResult SongView::setExportDestination (const juce::File& file)
-{
-    if (auto folder = exporting::checkExportFolder (file); ! folder.has_value())
-        return presented (folder);
-    openSong.setExportDestination (file.getFullPathName().toStdString());
-    window.refresh();
-    return IntentDone {};
-}
-
-IntentResult SongView::setExportVideoTake (const song::Id& videoTakeId)
-{
-    openSong.setExportVideoTake (videoTakeId);
-    window.refresh();
-    return IntentDone {};
+    return changed;
 }
 
 IntentResult SongView::cancelExport()
