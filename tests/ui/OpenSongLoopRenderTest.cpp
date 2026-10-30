@@ -90,7 +90,7 @@ struct LoopRenderFixture
         return left;
     }
 
-    int rendersInFolder() const { return openSong->practiceRenderFolder().findChildFiles (juce::File::findFiles, false).size(); }
+    int rendersInFolder() const { return openSong->listening().renders().practiceFolder().findChildFiles (juce::File::findFiles, false).size(); }
 };
 
 std::int64_t peakIndex (const std::vector<float>& samples)
@@ -119,7 +119,7 @@ TEST_CASE ("while a Loop loops, a Practice Speed change renders the Loop's windo
     overdub::core::ScopedLogCapture capture;
 
     REQUIRE (f.openSong->setPracticeSpeed (80).has_value());
-    f.pollUntil ([&] { return ! f.openSong->isPracticeRendering(); });
+    f.pollUntil ([&] { return ! f.openSong->listening().renders().isPracticeRendering(); });
 
     const auto started = eventsNamed (capture, "song.practice_speed_started");
     REQUIRE (started.size() == 2);
@@ -144,10 +144,10 @@ TEST_CASE ("a Loop's audio at the new speed is heard before the whole Song is re
     REQUIRE (f.openSong->setActiveLoop ("loop", true).has_value());
 
     REQUIRE (f.openSong->setPracticeSpeed (80).has_value());
-    f.pollUntil ([&] { return f.openSong->heardPracticeSpeed() == 80; });
+    f.pollUntil ([&] { return f.openSong->listening().renders().heardPracticeSpeed() == 80; });
 
     // The whole Song's render runs: only poll() ends it, so it still runs while this plays.
-    REQUIRE (f.openSong->isPracticeRendering());
+    REQUIRE (f.openSong->listening().renders().isPracticeRendering());
     const auto inLoop = f.playFrom (loopStart, 40960);
     // ADR 0005: the impulse at Song time 4.5 s is heard within 1 ms of 0.5 s / 0.8 after 4 s.
     const auto loopRenderPeak = peakIndex (inLoop);
@@ -155,8 +155,8 @@ TEST_CASE ("a Loop's audio at the new speed is heard before the whole Song is re
     // Outside the window the source plays silent until its whole render is there.
     CHECK (nonZeroSamples (f.playFrom (0, 64000)).empty());
 
-    f.pollUntil ([&] { return ! f.openSong->isPracticeRendering(); });
-    CHECK (f.openSong->heardPracticeSpeed() == 80);
+    f.pollUntil ([&] { return ! f.openSong->listening().renders().isPracticeRendering(); });
+    CHECK (f.openSong->listening().renders().heardPracticeSpeed() == 80);
     // The whole render plays the Loop's impulse at the same Song time as the Loop's render did.
     CHECK_THAT ((double) peakIndex (f.playFrom (loopStart, 40960)), WithinAbs ((double) loopRenderPeak, 48.0));
     CHECK_THAT ((double) peakIndex (f.playFrom (0, 64000)), WithinAbs (earlyClickAt / 0.8, 48.0));
@@ -172,12 +172,12 @@ TEST_CASE ("outside a Loop, with looping off or outside Transcribe mode, the who
     overdub::core::ScopedLogCapture capture;
 
     REQUIRE (f.openSong->setPracticeSpeed (80).has_value());
-    f.pollUntil ([&] { return ! f.openSong->isPracticeRendering(); });
+    f.pollUntil ([&] { return ! f.openSong->listening().renders().isPracticeRendering(); });
 
     const auto started = eventsNamed (capture, "song.practice_speed_started");
     REQUIRE (started.size() == 1);
     CHECK (started[0].at ("scope") == "song");
-    CHECK (f.openSong->heardPracticeSpeed() == 80);
+    CHECK (f.openSong->listening().renders().heardPracticeSpeed() == 80);
     CHECK (f.rendersInFolder() == 1);
 }
 
@@ -186,17 +186,17 @@ TEST_CASE ("turning looping on while the whole Song renders renders the Loop's w
     LoopRenderFixture f { 80 };
     REQUIRE (f.openSong->setActiveLoop ("loop", false).has_value());
     REQUIRE (f.openSong->setPracticeSpeed (80).has_value());
-    REQUIRE (f.openSong->isPracticeRendering());
+    REQUIRE (f.openSong->listening().renders().isPracticeRendering());
     overdub::core::ScopedLogCapture capture;
 
     // The Loop is drilled at 80% too: looping changes only what renders first.
     REQUIRE (f.openSong->setLooping (true).has_value());
-    f.pollUntil ([&] { return ! f.openSong->isPracticeRendering(); });
+    f.pollUntil ([&] { return ! f.openSong->listening().renders().isPracticeRendering(); });
 
     CHECK (eventsNamed (capture, "song.practice_speed_cancelled").size() == 1);
     const auto started = eventsNamed (capture, "song.practice_speed_started");
     REQUIRE (started.size() == 2);
     CHECK (started[0].at ("scope") == "loop");
     CHECK (started[1].at ("scope") == "song");
-    CHECK (f.openSong->heardPracticeSpeed() == 80);
+    CHECK (f.openSong->listening().renders().heardPracticeSpeed() == 80);
 }

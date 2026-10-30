@@ -110,6 +110,7 @@ target_sources(overdub_tests PRIVATE
     ui/KeyBurstCommitTest.cpp
     ui/LastSongTest.cpp
     ui/LayoutTest.cpp
+    ui/ListeningTest.cpp
     ui/ListeningRendersTest.cpp
     ui/MainComponentTest.cpp
     ui/MixerGeometryTest.cpp

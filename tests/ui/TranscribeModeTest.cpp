@@ -202,7 +202,7 @@ TEST_CASE ("the Transcribe column's Practice Speed and Transpose run the top bar
     const ScopedLogCapture capture;
 
     page.column.practiceSpeedField.setText ("80", juce::sendNotificationSync);
-    CHECK (f.openSong->practiceSpeed() == 80);
+    CHECK (f.openSong->listening().practiceSpeed() == 80);
     CHECK (page.column.practiceSpeedField.getText() == "80");
     CHECK (f.window->topBar.practiceSpeedField.getText() == "80");
 
@@ -227,7 +227,7 @@ TEST_CASE ("the Transcribe column's Practice Speed and Transpose run the top bar
     CHECK (page.column.transposeCentsField.getText() == "0");
 
     page.column.practiceSpeedField.setText ("fast", juce::sendNotificationSync);
-    CHECK (f.openSong->practiceSpeed() == 80);
+    CHECK (f.openSong->listening().practiceSpeed() == 80);
     CHECK (page.column.practiceSpeedField.getText() == "80");
 
     std::vector<std::string> ops;

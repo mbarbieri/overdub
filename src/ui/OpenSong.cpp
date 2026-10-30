@@ -28,12 +28,12 @@ OpenSong::OpenSong (std::unique_ptr<song::SongPackage> package, AudioBinding aud
                package_->song().sampleRate,
                blockSizeOf (audio)),
       playback (package_->location()),
-      renders (package_->location(), package_->song(), [this] { reloadEngine(); })
+      listening_ (package_->location(), package_->song(), [this] { reloadEngine(); })
 {
     package_->setPluginStateCapture ([this] (song::Song& song) { capturePluginState (song); });
     inserts.sync (song());
     attachAudio (std::move (audio));
-    followRenders(); // starts the missing Transpose renders
+    listening_.follow (song()); // starts the missing Transpose renders
 }
 
 OpenSong::~OpenSong()
@@ -195,7 +195,7 @@ core::Expected<void> OpenSong::startPass (song::SampleCount recordPoint, bool pl
 
     beginActivity (PassActivity { .recorder = std::move (*started), .number = passNumber, .preRollPoint = options.recordPoint });
     // A Mixer preview still applied (a drag the Pass interrupts) gives way to the Song's mix.
-    binding.engine->setMix (heardSong());
+    binding.engine->setMix (heard().song);
     if (usePreRoll)
     {
         const auto playFrom = std::max<song::SampleCount> (0, recordPoint - preRollSamples);
@@ -271,42 +271,13 @@ core::Expected<void> OpenSong::setPracticeSpeed (int speedPercent)
         return std::unexpected (std::move (*refused));
     if (auto checked = song::checkPracticeSpeed (speedPercent); ! checked.has_value())
         return std::unexpected (std::move (checked.error()));
-    // The same value again tries the renders that failed again.
-    changePracticeTarget (speedPercent);
-    if (heardLoop().has_value())
-        storeActiveLoopPracticeSpeed();
+    if (auto withLoopSpeed = listening_.setPracticeSpeed (song(), speedPercent))
+    {
+        package_->changeWithoutHistory (std::move (*withLoopSpeed));
+        core::logEvent (core::Level::info, "ui.loop_practice_speed_set", { { "loop_id", song().activeLoopId.value_or ("") }, { "speed_percent", speedPercent } });
+    }
+    listening_.follow (song());
     return {};
-}
-
-void OpenSong::changePracticeTarget (int speedPercent)
-{
-    if (speedPercent != practiceTarget)
-        core::logEvent (core::Level::info, "ui.practice_speed_set", { { "from_percent", practiceTarget }, { "to_percent", speedPercent } });
-    practiceTarget = speedPercent;
-    renders.retryPracticeRenders();
-    followRenders();
-}
-
-void OpenSong::storeActiveLoopPracticeSpeed()
-{
-    const auto* loop = song::activeLoop (song());
-    OVERDUB_CHECK (loop != nullptr, "ui.no_active_loop_for_practice_speed");
-    if (loop->practiceSpeedPercent == practiceTarget)
-        return;
-    const auto loopId = loop->id;
-    auto changed = song::setLoopPracticeSpeed (song(), loopId, practiceTarget);
-    OVERDUB_CHECK (changed.has_value(), "ui.loop_practice_speed_unset");
-    package_->changeWithoutHistory (std::move (*changed));
-    core::logEvent (core::Level::info, "ui.loop_practice_speed_set", { { "loop_id", loopId }, { "speed_percent", practiceTarget } });
-}
-
-void OpenSong::applyHeardLoopPracticeSpeed()
-{
-    const auto* loop = heardLoop().has_value() ? song::activeLoop (song()) : nullptr;
-    if (loop == nullptr || ! practiceSpeedMayChange())
-        return;
-    if (loop->practiceSpeedPercent != practiceTarget)
-        changePracticeTarget (loop->practiceSpeedPercent);
 }
 
 bool OpenSong::practiceSpeedMayChange() const
@@ -355,31 +326,20 @@ void OpenSong::setExportDestination (const std::string& path)
 
 void OpenSong::setTranscribing (bool on)
 {
-    if (on == transcribing)
+    if (on == listening_.isTranscribing())
         return;
-    const auto shiftedBefore = octaveShiftedTrack();
-    transcribing = on;
-    core::logEvent (core::Level::debug, "ui.transcribe_mix_heard", { { "heard", on } });
-    if (binding.engine != nullptr && (octaveShiftedTrack() != shiftedBefore || ! binding.engine->setMix (heardSong())))
-        reloadEngine();
-    syncTranscribeListening();
-    // Record and Edit play at 100%; Transcribe brings back the looping Loop's speed (ADR 0010).
-    if (! on && practiceTarget != song::normalPracticeSpeed && practiceSpeedMayChange())
-        changePracticeTarget (song::normalPracticeSpeed);
-    applyHeardLoopPracticeSpeed();
-    followRenders(); // the Loop's window renders first
+    const auto before = heard();
+    listening_.setTranscribing (song(), on, practiceSpeedMayChange());
+    hearChange (before);
 }
 
 core::Expected<void> OpenSong::setActiveLoop (const std::optional<song::Id>& loopId, bool looping)
 {
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
-    auto changed = changeTranscribeMix (song::setActiveLoop (song(), loopId, looping));
-    if (! changed.has_value())
-        return changed;
-    core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().looping } });
-    applyHeardLoopPracticeSpeed();
-    followRenders(); // the Loop's window renders first
+    auto changed = changeHeardLoop (song::setActiveLoop (song(), loopId, looping));
+    if (changed.has_value())
+        core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().looping } });
     return changed;
 }
 
@@ -387,56 +347,60 @@ core::Expected<void> OpenSong::setLooping (bool looping)
 {
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
-    auto changed = changeTranscribeMix (song::setLooping (song(), looping));
-    if (! changed.has_value())
-        return changed;
-    core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
-    applyHeardLoopPracticeSpeed();
-    followRenders(); // the Loop's window renders first
+    auto changed = changeHeardLoop (song::setLooping (song(), looping));
+    if (changed.has_value())
+        core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
     return changed;
 }
 
-std::optional<engine::LoopRange> OpenSong::heardLoop() const
-{
-    const auto* loop = song::activeLoop (song());
-    if (! transcribing || ! song().looping || loop == nullptr)
-        return std::nullopt;
-    return engine::LoopRange { loop->start, loop->end };
-}
-
-void OpenSong::syncTranscribeListening()
-{
-    if (binding.engine == nullptr)
-        return;
-    binding.engine->setLoop (heardLoop());
-    binding.engine->setBandFilter (heardBandFilter());
-}
-
-core::Expected<void> OpenSong::changeTranscribeMix (core::Expected<song::Song> changed)
+core::Expected<void> OpenSong::changeListening (core::Expected<song::Song> changed)
 {
     if (! changed.has_value())
         return std::unexpected (std::move (changed.error()));
     if (*changed == song())
         return {};
-    const auto shiftedBefore = std::pair (octaveShiftedTrack(), song::focusOctaveShift (song()));
+    const auto before = heard();
     package_->changeWithoutHistory (std::move (*changed));
-    const auto shiftChanged = std::pair (octaveShiftedTrack(), song::focusOctaveShift (song())) != shiftedBefore;
-    if (binding.engine != nullptr && (shiftChanged || ! binding.engine->setMix (heardSong())))
-        reloadEngine();
-    syncTranscribeListening();
+    hearChange (before);
     return {};
+}
+
+core::Expected<void> OpenSong::changeHeardLoop (core::Expected<song::Song> changed)
+{
+    if (! changed.has_value())
+        return std::unexpected (std::move (changed.error()));
+    const auto before = heard();
+    if (*changed != song())
+        package_->changeWithoutHistory (std::move (*changed));
+    listening_.hearLoopPracticeSpeed (song(), practiceSpeedMayChange());
+    hearChange (before);
+    return {};
+}
+
+void OpenSong::hearChange (const Heard& before)
+{
+    const auto after = heard();
+    const auto sameShift = before.octaveShiftedTrack == after.octaveShiftedTrack && before.octaveShift == after.octaveShift;
+    const auto mixApplied = binding.engine != nullptr && sameShift && song::differsOnlyInMix (before.song, after.song) && binding.engine->setMix (after.song);
+    if (mixApplied)
+    {
+        binding.engine->setLoop (after.loop);
+        binding.engine->setBandFilter (after.bandFilter);
+    }
+    else
+    {
+        reloadEngine(); // syncs the InsertHost, also without an engine
+    }
+    listening_.follow (song());
 }
 
 core::Expected<void> OpenSong::setFocusTrack (const std::optional<song::Id>& trackId)
 {
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
-    auto changed = changeTranscribeMix (song::setFocusTrack (song(), trackId));
+    auto changed = changeListening (song::setFocusTrack (song(), trackId));
     if (changed.has_value())
-    {
         core::logEvent (core::Level::info, "ui.focus_track_set", { { "track_id", trackId.value_or ("") } });
-        followRenders();
-    }
     return changed;
 }
 
@@ -444,12 +408,9 @@ core::Expected<void> OpenSong::setOctaveShift (const song::Id& trackId, int octa
 {
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
-    auto changed = changeTranscribeMix (song::setOctaveShift (song(), trackId, octaves));
+    auto changed = changeListening (song::setOctaveShift (song(), trackId, octaves));
     if (changed.has_value())
-    {
         core::logEvent (core::Level::info, "ui.octave_shift_set", { { "track_id", trackId }, { "octaves", octaves } });
-        followRenders();
-    }
     return changed;
 }
 
@@ -457,41 +418,19 @@ core::Expected<void> OpenSong::setBandFilter (const song::Id& trackId, song::Ban
 {
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
-    auto changed = changeTranscribeMix (song::setBandFilter (song(), trackId, filter));
+    auto changed = changeListening (song::setBandFilter (song(), trackId, filter));
     if (changed.has_value())
-    {
         core::logEvent (core::Level::info, "ui.band_filter_set", { { "track_id", trackId }, { "on", filter.on }, { "low_hz", filter.lowHz }, { "high_hz", filter.highHz } });
-        followRenders();
-    }
     return changed;
-}
-
-std::optional<engine::HeardBandFilter> OpenSong::heardBandFilter() const
-{
-    const auto* track = song::focusTrack (song());
-    if (! transcribing || track == nullptr || ! track->bandFilter.on)
-        return std::nullopt;
-    return engine::HeardBandFilter { .trackId = track->id, .lowHz = track->bandFilter.lowHz, .highHz = track->bandFilter.highHz };
-}
-
-std::optional<song::Id> OpenSong::octaveShiftedTrack() const
-{
-    const auto* track = song::focusTrack (song());
-    if (! transcribing || track == nullptr || track->octaveShift == 0)
-        return std::nullopt;
-    return track->id;
 }
 
 core::Expected<void> OpenSong::setTranscribeMute (const song::Id& trackId, bool mute)
 {
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
-    auto changed = changeTranscribeMix (song::setTranscribeMute (song(), trackId, mute));
+    auto changed = changeListening (song::setTranscribeMute (song(), trackId, mute));
     if (changed.has_value())
-    {
         core::logEvent (core::Level::debug, "ui.transcribe_mute_set", { { "track_id", trackId }, { "mute", mute } });
-        followRenders();
-    }
     return changed;
 }
 
@@ -499,12 +438,9 @@ core::Expected<void> OpenSong::setTranscribeSolo (const song::Id& trackId, bool 
 {
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
-    auto changed = changeTranscribeMix (song::setTranscribeSolo (song(), trackId, solo));
+    auto changed = changeListening (song::setTranscribeSolo (song(), trackId, solo));
     if (changed.has_value())
-    {
         core::logEvent (core::Level::debug, "ui.transcribe_solo_set", { { "track_id", trackId }, { "solo", solo } });
-        followRenders();
-    }
     return changed;
 }
 
@@ -529,7 +465,7 @@ core::Expected<void> OpenSong::playOrStop()
         stop();
         return {};
     }
-    if (const auto loop = heardLoop(); loop.has_value())
+    if (const auto loop = heard().loop; loop.has_value())
     {
         const auto position = binding.engine->position();
         if (position < loop->start || position >= loop->end)
@@ -568,7 +504,7 @@ core::Expected<void> OpenSong::edit (song::Song changed, std::string label)
 {
     if (auto refused = refusal (activity, Gesture::edit))
         return std::unexpected (std::move (*refused));
-    const auto before = song();
+    const auto before = heard();
     auto result = package_->edit (std::move (changed), std::move (label));
     updateEngine (before);
     return result;
@@ -597,7 +533,7 @@ core::Expected<void> OpenSong::previewMix (const song::Song& candidate)
     if (auto refused = refusal (activity, Gesture::previewMix))
         return std::unexpected (std::move (*refused));
     if (binding.engine != nullptr && song::differsOnlyInMix (song(), candidate))
-        binding.engine->setMix (withHeardMix (candidate));
+        binding.engine->setMix (listening_.withHeardMix (candidate));
     return {};
 }
 
@@ -621,7 +557,7 @@ core::Expected<void> OpenSong::undo()
 {
     if (auto refused = refusal (activity, Gesture::undo))
         return std::unexpected (std::move (*refused));
-    const auto before = song();
+    const auto before = heard();
     auto result = package_->undo();
     updateEngine (before);
     return result;
@@ -631,7 +567,7 @@ core::Expected<void> OpenSong::redo()
 {
     if (auto refused = refusal (activity, Gesture::redo))
         return std::unexpected (std::move (*refused));
-    const auto before = song();
+    const auto before = heard();
     auto result = package_->redo();
     updateEngine (before);
     return result;
@@ -673,7 +609,7 @@ std::vector<core::Expected<song::Id>> OpenSong::importFiles (const std::vector<j
         return std::vector<core::Expected<song::Id>> (files.size(), std::unexpected (*refused));
     auto results = package_->importBackingTracks (files);
     reloadEngine();
-    followRenders();
+    listening_.follow (song());
     return results;
 }
 
@@ -726,7 +662,7 @@ std::optional<core::Error> OpenSong::advanceSeparation (song::SongPackage::Clock
     reloadEngine();
     if (! ended->has_value())
         return ended->error();
-    followRenders();
+    listening_.follow (song());
     return std::nullopt;
 }
 
@@ -771,7 +707,7 @@ std::optional<core::Error> OpenSong::advanceConversion (song::SongPackage::Clock
     auto* conversion = std::get_if<ConversionActivity> (&activity);
     if (conversion == nullptr)
         return std::nullopt;
-    const auto before = song();
+    const auto before = heard();
     auto ended = conversion->run->advance (now);
     if (! ended.has_value())
         return std::nullopt;
@@ -785,7 +721,7 @@ std::optional<core::Error> OpenSong::advanceConversion (song::SongPackage::Clock
 std::vector<core::Error> OpenSong::poll (song::SongPackage::Clock::time_point now)
 {
     auto errors = handleCrashes();
-    for (auto& error : renders.advance (song(), listeningWanted(), now))
+    for (auto& error : listening_.advance (song(), now))
         errors.push_back (std::move (error));
     for (auto& error : handleCameraChanges())
         errors.push_back (std::move (error));
@@ -1027,24 +963,18 @@ capture::SampleCount OpenSong::cameraCalibrationSamples (const std::string& came
     return capture::calibrationSamples (offsetMs.value_or (0.0), song().sampleRate);
 }
 
-void OpenSong::updateEngine (const song::Song& before)
+void OpenSong::updateEngine (const Heard& before)
 {
-    if (before.sampleRate != song().sampleRate)
+    if (before.song.sampleRate != song().sampleRate)
     {
         // The device runs at the old rate: the owner opens it again at the new one.
-        core::logEvent (core::Level::info, "ui.song_rate_changed", { { "from_rate", before.sampleRate }, { "to_rate", song().sampleRate } });
+        core::logEvent (core::Level::info, "ui.song_rate_changed", { { "from_rate", before.song.sampleRate }, { "to_rate", song().sampleRate } });
         for (const auto& error : detachAudio())
             core::logError (error);
         sampleRateChanged = true;
         return;
     }
-    if (binding.engine != nullptr && song::differsOnlyInMix (before, song()) && binding.engine->setMix (heardSong()))
-    {
-        syncTranscribeListening();
-        return;
-    }
-    reloadEngine();
-    followRenders();
+    hearChange (before);
 }
 
 void OpenSong::reloadEngine()
@@ -1055,31 +985,12 @@ void OpenSong::reloadEngine()
         return;
     }
     inserts.sync (song());
-    if (binding.engine != nullptr)
-        binding.engine->loadSong (heardSong(), package_->location(), inserts.insertFactory(), monitored, renders.practicePlayback (song(), listeningWanted()));
-    syncTranscribeListening();
-}
-
-song::Song OpenSong::heardSong() const
-{
-    auto heard = withHeardMix (song());
-    heard.transpose = renders.heardTranspose();
-    return heard;
-}
-
-song::Song OpenSong::withHeardMix (song::Song candidate) const
-{
-    return transcribing ? song::withTranscribeMix (std::move (candidate)) : candidate;
-}
-
-ListeningWanted OpenSong::listeningWanted() const
-{
-    return { .practiceSpeedPercent = practiceTarget, .heardLoop = heardLoop(), .octaveShiftedTrack = octaveShiftedTrack() };
-}
-
-void OpenSong::followRenders()
-{
-    renders.follow (song(), listeningWanted());
+    if (binding.engine == nullptr)
+        return;
+    const auto heardNow = heard();
+    binding.engine->loadSong (heardNow.song, package_->location(), inserts.insertFactory(), monitored, listening_.practicePlayback (song()));
+    binding.engine->setLoop (heardNow.loop);
+    binding.engine->setBandFilter (heardNow.bandFilter);
 }
 
 core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, song::SongPackage::Clock::time_point now)

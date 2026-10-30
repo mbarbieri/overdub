@@ -169,6 +169,26 @@ TEST_CASE ("adding an Insert is one undo step, and the plugin is heard with its 
     CHECK (f.engine.latencySamples() == 96);
 }
 
+TEST_CASE ("without audio an Insert added, undone and redone starts and stops loading at once", "[ui][open_song][inserts]")
+{
+    FakeInstantiator fake;
+    auto fixture = threeTrackFixture();
+    OpenSong openSong { std::move (fixture->package), AudioBinding {}, fake.instantiator() };
+    const auto& tracks = openSong.song().tracks;
+    const auto guitar = std::ranges::find (tracks, std::string ("Guitar"), &overdub::song::Track::name);
+    REQUIRE (guitar != tracks.end());
+
+    const auto slotId = openSong.addInsert (guitar->id, testPlugin);
+
+    REQUIRE (slotId.has_value());
+    CHECK (openSong.insertStatus (*slotId) == InsertStatus::loading);
+    CHECK (fake.requests.size() == 1);
+    REQUIRE (openSong.undo().has_value());
+    CHECK_FALSE (openSong.insertStatus (*slotId).has_value());
+    REQUIRE (openSong.redo().has_value());
+    CHECK (openSong.insertStatus (*slotId) == InsertStatus::loading);
+}
+
 TEST_CASE ("a plugin's latency change rebuilds the plan at the next poll", "[ui][open_song][inserts]")
 {
     FakeInstantiator fake;

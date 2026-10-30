@@ -64,6 +64,8 @@ json transportSection (const ui::OpenSong* song)
 {
     if (song == nullptr)
         return nullptr;
+    const auto heard = song->heard();
+    const auto& renders = song->listening().renders();
     return {
         { "playing", song->isPlaying() },
         { "position", song->position() },
@@ -71,18 +73,18 @@ json transportSection (const ui::OpenSong* song)
         { "running_pass_start", orNull (song->runningPassStart()) },
         { "running_pass_number", song->recordingPassNumber() },
         { "saving_pass", song->isSavingPass() },
-        { "heard_transpose", song->heardTranspose().semitones },
-        { "heard_transpose_cents", song->heardTranspose().cents },
+        { "heard_transpose", renders.heardTranspose().semitones },
+        { "heard_transpose_cents", renders.heardTranspose().cents },
         { "transposing", song->isTransposing() },
-        { "transpose_rendering", song->isTransposeRendering() },
-        { "practice_speed", song->practiceSpeed() },
-        { "heard_practice_speed", song->heardPracticeSpeed() },
-        { "practice_rendering", song->isPracticeRendering() },
-        { "transcribe_mix_heard", song->isTranscribing() },
-        { "octave_shifted_track", orNull (song->octaveShiftedTrack()) },
-        { "octave_rendering", song->isOctaveRendering() },
-        { "heard_band_filter", heardBandFilterJson (song->heardBandFilter()) },
-        { "heard_loop", heardLoopJson (song->heardLoop()) },
+        { "transpose_rendering", renders.isTransposeRendering() },
+        { "practice_speed", song->listening().practiceSpeed() },
+        { "heard_practice_speed", renders.heardPracticeSpeed() },
+        { "practice_rendering", renders.isPracticeRendering() },
+        { "transcribe_mix_heard", song->listening().isTranscribing() },
+        { "octave_shifted_track", orNull (heard.octaveShiftedTrack) },
+        { "octave_rendering", renders.isOctaveRendering() },
+        { "heard_band_filter", heardBandFilterJson (heard.bandFilter) },
+        { "heard_loop", heardLoopJson (heard.loop) },
     };
 }
 

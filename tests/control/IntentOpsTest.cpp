@@ -432,12 +432,12 @@ TEST_CASE ("set_practice_speed takes a whole percent from 25 to 125, outside his
 
     const auto done = socket.request (R"({"id": 1, "op": "set_practice_speed", "speed_percent": 80})");
     CHECK (done.at ("ok") == true);
-    CHECK (socket.f.openSong->practiceSpeed() == 80);
+    CHECK (socket.f.openSong->listening().practiceSpeed() == 80);
     CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
 
     const auto slowest = socket.request (R"({"id": 7, "op": "set_practice_speed", "speed_percent": 25})");
     CHECK (slowest.at ("ok") == true);
-    CHECK (socket.f.openSong->practiceSpeed() == 25);
+    CHECK (socket.f.openSong->listening().practiceSpeed() == 25);
     CHECK (socket.f.openSong->package().undoLabel() == undoLabel);
     CHECK (socket.request (R"({"id": 8, "op": "set_practice_speed", "speed_percent": 80})").at ("ok") == true);
 
@@ -457,7 +457,7 @@ TEST_CASE ("set_practice_speed takes a whole percent from 25 to 125, outside his
         CHECK (refused.at ("error").at ("code") == "control.bad_field");
         CHECK (refused.at ("error").at ("fields").at ("key") == "speed_percent");
     }
-    CHECK (socket.f.openSong->practiceSpeed() == 80);
+    CHECK (socket.f.openSong->listening().practiceSpeed() == 80);
 }
 
 TEST_CASE ("set_focus_track takes a Track id, or null or no track_id for none, and set_transcribe_mute and set_transcribe_solo a Track id, all outside history", "[control][intent_ops][transcribe]")

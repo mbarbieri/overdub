@@ -460,7 +460,7 @@ KeyContext MainComponent::keyContext() const
     for (const auto& loop : song.loops)
         context.loopIds.push_back (loop.id);
     context.loopStartPending = songContent->loopStartPending().has_value();
-    context.practiceSpeed = songContent->currentSong().practiceSpeed();
+    context.practiceSpeed = songContent->currentSong().listening().practiceSpeed();
     return context;
 }
 

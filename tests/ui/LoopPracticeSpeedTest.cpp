@@ -89,7 +89,7 @@ TEST_CASE ("a new Loop takes the current Practice Speed, and activating a Loop i
     setSpeed (f, 40);
     const auto solo = addLoop (f, 24000, 48000);
     CHECK (loopSpeed (f, solo) == 40);
-    CHECK (f.openSong->practiceSpeed() == 40);
+    CHECK (f.openSong->listening().practiceSpeed() == 40);
 
     // Not looping: the speed is the Practice Speed's alone.
     run (f, SongIntent { intent::SetLooping { false } });
@@ -97,13 +97,13 @@ TEST_CASE ("a new Loop takes the current Practice Speed, and activating a Loop i
     CHECK (loopSpeed (f, solo) == 40);
     const auto riff = addLoop (f, 60000, 84000);
     CHECK (loopSpeed (f, riff) == 75);
-    CHECK (f.openSong->practiceSpeed() == 75);
+    CHECK (f.openSong->listening().practiceSpeed() == 75);
 
     run (f, SongIntent { intent::SelectLoop { solo } });
-    CHECK (f.openSong->practiceSpeed() == 40);
+    CHECK (f.openSong->listening().practiceSpeed() == 40);
     run (f, SongIntent { intent::SelectAdjacentLoop { Direction::forward } });
     CHECK (f.song().activeLoopId == riff);
-    CHECK (f.openSong->practiceSpeed() == 75);
+    CHECK (f.openSong->listening().practiceSpeed() == 75);
     CHECK (loopSpeed (f, solo) == 40);
     CHECK (loopSpeed (f, riff) == 75);
 
@@ -111,12 +111,12 @@ TEST_CASE ("a new Loop takes the current Practice Speed, and activating a Loop i
     run (f, SongIntent { intent::SetLooping { false } });
     setSpeed (f, 100);
     run (f, SongIntent { intent::SetLooping { true } });
-    CHECK (f.openSong->practiceSpeed() == 75);
+    CHECK (f.openSong->listening().practiceSpeed() == 75);
 
     // In Edit a click only selects a Loop: the Practice Speed stays at 100%.
     showMode (f, Mode::edit);
     run (f, SongIntent { intent::SelectLoop { solo } });
-    CHECK (f.openSong->practiceSpeed() == 100);
+    CHECK (f.openSong->listening().practiceSpeed() == 100);
     const auto verse = addLoop (f, 96000, 120000);
     CHECK (loopSpeed (f, verse) == 100);
     CHECK (loopSpeed (f, solo) == 40);
@@ -133,17 +133,17 @@ TEST_CASE ("while a Loop loops in Transcribe mode the field, H, - and = change i
 
     auto& field = f.window->songView()->transcribePage.column.practiceSpeedField;
     field.setText ("60", juce::sendNotificationSync);
-    CHECK (f.openSong->practiceSpeed() == 60);
+    CHECK (f.openSong->listening().practiceSpeed() == 60);
     CHECK (loopSpeed (f, loopId) == 60);
     press (f, 'h');
-    CHECK (f.openSong->practiceSpeed() == 50);
+    CHECK (f.openSong->listening().practiceSpeed() == 50);
     CHECK (loopSpeed (f, loopId) == 50);
     press (f, '=');
-    CHECK (f.openSong->practiceSpeed() == 55);
+    CHECK (f.openSong->listening().practiceSpeed() == 55);
     CHECK (loopSpeed (f, loopId) == 55);
     press (f, '-');
     press (f, '-');
-    CHECK (f.openSong->practiceSpeed() == 45);
+    CHECK (f.openSong->listening().practiceSpeed() == 45);
     CHECK (loopSpeed (f, loopId) == 45);
     CHECK (countEvents (capture, "ui.loop_practice_speed_set") == 5);
 
@@ -154,7 +154,7 @@ TEST_CASE ("while a Loop loops in Transcribe mode the field, H, - and = change i
     run (f, SongIntent { intent::Undo {} });
     CHECK (song::findLoop (f.song(), loopId)->name == "Loop 1");
     CHECK (loopSpeed (f, loopId) == 70);
-    CHECK (f.openSong->practiceSpeed() == 70);
+    CHECK (f.openSong->listening().practiceSpeed() == 70);
 }
 
 TEST_CASE ("leaving Transcribe mode sets the Practice Speed to 100%, and coming back while a Loop loops reapplies its speed", "[ui][loops][practice_speed][transcribe]")
@@ -163,25 +163,25 @@ TEST_CASE ("leaving Transcribe mode sets the Practice Speed to 100%, and coming 
     showMode (f, Mode::transcribe);
     setSpeed (f, 40);
     const auto loopId = addLoop (f, 24000, 48000);
-    REQUIRE (f.openSong->practiceSpeed() == 40);
+    REQUIRE (f.openSong->listening().practiceSpeed() == 40);
 
     const auto mode = GENERATE (Mode::record, Mode::edit);
     showMode (f, mode);
-    CHECK (f.openSong->practiceSpeed() == 100);
+    CHECK (f.openSong->listening().practiceSpeed() == 100);
     CHECK (loopSpeed (f, loopId) == 40);
     // A speed set outside Transcribe mode is not the Loop's.
     setSpeed (f, 80);
     CHECK (loopSpeed (f, loopId) == 40);
 
     showMode (f, Mode::transcribe);
-    CHECK (f.openSong->practiceSpeed() == 40);
+    CHECK (f.openSong->listening().practiceSpeed() == 40);
 
     // Coming back without looping keeps 100%.
     run (f, SongIntent { intent::SetLooping { false } });
     showMode (f, mode);
-    CHECK (f.openSong->practiceSpeed() == 100);
+    CHECK (f.openSong->listening().practiceSpeed() == 100);
     showMode (f, Mode::transcribe);
-    CHECK (f.openSong->practiceSpeed() == 100);
+    CHECK (f.openSong->listening().practiceSpeed() == 100);
     CHECK (loopSpeed (f, loopId) == 40);
 }
 
@@ -202,17 +202,17 @@ TEST_CASE ("each Loop's speed is saved in the Song and comes back after reopenin
     CHECK (loopSpeed (f, solo) == 40);
     CHECK (loopSpeed (f, riff) == 75);
     // Reopened in Transcribe mode with the riff looping: its speed.
-    CHECK (f.openSong->practiceSpeed() == 75);
+    CHECK (f.openSong->listening().practiceSpeed() == 75);
     run (f, SongIntent { intent::SelectLoop { solo } });
-    CHECK (f.openSong->practiceSpeed() == 40);
+    CHECK (f.openSong->listening().practiceSpeed() == 40);
     REQUIRE (f.openSong->package().flush().has_value());
 
     showMode (f, Mode::edit);
     reopenSong (f);
-    CHECK (f.openSong->practiceSpeed() == 100);
+    CHECK (f.openSong->listening().practiceSpeed() == 100);
     CHECK (f.song().activeLoopId == solo);
     showMode (f, Mode::transcribe);
-    CHECK (f.openSong->practiceSpeed() == 40);
+    CHECK (f.openSong->listening().practiceSpeed() == 40);
 }
 
 TEST_CASE ("the Loop cards show each Loop's speed", "[ui][loops][practice_speed][transcribe]")

@@ -107,7 +107,7 @@ TEST_CASE ("Practice Speed typed in the window's top bar is no undo step, and an
     const auto undoLabel = f.openSong->package().undoLabel();
 
     field.setText ("80", juce::sendNotificationSync);
-    CHECK (f.openSong->practiceSpeed() == 80);
+    CHECK (f.openSong->listening().practiceSpeed() == 80);
     CHECK (f.openSong->package().undoLabel() == undoLabel);
     CHECK (field.getText() == "80");
     CHECK (field.findColour (juce::Label::backgroundColourId) == colours::accent);
@@ -115,7 +115,7 @@ TEST_CASE ("Practice Speed typed in the window's top bar is no undo step, and an
 
     core::ScopedLogCapture capture;
     field.setText ("24", juce::sendNotificationSync);
-    CHECK (f.openSong->practiceSpeed() == 80);
+    CHECK (f.openSong->listening().practiceSpeed() == 80);
     CHECK (field.getText() == "80");
     bool noticeShown = false;
     for (const auto& event : capture.events())
@@ -135,21 +135,21 @@ TEST_CASE ("in every mode H toggles half speed, and - and = step the Practice Sp
         INFO (modeName (mode));
         f.window->run (WindowIntent { intent::ShowMode { mode } });
         press ('h');
-        CHECK (f.openSong->practiceSpeed() == 50);
+        CHECK (f.openSong->listening().practiceSpeed() == 50);
         press ('h');
-        CHECK (f.openSong->practiceSpeed() == 100);
+        CHECK (f.openSong->listening().practiceSpeed() == 100);
         press ('-');
-        CHECK (f.openSong->practiceSpeed() == 95);
+        CHECK (f.openSong->listening().practiceSpeed() == 95);
         press ('=');
-        CHECK (f.openSong->practiceSpeed() == 100);
+        CHECK (f.openSong->listening().practiceSpeed() == 100);
     }
 
     for (int i = 0; i < 20; ++i)
         press ('-');
-    CHECK (f.openSong->practiceSpeed() == 25);
+    CHECK (f.openSong->listening().practiceSpeed() == 25);
     for (int i = 0; i < 30; ++i)
         press ('=');
-    CHECK (f.openSong->practiceSpeed() == 125);
+    CHECK (f.openSong->listening().practiceSpeed() == 125);
     CHECK (f.window->topBar.practiceSpeedField.getText() == "125");
     CHECK (f.openSong->package().undoLabel() == undoLabel);
 }

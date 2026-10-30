@@ -339,7 +339,7 @@ IntentResult SongView::selectMarker (const std::optional<song::Id>& markerId)
 IntentResult SongView::addLoop (song::SampleCount start, song::SampleCount end)
 {
     const auto loopId = song::makeId();
-    if (auto added = applyEdit (song::addLoop (openSong.song(), start, end, loopId, openSong.practiceSpeed()), song::addLoopLabel); ! added.has_value())
+    if (auto added = applyEdit (song::addLoop (openSong.song(), start, end, loopId, openSong.listening().practiceSpeed()), song::addLoopLabel); ! added.has_value())
         return added;
     pendingLoopStart.reset();
     // Transcribe's selectLoop activates it; Edit's only selects it.
@@ -894,10 +894,10 @@ void SongView::refresh (TopBarState& state)
     state.exportRefusal = codeOf (window.refusalOf (intent::ShowExport::op));
     state.canCancelExport = ! window.refusalOf (intent::CancelExport::op).has_value();
     state.transpose = song.transpose;
-    state.transposeRendering = openSong.isTransposeRendering();
+    state.transposeRendering = openSong.listening().renders().isTransposeRendering();
     state.canTranspose = ! window.refusalOf (intent::SetTranspose::op).has_value();
-    state.practiceSpeed = openSong.practiceSpeed();
-    state.practiceRendering = openSong.isPracticeRendering();
+    state.practiceSpeed = openSong.listening().practiceSpeed();
+    state.practiceRendering = openSong.listening().renders().isPracticeRendering();
     state.canSetPracticeSpeed = ! window.refusalOf (intent::SetPracticeSpeed::op).has_value();
     if (openSong.isExporting())
     {
@@ -957,7 +957,7 @@ void SongView::refresh (TopBarState& state)
             .transposeRendering = state.transposeRendering,
             .canTranspose = state.canTranspose,
             .canSetTranscribeMix = ! window.refusalOf (intent::SetFocusTrack::op).has_value(),
-            .octaveRendering = openSong.isOctaveRendering(),
+            .octaveRendering = openSong.listening().renders().isOctaveRendering(),
             .selectedMarker = selectedMarker(),
             .markersEditable = ! window.refusalOf (intent::MoveMarker::op).has_value(),
             .pendingLoopStart = pendingLoopStart,

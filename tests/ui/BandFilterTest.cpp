@@ -204,13 +204,13 @@ TEST_CASE ("only the Focus Track's band filter is heard, only in Transcribe mode
     run (f, SongIntent { setBandFilter (bassId, band) });
 
     CHECK_FALSE (f.engine.hasPendingPlan()); // set on the playing plan, not rebuilt
-    CHECK (f.openSong->heardBandFilter() == engine::HeardBandFilter { .trackId = bassId, .lowHz = 200, .highHz = 3200 });
+    CHECK (f.openSong->heard().bandFilter == engine::HeardBandFilter { .trackId = bassId, .lowHz = 200, .highHz = 3200 });
     CHECK (dbBetween (heardRms (f), unfiltered) <= -12.0);
 
     SECTION ("turned off, the output is the unfiltered one again")
     {
         run (f, SongIntent { setBandFilter (bassId, { .on = false, .lowHz = 200, .highHz = 3200 }) });
-        CHECK_FALSE (f.openSong->heardBandFilter().has_value());
+        CHECK_FALSE (f.openSong->heard().bandFilter.has_value());
         CHECK (std::abs (dbBetween (heardRms (f), unfiltered)) < 0.01);
     }
 
@@ -221,7 +221,7 @@ TEST_CASE ("only the Focus Track's band filter is heard, only in Transcribe mode
         run (f, SongIntent { intent::SetTranscribeSolo { bassId, false } });
         run (f, SongIntent { intent::SetTranscribeSolo { drumsId, true } });
         CHECK (f.song().focusTrackId == bassId);
-        CHECK_FALSE (f.openSong->heardBandFilter().has_value());
+        CHECK_FALSE (f.openSong->heard().bandFilter.has_value());
         CHECK (std::abs (dbBetween (heardRms (f), unfiltered)) < 0.01);
     }
 
@@ -229,7 +229,7 @@ TEST_CASE ("only the Focus Track's band filter is heard, only in Transcribe mode
     {
         run (f, SongIntent { intent::Edit { intent::SetTrackMute { drumsId, true } } });
         showMode (f, Mode::edit);
-        CHECK_FALSE (f.openSong->heardBandFilter().has_value());
+        CHECK_FALSE (f.openSong->heard().bandFilter.has_value());
         CHECK (std::abs (dbBetween (heardRms (f), unfiltered)) < 0.01);
         showMode (f, Mode::record);
         CHECK (std::abs (dbBetween (heardRms (f), unfiltered)) < 0.01);
@@ -273,11 +273,11 @@ TEST_CASE ("each Track keeps its own band filter: moving the Focus brings back t
     run (f, SongIntent { intent::SetFocusTrack { drumsId } });
     CHECK (column (f).filterLowField.getText() == "500");
     CHECK_FALSE (column (f).filterToggle.getToggleState());
-    CHECK_FALSE (f.openSong->heardBandFilter().has_value());
+    CHECK_FALSE (f.openSong->heard().bandFilter.has_value());
     run (f, SongIntent { intent::SetFocusTrack { bassId } });
     CHECK (column (f).filterLowField.getText() == "200");
     CHECK (column (f).filterToggle.getToggleState());
-    CHECK (f.openSong->heardBandFilter().has_value());
+    CHECK (f.openSong->heard().bandFilter.has_value());
 
     SECTION ("an undo keeps the filters as they are")
     {
@@ -295,6 +295,6 @@ TEST_CASE ("each Track keeps its own band filter: moving the Focus brings back t
         CHECK (f.trackNamed ("Bass").bandFilter == band);
         CHECK (f.trackNamed ("Drums").bandFilter == drumsFilter);
         CHECK (column (f).filterToggle.getToggleState());
-        CHECK (f.openSong->heardBandFilter() == engine::HeardBandFilter { .trackId = bassId, .lowHz = 200, .highHz = 3200 });
+        CHECK (f.openSong->heard().bandFilter == engine::HeardBandFilter { .trackId = bassId, .lowHz = 200, .highHz = 3200 });
     }
 }
