@@ -36,10 +36,10 @@
 // issue #31), and runs at most one activity at a time: a Pass (capture/PassRecorder.h), a
 // Separation, a sample rate conversion or an export (ui/Activity.h).
 //
-// Refusals (issue #145): ui/Activity.h's refusal() is the one table of which gestures each activity
-// refuses. A refused gesture changes nothing and returns that Error (ui.stop_recording_first,
-// ui.separation_running, ui.conversion_running or ui.export_running); importFiles returns it for
-// each file.
+// Refusals (issues #145, #195, #255): it refuses nothing. What may run now is ui/Availability.h's
+// answer, which MainComponent::run asks before any handler calls in here, so its callers call only
+// what the running activity allows. Starting an activity while another runs breaks that invariant:
+// it does nothing (ui.activity_already_running, an OVERDUB_CHECK).
 //
 // Invariant: every Pass it starts is finished by it. stop() asks the audio thread to
 // end the Pass; poll() (from the window's timer) ends its movie once the audio thread has ended
@@ -49,9 +49,8 @@
 // is still completing stays pending and poll() finishes it, with no engine. Destroying the
 // OpenSong waits for the movie and finishes the Pass.
 //
-// While a Pass runs (pre-roll included), only stop, play/stop and rewind act: undo, redo, edits,
-// seeks, import, arm, input, pre-roll, Monitoring, the camera, Mixer previews, export, Separation
-// and conversion are refused, so the Song and the engine's plan stay as the Pass started.
+// While a Pass runs (pre-roll included), only stop, play/stop and rewind are called: the Song and
+// the engine's plan stay as the Pass started.
 //
 // The camera (issue #35): the Song's camera arm and camera choice live outside history. While the
 // camera is Armed it is open (its live feed shows on the Record stage) and each Pass also records a
@@ -73,8 +72,7 @@
 // export's custody of the plugins: poll() tells it whether the audio thread has taken the empty
 // plan (Engine::hasPendingPlan), and it renders the Song through its own plan of the same graph,
 // sharing the plugins, or gives the export up after ExportRun::audioTimeout (issue #64). While it
-// runs, record, play, import, Track delete, Separation and conversion are refused
-// (ui.export_running), and edits change the Song but not the engine; the InsertHost follows them through the run (a removed slot stays hosted
+// runs, edits change the Song but not the engine; the InsertHost follows them through the run (a removed slot stays hosted
 // until the export ends, issue #65). When it ends, poll() reloads the engine with the current Song and
 // returns its Error. Without audio the export starts at once. Detaching the audio stops a running
 // export (logged as ui.export_stopped).
@@ -98,17 +96,13 @@
 // Separation (issue #114, ADR 0007): startSeparation stops the transport and starts a
 // song::SeparationRun on a Track's Backing Track with the tools set by setSeparationTools; poll()
 // advances it, and once it ends reloads the engine (the six new Tracks, the source Track muted) and
-// returns its Error. While it runs, record, play, edits, undo, redo, import, arm, input, pre-roll,
-// Monitoring, the camera, Mixer previews, export and conversion are refused (ui.separation_running):
-// the Separation dialog is modal, and the Song stays as the Separation started. It is refused while
-// a Pass (ui.stop_recording_first), a conversion (ui.conversion_running) or an export
-// (ui.export_running) runs. cancelSeparation() (the dialog's
-// Cancel) and closing the Song kill the helper; the Song is unchanged.
+// returns its Error. The Separation dialog is modal, and the Song stays as the Separation started.
+// cancelSeparation() (the dialog's Cancel) and closing the Song kill the helper; the Song is
+// unchanged.
 //
 // Sample rate conversion (issue #160, ADR 0004 amendment): startSampleRateConversion stops the
 // transport and starts a song::SampleRateConversionRun; poll() advances it and returns its Error.
-// While it runs the Song is locked as during a Separation (refused with ui.conversion_running,
-// export included), and it is refused while a Pass, an export or a Separation runs. When the
+// While it runs the Song is locked as during a Separation. When the
 // Song's rate changes (the conversion, or an undo or redo across one), the audio is detached at once
 // (nothing plays the Song at the wrong speed) and takeSampleRateChanged() tells the owner to open
 // the device at the new rate (logged as ui.song_rate_changed: from_rate, to_rate).
@@ -196,7 +190,7 @@ public:
     // True from record() until poll() (or detachAudio(), when the movie is complete) has finished the Pass (its movie completed).
     bool isRecording() const { return std::holds_alternative<PassActivity> (activity); }
     // True while isRecording() but the audio thread has ended the Pass: nothing is captured any more,
-    // the Pass is only being saved (its movie completing, issue #91). Gestures stay refused.
+    // the Pass is only being saved (its movie completing, issue #91).
     bool isSavingPass() const;
     // The number of the Pass being recorded (from 1); 0 when not recording.
     int recordingPassNumber() const;
@@ -212,7 +206,7 @@ public:
     // runs. With the transport stopped and the Song's pre-roll on (issue #32), playback starts that
     // many seconds before the playhead (at 0 at the earliest) and the Pass waits for the playhead,
     // its record point: only from there on is input captured.
-    // Errors: refusal()'s, audioProblem()'s, or PassRecorder::start's (capture.nothing_armed, ...).
+    // Errors: audioProblem()'s, or PassRecorder::start's (capture.nothing_armed, ...).
     core::Expected<void> record();
     // Record Again (issue #216): a new Pass, as record() starts one, at the record point of the
     // Song's most recent Pass, with the transport stopped there first so pre-roll applies. During a
@@ -227,27 +221,25 @@ public:
     void stop();
     // Plays, or stops (as stop()) when playing or recording. Does nothing without audio. While a
     // Loop is heard (heard().loop), playing starts at its start unless the playhead is inside it.
-    // Errors: refusal()'s.
-    core::Expected<void> playOrStop();
+    void playOrStop();
     // To the start of the Song; ends a running Pass (as stop()).
     void rewind();
-    // Moves the playhead to this Song sample (0 or later). Errors: refusal()'s.
-    core::Expected<void> seek (song::SampleCount sample);
+    // Moves the playhead to this Song sample (0 or later).
+    void seek (song::SampleCount sample);
 
-    // Errors: refusal()'s, SongPackage::undo / redo's (song.history_empty when there is no step).
+    // Errors: SongPackage::undo / redo's (song.history_empty when there is no step).
     core::Expected<void> undo();
     core::Expected<void> redo();
 
     // An undoable change (Edit mode's Clip operations): one history step named `label`, then the
     // engine plays the changed Song.
-    // Errors: refusal()'s, SongPackage::edit's.
+    // Errors: SongPackage::edit's.
     core::Expected<void> edit (song::Song changed, std::string label);
 
     // The engine plays this Song's mix (a Mixer gesture in progress) without changing the Song or
     // its history; does nothing without audio or unless it differs from the Song only in its mix.
     // A finished gesture is an edit(); an abandoned one previews song() again.
-    // Errors: refusal()'s.
-    core::Expected<void> previewMix (const song::Song& candidate);
+    void previewMix (const song::Song& candidate);
     // Each Mixer strip's peak since the previous call (Engine::takeMeterPeaks); none without audio.
     engine::MeterPeaks meterPeaks();
 
@@ -259,7 +251,7 @@ public:
     // Adds this AU at the end of the Track's Insert Chain (the Master's for an empty trackId) as
     // one undo step "Add AUDelay to Guitar"; it is heard once it has loaded. Returns the new
     // slot's id.
-    // Errors: refusal()'s, song.track_not_found, SongPackage::edit's.
+    // Errors: song.track_not_found, SongPackage::edit's.
     core::Expected<song::Id> addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin);
     // A plugin's state may have changed without a parameter report (its editor window closed):
     // schedules the debounced song.json write, which captures every plugin's state. No undo step.
@@ -272,7 +264,7 @@ public:
     // Starts exporting the mix (with the request's Video Take for an MP4, issue #38) to the
     // request's file (see the header comment); `now` starts ExportRun::audioTimeout. Does nothing
     // while an export runs.
-    // Errors: refusal()'s, ui.no_video_take (an MP4 without a Video Take of the Song),
+    // Errors: ui.no_video_take (an MP4 without a Video Take of the Song),
     // export.folder_missing (the destination's folder does not exist; it is not created), and
     // without audio ui.export_plugin_crashed (ExportRun's).
     core::Expected<void> startExport (exporting::ExportRequest request, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
@@ -301,23 +293,21 @@ public:
     // A Transcribe listening setting (ui/ListeningSettings.h): the Focus Track, the Transcribe Mix,
     // a Track's octave shift or band filter (see the header comment). Stored outside history (no
     // undo step) and heard at once (hearChange); nothing when the Song is unchanged. Logs
-    // logListeningSet's event. Errors: refusal()'s, withListeningSetting's.
+    // logListeningSet's event. Errors: withListeningSetting's.
     core::Expected<void> changeListening (const intent::ListeningSetting& setting);
 
     // Loops (issue #228, ADR 0010). The active Loop and looping are Song settings outside history
     // (song.json, no undo step, song/LoopEdits.h). The engine loops (Engine::setLoop) only while
     // transcribing, looping and with an active Loop: heard().loop. Logs ui.active_loop_set (info:
     // loop_id, "" for none, looping) and ui.looping_set (info: looping). Each Loop keeps its Practice
-    // Speed (issue #230, ui/Listening.h), except while refusal() refuses set_practice_speed.
-    // Errors: refusal()'s, song.loop_not_found; setLooping: song.no_active_loop.
+    // Speed (issue #230, ui/Listening.h), except while a Pass, a Separation or a conversion runs.
+    // Errors: song.loop_not_found; setLooping: song.no_active_loop.
     core::Expected<void> setActiveLoop (const std::optional<song::Id>& loopId, bool looping);
     core::Expected<void> setLooping (bool looping);
 
     // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
-    // Errors: refusal()'s.
     core::Expected<void> setPreRoll (song::PreRoll preRoll);
 
-    // Errors: refusal()'s.
     core::Expected<void> setArmed (const song::Id& trackId, bool armed);
     core::Expected<void> setInputChannels (const song::Id& trackId, std::vector<int> inputChannels);
     // The camera Video Takes are recorded from (not owned; it must outlive this OpenSong, or be
@@ -326,10 +316,10 @@ public:
     core::Expected<void> attachCamera (capture::Camera* camera, juce::File calibrationFile);
     // Arms (opening the Song's chosen camera, or the default one, which then becomes the choice) or
     // disarms (closing it) the camera. Without a camera, arming does nothing.
-    // Errors: refusal()'s, the camera's open() Errors (the camera stays disarmed).
+    // Errors: the camera's open() Errors (the camera stays disarmed).
     core::Expected<void> setCameraArmed (bool armed);
     // Chooses the camera (reopened when Armed).
-    // Errors: refusal()'s, the camera's open() Errors (the camera is then disarmed).
+    // Errors: the camera's open() Errors (the camera is then disarmed).
     core::Expected<void> setCameraDevice (const std::string& cameraId);
     // The cameras on offer, as listed when the camera was attached, armed or chosen.
     const std::vector<capture::CameraDevice>& cameraDevices() const { return cameras; }
@@ -337,19 +327,18 @@ public:
     void* cameraPreviewLayer() const;
 
     // Monitoring is transient (not in the Song): hearing an Armed Track's live input. The engine is
-    // given the monitored Tracks with the Song. Errors: refusal()'s.
-    core::Expected<void> setMonitoring (const song::Id& trackId, bool on);
+    // given the monitored Tracks with the Song.
+    void setMonitoring (const song::Id& trackId, bool on);
     bool isMonitoring (const song::Id& trackId) const { return monitored.contains (trackId); }
     const std::set<song::Id>& monitoredTracks() const { return monitored; }
 
-    // One Backing Track import per file (SongPackage::importBackingTracks); refusal()'s for each
-    // file while the activity refuses Gesture::changeTracks.
+    // One Backing Track import per file (SongPackage::importBackingTracks).
     std::vector<core::Expected<song::Id>> importFiles (const std::vector<juce::File>& files);
 
     // The model and helper a Separation uses (none by default: Separation is unavailable).
     void setSeparationTools (song::SeparationTools tools) { separationTools = std::move (tools); }
     // Starts separating the Track's Backing Track (see the header comment). Does nothing while one
-    // runs. Errors: refusal()'s, song::SeparationRun::start's.
+    // runs. Errors: song::SeparationRun::start's.
     core::Expected<void> startSeparation (const song::Id& trackId, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
     bool isSeparating() const { return std::holds_alternative<SeparationActivity> (activity); }
     // Cancels the running Separation (song::SeparationRun::cancel: the helper is killed, its
@@ -360,7 +349,7 @@ public:
     std::string separationSourceName() const;
 
     // Starts converting the Song to `toRate` (see the header comment). Does nothing while one runs.
-    // Errors: refusal()'s, song::SampleRateConversionRun::start's.
+    // Errors: song::SampleRateConversionRun::start's.
     core::Expected<void> startSampleRateConversion (int toRate, song::SongPackage::Clock::time_point now = song::SongPackage::Clock::now());
     bool isConverting() const { return std::holds_alternative<ConversionActivity> (activity); }
     // Stops the running conversion (its files deleted, the Song unchanged). Nothing when none runs.
@@ -382,7 +371,7 @@ public:
 
     // Sets the Practice Speed (see the header comment). The same value again tries its failed
     // renders again. While a Loop is heard it is also that Loop's Practice Speed, outside history
-    // (issue #230). Errors: refusal()'s, song.practice_speed_out_of_range.
+    // (issue #230). Errors: song.practice_speed_out_of_range.
     core::Expected<void> setPracticeSpeed (int speedPercent);
 
     // Call regularly (window timer): advances the Listening Renders (see the header comment), an export (starts it once the audio has let go of
@@ -411,13 +400,15 @@ private:
     // Engine::setMix when only the heard mix changed and the octave-shifted Track did not, else
     // reloadEngine), and the renders follow.
     void hearChange (const Heard& before);
-    // refusal() does not refuse set_practice_speed now.
+    // Neither a Pass, a Separation nor a conversion runs.
     bool practiceSpeedMayChange() const;
     // Advances a running conversion; once it ends, updates the engine and returns its Error.
     std::optional<core::Error> advanceConversion (song::SongPackage::Clock::time_point now);
     // After a history change: detaches the audio when the rate changed since `before`, else
     // hearChange.
     void updateEngine (const Heard& before);
+    // Nothing runs; logs ui.activity_already_running otherwise (see the header comment).
+    bool nothingRuns() const;
     // Every change of `activity` goes through these two, which count it in the ActivityLog.
     void beginActivity (Activity started);
     void endActivity (std::optional<std::string> errorCode);

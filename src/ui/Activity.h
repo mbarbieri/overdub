@@ -1,7 +1,6 @@
 #pragma once
 
 #include "capture/PassRecorder.h"
-#include "core/Error.h"
 #include "song/SampleRateConversion.h"
 #include "song/SeparationRun.h"
 #include "ui/ExportRun.h"
@@ -15,7 +14,7 @@
 #include <variant>
 
 // What an OpenSong runs besides playback (issue #145): nothing, a Pass, a Separation, a sample rate
-// conversion or an export, never two at once. refusal() is the one table of which gestures each activity refuses.
+// conversion or an export, never two at once. Which Intents each one refuses is ui/Availability.h's.
 namespace overdub::ui
 {
 struct Idle
@@ -49,43 +48,6 @@ struct ExportActivity
 
 using Activity = std::variant<Idle, PassActivity, SeparationActivity, ConversionActivity, ExportActivity>;
 
-// The OpenSong gestures some activity refuses. Stop, rewind and the export's Video Take choice are
-// never refused. Starting the activity that already runs (record during a Pass, startExport during
-// an export, startSeparation during a Separation, startSampleRateConversion during a conversion) is
-// not refused either: it does nothing.
-enum class Gesture
-{
-    record,
-    playOrStop,
-    seek,
-    edit,
-    undo,
-    redo,
-    addInsert,
-    previewMix,
-    setPreRoll,
-    setArmed,
-    setInputChannels,
-    setMonitoring,
-    setCameraArmed,
-    setCameraDevice,
-    changeTracks, // import, or delete a Track
-    showExport,
-    startExport,
-    startSeparation,
-    startSampleRateConversion,
-    setPracticeSpeed,
-    setTranscribeMix, // the Focus Track, Transcribe Mix mute and solo (issue #226)
-};
-
-// The Error the running activity refuses the gesture with: ui.stop_recording_first (a Pass),
-// ui.separation_running, ui.conversion_running, ui.export_running or ui.calibration_running (a
-// loopback latency calibration), with the field `gesture`. None when it is allowed.
-std::optional<core::Error> refusal (const Activity& activity, Gesture gesture);
-
-// Whether the Error is one refusal() returns (its code, with the field `gesture`).
-bool isRefusal (const core::Error& error);
-
 // What runs in the app (issue #167): an OpenSong's activity, or a Workspace's calibration run.
 enum class ActivityKind
 {
@@ -108,9 +70,6 @@ inline constexpr std::pair<ActivityKind, std::string_view> activityKindNames[] {
 };
 std::string_view activityKindName (ActivityKind kind);
 ActivityKind kindOf (const Activity& activity);
-// refusal() for what runs; idle and calibrationClap (measured at once, never seen running) refuse
-// nothing.
-std::optional<core::Error> refusal (ActivityKind kind, Gesture gesture);
 
 // How the last activity to finish ended: the code of the Error it ended with, none on success.
 struct ActivityFinish

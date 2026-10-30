@@ -301,3 +301,15 @@ TEST_CASE ("Record mode refuses making and editing Loops with ui.record_mode, pr
     }
     CHECK (refusalOf ("select_loop", Running { .song = ActivityKind::pass, .recordMode = true }).has_value());
 }
+
+TEST_CASE ("an Error is a refusal only with an activity's refusal code and the field gesture", "[ui][availability]")
+{
+    const auto refused = refusalOf ("record", Running { .song = ActivityKind::exportSong });
+    REQUIRE (refused.has_value());
+    CHECK (isRefusal (refused->error));
+    CHECK (isRefusal (refusalOf ("undo", Running { .song = ActivityKind::pass })->error));
+    CHECK (isRefusal (refusalOf ("record", Running { .song = ActivityKind::idle, .calibrating = true })->error));
+    CHECK_FALSE (isRefusal (refusalOf ("record", Running { .song = ActivityKind::separation })->error)); // the run dialog's
+    CHECK_FALSE (isRefusal (core::Error { "ui.export_running", "an export is running", {} }));
+    CHECK_FALSE (isRefusal (core::Error { "song.track_not_found", "no such Track", { { "gesture", "edit" } } }));
+}

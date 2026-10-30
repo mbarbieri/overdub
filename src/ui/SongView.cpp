@@ -78,7 +78,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const Edit& plainEdit) { return edit (plainEdit); },
             [this] (const Record&) { return record(); },
             [this] (const RecordAgain&) { return recordAgain(); },
-            [this] (const PlayOrStop&) { return unlessRefused (openSong.playOrStop()); },
+            [this] (const PlayOrStop&) -> IntentResult { openSong.playOrStop(); return IntentDone {}; },
             [this] (const Rewind&) -> IntentResult { openSong.rewind(); return IntentDone {}; },
             [this] (const Undo&) { return undo(); },
             [this] (const Redo&) { return redo(); },
@@ -96,7 +96,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const CancelRun&) { return cancelRun(); },
             [this] (const SetTranspose& i) { return setTranspose ({ .semitones = i.semitones, .cents = i.cents.value_or (0) }); },
             [this] (const SetPracticeSpeed& i) { return setPracticeSpeed (i.speedPercent); },
-            [this] (const ListeningSetting& i) { return unlessRefused (openSong.changeListening (i)); },
+            [this] (const ListeningSetting& i) { return presented (openSong.changeListening (i)); },
             [this] (const AddMarker&) { return addMarker(); },
             [this] (const SelectMarker& i) { return selectMarker (i.markerId); },
             [this] (const AddLoop& i) { return addLoop (i.start, i.end); },
@@ -134,14 +134,6 @@ IntentResult SongView::run (const SongIntent& songIntent)
         });
 }
 
-IntentResult SongView::unlessRefused (const core::Expected<void>& result)
-{
-    window.handleUnlessRefused (result);
-    if (! result.has_value())
-        return std::unexpected (result.error());
-    return IntentDone {};
-}
-
 IntentResult SongView::presented (const core::Expected<void>& result)
 {
     if (! result.has_value())
@@ -174,21 +166,21 @@ IntentResult SongView::undo()
 {
     if (! openSong.package().canUndo())
         return window.quietError (quiet ("ui.nothing_to_undo", "there is no step to undo"));
-    return unlessRefused (openSong.undo());
+    return presented (openSong.undo());
 }
 
 IntentResult SongView::redo()
 {
     if (! openSong.package().canRedo())
         return window.quietError (quiet ("ui.nothing_to_redo", "there is no step to redo"));
-    return unlessRefused (openSong.redo());
+    return presented (openSong.redo());
 }
 
 IntentResult SongView::seek (song::SampleCount sample)
 {
-    auto sought = unlessRefused (openSong.seek (sample));
+    openSong.seek (sample);
     window.refresh();
-    return sought;
+    return IntentDone {};
 }
 
 IntentResult SongView::splitSelectedClip()
@@ -216,21 +208,22 @@ IntentResult SongView::deleteSelection()
     return window.quietError (quiet ("ui.nothing_selected", "no Clip or Video Take is selected"));
 }
 
-// OpenSong::seek clamps at the Song's start and refuses seeks while a Pass runs.
+// OpenSong::seek clamps at the Song's start.
 IntentResult SongView::nudgePlayhead (Direction direction)
 {
     if (window.mode() != Mode::edit)
         return window.quietError (quiet ("ui.not_in_edit_mode", "the arrow keys nudge in Edit mode only", { { "op", std::string (intent::Nudge::op) } }));
     const auto seconds = direction == Direction::back ? -nudgeSeconds : nudgeSeconds;
     const auto offset = (song::SampleCount) seconds * openSong.song().sampleRate;
-    return unlessRefused (openSong.seek (openSong.position() + offset));
+    openSong.seek (openSong.position() + offset);
+    return IntentDone {};
 }
 
 IntentResult SongView::applyEdit (core::Expected<song::Song> changed, const std::string& label)
 {
     if (! changed.has_value())
         return std::unexpected (handleOperationError (changed.error()));
-    auto edited = unlessRefused (openSong.edit (std::move (*changed), label));
+    auto edited = presented (openSong.edit (std::move (*changed), label));
     window.refresh();
     return edited;
 }
@@ -251,7 +244,7 @@ core::Error SongView::handleOperationError (const core::Error& error)
 
 IntentResult SongView::setArmed (const song::Id& trackId, bool armed)
 {
-    auto result = unlessRefused (openSong.setArmed (trackId, armed));
+    auto result = presented (openSong.setArmed (trackId, armed));
     window.refresh();
     return result;
 }
@@ -264,7 +257,7 @@ IntentResult SongView::setInputChannels (const song::Id& trackId, std::vector<in
         return window.quietError (quiet ("ui.input_channels_unavailable",
                                          "the audio device offers no such input",
                                          { { "track_id", trackId }, { "channels", channels }, { "input_count", inputNames.size() } }));
-    auto result = unlessRefused (openSong.setInputChannels (trackId, std::move (channels)));
+    auto result = presented (openSong.setInputChannels (trackId, std::move (channels)));
     window.refresh();
     takeKeyboardFocus();
     return result;
@@ -272,14 +265,14 @@ IntentResult SongView::setInputChannels (const song::Id& trackId, std::vector<in
 
 IntentResult SongView::setMonitoring (const song::Id& trackId, bool on)
 {
-    auto result = unlessRefused (openSong.setMonitoring (trackId, on));
+    openSong.setMonitoring (trackId, on);
     window.refresh();
-    return result;
+    return IntentDone {};
 }
 
 IntentResult SongView::setPreRoll (song::PreRoll preRoll)
 {
-    auto result = unlessRefused (openSong.setPreRoll (preRoll));
+    auto result = presented (openSong.setPreRoll (preRoll));
     window.refresh();
     return result;
 }
@@ -293,7 +286,7 @@ IntentResult SongView::setTranspose (song::Transpose transpose)
 
 IntentResult SongView::setPracticeSpeed (int speedPercent)
 {
-    return unlessRefused (openSong.setPracticeSpeed (speedPercent));
+    return presented (openSong.setPracticeSpeed (speedPercent));
 }
 
 IntentResult SongView::addMarker()
@@ -318,8 +311,7 @@ IntentResult SongView::selectMarker (const std::optional<song::Id>& markerId)
     const auto* marker = song::findMarker (openSong.song(), *markerId);
     if (marker == nullptr)
         return window.quietError (song::markerNotFound (*markerId));
-    if (auto sought = unlessRefused (openSong.seek (marker->position)); ! sought.has_value())
-        return sought;
+    openSong.seek (marker->position);
     if (window.mode() != Mode::record)
     {
         selectedMarkerId = *markerId;
@@ -337,7 +329,7 @@ IntentResult SongView::addLoop (song::SampleCount start, song::SampleCount end)
     pendingLoopStart.reset();
     // Transcribe's selectLoop activates it; Edit's only selects it.
     if (window.mode() != Mode::transcribe)
-        if (auto activated = unlessRefused (openSong.setActiveLoop (loopId, true)); ! activated.has_value())
+        if (auto activated = presented (openSong.setActiveLoop (loopId, true)); ! activated.has_value())
             return activated;
     const auto* loop = song::findLoop (openSong.song(), loopId);
     core::logEvent (core::Level::info,
@@ -389,7 +381,7 @@ IntentResult SongView::selectLoop (const std::optional<song::Id>& loopId)
         return seek (start);
     }
     // Transcribe: activate it, looping on, zoomed to fit with a margin of a twentieth of its length.
-    if (auto activated = unlessRefused (openSong.setActiveLoop (*loopId, true)); ! activated.has_value())
+    if (auto activated = presented (openSong.setActiveLoop (*loopId, true)); ! activated.has_value())
         return activated;
     const auto margin = std::max<song::SampleCount> (1, (end - start) / 20);
     const auto width = std::max (1, transcribePage.wave.getWidth());
@@ -440,7 +432,7 @@ std::optional<song::Id> SongView::selectedMarker() const
 
 IntentResult SongView::setCameraDevice (const std::string& cameraId)
 {
-    auto result = unlessRefused (openSong.setCameraDevice (cameraId));
+    auto result = presented (openSong.setCameraDevice (cameraId));
     window.refresh();
     return result;
 }
@@ -464,7 +456,12 @@ IntentResult SongView::armCamera (bool armed)
 IntentResult SongView::cameraAccessAnswered (bool granted)
 {
     if (granted)
+    {
+        // The answer comes after the system's prompt: by then a Pass or a run may refuse arming.
+        if (auto refusal = window.refusalOf (intent::SetCameraArmed::op))
+            return window.quietError (std::move (refusal->error));
         return setCameraArmed (true);
+    }
     auto denied = presented (std::unexpected (core::Error { "capture.camera_access_denied", "the app may not use the camera", {} }));
     window.refresh();
     return denied;
@@ -472,7 +469,7 @@ IntentResult SongView::cameraAccessAnswered (bool granted)
 
 IntentResult SongView::setCameraArmed (bool armed)
 {
-    auto result = unlessRefused (openSong.setCameraArmed (armed));
+    auto result = presented (openSong.setCameraArmed (armed));
     window.refresh();
     return result;
 }
@@ -524,7 +521,7 @@ IntentResult SongView::importFiles (const std::vector<core::AbsolutePath>& paths
     for (const auto& result : openSong.importFiles (files))
         if (! result.has_value())
         {
-            window.handleUnlessRefused (result.error());
+            window.handleError (result.error());
             if (imported.has_value())
                 imported = std::unexpected (result.error());
         }
@@ -556,7 +553,7 @@ IntentResult SongView::deleteTrack (const song::Id& trackId)
     if (auto applied = applyEdit (std::move (deleted->song), deleted->label); ! applied.has_value())
         return applied;
     // Monitoring is transient: a deleted Track stops, and undo brings it back not Monitoring.
-    window.handleUnlessRefused (openSong.setMonitoring (trackId, false));
+    openSong.setMonitoring (trackId, false);
     core::logEvent (core::Level::info, "ui.track_deleted", { { "track_id", trackId }, { "label", deleted->label } });
     takeKeyboardFocus();
     return IntentDone {};
@@ -639,11 +636,15 @@ IntentResult SongView::takeLaneClick (const song::Id& takeId, song::SampleCount 
 IntentResult SongView::previewMix (const intent::PreviewMix& preview)
 {
     if (! preview.edit.has_value())
-        return unlessRefused (openSong.previewMix (openSong.song()));
+    {
+        openSong.previewMix (openSong.song());
+        return IntentDone {};
+    }
     auto edited = editedSong (openSong.song(), asEdit (*preview.edit));
     if (! edited.has_value())
         return window.quietError (edited.error());
-    return unlessRefused (openSong.previewMix (edited->song));
+    openSong.previewMix (edited->song);
+    return IntentDone {};
 }
 
 IntentResult SongView::showExport (bool shown)
@@ -772,7 +773,7 @@ IntentResult SongView::addInsert (const song::Id& trackId, const plugin::Availab
 {
     auto added = openSong.addInsert (trackId, plugin);
     if (! added.has_value())
-        window.handleUnlessRefused (added.error());
+        window.handleError (added.error());
     else
         pendingEditorSlot = *added; // its editor opens once it has loaded
     window.refresh();
@@ -1060,7 +1061,13 @@ void SongView::commitKeyBursts()
 // Not a run of its own: only the Intent that committed the burst is logged, with its origin.
 void SongView::commitKeyBurst (MixFocus& mix)
 {
-    if (auto burst = mix.takeKeyBurst())
+    auto burst = mix.takeKeyBurst();
+    if (! burst.has_value())
+        return;
+    // It commits outside MainComponent::run (before an Intent, or once due), so it asks first.
+    if (auto refusal = window.refusalOf (core::operationName (*burst)))
+        window.quietError (std::move (refusal->error));
+    else
         edit (*burst);
 }
 

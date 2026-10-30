@@ -167,8 +167,6 @@ core::Expected<void> OpenSong::record()
 {
     if (isRecording())
         return {};
-    if (auto refused = refusal (activity, Gesture::record))
-        return std::unexpected (std::move (*refused));
     if (binding.engine == nullptr)
         return std::unexpected (*audioProblem());
     return startPass (binding.engine->position(), binding.engine->isPlaying());
@@ -176,6 +174,8 @@ core::Expected<void> OpenSong::record()
 
 core::Expected<void> OpenSong::startPass (song::SampleCount recordPoint, bool playing)
 {
+    if (! nothingRuns())
+        return {};
     const auto passNumber = nextPassNumber (song());
     const auto preRollSamples = (song::SampleCount) song::preRollSeconds (song().settings.preRoll) * song().sampleRate;
     const auto usePreRoll = ! playing && preRollSamples > 0;
@@ -209,8 +209,6 @@ core::Expected<void> OpenSong::startPass (song::SampleCount recordPoint, bool pl
 
 core::Expected<void> OpenSong::recordAgain()
 {
-    if (auto refused = refusal (activity, Gesture::record))
-        return std::unexpected (std::move (*refused));
     if (binding.engine == nullptr)
         return std::unexpected (*audioProblem());
     if (isRecording())
@@ -255,8 +253,6 @@ std::optional<song::SampleCount> OpenSong::runningPassStart() const
 
 core::Expected<void> OpenSong::setPreRoll (song::PreRoll preRoll)
 {
-    if (auto refused = refusal (activity, Gesture::setPreRoll))
-        return std::unexpected (std::move (*refused));
     if (preRoll == song().settings.preRoll)
         return {};
     auto changed = song();
@@ -267,8 +263,6 @@ core::Expected<void> OpenSong::setPreRoll (song::PreRoll preRoll)
 
 core::Expected<void> OpenSong::setPracticeSpeed (int speedPercent)
 {
-    if (auto refused = refusal (activity, Gesture::setPracticeSpeed))
-        return std::unexpected (std::move (*refused));
     if (auto checked = song::checkPracticeSpeed (speedPercent); ! checked.has_value())
         return std::unexpected (std::move (checked.error()));
     if (auto withLoopSpeed = listening_.setPracticeSpeed (song(), speedPercent))
@@ -282,7 +276,9 @@ core::Expected<void> OpenSong::setPracticeSpeed (int speedPercent)
 
 bool OpenSong::practiceSpeedMayChange() const
 {
-    return ! refusal (activity, Gesture::setPracticeSpeed).has_value();
+    // A Pass keeps the Song's playback as it started, and a Separation or a conversion its Song.
+    const auto kind = kindOf (activity);
+    return kind == ActivityKind::idle || kind == ActivityKind::exportSong;
 }
 
 core::Expected<void> OpenSong::changeSettings (core::Expected<song::Song> changed)
@@ -305,8 +301,6 @@ void OpenSong::setTranscribing (bool on)
 
 core::Expected<void> OpenSong::setActiveLoop (const std::optional<song::Id>& loopId, bool looping)
 {
-    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
-        return std::unexpected (std::move (*refused));
     auto changed = changeHeardLoop (song::setActiveLoop (song(), loopId, looping));
     if (changed.has_value())
         core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().settings.looping } });
@@ -315,8 +309,6 @@ core::Expected<void> OpenSong::setActiveLoop (const std::optional<song::Id>& loo
 
 core::Expected<void> OpenSong::setLooping (bool looping)
 {
-    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
-        return std::unexpected (std::move (*refused));
     auto changed = changeHeardLoop (song::setLooping (song(), looping));
     if (changed.has_value())
         core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
@@ -354,8 +346,6 @@ void OpenSong::hearChange (const Heard& before)
 
 core::Expected<void> OpenSong::changeListening (const intent::ListeningSetting& setting)
 {
-    if (auto refused = refusal (activity, Gesture::setTranscribeMix))
-        return std::unexpected (std::move (*refused));
     auto changed = withListeningSetting (song(), setting);
     if (! changed.has_value())
         return std::unexpected (std::move (changed.error()));
@@ -377,17 +367,15 @@ void OpenSong::stop()
     binding.engine->stop();
 }
 
-core::Expected<void> OpenSong::playOrStop()
+void OpenSong::playOrStop()
 {
-    if (auto refused = refusal (activity, Gesture::playOrStop))
-        return std::unexpected (std::move (*refused));
     if (binding.engine == nullptr)
-        return {};
+        return;
     recordAgainAfterPass = false; // Space after Record Again stops for good
     if (isRecording() || binding.engine->isPlaying())
     {
         stop();
-        return {};
+        return;
     }
     if (const auto loop = heard().loop; loop.has_value())
     {
@@ -396,7 +384,6 @@ core::Expected<void> OpenSong::playOrStop()
             binding.engine->seek (loop->start);
     }
     binding.engine->play();
-    return {};
 }
 
 void OpenSong::rewind()
@@ -408,26 +395,21 @@ void OpenSong::rewind()
     binding.engine->seek (0);
 }
 
-core::Expected<void> OpenSong::seek (song::SampleCount sample)
+void OpenSong::seek (song::SampleCount sample)
 {
-    if (auto refused = refusal (activity, Gesture::seek))
-        return std::unexpected (std::move (*refused));
     const auto position = std::max<song::SampleCount> (0, sample);
     if (binding.engine != nullptr)
     {
         binding.engine->seek (position);
-        return {};
+        return;
     }
     auto changed = song();
     changed.settings.playhead = position;
     package_->changeWithoutHistory (std::move (changed));
-    return {};
 }
 
 core::Expected<void> OpenSong::edit (song::Song changed, std::string label)
 {
-    if (auto refused = refusal (activity, Gesture::edit))
-        return std::unexpected (std::move (*refused));
     const auto before = heard();
     auto result = package_->edit (std::move (changed), std::move (label));
     updateEngine (before);
@@ -436,8 +418,6 @@ core::Expected<void> OpenSong::edit (song::Song changed, std::string label)
 
 core::Expected<song::Id> OpenSong::addInsert (const song::Id& trackId, const plugin::AvailableAudioUnit& plugin)
 {
-    if (auto refused = refusal (activity, Gesture::addInsert))
-        return std::unexpected (std::move (*refused));
     const song::InsertSlot slot { .id = song::makeId(), .component = plugin.component, .name = plugin.name, .version = plugin.version };
     auto changed = song::addInsert (song(), trackId, slot);
     if (! changed.has_value())
@@ -452,13 +432,10 @@ void OpenSong::notePluginStateChanged()
     package_->changeWithoutHistory (song());
 }
 
-core::Expected<void> OpenSong::previewMix (const song::Song& candidate)
+void OpenSong::previewMix (const song::Song& candidate)
 {
-    if (auto refused = refusal (activity, Gesture::previewMix))
-        return std::unexpected (std::move (*refused));
     if (binding.engine != nullptr && song::differsOnlyInMix (song(), candidate))
         binding.engine->setMix (listening_.withHeardMix (candidate));
-    return {};
 }
 
 engine::MeterPeaks OpenSong::meterPeaks()
@@ -479,8 +456,6 @@ const song::Peaks& OpenSong::peaks (const song::ClipSource& source)
 
 core::Expected<void> OpenSong::undo()
 {
-    if (auto refused = refusal (activity, Gesture::undo))
-        return std::unexpected (std::move (*refused));
     const auto before = heard();
     auto result = package_->undo();
     updateEngine (before);
@@ -489,8 +464,6 @@ core::Expected<void> OpenSong::undo()
 
 core::Expected<void> OpenSong::redo()
 {
-    if (auto refused = refusal (activity, Gesture::redo))
-        return std::unexpected (std::move (*refused));
     const auto before = heard();
     auto result = package_->redo();
     updateEngine (before);
@@ -499,8 +472,6 @@ core::Expected<void> OpenSong::redo()
 
 core::Expected<void> OpenSong::setArmed (const song::Id& trackId, bool armed)
 {
-    if (auto refused = refusal (activity, Gesture::setArmed))
-        return std::unexpected (std::move (*refused));
     package_->changeWithoutHistory (withArmed (song(), trackId, armed));
     reloadEngine();
     return {};
@@ -508,29 +479,22 @@ core::Expected<void> OpenSong::setArmed (const song::Id& trackId, bool armed)
 
 core::Expected<void> OpenSong::setInputChannels (const song::Id& trackId, std::vector<int> inputChannels)
 {
-    if (auto refused = refusal (activity, Gesture::setInputChannels))
-        return std::unexpected (std::move (*refused));
     package_->changeWithoutHistory (withInputChannels (song(), trackId, std::move (inputChannels)));
     reloadEngine();
     return {};
 }
 
-core::Expected<void> OpenSong::setMonitoring (const song::Id& trackId, bool on)
+void OpenSong::setMonitoring (const song::Id& trackId, bool on)
 {
-    if (auto refused = refusal (activity, Gesture::setMonitoring))
-        return std::unexpected (std::move (*refused));
     if (on)
         monitored.insert (trackId);
     else
         monitored.erase (trackId);
     reloadEngine();
-    return {};
 }
 
 std::vector<core::Expected<song::Id>> OpenSong::importFiles (const std::vector<juce::File>& files)
 {
-    if (auto refused = refusal (activity, Gesture::changeTracks))
-        return std::vector<core::Expected<song::Id>> (files.size(), std::unexpected (*refused));
     auto results = package_->importBackingTracks (files);
     reloadEngine();
     listening_.follow (song());
@@ -539,10 +503,8 @@ std::vector<core::Expected<song::Id>> OpenSong::importFiles (const std::vector<j
 
 core::Expected<void> OpenSong::startSeparation (const song::Id& trackId, song::SongPackage::Clock::time_point now)
 {
-    if (isSeparating())
+    if (isSeparating() || ! nothingRuns())
         return {};
-    if (auto refused = refusal (activity, Gesture::startSeparation))
-        return std::unexpected (std::move (*refused));
     auto started = song::SeparationRun::start (*package_, trackId, separationTools, now);
     if (! started.has_value())
         return std::unexpected (started.error());
@@ -592,10 +554,8 @@ std::optional<core::Error> OpenSong::advanceSeparation (song::SongPackage::Clock
 
 core::Expected<void> OpenSong::startSampleRateConversion (int toRate, song::SongPackage::Clock::time_point now)
 {
-    if (isConverting())
+    if (isConverting() || ! nothingRuns())
         return {};
-    if (auto refused = refusal (activity, Gesture::startSampleRateConversion))
-        return std::unexpected (std::move (*refused));
     auto started = song::SampleRateConversionRun::start (*package_, toRate, now);
     if (! started.has_value())
         return std::unexpected (started.error());
@@ -753,6 +713,11 @@ std::vector<core::Error> OpenSong::finishPass (capture::FinishedPass finished)
     return errors;
 }
 
+bool OpenSong::nothingRuns() const
+{
+    return OVERDUB_CHECK (std::holds_alternative<Idle> (activity), "ui.activity_already_running", { "kind", std::string (activityKindName (activityKind())) });
+}
+
 void OpenSong::beginActivity (Activity started)
 {
     activity = std::move (started);
@@ -815,8 +780,6 @@ void OpenSong::disarmLostCamera()
 
 core::Expected<void> OpenSong::setCameraArmed (bool armed)
 {
-    if (auto refused = refusal (activity, Gesture::setCameraArmed))
-        return std::unexpected (std::move (*refused));
     if (camera == nullptr || armed == song().settings.cameraArmed)
         return {};
     auto changed = song();
@@ -828,8 +791,6 @@ core::Expected<void> OpenSong::setCameraArmed (bool armed)
 
 core::Expected<void> OpenSong::setCameraDevice (const std::string& cameraId)
 {
-    if (auto refused = refusal (activity, Gesture::setCameraDevice))
-        return std::unexpected (std::move (*refused));
     if (cameraId == song().settings.cameraDeviceId)
         return {};
     auto changed = song();
@@ -919,10 +880,8 @@ void OpenSong::reloadEngine()
 
 core::Expected<void> OpenSong::startExport (exporting::ExportRequest request, song::SongPackage::Clock::time_point now)
 {
-    if (isExporting())
+    if (isExporting() || ! nothingRuns())
         return {};
-    if (auto refused = refusal (activity, Gesture::startExport))
-        return std::unexpected (std::move (*refused));
     std::optional<exporting::MovieSource> movie;
     if (request.format == exporting::ExportFormat::mp4)
     {

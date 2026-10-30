@@ -101,9 +101,9 @@ struct PracticeFixture
     // Plays `seconds` from Song time 0 and returns the left output.
     std::vector<float> playFromStart (double seconds)
     {
-        REQUIRE (openSong->seek (0).has_value());
+        openSong->seek (0);
         if (! openSong->isPlaying())
-            REQUIRE (openSong->playOrStop().has_value());
+            openSong->playOrStop();
         const auto left = device.render (engine, (int) (seconds * testSampleRate / 256)).channels[0];
         openSong->stop();
         device.render (engine, 1);
@@ -169,8 +169,8 @@ TEST_CASE ("at 80% the playhead moves at 0.8 times real time, and a Take and a B
     f.pollUntilRendered();
     const auto take = peakIndex (f.playFromStart (1.0));
     f.hearOnly (0);
-    REQUIRE (f.openSong->seek (0).has_value());
-    REQUIRE (f.openSong->playOrStop().has_value());
+    f.openSong->seek (0);
+    f.openSong->playOrStop();
     const auto backing = peakIndex (f.device.render (f.engine, 160).channels[0]);
 
     // ADR 0005: the impulse at Song time 0.5 s is heard within 1 ms of 0.5 s / 0.8.
@@ -204,7 +204,7 @@ TEST_CASE ("at 25% a sine Backing Track keeps its frequency, and an impulse at S
         std::this_thread::sleep_for (std::chrono::milliseconds (5));
     }
     REQUIRE (openSong->listening().renders().heardPracticeSpeed() == 25);
-    REQUIRE (openSong->playOrStop().has_value());
+    openSong->playOrStop();
     // 1400 blocks: about 7.5 s of playback, within the 8 s the 2 s Song lasts at 25%.
     const auto left = device.render (engine, 1400).channels[0];
     // 358400 samples of playback move the playhead 358400 × 0.25 Song samples.
@@ -223,7 +223,7 @@ TEST_CASE ("at 25% a sine Backing Track keeps its frequency, and an impulse at S
 TEST_CASE ("a Practice Speed change during play switches to the renders at the same Song time", "[ui][open_song][practice_speed]")
 {
     PracticeFixture f;
-    REQUIRE (f.openSong->playOrStop().has_value());
+    f.openSong->playOrStop();
     f.device.render (f.engine, 4);
 
     REQUIRE (f.openSong->setPracticeSpeed (80).has_value());
