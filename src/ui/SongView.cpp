@@ -13,6 +13,7 @@
 #include "song/Transpose.h"
 #include "song/VideoTakeEdits.h"
 
+#include "ui/ListeningSettings.h"
 #include "ui/MainComponent.h"
 #include "ui/TakeLanes.h"
 #include "ui/TrackRowEdits.h"
@@ -96,7 +97,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const CancelRun&) { return cancelRun(); },
             [this] (const SetTranspose& i) { return setTranspose ({ .semitones = i.semitones, .cents = i.cents.value_or (0) }); },
             [this] (const SetPracticeSpeed& i) { return setPracticeSpeed (i.speedPercent); },
-            [this] (const ListeningSetting& i) { return presented (openSong.changeListening (i)); },
+            [this] (const ListeningSetting& i) { return changeListening (i); },
             [this] (const AddMarker&) { return addMarker(); },
             [this] (const SelectMarker& i) { return selectMarker (i.markerId); },
             [this] (const AddLoop& i) { return addLoop (i.start, i.end); },
@@ -105,7 +106,7 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const CancelLoopStart&) -> IntentResult { pendingLoopStart.reset(); window.refresh(); return IntentDone {}; },
             [this] (const SelectLoop& i) { return selectLoop (i.loopId); },
             [this] (const SelectAdjacentLoop& i) { return selectAdjacentLoop (i.direction); },
-            [this] (const SetLooping& i) { return presented (openSong.setLooping (i.looping)); },
+            [this] (const SetLooping& i) { return setLooping (i.looping); },
             [this] (const SetPreRoll& i) { return setPreRoll (i.preRoll); },
             [this] (const SetCameraArmed& i) { return armCamera (i.armed); },
             [this] (const SetCameraDevice& i) { return setCameraDevice (i.cameraId); },
@@ -244,7 +245,7 @@ core::Error SongView::handleOperationError (const core::Error& error)
 
 IntentResult SongView::setArmed (const song::Id& trackId, bool armed)
 {
-    auto result = presented (openSong.setArmed (trackId, armed));
+    auto result = presented (openSong.changeSettings (withArmed (openSong.song(), trackId, armed)));
     window.refresh();
     return result;
 }
@@ -257,7 +258,7 @@ IntentResult SongView::setInputChannels (const song::Id& trackId, std::vector<in
         return window.quietError (quiet ("ui.input_channels_unavailable",
                                          "the audio device offers no such input",
                                          { { "track_id", trackId }, { "channels", channels }, { "input_count", inputNames.size() } }));
-    auto result = presented (openSong.setInputChannels (trackId, std::move (channels)));
+    auto result = presented (openSong.changeSettings (withInputChannels (openSong.song(), trackId, std::move (channels))));
     window.refresh();
     takeKeyboardFocus();
     return result;
@@ -272,8 +273,34 @@ IntentResult SongView::setMonitoring (const song::Id& trackId, bool on)
 
 IntentResult SongView::setPreRoll (song::PreRoll preRoll)
 {
-    auto result = presented (openSong.setPreRoll (preRoll));
+    auto result = presented (openSong.changeSettings (withPreRoll (openSong.song(), preRoll)));
     window.refresh();
+    return result;
+}
+
+IntentResult SongView::changeListening (const intent::ListeningSetting& setting)
+{
+    auto changed = withListeningSetting (openSong.song(), setting);
+    const auto differs = changed.has_value() && *changed != openSong.song();
+    auto result = presented (openSong.changeSettings (std::move (changed)));
+    if (differs)
+        logListeningSet (setting);
+    return result;
+}
+
+IntentResult SongView::setActiveLoop (const std::optional<song::Id>& loopId, bool looping)
+{
+    auto result = presented (openSong.changeSettings (song::setActiveLoop (openSong.song(), loopId, looping)));
+    if (result.has_value())
+        core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", openSong.song().settings.looping } });
+    return result;
+}
+
+IntentResult SongView::setLooping (bool looping)
+{
+    auto result = presented (openSong.changeSettings (song::setLooping (openSong.song(), looping)));
+    if (result.has_value())
+        core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
     return result;
 }
 
@@ -329,7 +356,7 @@ IntentResult SongView::addLoop (song::SampleCount start, song::SampleCount end)
     pendingLoopStart.reset();
     // Transcribe's selectLoop activates it; Edit's only selects it.
     if (window.mode() != Mode::transcribe)
-        if (auto activated = presented (openSong.setActiveLoop (loopId, true)); ! activated.has_value())
+        if (auto activated = setActiveLoop (loopId, true); ! activated.has_value())
             return activated;
     const auto* loop = song::findLoop (openSong.song(), loopId);
     core::logEvent (core::Level::info,
@@ -381,7 +408,7 @@ IntentResult SongView::selectLoop (const std::optional<song::Id>& loopId)
         return seek (start);
     }
     // Transcribe: activate it, looping on, zoomed to fit with a margin of a twentieth of its length.
-    if (auto activated = presented (openSong.setActiveLoop (*loopId, true)); ! activated.has_value())
+    if (auto activated = setActiveLoop (*loopId, true); ! activated.has_value())
         return activated;
     const auto margin = std::max<song::SampleCount> (1, (end - start) / 20);
     const auto width = std::max (1, transcribePage.wave.getWidth());

@@ -148,6 +148,14 @@ private:
     IntentResult setInputChannels (const song::Id& trackId, std::vector<int> channels);
     IntentResult setMonitoring (const song::Id& trackId, bool on);
     IntentResult setPreRoll (song::PreRoll preRoll);
+    // A Transcribe listening setting (ui/ListeningSettings.h), outside history; logs
+    // logListeningSet's event when it changes the Song.
+    IntentResult changeListening (const intent::ListeningSetting& setting);
+    // The active Loop and looping, outside history (song/LoopEdits.h). Logs ui.active_loop_set
+    // (info: loop_id, "" for none, looping) and ui.looping_set (info: looping). Errors:
+    // song.loop_not_found, song.no_active_loop (presented).
+    IntentResult setActiveLoop (const std::optional<song::Id>& loopId, bool looping);
+    IntentResult setLooping (bool looping);
     // One undo step "Transpose +3" (or "Transpose +3 −20 ct"); the same value again changes
     // nothing. Errors: song.transpose_out_of_range, song.transpose_cents_out_of_range (presented),
     // refusals.

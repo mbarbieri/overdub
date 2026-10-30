@@ -10,13 +10,11 @@ namespace overdub::ui
 {
 namespace
 {
-// The Transcribe settings reach the engine as Heard's own fields, never through the Song: cleared,
-// a change of them alone is no change of the heard Song.
-song::Song withoutTranscribeSettings (song::Song song)
+// The engine never reads the Song's settings, and the Transcribe settings reach it as Heard's own
+// fields, never through the Song: cleared, a change of them alone is no change of the heard Song.
+song::Song withoutUnheardSettings (song::Song song)
 {
-    song.settings.focusTrackId.reset();
-    song.settings.activeLoopId.reset();
-    song.settings.looping = false;
+    song.settings = {};
     for (auto& track : song.tracks)
     {
         track.settings.transcribeMute = false;
@@ -35,7 +33,7 @@ Listening::Listening (juce::File packageRoot, const song::Song& song, std::funct
 
 Heard Listening::heard (const song::Song& song) const
 {
-    Heard heard { .song = withoutTranscribeSettings (withHeardMix (song)), .loop = heardLoop (song), .octaveShiftedTrack = octaveShiftedTrack (song) };
+    Heard heard { .song = withoutUnheardSettings (withHeardMix (song)), .loop = heardLoop (song), .octaveShiftedTrack = octaveShiftedTrack (song) };
     heard.song.transpose = listeningRenders.heardTranspose();
     const auto* focus = song::focusTrack (song);
     if (heard.octaveShiftedTrack.has_value())

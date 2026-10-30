@@ -2,6 +2,7 @@
 
 #include "core/Log.h"
 #include "song/AudioFileDecode.h"
+#include "song/LoopEdits.h"
 #include "ui/SongMenuItems.h"
 #include "ui/UiHarness.h"
 #include "ui/WorkspaceFixture.h"
@@ -386,7 +387,7 @@ struct CensusWorkspace
         // The active Loop and looping (issue #228) are outside history too: put back directly,
         // since select_loop also moves the playhead and the view.
         if (f.song().song().settings.activeLoopId != builtSong.settings.activeLoopId || f.song().song().settings.looping != builtSong.settings.looping)
-            REQUIRE (f.song().setActiveLoop (builtSong.settings.activeLoopId, builtSong.settings.looping).has_value());
+            REQUIRE (f.song().changeSettings (overdub::song::setActiveLoop (f.song().song(), builtSong.settings.activeLoopId, builtSong.settings.looping)).has_value());
         if (f.song().song().settings.focusTrackId != builtSong.settings.focusTrackId)
             f.content.run (ui::SongIntent { SetFocusTrack { builtSong.settings.focusTrackId } });
         for (const auto& built : builtSong.tracks)
