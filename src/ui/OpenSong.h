@@ -418,9 +418,12 @@ private:
     std::optional<core::Error> endExportIfEnded (std::optional<ExportEnd> end);
     // Advances a running Separation; once it ends, reloads the engine and returns its Error.
     std::optional<core::Error> advanceSeparation (song::SongPackage::Clock::time_point now);
-    // Stores a Transcribe Mix, Focus Track, active Loop or looping change outside history and plays
-    // it (hearChange). Nothing when the Song is unchanged.
+    // Stores a Transcribe Mix, Focus Track, octave shift or band filter change outside history and
+    // plays it (hearChange). Nothing when the Song is unchanged.
     core::Expected<void> changeListening (core::Expected<song::Song> changed);
+    // Stores an active Loop or looping change outside history, plays at the heard Loop's Practice
+    // Speed when it may change, and plays it (hearChange), also when the Song is unchanged.
+    core::Expected<void> changeHeardLoop (core::Expected<song::Song> changed);
     // After the Song or the listening state changed from `before`: the engine plays heard() (with
     // Engine::setMix when only the heard mix changed and the octave-shifted Track did not, else
     // reloadEngine), and the renders follow.

@@ -75,28 +75,27 @@ void Listening::setTranscribing (const song::Song& song, bool on, bool practiceS
         return;
     // Record and Edit play at 100%; Transcribe brings back the looping Loop's speed (ADR 0010).
     if (! on && practiceTarget != song::normalPracticeSpeed)
-        changePracticeTarget (song, song::normalPracticeSpeed);
-    hearLoopPracticeSpeed (song);
+        setPracticeTarget (song::normalPracticeSpeed);
+    hearLoopPracticeSpeed (song, practiceSpeedMayChange);
 }
 
 std::optional<song::Song> Listening::setPracticeSpeed (const song::Song& song, int speedPercent)
 {
     // The same value again tries the renders that failed again.
-    changePracticeTarget (song, speedPercent);
-    const auto* loop = heardLoop (song).has_value() ? song::activeLoop (song) : nullptr;
+    setPracticeTarget (speedPercent);
+    const auto* loop = heardActiveLoop (song);
     if (loop == nullptr || loop->practiceSpeedPercent == practiceTarget)
         return std::nullopt;
     auto changed = song::setLoopPracticeSpeed (song, loop->id, practiceTarget);
     OVERDUB_CHECK (changed.has_value(), "ui.loop_practice_speed_unset");
-    core::logEvent (core::Level::info, "ui.loop_practice_speed_set", { { "loop_id", loop->id }, { "speed_percent", practiceTarget } });
     return std::move (*changed);
 }
 
-void Listening::hearLoopPracticeSpeed (const song::Song& song)
+void Listening::hearLoopPracticeSpeed (const song::Song& song, bool practiceSpeedMayChange)
 {
-    const auto* loop = heardLoop (song).has_value() ? song::activeLoop (song) : nullptr;
-    if (loop != nullptr && loop->practiceSpeedPercent != practiceTarget)
-        changePracticeTarget (song, loop->practiceSpeedPercent);
+    const auto* loop = heardActiveLoop (song);
+    if (practiceSpeedMayChange && loop != nullptr && loop->practiceSpeedPercent != practiceTarget)
+        setPracticeTarget (loop->practiceSpeedPercent);
 }
 
 bool Listening::isTransposing (const song::Song& song) const
@@ -112,6 +111,11 @@ std::optional<engine::LoopRange> Listening::heardLoop (const song::Song& song) c
     return engine::LoopRange { loop->start, loop->end };
 }
 
+const song::Loop* Listening::heardActiveLoop (const song::Song& song) const
+{
+    return heardLoop (song).has_value() ? song::activeLoop (song) : nullptr;
+}
+
 std::optional<song::Id> Listening::octaveShiftedTrack (const song::Song& song) const
 {
     const auto* track = song::focusTrack (song);
@@ -125,12 +129,11 @@ ListeningWanted Listening::wanted (const song::Song& song) const
     return { .practiceSpeedPercent = practiceTarget, .heardLoop = heardLoop (song), .octaveShiftedTrack = octaveShiftedTrack (song) };
 }
 
-void Listening::changePracticeTarget (const song::Song& song, int speedPercent)
+void Listening::setPracticeTarget (int speedPercent)
 {
     if (speedPercent != practiceTarget)
         core::logEvent (core::Level::info, "ui.practice_speed_set", { { "from_percent", practiceTarget }, { "to_percent", speedPercent } });
     practiceTarget = speedPercent;
     listeningRenders.retryPracticeRenders();
-    follow (song);
 }
 } // namespace overdub::ui

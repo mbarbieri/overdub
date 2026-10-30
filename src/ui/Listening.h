@@ -24,14 +24,15 @@
 //   (song::withTranscribeMix), the heard Loop is the active Loop while looping, and the Focus
 //   Track's band filter (when on) and octave shift (when not 0) are heard. Otherwise none of these.
 // - The Practice Speed is 100% at first. Setting it retries its failed renders. While a Loop is
-//   heard, setPracticeSpeed hands back the Song with that speed stored as the Loop's
-//   (ui.loop_practice_speed_set: loop_id, speed_percent), for the owner to store outside history.
+//   heard, setPracticeSpeed hands back the Song with that speed stored as the Loop's, for the owner
+//   to store outside history.
 // - hearLoopPracticeSpeed() plays at the heard Loop's own speed. Leaving Transcribe mode returns
-//   to 100% (ADR 0010); entering it plays at the looping Loop's speed. Both only when the owner
+//   to 100% (ADR 0010); entering it plays at the looping Loop's speed. Each only when the owner
 //   says the Practice Speed may change now.
 //
-// Logs ui.practice_speed_set (info: from_percent, to_percent) and ui.transcribe_mix_heard (debug:
-// heard). Message thread only.
+// No setter follows the renders: the owner calls follow() once, after its whole change, so a run
+// is started only for what is wanted in the end. Logs ui.practice_speed_set (info: from_percent,
+// to_percent) and ui.transcribe_mix_heard (debug: heard). Message thread only.
 namespace overdub::ui
 {
 // Everything the engine is given for the open Song.
@@ -75,7 +76,7 @@ public:
     // heard Loop's, when a Loop is heard at another speed; none otherwise.
     std::optional<song::Song> setPracticeSpeed (const song::Song& song, int speedPercent);
     // Plays at the heard Loop's Practice Speed; nothing while no Loop is heard.
-    void hearLoopPracticeSpeed (const song::Song& song);
+    void hearLoopPracticeSpeed (const song::Song& song, bool practiceSpeedMayChange);
     int practiceSpeed() const { return practiceTarget; }
 
     // Playback is not at the Song's Transpose yet, or renders for it are being made.
@@ -84,10 +85,12 @@ public:
 
 private:
     std::optional<engine::LoopRange> heardLoop (const song::Song& song) const;
+    // The active Loop while it is heard; null otherwise.
+    const song::Loop* heardActiveLoop (const song::Song& song) const;
     std::optional<song::Id> octaveShiftedTrack (const song::Song& song) const;
     ListeningWanted wanted (const song::Song& song) const;
-    // Sets the target (ui.practice_speed_set when it changes), forgets failed renders, follows.
-    void changePracticeTarget (const song::Song& song, int speedPercent);
+    // Sets the target (ui.practice_speed_set when it changes) and forgets failed renders.
+    void setPracticeTarget (int speedPercent);
 
     bool transcribing = false;
     int practiceTarget = song::normalPracticeSpeed;

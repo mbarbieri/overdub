@@ -272,7 +272,11 @@ core::Expected<void> OpenSong::setPracticeSpeed (int speedPercent)
     if (auto checked = song::checkPracticeSpeed (speedPercent); ! checked.has_value())
         return std::unexpected (std::move (checked.error()));
     if (auto withLoopSpeed = listening_.setPracticeSpeed (song(), speedPercent))
+    {
         package_->changeWithoutHistory (std::move (*withLoopSpeed));
+        core::logEvent (core::Level::info, "ui.loop_practice_speed_set", { { "loop_id", song().activeLoopId.value_or ("") }, { "speed_percent", speedPercent } });
+    }
+    listening_.follow (song());
     return {};
 }
 
@@ -333,12 +337,9 @@ core::Expected<void> OpenSong::setActiveLoop (const std::optional<song::Id>& loo
 {
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
-    auto changed = changeListening (song::setActiveLoop (song(), loopId, looping));
-    if (! changed.has_value())
-        return changed;
-    core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().looping } });
-    if (practiceSpeedMayChange())
-        listening_.hearLoopPracticeSpeed (song());
+    auto changed = changeHeardLoop (song::setActiveLoop (song(), loopId, looping));
+    if (changed.has_value())
+        core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", song().looping } });
     return changed;
 }
 
@@ -346,12 +347,9 @@ core::Expected<void> OpenSong::setLooping (bool looping)
 {
     if (auto refused = refusal (activity, Gesture::setTranscribeMix))
         return std::unexpected (std::move (*refused));
-    auto changed = changeListening (song::setLooping (song(), looping));
-    if (! changed.has_value())
-        return changed;
-    core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
-    if (practiceSpeedMayChange())
-        listening_.hearLoopPracticeSpeed (song());
+    auto changed = changeHeardLoop (song::setLooping (song(), looping));
+    if (changed.has_value())
+        core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
     return changed;
 }
 
@@ -367,21 +365,31 @@ core::Expected<void> OpenSong::changeListening (core::Expected<song::Song> chang
     return {};
 }
 
+core::Expected<void> OpenSong::changeHeardLoop (core::Expected<song::Song> changed)
+{
+    if (! changed.has_value())
+        return std::unexpected (std::move (changed.error()));
+    const auto before = heard();
+    if (*changed != song())
+        package_->changeWithoutHistory (std::move (*changed));
+    listening_.hearLoopPracticeSpeed (song(), practiceSpeedMayChange());
+    hearChange (before);
+    return {};
+}
+
 void OpenSong::hearChange (const Heard& before)
 {
     const auto after = heard();
-    if (binding.engine != nullptr)
+    const auto sameShift = before.octaveShiftedTrack == after.octaveShiftedTrack && before.octaveShift == after.octaveShift;
+    const auto mixApplied = binding.engine != nullptr && sameShift && song::differsOnlyInMix (before.song, after.song) && binding.engine->setMix (after.song);
+    if (mixApplied)
     {
-        const auto sameShift = before.octaveShiftedTrack == after.octaveShiftedTrack && before.octaveShift == after.octaveShift;
-        if (sameShift && song::differsOnlyInMix (before.song, after.song) && binding.engine->setMix (after.song))
-        {
-            binding.engine->setLoop (after.loop);
-            binding.engine->setBandFilter (after.bandFilter);
-        }
-        else
-        {
-            reloadEngine();
-        }
+        binding.engine->setLoop (after.loop);
+        binding.engine->setBandFilter (after.bandFilter);
+    }
+    else
+    {
+        reloadEngine(); // syncs the InsertHost, also without an engine
     }
     listening_.follow (song());
 }

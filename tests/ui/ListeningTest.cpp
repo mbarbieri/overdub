@@ -1,5 +1,6 @@
 #include "ui/Listening.h"
 
+#include "core/Log.h"
 #include "song/FixtureSongBuilder.h"
 #include "song/LoopEdits.h"
 #include "song/TranscribeMix.h"
@@ -33,8 +34,6 @@ struct ListeningFixture
     overdub::song::Id loopId = "loop-1";
     Song song = transcribeSetUp (fixture->song());
     std::unique_ptr<Listening> listening = std::make_unique<Listening> (fixture->package->location(), song, [] {});
-
-    ~ListeningFixture() { listening.reset(); }
 
     Song transcribeSetUp (Song base) const
     {
@@ -131,10 +130,16 @@ TEST_CASE ("a Practice Speed set while a Loop is heard is handed back as that Lo
 {
     ListeningFixture f;
     f.listening->setTranscribing (f.song, true, true);
+    const overdub::core::ScopedLogCapture capture;
 
     const auto withLoopSpeed = f.listening->setPracticeSpeed (f.song, 45);
 
     CHECK (f.listening->practiceSpeed() == 45);
+    const auto events = capture.events();
+    REQUIRE (events.size() == 1);
+    CHECK (events[0]["event"] == "ui.practice_speed_set");
+    CHECK (events[0]["from_percent"] == 60);
+    CHECK (events[0]["to_percent"] == 45);
     REQUIRE (withLoopSpeed.has_value());
     CHECK (f.loopSpeed (*withLoopSpeed) == 45);
     CHECK (f.listening->setPracticeSpeed (*withLoopSpeed, 45) == std::nullopt);
@@ -155,7 +160,9 @@ TEST_CASE ("hearing a Loop plays at its own Practice Speed", "[ui][listening]")
     f.listening->setTranscribing (notLooping, true, true);
     REQUIRE (f.listening->practiceSpeed() == 100);
 
-    f.listening->hearLoopPracticeSpeed (f.song);
+    f.listening->hearLoopPracticeSpeed (f.song, false);
+    CHECK (f.listening->practiceSpeed() == 100);
 
+    f.listening->hearLoopPracticeSpeed (f.song, true);
     CHECK (f.listening->practiceSpeed() == 60);
 }
