@@ -200,12 +200,12 @@ TEST_CASE ("in Transcribe mode a Track muted in the Transcribe Mix is silent whi
     showTranscribe (f);
     run (f, SongIntent { intent::SetTranscribeMute { bandId, true } });
 
-    CHECK (f.openSong->isTranscribing());
+    CHECK (f.openSong->listening().isTranscribing());
     CHECK_FALSE (f.trackNamed ("Band Mix").mute);
     CHECK (heardPeakFromStart (f) == 0.0f);
 
     showMode (f, Mode::edit);
-    CHECK_FALSE (f.openSong->isTranscribing());
+    CHECK_FALSE (f.openSong->listening().isTranscribing());
     CHECK (heardPeakFromStart (f) > 0.15f);
 
     showMode (f, Mode::record);
@@ -295,7 +295,7 @@ TEST_CASE ("reopening the Song restores the Focus Track and the Transcribe Mix",
     CHECK (f.trackNamed ("Band Mix").transcribeMute);
     CHECK (f.trackNamed ("Band Mix").transcribeSolo);
     CHECK_FALSE (f.trackNamed ("Vocals").transcribeSolo);
-    CHECK (f.openSong->isTranscribing()); // the window is still in Transcribe mode
+    CHECK (f.openSong->listening().isTranscribing()); // the window is still in Transcribe mode
     CHECK (rowNamed (f, "Guitar").focusButton.getToggleState());
     CHECK (rowNamed (f, "Band Mix").muteButton.getToggleState());
     CHECK (f.window->songView()->transcribePage.wave.label() == "Guitar");

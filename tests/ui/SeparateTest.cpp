@@ -586,7 +586,7 @@ TEST_CASE ("a Separation in a transposed Song splits the original audio and rend
     CHECK (s.log->starts[0].input == song::originalFileFor (root, source));
     CHECK (s.f.openSong->isTransposing());
     tickUntilTransposed (s.f);
-    CHECK (s.f.openSong->heardTranspose() == song::Transpose { .semitones = semitones });
+    CHECK (s.f.openSong->listening().renders().heardTranspose() == song::Transpose { .semitones = semitones });
 
     std::vector<song::BackingTrack> parts;
     for (std::size_t part = 0; part < 6; ++part)
@@ -617,7 +617,7 @@ TEST_CASE ("undoing a Separation while its new Backing Tracks render cancels the
     REQUIRE (s.f.window->run (SongIntent { intent::SetTranspose { .semitones = 3 } }, Origin::control).has_value());
     tickUntilTransposed (s.f);
     s.separate ("Band Mix");
-    REQUIRE (s.f.openSong->isTransposeRendering());
+    REQUIRE (s.f.openSong->listening().renders().isTransposeRendering());
     const auto root = s.f.openSong->package().location();
     const auto separated = s.f.song().backingTracks;
 

@@ -81,7 +81,7 @@ struct PracticeFixture
         {
             for (auto& error : openSong->poll())
                 errors.push_back (std::move (error));
-            if (! openSong->isPracticeRendering())
+            if (! openSong->listening().renders().isPracticeRendering())
                 return errors;
             std::this_thread::sleep_for (std::chrono::milliseconds (5));
         } while (std::chrono::steady_clock::now() < deadline);
@@ -110,7 +110,7 @@ struct PracticeFixture
         return left;
     }
 
-    int rendersInFolder() const { return openSong->practiceRenderFolder().findChildFiles (juce::File::findFiles, false).size(); }
+    int rendersInFolder() const { return openSong->listening().renders().practiceFolder().findChildFiles (juce::File::findFiles, false).size(); }
 };
 
 std::int64_t peakIndex (const std::vector<float>& samples)
@@ -130,17 +130,17 @@ TEST_CASE ("a Practice Speed change plays the previous audio until every source'
 
     REQUIRE (f.openSong->setPracticeSpeed (80).has_value());
 
-    CHECK (f.openSong->practiceSpeed() == 80);
-    CHECK (f.openSong->heardPracticeSpeed() == 100);
-    CHECK (f.openSong->isPracticeRendering());
+    CHECK (f.openSong->listening().practiceSpeed() == 80);
+    CHECK (f.openSong->listening().renders().heardPracticeSpeed() == 100);
+    CHECK (f.openSong->listening().renders().isPracticeRendering());
     // Not part of the Song, nor of its history.
     CHECK (f.openSong->package().undoLabel() == historyBefore);
 
     CHECK (f.pollUntilRendered().empty());
-    CHECK (f.openSong->heardPracticeSpeed() == 80);
+    CHECK (f.openSong->listening().renders().heardPracticeSpeed() == 80);
     CHECK (f.rendersInFolder() == 2);
     // Renders are temporary files outside the package.
-    CHECK_FALSE (f.openSong->practiceRenderFolder().isAChildOf (f.root));
+    CHECK_FALSE (f.openSong->listening().renders().practiceFolder().isAChildOf (f.root));
 }
 
 TEST_CASE ("a value outside 25..125 is refused and changes nothing", "[ui][open_song][practice_speed]")
@@ -151,8 +151,8 @@ TEST_CASE ("a value outside 25..125 is refused and changes nothing", "[ui][open_
 
     REQUIRE_FALSE (refused.has_value());
     CHECK (refused.error().code == "song.practice_speed_out_of_range");
-    CHECK (f.openSong->practiceSpeed() == 100);
-    CHECK_FALSE (f.openSong->isPracticeRendering());
+    CHECK (f.openSong->listening().practiceSpeed() == 100);
+    CHECK_FALSE (f.openSong->listening().renders().isPracticeRendering());
 }
 
 TEST_CASE ("at 80% the playhead moves at 0.8 times real time, and a Take and a Backing Track that line up at 100% still line up", "[ui][open_song][practice_speed]")
@@ -198,12 +198,12 @@ TEST_CASE ("at 25% a sine Backing Track keeps its frequency, and an impulse at S
 
     REQUIRE (openSong->setPracticeSpeed (25).has_value());
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (60);
-    while (openSong->isPracticeRendering() && std::chrono::steady_clock::now() < deadline)
+    while (openSong->listening().renders().isPracticeRendering() && std::chrono::steady_clock::now() < deadline)
     {
         CHECK (openSong->poll().empty());
         std::this_thread::sleep_for (std::chrono::milliseconds (5));
     }
-    REQUIRE (openSong->heardPracticeSpeed() == 25);
+    REQUIRE (openSong->listening().renders().heardPracticeSpeed() == 25);
     REQUIRE (openSong->playOrStop().has_value());
     // 1400 blocks: about 7.5 s of playback, within the 8 s the 2 s Song lasts at 25%.
     const auto left = device.render (engine, 1400).channels[0];
@@ -235,7 +235,7 @@ TEST_CASE ("a Practice Speed change during play switches to the renders at the s
     const auto switchedAt = f.openSong->position();
     f.device.render (f.engine, 10);
 
-    CHECK (f.openSong->heardPracticeSpeed() == 80);
+    CHECK (f.openSong->listening().renders().heardPracticeSpeed() == 80);
     CHECK_THAT ((double) f.openSong->position(), WithinAbs ((double) switchedAt + 2560 * 0.8, 1.0));
 }
 
@@ -250,7 +250,7 @@ TEST_CASE ("a source with no render yet plays silent while it is rendered", "[ui
     REQUIRE (f.openSong->edit (changed, "Add Keys").has_value());
     f.hearOnly (2);
 
-    CHECK (f.openSong->isPracticeRendering());
+    CHECK (f.openSong->listening().renders().isPracticeRendering());
     CHECK (nonZeroSamples (f.playFromStart (1.0)).empty());
 
     f.pollUntilRendered();
@@ -262,12 +262,12 @@ TEST_CASE ("back at 100% playback uses the Song's own audio at once and no rende
     PracticeFixture f;
     REQUIRE (f.openSong->setPracticeSpeed (125).has_value());
     f.pollUntilRendered();
-    REQUIRE (f.openSong->heardPracticeSpeed() == 125);
+    REQUIRE (f.openSong->listening().renders().heardPracticeSpeed() == 125);
 
     REQUIRE (f.openSong->setPracticeSpeed (100).has_value());
 
-    CHECK (f.openSong->heardPracticeSpeed() == 100);
-    CHECK_FALSE (f.openSong->isPracticeRendering());
+    CHECK (f.openSong->listening().renders().heardPracticeSpeed() == 100);
+    CHECK_FALSE (f.openSong->listening().renders().isPracticeRendering());
     CHECK (f.rendersInFolder() == 0);
     f.hearOnly (1);
     CHECK (nonZeroSamples (f.playFromStart (1.0)) == std::vector<std::int64_t> { clickAt });
@@ -284,12 +284,12 @@ TEST_CASE ("a Transpose change at a Practice Speed renders the Backing Tracks ag
     auto changed = overdub::song::setTranspose (f.song(), { .semitones = 2 });
     REQUIRE (changed.has_value());
     REQUIRE (f.openSong->edit (*changed, overdub::song::transposeLabel ({ .semitones = 2 })).has_value());
-    CHECK (f.openSong->isPracticeRendering());
+    CHECK (f.openSong->listening().renders().isPracticeRendering());
     f.pollUntilRendered();
     while (f.openSong->isTransposing())
         f.openSong->poll();
 
-    const auto folder = f.openSong->practiceRenderFolder();
+    const auto folder = f.openSong->listening().renders().practiceFolder();
     CHECK (overdub::song::practiceRenderFileFor (folder, backingSource, { .speedPercent = 80, .transpose = { .semitones = 2 } }).existsAsFile());
     CHECK_FALSE (overdub::song::practiceRenderFileFor (folder, backingSource, { .speedPercent = 80, .transpose = { .semitones = 0 } }).exists());
     CHECK (f.rendersInFolder() == 2);
@@ -300,7 +300,7 @@ TEST_CASE ("Practice Speed is not saved: the Song opens at 100%, and closing it 
     PracticeFixture f;
     REQUIRE (f.openSong->setPracticeSpeed (80).has_value());
     f.pollUntilRendered();
-    const auto folder = f.openSong->practiceRenderFolder();
+    const auto folder = f.openSong->listening().renders().practiceFolder();
     REQUIRE (folder.isDirectory());
 
     f.openSong.reset();
@@ -310,8 +310,8 @@ TEST_CASE ("Practice Speed is not saved: the Song opens at 100%, and closing it 
     auto reopened = overdub::song::SongPackage::open (f.root);
     REQUIRE (reopened.has_value());
     OpenSong openSong { std::move (reopened->package), AudioBinding { &f.engine, {}, {} } };
-    CHECK (openSong.practiceSpeed() == 100);
-    CHECK (openSong.heardPracticeSpeed() == 100);
+    CHECK (openSong.listening().practiceSpeed() == 100);
+    CHECK (openSong.listening().renders().heardPracticeSpeed() == 100);
 }
 
 TEST_CASE ("a failed render keeps the previous audio, hands its Error back once, and the same value again tries it again", "[ui][open_song][practice_speed]")
@@ -319,7 +319,7 @@ TEST_CASE ("a failed render keeps the previous audio, hands its Error back once,
     PracticeFixture f;
     // A folder that is not empty where the Take's render's temp file would go: the write fails.
     const overdub::song::ClipSource takeA { overdub::song::ClipSourceKind::take, "take-a" };
-    const auto blocker = overdub::song::tempFileFor (overdub::song::practiceRenderFileFor (f.openSong->practiceRenderFolder(), takeA, { .speedPercent = 80 }));
+    const auto blocker = overdub::song::tempFileFor (overdub::song::practiceRenderFileFor (f.openSong->listening().renders().practiceFolder(), takeA, { .speedPercent = 80 }));
     REQUIRE (blocker.createDirectory().wasOk());
     REQUIRE (blocker.getChildFile ("in the way").replaceWithText ("x"));
 
@@ -329,13 +329,13 @@ TEST_CASE ("a failed render keeps the previous audio, hands its Error back once,
     REQUIRE (errors.size() == 1);
     CHECK (errors[0].code == "song.practice_render_failed");
     CHECK (errors[0].fields.at ("source_id") == "take-a");
-    CHECK (f.openSong->heardPracticeSpeed() == 100);
+    CHECK (f.openSong->listening().renders().heardPracticeSpeed() == 100);
     CHECK (f.openSong->poll().empty());
-    CHECK_FALSE (f.openSong->isPracticeRendering());
+    CHECK_FALSE (f.openSong->listening().renders().isPracticeRendering());
 
     REQUIRE (blocker.deleteRecursively());
     REQUIRE (f.openSong->setPracticeSpeed (80).has_value());
-    CHECK (f.openSong->isPracticeRendering());
+    CHECK (f.openSong->listening().renders().isPracticeRendering());
     CHECK (f.pollUntilRendered().empty());
-    CHECK (f.openSong->heardPracticeSpeed() == 80);
+    CHECK (f.openSong->listening().renders().heardPracticeSpeed() == 80);
 }

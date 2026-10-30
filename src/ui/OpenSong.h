@@ -13,7 +13,7 @@
 #include "song/SongPackage.h"
 #include "ui/Activity.h"
 #include "ui/ExportRun.h"
-#include "ui/ListeningRenders.h"
+#include "ui/Listening.h"
 #include "video/FrameSelection.h"
 #include "video/VideoPlayback.h"
 
@@ -113,26 +113,25 @@
 // the device at the new rate (logged as ui.song_rate_changed: from_rate, to_rate).
 //
 // Transpose, Practice Speed and the octave shift (issues #209, #212, #231, #233; ADR 0009, ADR
-// 0010) play offline renders that a ui::ListeningRenders (ui/ListeningRenders.h) makes and
-// switches to: poll() advances it and hands back a failed render's Error once (a Notice), every
-// change of the Song or of what is wanted follows it at once, and the engine reloads whenever what
-// is heard changes. The engine plays the Song at heardTranspose() and heardPracticeSpeed(). While
+// 0010) play offline renders that a ui::Listening (ui/Listening.h) makes and switches to: poll()
+// advances it and hands back a failed render's Error once (a Notice), every change of the Song or
+// of what is wanted follows it at once, and the engine reloads whenever what is heard changes. The
+// engine plays heard().song at the heard Practice Speed. While
 // isTransposing(), Record and Export are unavailable (ui/Availability.h); after a failed render they
 // stay so until the Transpose changes, since a Pass or an export would not match what is heard.
 //
-// The Practice Speed is held here, outside the Song and its history; a Song always opens at 100% (a
-// Loop heard in Transcribe mode then brings back its own, issue #230). Setting the same value again
-// tries its failed renders again. While a Loop is heard (heardLoop()), its window renders first.
+// The Practice Speed is held by Listening, outside the Song and its history; a Song always opens at
+// 100% (a Loop heard in Transcribe mode then brings back its own, issue #230). While a Loop is heard
+// (heard().loop), its window renders first.
 //
 // The octave shift (issue #233): each Track keeps its own (song::Track::octaveShift, outside
-// history), and only the Focus Track's is heard, only while transcribing (octaveShiftedTrack()). It
-// is heard at once: a source with no render yet plays silence until its run ends
-// (isOctaveRendering(), the spinner).
+// history), and only the Focus Track's is heard, only while transcribing (heard().octaveShiftedTrack).
+// It is heard at once: a source with no render yet plays silence until its run ends (the spinner).
 //
 // The band filter (issue #234, ADR 0010): each Track keeps its own (song::Track::bandFilter, outside
 // history), and only the Focus Track's is heard, only while transcribing and while it is on
-// (heardBandFilter()). It runs live in the engine (Engine::setBandFilter, set with the Loop by
-// syncTranscribeListening), so a change is heard from the next block, with no render or rebuild.
+// (heard().bandFilter). It runs live in the engine (Engine::setBandFilter, set with the Loop), so a
+// change is heard from the next block, with no render or rebuild.
 //
 // Message thread only.
 namespace overdub::ui
@@ -226,7 +225,7 @@ public:
     // Stops the transport and asks the audio thread to end a running Pass.
     void stop();
     // Plays, or stops (as stop()) when playing or recording. Does nothing without audio. While a
-    // Loop is heard (heardLoop()), playing starts at its start unless the playhead is inside it.
+    // Loop is heard (heard().loop), playing starts at its start unless the playhead is inside it.
     // Errors: refusal()'s.
     core::Expected<void> playOrStop();
     // To the start of the Song; ends a running Pass (as stop()).
@@ -301,9 +300,8 @@ public:
     // Transcribe mode (issue #226, ADR 0010). While transcribing, the engine plays the Transcribe
     // Mix's mute and solo instead of the Song's (song::withTranscribeMix); otherwise the Song's own
     // mix. The window sets it as its mode changes; it is not in the Song. Changing it applies the mix
-    // (Engine::setMix) without rebuilding the plan. Logs ui.transcribe_mix_heard (debug: heard).
+    // (Engine::setMix) without rebuilding the plan unless the octave-shifted Track changes.
     void setTranscribing (bool transcribing);
-    bool isTranscribing() const { return transcribing; }
     // The Focus Track and the Transcribe Mix: Song settings outside history (song.json, no undo
     // step), song/TranscribeMix.h, heard at once while transcribing. Log ui.focus_track_set (info:
     // track_id, "" for none), ui.transcribe_mute_set and ui.transcribe_solo_set (debug: track_id,
@@ -315,29 +313,19 @@ public:
     // Logs ui.octave_shift_set (info: track_id, octaves). Errors: refusal()'s,
     // song.octave_shift_out_of_range, song.track_not_found.
     core::Expected<void> setOctaveShift (const song::Id& trackId, int octaves);
-    // The Track heard octave-shifted: the Focus Track while transcribing, when its shift is not 0.
-    std::optional<song::Id> octaveShiftedTrack() const;
-    // An octave-shift render runs (the octave control's spinner).
-    bool isOctaveRendering() const { return renders.isOctaveRendering(); }
     // A Track's band filter (issue #234, see the header comment): a Song setting outside history.
     // Logs ui.band_filter_set (info: track_id, on, low_hz, high_hz). Errors: refusal()'s,
     // song.band_filter_out_of_range, song.band_filter_low_not_below_high, song.track_not_found.
     core::Expected<void> setBandFilter (const song::Id& trackId, song::BandFilter filter);
-    // The band filter the engine plays: the Focus Track's while transcribing, when it is on.
-    std::optional<engine::HeardBandFilter> heardBandFilter() const;
 
     // Loops (issue #228, ADR 0010). The active Loop and looping are Song settings outside history
     // (song.json, no undo step, song/LoopEdits.h). The engine loops (Engine::setLoop) only while
-    // transcribing, looping and with an active Loop: heardLoop(). Every change of these, an edit, an
-    // undo or redo, and the mode, sets it. Logs ui.active_loop_set (info: loop_id, "" for none,
-    // looping) and ui.looping_set (info: looping). Each Loop keeps its Practice Speed (issue #230):
-    // once a Loop is heard (activated, looping turned on, or Transcribe mode entered while it
-    // loops), the Practice Speed becomes its speed; leaving Transcribe mode sets it to 100%. Neither
-    // happens while refusal() refuses set_practice_speed.
+    // transcribing, looping and with an active Loop: heard().loop. Logs ui.active_loop_set (info:
+    // loop_id, "" for none, looping) and ui.looping_set (info: looping). Each Loop keeps its Practice
+    // Speed (issue #230, ui/Listening.h), except while refusal() refuses set_practice_speed.
     // Errors: refusal()'s, song.loop_not_found; setLooping: song.no_active_loop.
     core::Expected<void> setActiveLoop (const std::optional<song::Id>& loopId, bool looping);
     core::Expected<void> setLooping (bool looping);
-    std::optional<engine::LoopRange> heardLoop() const;
 
     // Pre-roll is a Song setting outside history: written to song.json, never an undo step.
     // Errors: refusal()'s.
@@ -398,24 +386,18 @@ public:
     // the Song's rate.
     bool takeSampleRateChanged() { return std::exchange (sampleRateChanged, false); }
 
-    // The Transpose playback uses (see the header comment).
-    song::Transpose heardTranspose() const { return renders.heardTranspose(); }
-    // A Transpose render runs (the top bar's spinner).
-    bool isTransposeRendering() const { return renders.isTransposeRendering(); }
+    // What playback hears of the Song (ui/Listening.h): the heard Song, Loop, band filter and
+    // octave-shifted Track.
+    Heard heard() const { return listening_.heard (song()); }
+    // Transcribing, the Practice Speed and the renders playback uses (see the header comment).
+    const Listening& listening() const { return listening_; }
     // Playback is not at the Song's Transpose yet, or renders for it are being made.
-    bool isTransposing() const { return isTransposeRendering() || heardTranspose() != song().transpose; }
+    bool isTransposing() const { return listening_.isTransposing (song()); }
 
-    // Sets the Practice Speed (see the header comment). The same value again changes nothing.
-    // While a Loop is heard (heardLoop()) it is also that Loop's Practice Speed, outside history
+    // Sets the Practice Speed (see the header comment). The same value again tries its failed
+    // renders again. While a Loop is heard it is also that Loop's Practice Speed, outside history
     // (issue #230). Errors: refusal()'s, song.practice_speed_out_of_range.
     core::Expected<void> setPracticeSpeed (int speedPercent);
-    int practiceSpeed() const { return practiceTarget; }
-    // The Practice Speed playback uses.
-    int heardPracticeSpeed() const { return renders.heardPracticeSpeed(); }
-    // A Practice Speed render runs (the top bar's spinner).
-    bool isPracticeRendering() const { return renders.isPracticeRendering(); }
-    // Where the Practice Speed renders are: a temp folder outside the package, deleted with this.
-    const juce::File& practiceRenderFolder() const { return renders.practiceFolder(); }
 
     // Call regularly (window timer): advances the Listening Renders (see the header comment), an export (starts it once the audio has let go of
     // the plugins, or gives it up after ExportRun::audioTimeout; once it ends, reloads the engine and
@@ -436,35 +418,20 @@ private:
     std::optional<core::Error> endExportIfEnded (std::optional<ExportEnd> end);
     // Advances a running Separation; once it ends, reloads the engine and returns its Error.
     std::optional<core::Error> advanceSeparation (song::SongPackage::Clock::time_point now);
-    // The Song as the engine plays it: at heardTranspose(), with the Transcribe Mix while
-    // transcribing.
-    song::Song heardSong() const;
-    // `song` with the Transcribe Mix's mute and solo while transcribing; as it is otherwise.
-    song::Song withHeardMix (song::Song song) const;
     // Stores a Transcribe Mix, Focus Track, active Loop or looping change outside history and plays
-    // it. The caller follows the renders once its change is complete (followRenders).
-    core::Expected<void> changeTranscribeMix (core::Expected<song::Song> changed);
-    // Hands the engine heardLoop() and heardBandFilter() (none without audio).
-    void syncTranscribeListening();
-    // Sets practiceTarget (ui.practice_speed_set when it changes), forgets failed renders and
-    // follows it.
-    void changePracticeTarget (int speedPercent);
-    // While a Loop is heard: stores practiceTarget as its Practice Speed outside history
-    // (ui.loop_practice_speed_set: loop_id, speed_percent) when it differs.
-    void storeActiveLoopPracticeSpeed();
-    // While a Loop is heard and the Practice Speed may change: plays at its Practice Speed.
-    void applyHeardLoopPracticeSpeed();
+    // it (hearChange). Nothing when the Song is unchanged.
+    core::Expected<void> changeListening (core::Expected<song::Song> changed);
+    // After the Song or the listening state changed from `before`: the engine plays heard() (with
+    // Engine::setMix when only the heard mix changed and the octave-shifted Track did not, else
+    // reloadEngine), and the renders follow.
+    void hearChange (const Heard& before);
     // refusal() does not refuse set_practice_speed now.
     bool practiceSpeedMayChange() const;
-    // What the renders follow now: the Practice Speed, the heard Loop and the octave-shifted Track.
-    ListeningWanted listeningWanted() const;
-    // ListeningRenders::follow with the Song and listeningWanted().
-    void followRenders();
     // Advances a running conversion; once it ends, updates the engine and returns its Error.
     std::optional<core::Error> advanceConversion (song::SongPackage::Clock::time_point now);
-    // After a history change: detaches the audio when the rate changed since `before`, else setMix
-    // when only the mix changed, else reloadEngine.
-    void updateEngine (const song::Song& before);
+    // After a history change: detaches the audio when the rate changed since `before`, else
+    // hearChange.
+    void updateEngine (const Heard& before);
     // Every change of `activity` goes through these two, which count it in the ActivityLog.
     void beginActivity (Activity started);
     void endActivity (std::optional<std::string> errorCode);
@@ -509,10 +476,8 @@ private:
     bool recordAgainAfterPass = false;
     video::VideoPlayback playback;
     std::optional<juce::File> lastExport;
-    bool transcribing = false;
-    int practiceTarget = song::normalPracticeSpeed;
     // Before `activity`: a run reads only its own files, never the package.
-    ListeningRenders renders;
+    Listening listening_;
     // Last: destroyed first, so a running export stops rendering before the plugins and the package
     // go, and a running Separation (its helper killed, its output folder deleted) or conversion (its
     // files deleted) is cancelled before the package.

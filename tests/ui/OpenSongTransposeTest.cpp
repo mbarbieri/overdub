@@ -64,7 +64,7 @@ struct TransposeFixture
         {
             for (auto& error : openSong->poll())
                 errors.push_back (std::move (error));
-            if (! openSong->isTransposeRendering())
+            if (! openSong->listening().renders().isTransposeRendering())
                 return errors;
             std::this_thread::sleep_for (std::chrono::milliseconds (5));
         } while (std::chrono::steady_clock::now() < deadline);
@@ -103,14 +103,14 @@ TEST_CASE ("a Transpose change plays the previous audio until every Backing Trac
     f.setTranspose (2);
 
     CHECK (f.song().transpose == semis (2));
-    CHECK (f.openSong->heardTranspose() == semis (0));
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (0));
     CHECK (f.openSong->isTransposing());
     REQUIRE (f.openSong->poll().empty());
-    CHECK (f.openSong->isTransposeRendering());
-    CHECK (f.openSong->heardTranspose() == semis (0));
+    CHECK (f.openSong->listening().renders().isTransposeRendering());
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (0));
 
     CHECK (f.pollUntilRendered().empty());
-    CHECK (f.openSong->heardTranspose() == semis (2));
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (2));
     CHECK_FALSE (f.openSong->isTransposing());
     CHECK (f.hasRenders (2));
 }
@@ -123,18 +123,18 @@ TEST_CASE ("the package keeps only the current Transpose's renders, and undo ren
     f.setTranspose (-5);
     f.pollUntilRendered();
 
-    CHECK (f.openSong->heardTranspose() == semis (-5));
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (-5));
     CHECK (f.hasRenders (-5));
     CHECK (f.rendersInPackage() == 2);
 
     REQUIRE (f.openSong->undo().has_value());
     CHECK (f.song().transpose == semis (2));
-    CHECK (f.openSong->heardTranspose() == semis (-5));
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (-5));
     REQUIRE (f.openSong->poll().empty());
-    CHECK (f.openSong->isTransposeRendering());
+    CHECK (f.openSong->listening().renders().isTransposeRendering());
     f.pollUntilRendered();
 
-    CHECK (f.openSong->heardTranspose() == semis (2));
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (2));
     CHECK (f.hasRenders (2));
     CHECK (f.rendersInPackage() == 2);
 }
@@ -148,8 +148,8 @@ TEST_CASE ("at Transpose 0 playback uses the derived audio at once and no render
     f.setTranspose (0);
     REQUIRE (f.openSong->poll().empty());
 
-    CHECK_FALSE (f.openSong->isTransposeRendering());
-    CHECK (f.openSong->heardTranspose() == semis (0));
+    CHECK_FALSE (f.openSong->listening().renders().isTransposeRendering());
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (0));
     CHECK (f.rendersInPackage() == 0);
 }
 
@@ -168,10 +168,10 @@ TEST_CASE ("a failed render keeps the previous audio and hands its Error back on
     REQUIRE (errors.size() == 1);
     CHECK (errors[0].code == "song.transpose_render_failed");
     CHECK (errors[0].fields.at ("backing_track_id") == band.id);
-    CHECK (f.openSong->heardTranspose() == semis (0));
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (0));
     // Not tried again until Transpose changes.
     CHECK (f.openSong->poll().empty());
-    CHECK_FALSE (f.openSong->isTransposeRendering());
+    CHECK_FALSE (f.openSong->listening().renders().isTransposeRendering());
 }
 
 TEST_CASE ("a Song opened at a Transpose plays its derived audio until what is missing is rendered, and drops other renders", "[ui][open_song][transpose]")
@@ -191,14 +191,14 @@ TEST_CASE ("a Song opened at a Transpose plays its derived audio until what is m
 
         CHECK_FALSE (stale.exists());
         // The derived audio plays until the -1 render is there.
-        CHECK (openSong.heardTranspose() == semis (0));
-        CHECK (openSong.isTransposeRendering());
+        CHECK (openSong.listening().renders().heardTranspose() == semis (0));
+        CHECK (openSong.listening().renders().isTransposeRendering());
         CHECK (openSong.isTransposing());
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (30);
         while ((openSong.poll(), openSong.isTransposing()) && std::chrono::steady_clock::now() < deadline)
             std::this_thread::sleep_for (std::chrono::milliseconds (5));
         CHECK_FALSE (openSong.isTransposing());
-        CHECK (openSong.heardTranspose() == semis (-1));
+        CHECK (openSong.listening().renders().heardTranspose() == semis (-1));
         CHECK (overdub::song::transposedFileFor (root, openSong.song().backingTracks.at (0), semis (-1)).existsAsFile());
     }
 }
@@ -217,8 +217,8 @@ TEST_CASE ("a Backing Track imported into a transposed Song is rendered at its T
 
     // Record and Export read isTransposing() (ui/Availability.h): they wait from the import on.
     CHECK (f.openSong->isTransposing());
-    CHECK (f.openSong->isTransposeRendering());
-    CHECK (f.openSong->heardTranspose() == semis (semitones, cents));
+    CHECK (f.openSong->listening().renders().isTransposeRendering());
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (semitones, cents));
     CHECK (f.pollUntilRendered().empty());
     CHECK_FALSE (f.openSong->isTransposing());
 
@@ -242,16 +242,16 @@ TEST_CASE ("a fine tune in cents is its own Transpose undo step, rendered with t
                                                 "30 ct");
     CHECK (f.openSong->isTransposing());
     CHECK (f.pollUntilRendered().empty());
-    CHECK (f.openSong->heardTranspose() == semis (2, -30));
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (2, -30));
     CHECK (f.hasRenders (2, -30));
     // One render per Backing Track: the semitones' render is gone, not stretched again.
     CHECK (f.rendersInPackage() == 2);
 
     REQUIRE (f.openSong->undo().has_value());
     CHECK (f.song().transpose == semis (2));
-    CHECK (f.openSong->heardTranspose() == semis (2, -30));
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (2, -30));
     f.pollUntilRendered();
-    CHECK (f.openSong->heardTranspose() == semis (2));
+    CHECK (f.openSong->listening().renders().heardTranspose() == semis (2));
     CHECK (f.hasRenders (2));
     CHECK (f.rendersInPackage() == 2);
 }

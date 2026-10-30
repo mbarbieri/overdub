@@ -401,7 +401,7 @@ TEST_CASE ("while looping in Transcribe mode playback wraps at the Loop's end, a
     MainWindowFixture f;
     showMode (f, Mode::transcribe);
     const auto loopId = addLoop (f, 24000, 30000);
-    REQUIRE (f.openSong->heardLoop() == engine::LoopRange { 24000, 30000 });
+    REQUIRE (f.openSong->heard().loop == engine::LoopRange { 24000, 30000 });
 
     // From outside the Loop, Space starts at its start.
     run (f, SongIntent { intent::Seek { 60000 } });
@@ -427,9 +427,9 @@ TEST_CASE ("while looping in Transcribe mode playback wraps at the Loop's end, a
 
     // Looping off: plays straight on.
     run (f, SongIntent { intent::SetLooping { false } });
-    CHECK_FALSE (f.openSong->heardLoop().has_value());
+    CHECK_FALSE (f.openSong->heard().loop.has_value());
     run (f, SongIntent { intent::SetLooping { true } });
-    CHECK (f.openSong->heardLoop().has_value());
+    CHECK (f.openSong->heard().loop.has_value());
     CHECK (loopWithId (f, loopId).start == 24000);
 }
 
@@ -438,11 +438,11 @@ TEST_CASE ("Record and Edit never loop; in Record a click on a Loop moves the re
     MainWindowFixture f;
     showMode (f, Mode::transcribe);
     const auto loopId = addLoop (f, 24000, 30000);
-    REQUIRE (f.openSong->heardLoop().has_value());
+    REQUIRE (f.openSong->heard().loop.has_value());
 
     const auto mode = GENERATE (Mode::edit, Mode::record);
     showMode (f, mode);
-    CHECK_FALSE (f.openSong->heardLoop().has_value());
+    CHECK_FALSE (f.openSong->heard().loop.has_value());
     CHECK (f.song().looping); // kept for when Transcribe mode is back
 
     run (f, SongIntent { intent::Seek { 0 } });
@@ -475,5 +475,5 @@ TEST_CASE ("Record and Edit never loop; in Record a click on a Loop moves the re
     }
 
     showMode (f, Mode::transcribe);
-    CHECK (f.openSong->heardLoop() == engine::LoopRange { 24000, 30000 });
+    CHECK (f.openSong->heard().loop == engine::LoopRange { 24000, 30000 });
 }

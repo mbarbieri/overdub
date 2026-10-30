@@ -65,12 +65,12 @@ juce::TextButton& octaveButton (MainWindowFixture& f, int octaves)
 void tickUntilOctaveRendered (MainWindowFixture& f)
 {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds (30);
-    while (f.openSong->isOctaveRendering() && std::chrono::steady_clock::now() < deadline)
+    while (f.openSong->listening().renders().isOctaveRendering() && std::chrono::steady_clock::now() < deadline)
     {
         f.window->tick();
         std::this_thread::sleep_for (std::chrono::milliseconds (5));
     }
-    REQUIRE_FALSE (f.openSong->isOctaveRendering());
+    REQUIRE_FALSE (f.openSong->listening().renders().isOctaveRendering());
 }
 
 // Plays about 0.8 s from the start (without polling) and returns the last 12000 output samples
@@ -181,8 +181,8 @@ TEST_CASE ("a 110 Hz sine on the Focus Track at +1 is heard at 220 Hz in Transcr
     run (f, SongIntent { intent::SetOctaveShift { bassId, 1 } });
 
     // While it renders, the Bass plays silence and the column shows a spinner.
-    CHECK (f.openSong->isOctaveRendering());
-    CHECK (f.openSong->octaveShiftedTrack() == bassId);
+    CHECK (f.openSong->listening().renders().isOctaveRendering());
+    CHECK (f.openSong->heard().octaveShiftedTrack == bassId);
     f.window->refresh();
     CHECK (isShown (column (f).octaveSpinner));
     CHECK (peakOf (heardFromStart (f)) == 0.0f);
@@ -213,13 +213,13 @@ TEST_CASE ("a 110 Hz sine on the Focus Track at +1 is heard at 220 Hz in Transcr
     {
         run (f, SongIntent { intent::Edit { intent::SetTrackMute { drumsId, true } } });
         showMode (f, Mode::edit);
-        CHECK_FALSE (f.openSong->octaveShiftedTrack().has_value());
+        CHECK_FALSE (f.openSong->heard().octaveShiftedTrack.has_value());
         CHECK_THAT (centsBetween (heardFrequency (f), sineFrequency), WithinAbs (0.0, 5.0));
         showMode (f, Mode::record);
         CHECK_THAT (centsBetween (heardFrequency (f), sineFrequency), WithinAbs (0.0, 5.0));
         // Back in Transcribe mode the render is there still: heard at once.
         showMode (f, Mode::transcribe);
-        CHECK_FALSE (f.openSong->isOctaveRendering());
+        CHECK_FALSE (f.openSong->listening().renders().isOctaveRendering());
         CHECK_THAT (centsBetween (heardFrequency (f), 2.0 * sineFrequency), WithinAbs (0.0, 5.0));
     }
 
@@ -256,14 +256,14 @@ TEST_CASE ("each Track keeps its own octave shift: moving the Focus brings back 
     click (octaveButton (f, 1));
     run (f, SongIntent { intent::SetFocusTrack { drumsId } });
     CHECK (octaveButton (f, 0).getToggleState()); // the Drums' own, not the Bass's
-    CHECK (f.openSong->octaveShiftedTrack() == std::nullopt);
+    CHECK (f.openSong->heard().octaveShiftedTrack == std::nullopt);
     click (octaveButton (f, -1));
-    CHECK (f.openSong->octaveShiftedTrack() == drumsId);
+    CHECK (f.openSong->heard().octaveShiftedTrack == drumsId);
 
     run (f, SongIntent { intent::SetFocusTrack { bassId } });
 
     CHECK (octaveButton (f, 1).getToggleState());
-    CHECK (f.openSong->octaveShiftedTrack() == bassId);
+    CHECK (f.openSong->heard().octaveShiftedTrack == bassId);
     CHECK (f.trackNamed ("Bass").octaveShift == 1);
     CHECK (f.trackNamed ("Drums").octaveShift == -1);
     tickUntilOctaveRendered (f);
@@ -286,7 +286,7 @@ TEST_CASE ("each Track keeps its own octave shift: moving the Focus brings back 
         CHECK (f.trackNamed ("Drums").octaveShift == -1);
         CHECK (f.song().focusTrackId == bassId);
         CHECK (octaveButton (f, 1).getToggleState());
-        CHECK (f.openSong->octaveShiftedTrack() == bassId);
+        CHECK (f.openSong->heard().octaveShiftedTrack == bassId);
         tickUntilOctaveRendered (f);
         CHECK_THAT (centsBetween (heardFrequency (f), 2.0 * sineFrequency), WithinAbs (0.0, 5.0));
     }
