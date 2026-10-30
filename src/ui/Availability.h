@@ -16,7 +16,9 @@
 // The App group, but quit and hiding the Settings window, waits until nothing runs but an export
 // (ui.calibration_running, ui.separation_running, ui.conversion_running or ui.stop_recording_first,
 // field `op`, presented as its Notice); convert_sample_rate also waits for an export, and quit
-// only for a Separation. A Song op is refused as its ui::Gesture is (ui::refusal, field `gesture`):
+// only for a Separation. A Song op is refused as the gesture it is, when a Pass, an export or a
+// loopback latency calibration refuses that gesture (ui.stop_recording_first, ui.export_running or
+// ui.calibration_running, field `gesture`):
 // presented for record, export and start_separation, logged at debug for the others, whose
 // controls already show they are unavailable: show_export, which opens the Export sheet, waits until
 // nothing runs (issue #200), and cancel_export waits for an export (ui.no_export_running, field
@@ -26,6 +28,9 @@
 // deleting a Loop, are refused (ui.record_mode, field `op`, presented as its Notice, issues #227,
 // #228): Record shows the Markers and Loops read-only.
 // Window ops other than under the run dialog are never refused.
+//
+// This is the only gate: MainComponent::run asks it before it dispatches, and what an Intent's
+// handler calls (ui::OpenSong) refuses nothing.
 namespace overdub::ui
 {
 // What runs in the app, as the refusals read it.
@@ -61,6 +66,10 @@ struct Refusal
 std::optional<Refusal> refusalOf (std::string_view op, const Running& running);
 // The refusal of this very Intent: hiding the Settings window or the Export sheet is never refused.
 std::optional<Refusal> refusalOf (const Intent& intent, const Running& running);
+
+// Whether the Error is a refusal by the running activity: one of its codes, with the field
+// `gesture` (the control socket's `refused`).
+bool isRefusal (const core::Error& error);
 
 // Why a control is unavailable (its tooltip), from the code its op is refused with.
 std::string unavailableReason (std::string_view code);

@@ -268,26 +268,6 @@ TEST_CASE ("an edit is one labelled undo step, and the engine plays the edited S
     CHECK (f.song() == before);
 }
 
-TEST_CASE ("edits and seeks are refused while a Pass runs", "[ui][open_song][edit]")
-{
-    OpenSongFixture f;
-    REQUIRE (f.openSong->record().has_value());
-    f.device.run (f.engine, 4);
-    const auto before = f.song();
-    auto changed = before;
-    changed.tracks[0].clips.clear();
-
-    CHECK (f.openSong->edit (changed, "Delete Clip").error().code == "ui.stop_recording_first");
-    CHECK (f.song() == before);
-    const auto position = f.openSong->position();
-    CHECK (f.openSong->seek (100000).error().code == "ui.stop_recording_first");
-    CHECK (f.openSong->position() == position);
-
-    f.openSong->stop();
-    f.device.run (f.engine, 1);
-    CHECK (f.openSong->poll().empty());
-}
-
 TEST_CASE ("seeking moves the playhead, which is saved once the transport is stopped", "[ui][open_song]")
 {
     OpenSongFixture f;

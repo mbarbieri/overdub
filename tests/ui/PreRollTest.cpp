@@ -217,7 +217,7 @@ TEST_CASE ("stopping during the pre-roll ends the Pass with nothing recorded", "
     CHECK (std::ranges::any_of (events, [] (const auto& event) { return event.at ("event") == "capture.pass_stopped" && event.at ("outcome") == "empty"; }));
 }
 
-TEST_CASE ("changing pre-roll writes the Song without a history step, and not while a Pass runs", "[ui][open_song][pre_roll]")
+TEST_CASE ("changing pre-roll writes the Song without a history step", "[ui][open_song][pre_roll]")
 {
     PreRollFixture f { {} };
     const auto stepBefore = f.openSong->package().undoLabel();
@@ -234,8 +234,4 @@ TEST_CASE ("changing pre-roll writes the Song without a history step, and not wh
     const auto written = overdub::song::songFromJson (*json);
     REQUIRE (written.has_value());
     CHECK (written->settings.preRoll == PreRoll::fourSeconds);
-
-    REQUIRE (f.openSong->record().has_value());
-    f.openSong->setPreRoll (PreRoll::off);
-    CHECK (f.song().settings.preRoll == PreRoll::fourSeconds);
 }

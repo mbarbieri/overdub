@@ -3,6 +3,7 @@
 #include "core/LogEvents.h"
 #include "separation/OnnxTestModel.h"
 #include "song/FakeSeparationHelper.h"
+#include "ui/Availability.h"
 #include "ui/MainWindowFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -15,9 +16,10 @@
 #include <string>
 #include <vector>
 
-// OpenSong runs one activity at a time and refuses gestures by one table (issue #145): every
-// gesture against every activity, through the real OpenSong over a fake device, a fake camera and
-// a fake Separation helper (ADR 0007: no test runs the real model).
+// OpenSong runs one activity at a time, and ui/Availability.h refuses gestures by one table
+// (issues #145, #255): every gesture against every activity, run as an Intent through the real
+// window and OpenSong over a fake device, a fake camera and a fake Separation helper (ADR 0007: no
+// test runs the real model).
 using overdub::core::ScopedLogCapture;
 using overdub::core::testing::firstEvent;
 using namespace overdub::ui;
@@ -91,63 +93,59 @@ struct ActivityFixture
     song::Id guitarId() const { return f.trackNamed ("Guitar").id; }
 };
 
-// "ok", or the Error's code.
-template <typename T>
-std::string outcomeOf (const core::Expected<T>& result)
-{
-    return result.has_value() ? "ok" : result.error().code;
-}
-
 struct GestureCase
 {
     std::string name;
-    std::function<std::string (ActivityFixture&)> run;
-    // What it returns with nothing, a Pass, a Separation, a conversion and an export running.
-    std::array<std::string, 5> expected;
+    std::function<SongIntent (ActivityFixture&)> intent;
+    // What run answers with a Pass and with an export running: "allowed", or the refusal's code.
+    // Nothing running allows every one, and a Separation's or a conversion's run dialog refuses
+    // every one (ui.run_dialog_open).
+    std::string duringPass;
+    std::string duringExport;
 };
 
+const std::string allowed = "allowed";
 const std::string pass = "ui.stop_recording_first";
-const std::string separation = "ui.separation_running";
-const std::string conversion = "ui.conversion_running";
 const std::string exportRunning = "ui.export_running";
+const std::string runDialog = "ui.run_dialog_open";
+
+// "allowed", or the code of the refusal run answered with.
+std::string outcomeOf (const IntentResult& result)
+{
+    if (result.has_value())
+        return allowed;
+    const auto& code = result.error().code;
+    return code == pass || code == exportRunning || code == runDialog ? code : allowed;
+}
 
 std::vector<GestureCase> gestureCases()
 {
+    using namespace intent;
     return {
-        { "record", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->record()); }, { "ok", "ok", separation, conversion, exportRunning } },
-        { "playOrStop", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->playOrStop()); }, { "ok", "ok", separation, conversion, exportRunning } },
-        { "seek", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->seek (1000)); }, { "ok", pass, "ok", "ok", "ok" } },
-        { "edit", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->edit (withMasterDb (a.f.song(), -3.0), "Master -3")); }, { "ok", pass, separation, conversion, "ok" } },
-        { "undo", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->undo()); }, { "ok", pass, separation, conversion, "ok" } },
-        { "redo", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->redo()); }, { "ok", pass, separation, conversion, "ok" } },
-        { "addInsert", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->addInsert (a.guitarId(), testPlugin)); }, { "ok", pass, separation, conversion, "ok" } },
-        { "previewMix", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->previewMix (withMasterDb (a.f.song(), -3.0))); }, { "ok", pass, separation, conversion, "ok" } },
-        { "setPreRoll", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setPreRoll (song::PreRoll::twoSeconds)); }, { "ok", pass, separation, conversion, "ok" } },
-        { "setArmed", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setArmed (a.guitarId(), false)); }, { "ok", pass, separation, conversion, "ok" } },
-        { "setInputChannels", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setInputChannels (a.guitarId(), { 1 })); }, { "ok", pass, separation, conversion, "ok" } },
-        { "setMonitoring", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setMonitoring (a.guitarId(), true)); }, { "ok", pass, separation, conversion, "ok" } },
-        { "setCameraArmed", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setCameraArmed (true)); }, { "ok", pass, separation, conversion, "ok" } },
-        { "setCameraDevice", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setCameraDevice ("camera-usb")); }, { "ok", pass, separation, conversion, "ok" } },
-        { "importFiles",
-          [] (ActivityFixture& a) {
-        const auto results = a.f.openSong->importFiles ({ a.f.fixture->writeSineFile ("Drums.wav", 1.0, 110.0) });
-        REQUIRE (results.size() == 1);
-        return outcomeOf (results.front());
-    },
-          { "ok", pass, separation, conversion, exportRunning } },
-        // An export was allowed to start beside a Separation before issue #145: the window's modal
-        // dialog kept it from asking. One activity at a time now refuses it.
-        { "startExport",
-          [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->startExport ({ exporting::ExportFormat::wav, a.f.fixture->folder.getChildFile ("Other.wav") })); },
-          { "ok", pass, separation, conversion, "ok" } },
-        { "startSeparation", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->startSeparation (a.bandMixId())); }, { "ok", pass, "ok", conversion, exportRunning } },
-        { "startSampleRateConversion",
-          [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->startSampleRateConversion (otherSampleRate)); },
-          { "ok", pass, separation, "ok", exportRunning } },
-        { "setPracticeSpeed", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->setPracticeSpeed (80)); }, { "ok", pass, separation, conversion, "ok" } },
-        { "changeListening set_focus_track", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->changeListening (intent::SetFocusTrack { a.guitarId() })); }, { "ok", pass, separation, conversion, "ok" } },
-        { "changeListening set_transcribe_mute", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->changeListening (intent::SetTranscribeMute { a.guitarId(), true })); }, { "ok", pass, separation, conversion, "ok" } },
-        { "changeListening set_transcribe_solo", [] (ActivityFixture& a) { return outcomeOf (a.f.openSong->changeListening (intent::SetTranscribeSolo { a.guitarId(), true })); }, { "ok", pass, separation, conversion, "ok" } },
+        { "record", [] (ActivityFixture&) { return Record {}; }, allowed, exportRunning },
+        { "play_or_stop", [] (ActivityFixture&) { return PlayOrStop {}; }, allowed, exportRunning },
+        { "seek", [] (ActivityFixture&) { return Seek { 1000 }; }, pass, allowed },
+        { "set_master_volume", [] (ActivityFixture&) { return SongIntent { Edit { SetMasterVolume { -3.0 } } }; }, pass, allowed },
+        { "undo", [] (ActivityFixture&) { return Undo {}; }, pass, allowed },
+        { "redo", [] (ActivityFixture&) { return Redo {}; }, pass, allowed },
+        { "add_insert", [] (ActivityFixture& a) { return AddInsert { a.guitarId(), "aufx", "test", "ovdb" }; }, pass, allowed },
+        { "preview_mix", [] (ActivityFixture&) { return PreviewMix { SetMasterVolume { -3.0 } }; }, pass, allowed },
+        { "set_pre_roll", [] (ActivityFixture&) { return SetPreRoll { song::PreRoll::twoSeconds }; }, pass, allowed },
+        { "set_armed", [] (ActivityFixture& a) { return SetArmed { a.guitarId(), false }; }, pass, allowed },
+        { "set_input_channels", [] (ActivityFixture& a) { return SetInputChannels { a.guitarId(), { 1 } }; }, pass, allowed },
+        { "set_monitoring", [] (ActivityFixture& a) { return SetMonitoring { a.guitarId(), true }; }, pass, allowed },
+        { "set_camera_armed", [] (ActivityFixture&) { return SetCameraArmed { true }; }, pass, allowed },
+        { "set_camera_device", [] (ActivityFixture&) { return SetCameraDevice { "camera-usb" }; }, pass, allowed },
+        { "import_files",
+          [] (ActivityFixture& a) { return ImportFiles { { core::AbsolutePath { a.f.fixture->writeSineFile ("Drums.wav", 1.0, 110.0).getFullPathName().toStdString() } } }; },
+          pass,
+          exportRunning },
+        { "export", [] (ActivityFixture&) { return Export {}; }, pass, allowed },
+        { "start_separation", [] (ActivityFixture& a) { return StartSeparation { a.bandMixId() }; }, pass, exportRunning },
+        { "set_practice_speed", [] (ActivityFixture&) { return SetPracticeSpeed { 80 }; }, pass, allowed },
+        { "set_focus_track", [] (ActivityFixture& a) { return SongIntent { ListeningSetting { SetFocusTrack { a.guitarId() } } }; }, pass, allowed },
+        { "set_transcribe_mute", [] (ActivityFixture& a) { return SongIntent { ListeningSetting { SetTranscribeMute { a.guitarId(), true } } }; }, pass, allowed },
+        { "set_transcribe_solo", [] (ActivityFixture& a) { return SongIntent { ListeningSetting { SetTranscribeSolo { a.guitarId(), true } } }; }, pass, allowed },
     };
 }
 
@@ -176,42 +174,49 @@ TEST_CASE ("every gesture against every activity is refused with the activity's 
 
     ActivityFixture a { running };
     const auto before = a.f.song();
-    const auto expected = gesture.expected[(std::size_t) running];
-    CHECK (gesture.run (a) == expected);
-    if (expected != "ok")
+    const auto expected = running == Started::nothing   ? allowed
+                        : running == Started::pass      ? gesture.duringPass
+                        : running == Started::exporting ? gesture.duringExport
+                                                        : runDialog;
+    CHECK (outcomeOf (a.f.window->run (gesture.intent (a), Origin::control)) == expected);
+    if (expected != allowed)
         CHECK (a.f.song() == before); // a refused gesture changes nothing
 }
 
 TEST_CASE ("a refusal names its gesture", "[ui][activity]")
 {
     ActivityFixture a { Started::pass };
-    const auto refused = a.f.openSong->undo();
+    const auto refused = a.f.window->run (SongIntent { intent::Undo {} }, Origin::control);
     REQUIRE_FALSE (refused.has_value());
     CHECK (refused.error().code == "ui.stop_recording_first");
     CHECK (refused.error().fields == core::Fields { { "gesture", "undo" } });
-}
-
-TEST_CASE ("an Error is a refusal only with a refusal code and the field gesture", "[ui][activity]")
-{
-    const auto refused = refusal (Activity { ExportActivity {} }, Gesture::record);
-    REQUIRE (refused.has_value());
-    CHECK (isRefusal (*refused));
-    CHECK_FALSE (isRefusal (core::Error { "ui.export_running", "an export is running", {} }));
-    CHECK_FALSE (isRefusal (core::Error { "song.track_not_found", "no such Track", { { "gesture", "edit" } } }));
+    CHECK (isRefusal (refused.error()));
 }
 
 TEST_CASE ("only one activity runs: starting another one is refused while it runs, and allowed once it ends", "[ui][activity]")
 {
     ActivityFixture a { Started::exporting };
-    CHECK (a.f.openSong->startSeparation (a.bandMixId()).error().code == "ui.export_running");
-    CHECK (a.f.openSong->record().error().code == "ui.export_running");
+    CHECK (a.f.window->run (SongIntent { intent::StartSeparation { a.bandMixId() } }, Origin::control).error().code == "ui.export_running");
+    CHECK (a.f.window->run (SongIntent { intent::Record {} }, Origin::control).error().code == "ui.export_running");
 
     for (int poll = 0; poll < 200 && a.f.openSong->isExporting(); ++poll)
         a.f.runBlocks (1);
     REQUIRE_FALSE (a.f.openSong->isExporting());
-    CHECK (a.f.openSong->record().has_value());
+    CHECK (a.f.window->run (SongIntent { intent::Record {} }, Origin::control).has_value());
     CHECK (a.f.openSong->isRecording());
     CHECK_FALSE (a.f.openSong->isSeparating());
+}
+
+TEST_CASE ("starting an activity while another runs does nothing and logs the broken invariant", "[ui][activity]")
+{
+    ActivityFixture a { Started::exporting };
+    core::ScopedLogCapture capture;
+
+    CHECK (a.f.openSong->startSeparation (a.bandMixId()).has_value());
+
+    CHECK (a.f.openSong->isExporting());
+    CHECK_FALSE (a.f.openSong->isSeparating());
+    CHECK (firstEvent (capture, "ui.activity_already_running").at ("kind") == "export");
 }
 
 TEST_CASE ("the window presents no Notice or Alert for a gesture a Pass, a Separation or a conversion refuses", "[ui][activity]")

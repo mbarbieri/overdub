@@ -174,7 +174,7 @@ TEST_CASE ("Separate... on a Backing Track's row opens a modal dialog whose prog
     CHECK_FALSE (s.f.openSong->isPlaying());
     CHECK_FALSE (s.f.openSong->isRecording());
     CHECK (s.f.song() == before);
-    CHECK (s.f.openSong->record().error().code == "ui.separation_running");
+    CHECK (s.f.window->run (SongIntent { intent::Record {} }).error().code == "ui.run_dialog_open");
 
     for (int poll = 0; poll < 5 && s.f.openSong->isSeparating(); ++poll)
         s.f.window->tick();
@@ -182,7 +182,7 @@ TEST_CASE ("Separate... on a Backing Track's row opens a modal dialog whose prog
     CHECK_FALSE (isShown (dialog));
 }
 
-TEST_CASE ("while a Separation runs, arm, input, pre-roll, Monitoring, the camera and Mixer previews are refused", "[ui][separation]")
+TEST_CASE ("while a Separation runs, its run dialog refuses arm, input, pre-roll, Monitoring, the camera and Mixer previews", "[ui][separation]")
 {
     SeparateFixture s;
     const auto& guitarId = s.f.trackNamed ("Guitar").id;
@@ -190,14 +190,19 @@ TEST_CASE ("while a Separation runs, arm, input, pre-roll, Monitoring, the camer
     REQUIRE (s.f.openSong->isSeparating());
     const auto before = s.f.song();
 
-    auto quieter = before;
-    quieter.master.volumeDb = -60.0;
-    CHECK (s.f.openSong->setArmed (guitarId, false).error().code == "ui.separation_running");
-    CHECK (s.f.openSong->setInputChannels (guitarId, { 1 }).error().code == "ui.separation_running");
-    CHECK (s.f.openSong->setPreRoll (before.settings.preRoll == song::PreRoll::off ? song::PreRoll::oneSecond : song::PreRoll::off).error().code == "ui.separation_running");
-    CHECK (s.f.openSong->setMonitoring (guitarId, true).error().code == "ui.separation_running");
-    CHECK (s.f.openSong->previewMix (quieter).error().code == "ui.separation_running");
-    CHECK (s.f.openSong->setCameraArmed (true).error().code == "ui.separation_running");
+    const auto otherPreRoll = before.settings.preRoll == song::PreRoll::off ? song::PreRoll::oneSecond : song::PreRoll::off;
+    for (const auto& refused : std::vector<SongIntent> {
+             intent::SetArmed { guitarId, false },
+             intent::SetInputChannels { guitarId, { 1 } },
+             intent::SetPreRoll { otherPreRoll },
+             intent::SetMonitoring { guitarId, true },
+             intent::PreviewMix { intent::SetMasterVolume { -60.0 } },
+             intent::SetCameraArmed { true },
+         })
+    {
+        INFO (opName (Intent { refused }));
+        CHECK (s.f.window->run (refused).error().code == "ui.run_dialog_open");
+    }
 
     CHECK (s.f.song() == before);
     CHECK_FALSE (s.f.openSong->isMonitoring (guitarId));

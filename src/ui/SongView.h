@@ -39,8 +39,9 @@ class VideoScreen;
 //
 // run() is the Song group's one handler (ADR 0008): an exhaustive visit into the private methods
 // below, which keep every side effect a gesture has (the right half selected after a split,
-// Monitoring off after a Track delete, clip indicators out when a Pass starts, refusals presented
-// only for record, export, Separation and conversion). A gesture that does nothing returns an
+// Monitoring off after a Track delete, clip indicators out when a Pass starts). MainComponent::run
+// has asked ui/Availability.h first, so OpenSong refuses nothing here; the two paths that reach
+// OpenSong without it (a committed arrow-key burst, the camera access answer) ask it themselves. A gesture that does nothing returns an
 // Error logged at debug and never presented. Everything reaches it through MainComponent::run: keys, the top bar, the Edit menu, and every
 // page (ui/RecordPage.h, ui/EditPage.h, ui/ExportSheet.h) and the plugin windows, which report their
 // gestures as Intents through one sink each; their few hooks open a dialog (a chooser, a
@@ -123,9 +124,7 @@ private:
     IntentResult edit (const intent::Edit& edit);
     // A Song operation's Error (the Song as it is cannot take it), presented. Returns it.
     core::Error handleOperationError (const core::Error& error);
-    // OpenSong's result, presented unless it is a refusal (MainComponent::handleUnlessRefused).
-    IntentResult unlessRefused (const core::Expected<void>& result);
-    // OpenSong's result, presented even when it is a refusal (MainComponent::handleError).
+    // OpenSong's result, its Error presented (MainComponent::handleError).
     IntentResult presented (const core::Expected<void>& result);
 
     IntentResult record();

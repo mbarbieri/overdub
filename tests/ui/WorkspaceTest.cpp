@@ -487,9 +487,10 @@ TEST_CASE ("while a conversion runs, recording, other Songs and device changes w
     REQUIRE (f.song().isConverting());
     overdub::core::ScopedLogCapture capture;
 
-    const auto recorded = f.song().record();
+    const auto recorded = f.content.run (overdub::ui::SongIntent { overdub::ui::intent::Record {} });
     REQUIRE_FALSE (recorded.has_value());
-    CHECK (recorded.error().code == "ui.conversion_running");
+    CHECK (recorded.error().code == "ui.run_dialog_open");
+    CHECK_FALSE (f.song().isRecording());
     CHECK_FALSE (f.workspace->nothingRunsButAnExport());
     CHECK_FALSE (f.content.mayRun (NewSongAt::op));
     CHECK (contains (messageCodes (capture), "ui.conversion_running"));

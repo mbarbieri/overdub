@@ -322,20 +322,6 @@ void MainComponent::handleError (const core::Error& error)
     post (message);
 }
 
-void MainComponent::handleUnlessRefused (const core::Error& error)
-{
-    if (! isRefusal (error))
-        return handleError (error);
-    // The page's controls already show the gesture is unavailable: no Notice (issue #145).
-    core::logError (error, core::Level::debug);
-}
-
-void MainComponent::handleUnlessRefused (const core::Expected<void>& result)
-{
-    if (! result.has_value())
-        handleUnlessRefused (result.error());
-}
-
 void MainComponent::showNotice (const std::string& code, core::Fields fields)
 {
     post (UserMessage { Tier::notice, code, std::move (fields) });

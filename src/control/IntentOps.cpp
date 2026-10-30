@@ -1,7 +1,7 @@
 #include "control/IntentOps.h"
 
 #include "core/Described.h"
-#include "ui/Activity.h"
+#include "ui/Availability.h"
 #include "ui/MainComponent.h"
 
 #include <algorithm>

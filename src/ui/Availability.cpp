@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <string>
+#include <utility>
 
 namespace overdub::ui
 {
@@ -12,7 +14,91 @@ namespace
 {
 using namespace intent;
 
-// Every Song op and the ui::Gesture a running activity may refuse it as; nullopt: no activity ever
+// The gestures some activity refuses, each named in its refusal's field `gesture`. A Separation or
+// a conversion is not among them: while either runs, the run dialog's gate answers every Song op
+// first (refusalOf). A Pass keeps the Song and the engine's plan as it started. An export renders
+// its own plan, so the Song may change, but no Track is imported or deleted under it. A loopback
+// latency calibration holds the audio device, so nothing may play or record.
+enum class Gesture
+{
+    record,
+    playOrStop,
+    seek,
+    edit,
+    undo,
+    redo,
+    addInsert,
+    previewMix,
+    setPreRoll,
+    setArmed,
+    setInputChannels,
+    setMonitoring,
+    setCameraArmed,
+    setCameraDevice,
+    changeTracks, // import, or delete a Track
+    showExport,
+    startExport,
+    startSeparation,
+    setPracticeSpeed,
+    setTranscribeMix, // the Focus Track, Transcribe Mix mute and solo (issue #226)
+};
+
+struct GestureRule
+{
+    const char* name;
+    bool refusedByPass;
+    bool refusedByExport;
+    bool refusedByCalibration;
+};
+
+constexpr GestureRule ruleFor (Gesture gesture)
+{
+    switch (gesture)
+    {
+        // { name, refused by a Pass, by an export, by a calibration }
+        case Gesture::record: return { "record", false, true, true };
+        case Gesture::playOrStop: return { "play_or_stop", false, true, true };
+        case Gesture::seek: return { "seek", true, false, false };
+        case Gesture::edit: return { "edit", true, false, false };
+        case Gesture::undo: return { "undo", true, false, false };
+        case Gesture::redo: return { "redo", true, false, false };
+        case Gesture::addInsert: return { "add_insert", true, false, false };
+        case Gesture::previewMix: return { "preview_mix", true, false, false };
+        case Gesture::setPreRoll: return { "set_pre_roll", true, false, false };
+        case Gesture::setArmed: return { "set_armed", true, false, false };
+        case Gesture::setInputChannels: return { "set_input_channels", true, false, false };
+        case Gesture::setMonitoring: return { "set_monitoring", true, false, true };
+        case Gesture::setCameraArmed: return { "set_camera_armed", true, false, false };
+        case Gesture::setCameraDevice: return { "set_camera_device", true, false, false };
+        case Gesture::changeTracks: return { "change_tracks", true, true, false };
+        case Gesture::showExport: return { "show_export", true, true, true };
+        case Gesture::startExport: return { "start_export", true, false, true };
+        case Gesture::startSeparation: return { "start_separation", true, true, false };
+        case Gesture::setPracticeSpeed: return { "set_practice_speed", true, false, false };
+        case Gesture::setTranscribeMix: return { "set_transcribe_mix", true, false, false };
+    }
+    std::unreachable();
+}
+
+constexpr std::string_view passRefusal = "ui.stop_recording_first";
+constexpr std::string_view exportRefusal = "ui.export_running";
+constexpr std::string_view calibrationRefusal = "ui.calibration_running";
+
+// The Error `kind` refuses the gesture with; none when it is allowed.
+std::optional<core::Error> activityRefusal (ActivityKind kind, Gesture gesture)
+{
+    const auto rule = ruleFor (gesture);
+    const core::Fields fields { { "gesture", rule.name } };
+    if (kind == ActivityKind::pass && rule.refusedByPass)
+        return core::Error { std::string (passRefusal), "a Pass is running", fields };
+    if (kind == ActivityKind::exportSong && rule.refusedByExport)
+        return core::Error { std::string (exportRefusal), "an export is running", fields };
+    if (kind == ActivityKind::calibrationLatency && rule.refusedByCalibration)
+        return core::Error { std::string (calibrationRefusal), "a latency measurement is running", fields };
+    return std::nullopt;
+}
+
+// Every Song op and the Gesture a running activity may refuse it as; nullopt: no activity ever
 // refuses it. Exhaustive, so a new Song op does not compile until it is decided here.
 struct SongOpGesture
 {
@@ -184,9 +270,9 @@ std::optional<Refusal> refusalOfSongOp (std::string_view op, const Running& runn
         return std::nullopt;
     const auto presented = std::ranges::contains (presentedSongOps, op);
     if (running.calibrating)
-        if (auto refused = refusal (ActivityKind::calibrationLatency, *found->gesture))
+        if (auto refused = activityRefusal (ActivityKind::calibrationLatency, *found->gesture))
             return Refusal { std::move (*refused), presented };
-    if (auto refused = refusal (*running.song, *found->gesture))
+    if (auto refused = activityRefusal (*running.song, *found->gesture))
         return Refusal { std::move (*refused), presented };
     if (running.transposing && std::ranges::contains (waitForTranspose, op))
         return Refusal { core::Error { "ui.transposing", "waits until the Backing Tracks are transposed", { { "op", std::string (op) } } }, presented };
@@ -213,6 +299,12 @@ std::optional<Refusal> refusalOf (const Intent& intent, const Running& running)
         if (const auto* sheet = std::get_if<ShowExport> (song); sheet != nullptr && ! sheet->shown)
             return std::nullopt;
     return refusalOf (opName (intent), running);
+}
+
+bool isRefusal (const core::Error& error)
+{
+    const auto activityCode = error.code == passRefusal || error.code == exportRefusal || error.code == calibrationRefusal;
+    return activityCode && error.fields.is_object() && error.fields.contains ("gesture");
 }
 
 std::string unavailableReason (std::string_view code)

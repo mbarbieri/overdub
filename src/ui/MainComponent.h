@@ -154,10 +154,6 @@ public:
     // Presents a Notice-tier code that was already logged where it arose (e.g. song.history_dropped),
     // with the fields its sentence names.
     void showNotice (const std::string& code, core::Fields fields = {});
-    // handleError, except that an OpenSong refusal (ui/Activity.h) is logged at debug only: a gesture
-    // the running activity refuses is not presented.
-    void handleUnlessRefused (const core::Error& error);
-    void handleUnlessRefused (const core::Expected<void>& result);
 
     // One poll at `now` (OpenSong::poll): finish a stopped Pass, write a due song.json, refresh,
     // present messages.

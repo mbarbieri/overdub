@@ -1,5 +1,6 @@
 #include "ui/MainComponent.h"
 
+#include "core/LogEvents.h"
 #include "ui/WorkspaceFixture.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -125,4 +126,19 @@ TEST_CASE ("an Intent refused while an export runs still commits a pending arrow
     REQUIRE_FALSE (recorded.has_value());
     CHECK (recorded.error().code == "ui.export_running");
     CHECK_THAT (s.guitarVolume(), WithinAbs (-3.0, 1.0e-9));
+}
+
+TEST_CASE ("a pending arrow-key burst whose edit a Pass refuses is not committed", "[ui][intent][mixer][record]")
+{
+    SongWithPendingBurst s;
+    auto& f = s.f;
+    // A Pass that MainComponent::run did not start (as Record Again's next Pass, from a poll).
+    REQUIRE (f.song().record().has_value());
+    REQUIRE (f.song().isRecording());
+    core::ScopedLogCapture capture;
+
+    REQUIRE (f.content.run (WindowIntent { DismissAlerts {} }, Origin::control).has_value());
+
+    CHECK_THAT (s.guitarVolume(), WithinAbs (0.0, 1.0e-9));
+    CHECK (core::testing::firstEvent (capture, "ui.stop_recording_first").at ("gesture") == "edit");
 }

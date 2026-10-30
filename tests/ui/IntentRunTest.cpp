@@ -194,7 +194,7 @@ TEST_CASE ("a mix preview from the socket is heard without changing the Song, an
     const auto block = (std::size_t) deviceBlockSize;
     const auto before = f.song();
     const auto labelBefore = f.openSong->package().undoLabel();
-    REQUIRE (f.openSong->playOrStop().has_value());
+    f.openSong->playOrStop();
     f.device.run (f.engine, 4);
     const auto loud = recentPeak (f.device, block);
     REQUIRE (loud > 0.0f);
@@ -231,7 +231,7 @@ TEST_CASE ("delete_track from the socket deletes the Track and turns its Monitor
 {
     MainWindowFixture f;
     const auto guitarId = f.trackNamed ("Guitar").id;
-    REQUIRE (f.openSong->setMonitoring (guitarId, true).has_value());
+    f.openSong->setMonitoring (guitarId, true);
     core::ScopedLogCapture capture;
 
     CHECK (runFromSocket (f, intent::DeleteTrack { guitarId }).has_value());
@@ -349,6 +349,44 @@ TEST_CASE ("a camera arm a Pass refuses returns the refusal without asking for c
 
     checkQuietError (capture, runFromSocket (f, intent::SetCameraArmed { true }), "ui.stop_recording_first");
     CHECK (accessAsked == 0);
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+}
+
+TEST_CASE ("camera access granted after a Pass started does not arm the camera", "[ui][intent][camera]")
+{
+    MainWindowFixture f;
+    std::function<void (bool)> answer;
+    f.window->askCameraAccess = [&answer] (std::function<void (bool)> done) { answer = std::move (done); };
+    const auto asked = runFromSocket (f, intent::SetCameraArmed { true });
+    REQUIRE (asked.has_value());
+    REQUIRE (asked->awaitingAnswer);
+    REQUIRE (pressKey (*f.window, 'r'));
+    REQUIRE (f.openSong->isRecording());
+    core::ScopedLogCapture capture;
+
+    answer (true);
+
+    CHECK_FALSE (f.song().settings.cameraArmed);
+    CHECK (f.openSong->cameraPreviewLayer() == nullptr);
+    CHECK (core::testing::firstEvent (capture, "ui.stop_recording_first").at ("gesture") == "set_camera_armed");
+    REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
+    f.runBlocks (1);
+}
+
+TEST_CASE ("edits and seeks during a Pass change neither the Song nor the playhead", "[ui][intent][record]")
+{
+    MainWindowFixture f;
+    REQUIRE (pressKey (*f.window, 'r'));
+    f.runBlocks (4);
+    const auto before = f.song();
+    const auto position = f.openSong->position();
+
+    CHECK (runEdit (f, intent::SetMasterVolume { -12.0 }).error().code == "ui.stop_recording_first");
+    CHECK (runFromSocket (f, intent::Seek { 100000 }).error().code == "ui.stop_recording_first");
+
+    CHECK (f.song() == before);
+    CHECK (f.openSong->position() == position);
     REQUIRE (pressKey (*f.window, juce::KeyPress::spaceKey));
     f.runBlocks (1);
 }
