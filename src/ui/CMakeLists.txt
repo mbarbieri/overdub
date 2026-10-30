@@ -22,6 +22,7 @@ target_sources(overdub_ui PRIVATE
     Intent.cpp
     LastSong.cpp
     Layout.cpp
+    ListeningRenders.cpp
     LookAheadStrip.cpp
     LoopViews.cpp
     MarkerStrip.cpp

@@ -11,9 +11,9 @@
 #include "song/PracticeSpeed.h"
 #include "song/SeparationRun.h"
 #include "song/SongPackage.h"
-#include "song/TransposeRender.h"
 #include "ui/Activity.h"
 #include "ui/ExportRun.h"
+#include "ui/ListeningRenders.h"
 #include "video/FrameSelection.h"
 #include "video/VideoPlayback.h"
 
@@ -112,52 +112,22 @@
 // (nothing plays the Song at the wrong speed) and takeSampleRateChanged() tells the owner to open
 // the device at the new rate (logged as ui.song_rate_changed: from_rate, to_rate).
 //
-// Transpose (issue #209, ADR 0009): the engine plays the Song at heardTranspose(), which follows the
-// Song's Transpose only once every Backing Track's render of it is in the package. poll() starts a
-// song::TransposeRun for the renders the Song's Transpose lacks (cancelling one for another value),
-// and once none is missing switches playback to it, reloads the engine and deletes every other
-// value's renders. At Transpose 0 the derived audio plays at once. A failed render keeps the previous
-// audio and is handed back by poll() once (song.transpose_render_failed, a Notice); its Backing
-// Track is not rendered again until the Transpose changes. While isTransposing(), Record and Export
-// are unavailable (ui/Availability.h); after a failed render they stay so until the Transpose
-// changes, since a Pass or an export would not match what is heard. Opening the Song deletes renders
-// of other values, and plays the derived audio until the Song's Transpose is fully rendered. A
-// Backing Track added while a Transpose other than 0 is heard (an import or a Separation, issue
-// #211) plays silence until its render is there. An edit, undo, redo, import or finished Separation
-// starts the renders it needs at once, so isTransposing() holds from that change on. A render of a
-// Backing Track the Song no longer has (an undone import or Separation) is deleted once no render
-// runs (ui.transpose_renders_deleted: count); a run rendering one is cancelled at once and started
-// again for the renders still missing.
+// Transpose, Practice Speed and the octave shift (issues #209, #212, #231, #233; ADR 0009, ADR
+// 0010) play offline renders that a ui::ListeningRenders (ui/ListeningRenders.h) makes and
+// switches to: poll() advances it and hands back a failed render's Error once (a Notice), every
+// change of the Song or of what is wanted follows it at once, and the engine reloads whenever what
+// is heard changes. The engine plays the Song at heardTranspose() and heardPracticeSpeed(). While
+// isTransposing(), Record and Export are unavailable (ui/Availability.h); after a failed render they
+// stay so until the Transpose changes, since a Pass or an export would not match what is heard.
 //
-// Practice Speed (issue #212, ADR 0009): held here, outside the Song and its history; a Song always
-// opens at 100% (a Loop heard in Transcribe mode then brings back its own, issue #230). At any
-// other value, every source some Clip plays is rendered by a song::PracticeSpeedRun into practiceRenderFolder(), a temp folder outside the package deleted with
-// the OpenSong, with the Song's Transpose applied to its Backing Tracks. The engine plays at
-// heardPracticeSpeed() (engine::PracticePlayback): poll() starts the renders the Song's Practice
-// Speed and Transpose lack (cancelling a run for another value), and once none is missing switches
-// playback to them at the same Song time (ui.practice_speed_heard), reloads the engine and deletes
-// every other render. Until then the previous audio plays. At the heard value, a source with no
-// render yet (a Clip of a Take just brought back) plays silence, and plays its render once the run
-// that makes it ends. 100% plays the Song's own audio at once. A failed render keeps the previous
-// audio and is handed back by poll() once (song.practice_render_failed, a Notice); its source is not
-// rendered again until the Practice Speed or Transpose changes, or the same Practice Speed is set
-// again. Edits, undo, redo, import and a
-// finished Separation start the renders they need at once.
-// While a Loop is heard (heardLoop(), issue #231), the renders over its window
-// (song::loopRenderWindow) come first: once they are there playback switches to them, and a second
-// run renders the whole Song, which then replaces them. A run is cancelled when the Loop's window
-// changes (another Loop, a moved one, looping or Transcribe mode turned off) and started again
-// for it; outside a Loop the whole Song renders as before.
+// The Practice Speed is held here, outside the Song and its history; a Song always opens at 100% (a
+// Loop heard in Transcribe mode then brings back its own, issue #230). Setting the same value again
+// tries its failed renders again. While a Loop is heard (heardLoop()), its window renders first.
 //
-// The octave shift (issue #233, ADR 0010): each Track keeps its own (song::Track::octaveShift,
-// outside history), and only the Focus Track's is heard, only while transcribing
-// (octaveShiftedTrack()). That Track's sources then play renders made by a second
-// song::PracticeSpeedRun into the "octave" folder inside practiceRenderFolder(), in one pass from the
-// derived audio at the heard Practice Speed and Transpose plus the octaves. Unlike a Practice Speed
-// change, the shift is heard at once: a source with no render yet plays silence until its run ends
-// (isOctaveRendering(), the spinner). A failed render is handed back by poll() once
-// (song.practice_render_failed; the renders made before it play) and not tried again until the Track, its shift or the heard key
-// changes.
+// The octave shift (issue #233): each Track keeps its own (song::Track::octaveShift, outside
+// history), and only the Focus Track's is heard, only while transcribing (octaveShiftedTrack()). It
+// is heard at once: a source with no render yet plays silence until its run ends
+// (isOctaveRendering(), the spinner).
 //
 // The band filter (issue #234, ADR 0010): each Track keeps its own (song::Track::bandFilter, outside
 // history), and only the Focus Track's is heard, only while transcribing and while it is on
@@ -348,7 +318,7 @@ public:
     // The Track heard octave-shifted: the Focus Track while transcribing, when its shift is not 0.
     std::optional<song::Id> octaveShiftedTrack() const;
     // An octave-shift render runs (the octave control's spinner).
-    bool isOctaveRendering() const { return octaveRun != nullptr; }
+    bool isOctaveRendering() const { return renders.isOctaveRendering(); }
     // A Track's band filter (issue #234, see the header comment): a Song setting outside history.
     // Logs ui.band_filter_set (info: track_id, on, low_hz, high_hz). Errors: refusal()'s,
     // song.band_filter_out_of_range, song.band_filter_low_not_below_high, song.track_not_found.
@@ -429,11 +399,11 @@ public:
     bool takeSampleRateChanged() { return std::exchange (sampleRateChanged, false); }
 
     // The Transpose playback uses (see the header comment).
-    song::Transpose heardTranspose() const { return heardShift; }
+    song::Transpose heardTranspose() const { return renders.heardTranspose(); }
     // A Transpose render runs (the top bar's spinner).
-    bool isTransposeRendering() const { return transposeRun != nullptr; }
+    bool isTransposeRendering() const { return renders.isTransposeRendering(); }
     // Playback is not at the Song's Transpose yet, or renders for it are being made.
-    bool isTransposing() const { return isTransposeRendering() || heardShift != song().transpose; }
+    bool isTransposing() const { return isTransposeRendering() || heardTranspose() != song().transpose; }
 
     // Sets the Practice Speed (see the header comment). The same value again changes nothing.
     // While a Loop is heard (heardLoop()) it is also that Loop's Practice Speed, outside history
@@ -441,13 +411,13 @@ public:
     core::Expected<void> setPracticeSpeed (int speedPercent);
     int practiceSpeed() const { return practiceTarget; }
     // The Practice Speed playback uses.
-    int heardPracticeSpeed() const { return heardPractice.speedPercent; }
+    int heardPracticeSpeed() const { return renders.heardPracticeSpeed(); }
     // A Practice Speed render runs (the top bar's spinner).
-    bool isPracticeRendering() const { return practiceRun != nullptr; }
+    bool isPracticeRendering() const { return renders.isPracticeRendering(); }
     // Where the Practice Speed renders are: a temp folder outside the package, deleted with this.
-    const juce::File& practiceRenderFolder() const { return practiceFolder; }
+    const juce::File& practiceRenderFolder() const { return renders.practiceFolder(); }
 
-    // Call regularly (window timer): advances Transpose and Practice Speed renders (see the header comment), an export (starts it once the audio has let go of
+    // Call regularly (window timer): advances the Listening Renders (see the header comment), an export (starts it once the audio has let go of
     // the plugins, or gives it up after ExportRun::audioTimeout; once it ends, reloads the engine and
     // returns its Error), finishes a Pass the audio thread has ended, rebuilds the plan when a
     // plugin loaded or changed its latency (not during a Pass), schedules a write when a plugin
@@ -466,17 +436,13 @@ private:
     std::optional<core::Error> endExportIfEnded (std::optional<ExportEnd> end);
     // Advances a running Separation; once it ends, reloads the engine and returns its Error.
     std::optional<core::Error> advanceSeparation (song::SongPackage::Clock::time_point now);
-    // Starts, finishes or cancels Transpose renders and switches what plays (see the header comment).
-    // Returns a failed render's Error.
-    std::optional<core::Error> advanceTranspose (song::SongPackage::Clock::time_point now);
-    // advanceTranspose now, unless a render runs (poll() hands back how it ends).
-    void followTranspose();
     // The Song as the engine plays it: at heardTranspose(), with the Transcribe Mix while
     // transcribing.
     song::Song heardSong() const;
     // `song` with the Transcribe Mix's mute and solo while transcribing; as it is otherwise.
     song::Song withHeardMix (song::Song song) const;
-    // Stores a Transcribe Mix, Focus Track, active Loop or looping change outside history and plays it.
+    // Stores a Transcribe Mix, Focus Track, active Loop or looping change outside history and plays
+    // it. The caller follows the renders once its change is complete (followRenders).
     core::Expected<void> changeTranscribeMix (core::Expected<song::Song> changed);
     // Hands the engine heardLoop() and heardBandFilter() (none without audio).
     void syncTranscribeListening();
@@ -490,38 +456,10 @@ private:
     void applyHeardLoopPracticeSpeed();
     // refusal() does not refuse set_practice_speed now.
     bool practiceSpeedMayChange() const;
-    // What the engine plays at heardPracticeSpeed(): the renders there are of the heard key (with
-    // the heard Loop's range renders, for sources not rendered whole yet).
-    engine::PracticePlayback heardPracticePlayback() const;
-    // The heard Loop's song::loopRenderWindow while the Practice Speed is not 100%; none otherwise.
-    std::optional<song::SampleRange> practiceLoopWindow() const;
-    // The running practiceRun is for practiceKey() and practiceLoopWindow().
-    bool practiceRunIsWanted() const;
-    // Deletes every Practice Speed render but those heardPracticePlayback() plays
-    // (ui.practice_renders_deleted: count).
-    void deleteUnheardPracticeRenders();
-    // The key the Practice Speed renders are wanted for: the Practice Speed and the Song's Transpose
-    // ({} at 100%).
-    song::PracticeRenderKey practiceKey() const;
-    // Starts, finishes or cancels Practice Speed renders and switches what plays (see the header
-    // comment). Returns a failed render's Error.
-    std::optional<core::Error> advancePracticeSpeed (song::SongPackage::Clock::time_point now);
-    // advancePracticeSpeed now, unless a run for the wanted key runs (poll() hands back how it ends).
-    void followPracticeSpeed();
-    // The key the octave-shifted Track's renders are made for: the heard Practice Speed and
-    // Transpose, and its octave shift.
-    song::PracticeRenderKey octaveKey() const;
-    // The Song with only the octave-shifted Track: the sources its renders are of.
-    song::Song octaveShiftedSong (const song::Id& trackId) const;
-    juce::File octaveRenderFolder() const { return practiceFolder.getChildFile ("octave"); }
-    // What the engine plays for the octave-shifted Track: its renders that are there.
-    std::optional<engine::OctaveShiftedTrack> heardOctaveShift() const;
-    // Starts, finishes or cancels octave-shift renders (see the header comment). Returns a failed
-    // render's Error.
-    std::optional<core::Error> advanceOctaveShift (song::SongPackage::Clock::time_point now);
-    // advanceOctaveShift now, unless the wanted run runs (poll() hands back how it ends).
-    void followOctaveShift();
-    bool octaveRunIsWanted() const;
+    // What the renders follow now: the Practice Speed, the heard Loop and the octave-shifted Track.
+    ListeningWanted listeningWanted() const;
+    // ListeningRenders::follow with the Song and listeningWanted().
+    void followRenders();
     // Advances a running conversion; once it ends, updates the engine and returns its Error.
     std::optional<core::Error> advanceConversion (song::SongPackage::Clock::time_point now);
     // After a history change: detaches the audio when the rate changed since `before`, else setMix
@@ -571,32 +509,10 @@ private:
     bool recordAgainAfterPass = false;
     video::VideoPlayback playback;
     std::optional<juce::File> lastExport;
-    song::Transpose heardShift;
     bool transcribing = false;
-    // The Backing Tracks whose render of failedShift failed: not rendered again until the
-    // Song's Transpose changes.
-    song::Transpose failedShift;
-    std::set<song::Id> failedRenders;
-    // The Song's Backing Tracks when the renders of removed ones were last deleted; none after a
-    // render ended or was cancelled, which deletes them again.
-    std::optional<std::vector<song::Id>> sweptBackingTracks;
-    // Before `activity`: a run reads only its own files, never the package.
-    std::unique_ptr<song::TransposeRun> transposeRun;
     int practiceTarget = song::normalPracticeSpeed;
-    song::PracticeRenderKey heardPractice;
-    // The sources whose render of failedPracticeKey failed: not rendered again until the key changes.
-    song::PracticeRenderKey failedPracticeKey;
-    std::set<song::ClipSource> failedPracticeRenders;
-    juce::File practiceFolder;
-    // After practiceFolder: its run writes there, and is cancelled before the folder is deleted.
-    std::unique_ptr<song::PracticeSpeedRun> practiceRun;
-    // The octave-shifted Track's renders (see the header comment), after practiceFolder too.
-    std::unique_ptr<song::PracticeSpeedRun> octaveRun;
-    song::Id octaveRunTrackId;
-    // The sources whose render failed for that Track and key: not rendered again until either changes.
-    std::optional<song::Id> failedOctaveTrackId;
-    song::PracticeRenderKey failedOctaveKey;
-    std::set<song::ClipSource> failedOctaveRenders;
+    // Before `activity`: a run reads only its own files, never the package.
+    ListeningRenders renders;
     // Last: destroyed first, so a running export stops rendering before the plugins and the package
     // go, and a running Separation (its helper killed, its output folder deleted) or conversion (its
     // files deleted) is cancelled before the package.
