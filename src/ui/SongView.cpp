@@ -122,8 +122,8 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const Export&) { return exportSong(); },
             [this] (const CancelExport&) { return cancelExport(); },
             [this] (const RevealExport&) { return revealExport(); },
-            [this] (const SelectClip& i) -> IntentResult { selectedMarkerId.reset(); selectedLoopId.reset(); editPage.timeline.selectClip (i.clipId); return IntentDone {}; },
-            [this] (const SelectVideoTake& i) -> IntentResult { selectedMarkerId.reset(); selectedLoopId.reset(); editPage.timeline.selectVideoTake (i.videoTakeId); return IntentDone {}; },
+            [this] (const SelectClip& i) -> IntentResult { pick (SelectionKind::clip, i.clipId); return IntentDone {}; },
+            [this] (const SelectVideoTake& i) -> IntentResult { pick (SelectionKind::videoTake, i.videoTakeId); return IntentDone {}; },
             [this] (const SetTimelineView& i) -> IntentResult { editPage.timeline.setView (i.firstSample, i.samplesPerPixel); return IntentDone {}; },
             [this] (const SetTranscribeView& i) -> IntentResult { transcribePage.setView (i.firstSample, i.samplesPerPixel); return IntentDone {}; },
             [this] (const SetVerticalScroll& i) -> IntentResult { editPage.timeline.setVerticalScroll (i.pixels); return IntentDone {}; },
@@ -188,13 +188,13 @@ IntentResult SongView::splitSelectedClip()
 {
     if (window.mode() != Mode::edit)
         return window.quietError (quiet ("ui.not_in_edit_mode", "the Clip keys act in Edit mode only", { { "op", std::string (intent::SplitSelectedClip::op) } }));
-    const auto selected = editPage.timeline.selectedClip();
-    if (! selected.has_value())
+    const auto clipId = selected (SelectionKind::clip);
+    if (! clipId.has_value())
         return window.quietError (quiet ("ui.no_clip_selected", "no Clip is selected"));
     const auto rightHalf = song::makeId();
-    if (auto split = applyEdit (song::splitClip (openSong.song(), *selected, openSong.position(), rightHalf), song::splitClipLabel); ! split.has_value())
+    if (auto split = applyEdit (song::splitClip (openSong.song(), *clipId, openSong.position(), rightHalf), song::splitClipLabel); ! split.has_value())
         return split;
-    editPage.timeline.selectClip (rightHalf);
+    pick (SelectionKind::clip, rightHalf);
     return IntentDone { .createdId = rightHalf };
 }
 
@@ -202,9 +202,9 @@ IntentResult SongView::deleteSelection()
 {
     if (window.mode() != Mode::edit)
         return window.quietError (quiet ("ui.not_in_edit_mode", "the Clip keys act in Edit mode only", { { "op", std::string (intent::DeleteSelection::op) } }));
-    if (const auto videoTake = editPage.timeline.selectedVideoTake())
+    if (const auto videoTake = selected (SelectionKind::videoTake))
         return applyEdit (song::deleteVideoTake (openSong.song(), *videoTake), song::deleteVideoTakeLabel);
-    if (const auto clip = editPage.timeline.selectedClip())
+    if (const auto clip = selected (SelectionKind::clip))
         return applyEdit (song::deleteClip (openSong.song(), *clip), song::deleteClipLabel);
     return window.quietError (quiet ("ui.nothing_selected", "no Clip or Video Take is selected"));
 }
@@ -331,20 +331,14 @@ IntentResult SongView::selectMarker (const std::optional<song::Id>& markerId)
 {
     if (! markerId.has_value())
     {
-        selectedMarkerId.reset();
-        selectedLoopId.reset();
+        pick (SelectionKind::marker, std::nullopt);
         return IntentDone {};
     }
     const auto* marker = song::findMarker (openSong.song(), *markerId);
     if (marker == nullptr)
         return window.quietError (song::markerNotFound (*markerId));
     openSong.seek (marker->position);
-    if (window.mode() != Mode::record)
-    {
-        selectedMarkerId = *markerId;
-        selectedLoopId.reset();
-        editPage.timeline.selectClip (std::nullopt);
-    }
+    pick (SelectionKind::marker, *markerId);
     return IntentDone {};
 }
 
@@ -387,8 +381,7 @@ IntentResult SongView::selectLoop (const std::optional<song::Id>& loopId)
 {
     if (! loopId.has_value())
     {
-        selectedLoopId.reset();
-        selectedMarkerId.reset();
+        pick (SelectionKind::loop, std::nullopt);
         window.refresh();
         return IntentDone {};
     }
@@ -397,16 +390,9 @@ IntentResult SongView::selectLoop (const std::optional<song::Id>& loopId)
         return window.quietError (song::loopNotFound (*loopId));
     const auto start = loop->start;
     const auto end = loop->end;
-    const auto mode = window.mode();
-    if (mode == Mode::record)
-        return seek (start); // the record point; Record never loops
-    if (mode == Mode::edit)
-    {
-        selectedLoopId = *loopId;
-        selectedMarkerId.reset();
-        editPage.timeline.selectClip (std::nullopt);
-        return seek (start);
-    }
+    pick (SelectionKind::loop, *loopId);
+    if (window.mode() != Mode::transcribe)
+        return seek (start); // in Record the record point; Record never loops
     // Transcribe: activate it, looping on, zoomed to fit with a margin of a twentieth of its length.
     if (auto activated = setActiveLoop (*loopId, true); ! activated.has_value())
         return activated;
@@ -426,35 +412,26 @@ IntentResult SongView::selectLoop (const std::optional<song::Id>& loopId)
 
 IntentResult SongView::selectAdjacentLoop (Direction direction)
 {
-    const auto from = window.mode() == Mode::edit ? selectedLoop() : openSong.song().settings.activeLoopId;
+    const auto from = window.mode() == Mode::edit ? selected (SelectionKind::loop) : openSong.song().settings.activeLoopId;
     const auto next = song::adjacentLoop (openSong.song(), from, direction == Direction::back ? song::LoopDirection::previous : song::LoopDirection::next);
     if (! next.has_value())
         return IntentDone {};
     return selectLoop (*next);
 }
 
-std::optional<song::Id> SongView::selectedLoop() const
+std::optional<song::Id> SongView::selected (SelectionKind kind) const
 {
-    if (selectedLoopId.has_value() && song::findLoop (openSong.song(), *selectedLoopId) != nullptr)
-        return selectedLoopId;
-    return std::nullopt;
+    return selectedId (selection, kind, openSong.song());
 }
 
-std::optional<song::Id> SongView::loopToDelete() const
+std::optional<Selection> SongView::deleteTarget() const
 {
-    const auto mode = window.mode();
-    if (mode == Mode::edit)
-        return selectedLoop();
-    if (mode == Mode::transcribe && song::activeLoop (openSong.song()) != nullptr)
-        return openSong.song().settings.activeLoopId;
-    return std::nullopt;
+    return ui::deleteTarget (selection, openSong.song(), window.mode());
 }
 
-std::optional<song::Id> SongView::selectedMarker() const
+void SongView::pick (SelectionKind kind, const std::optional<song::Id>& picked)
 {
-    if (selectedMarkerId.has_value() && song::findMarker (openSong.song(), *selectedMarkerId) != nullptr)
-        return selectedMarkerId;
-    return std::nullopt;
+    selection = selectionAfterPick (selection, kind, picked, window.mode());
 }
 
 IntentResult SongView::setCameraDevice (const std::string& cameraId)
@@ -656,7 +633,7 @@ IntentResult SongView::takeLaneClick (const song::Id& takeId, song::SampleCount 
         return window.quietError (quiet ("ui.take_lane_click_changes_nothing", "the Take is already heard there", { { "take_id", takeId }, { "at", at } }));
     if (auto applied = applyEdit (std::move (laneEdit->song), laneEdit->label); ! applied.has_value())
         return applied;
-    editPage.timeline.selectClip (laneEdit->clipId);
+    pick (SelectionKind::clip, laneEdit->clipId);
     return IntentDone { .createdId = laneEdit->clipId };
 }
 
@@ -938,9 +915,8 @@ void SongView::refresh (TopBarState& state)
             .tracksDeletable = ! window.refusalOf (intent::ImportFiles::op).has_value(),
             .videoTakes = openSong.videoPlayback().spans (song),
             .canArmCamera = cameraControls.canArm && ! window.refusalOf (intent::SetCameraArmed::op).has_value(),
-            .selectedMarker = selectedMarker(),
+            .selection = resolvedSelection (selection, song),
             .markersEditable = ! window.refusalOf (intent::MoveMarker::op).has_value(),
-            .selectedLoop = selectedLoop(),
             .pendingLoopStart = pendingLoopStart,
         });
     if (mode == Mode::transcribe)
@@ -956,7 +932,7 @@ void SongView::refresh (TopBarState& state)
             .canTranspose = state.canTranspose,
             .canSetTranscribeMix = ! window.refusalOf (intent::SetFocusTrack::op).has_value(),
             .octaveRendering = openSong.listening().renders().isOctaveRendering(),
-            .selectedMarker = selectedMarker(),
+            .selectedMarker = selected (SelectionKind::marker),
             .markersEditable = ! window.refusalOf (intent::MoveMarker::op).has_value(),
             .pendingLoopStart = pendingLoopStart,
         });

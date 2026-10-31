@@ -250,22 +250,83 @@ TEST_CASE ("split_selected_clip splits at the playhead, selects the right half a
     REQUIRE (pressKey (*f.window, '2'));
     const auto clip = f.trackNamed ("Band Mix").clips.at (0);
     const auto at = clip.timelineStart + clip.length / 2;
-    auto& timeline = f.window->songView()->editPage.timeline;
     CHECK (runFromSocket (f, intent::SelectClip { clip.id }).has_value());
-    REQUIRE (timeline.selectedClip() == clip.id);
+    REQUIRE (f.window->songView()->selected (SelectionKind::clip) == clip.id);
     CHECK (runFromSocket (f, intent::Seek { at }).has_value());
 
     const auto result = runFromSocket (f, intent::SplitSelectedClip {});
 
     REQUIRE (result.has_value());
     REQUIRE (result->createdId.has_value());
-    CHECK (timeline.selectedClip() == result->createdId);
+    CHECK (f.window->songView()->selected (SelectionKind::clip) == result->createdId);
     const auto& clips = f.trackNamed ("Band Mix").clips;
     REQUIRE (clips.size() == 2);
     const auto rightHalf = std::ranges::find (clips, *result->createdId, &song::Clip::id);
     REQUIRE (rightHalf != clips.end());
     CHECK (rightHalf->timelineStart == at);
     CHECK (f.openSong->package().undoLabel() == "Split Clip");
+}
+
+TEST_CASE ("undoing the delete of the selected Clip selects it again", "[ui][intent][edit][selection]")
+{
+    MainWindowFixture f;
+    REQUIRE (pressKey (*f.window, '2'));
+    const auto clipId = f.trackNamed ("Band Mix").clips.at (0).id;
+    auto& view = *f.window->songView();
+    REQUIRE (runFromSocket (f, intent::SelectClip { clipId }).has_value());
+
+    REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::backspaceKey)));
+    REQUIRE (song::findClip (f.song(), clipId) == nullptr);
+    CHECK_FALSE (view.selected (SelectionKind::clip).has_value());
+    CHECK_FALSE (view.editPage.toolbar.deleteButton.isEnabled());
+
+    REQUIRE (pressKey (*f.window, 'z', juce::ModifierKeys::commandModifier));
+    CHECK (view.selected (SelectionKind::clip) == clipId);
+    CHECK (view.editPage.toolbar.deleteButton.isEnabled());
+}
+
+TEST_CASE ("selecting a Marker in Edit mode clears the selected Clip, and selecting a Clip clears the Marker", "[ui][intent][edit][selection]")
+{
+    MainWindowFixture f;
+    REQUIRE (pressKey (*f.window, '2'));
+    const auto clipId = f.trackNamed ("Band Mix").clips.at (0).id;
+    const auto markerId = runFromSocket (f, intent::AddMarker {});
+    REQUIRE (markerId.has_value());
+    auto& view = *f.window->songView();
+
+    REQUIRE (runFromSocket (f, intent::SelectClip { clipId }).has_value());
+    REQUIRE (runFromSocket (f, intent::SelectMarker { markerId->createdId }).has_value());
+    CHECK (view.selected (SelectionKind::marker) == markerId->createdId);
+    CHECK_FALSE (view.selected (SelectionKind::clip).has_value());
+
+    REQUIRE (runFromSocket (f, intent::SelectClip { clipId }).has_value());
+    CHECK (view.selected (SelectionKind::clip) == clipId);
+    CHECK_FALSE (view.selected (SelectionKind::marker).has_value());
+}
+
+TEST_CASE ("the Selection survives a change of mode, and Transcribe's backspace deletes the active Loop, not the selected Clip", "[ui][intent][selection]")
+{
+    MainWindowFixture f;
+    REQUIRE (pressKey (*f.window, '2'));
+    const auto clipId = f.trackNamed ("Band Mix").clips.at (0).id;
+    REQUIRE (runFromSocket (f, intent::SelectClip { clipId }).has_value());
+    const auto loopId = runFromSocket (f, intent::AddLoop { 0, 24000 });
+    REQUIRE (loopId.has_value());
+    REQUIRE (runFromSocket (f, intent::SelectClip { clipId }).has_value());
+    auto& view = *f.window->songView();
+
+    REQUIRE (pressKey (*f.window, '3'));
+    CHECK (view.selected (SelectionKind::clip) == clipId);
+    CHECK (view.deleteTarget() == Selection { SelectionKind::loop, *loopId->createdId });
+    REQUIRE (pressKey (*f.window, juce::KeyPress (juce::KeyPress::backspaceKey)));
+    CHECK (f.song().loops.empty());
+    CHECK (song::findClip (f.song(), clipId) != nullptr);
+
+    REQUIRE (pressKey (*f.window, '1'));
+    CHECK_FALSE (view.deleteTarget().has_value());
+    REQUIRE (pressKey (*f.window, '2'));
+    CHECK (view.selected (SelectionKind::clip) == clipId);
+    CHECK (view.deleteTarget() == Selection { SelectionKind::clip, clipId });
 }
 
 TEST_CASE ("record clears every Record row's clip indicator as the Pass starts", "[ui][intent][record]")

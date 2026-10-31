@@ -269,13 +269,13 @@ TEST_CASE ("in Transcribe and Edit, double-clicking a Marker renames it, draggin
 
     // Delete: a click selects it (and seeks there), then backspace deletes it.
     click (flagOf (strip, markerId));
-    CHECK (f.window->songView()->selectedMarker() == markerId);
+    CHECK (f.window->songView()->selected (SelectionKind::marker) == markerId);
     CHECK (flagOf (strip, markerId).isSelected());
     CHECK (f.openSong->position() == 10 * perPixel);
     pressKey (f, juce::KeyPress::backspaceKey);
     CHECK (f.song().markers.empty());
     CHECK (f.openSong->package().undoLabel() == song::deleteMarkerLabel);
-    CHECK_FALSE (f.window->songView()->selectedMarker().has_value());
+    CHECK_FALSE (f.window->songView()->selected (SelectionKind::marker).has_value());
 
     run (f, SongIntent { intent::Undo {} });
     CHECK (markerWithId (f, markerId).name == "Chorus");
@@ -308,17 +308,17 @@ TEST_CASE ("a name of only spaces is refused, and a click on the empty strip cle
 
     auto& strip = stripOf (f, Mode::edit);
     click (flagOf (strip, markerId));
-    REQUIRE (f.window->songView()->selectedMarker() == markerId);
+    REQUIRE (f.window->songView()->selected (SelectionKind::marker) == markerId);
     clickAt (strip, { strip.getWidth() - 4, strip.getHeight() / 2 });
-    CHECK_FALSE (f.window->songView()->selectedMarker().has_value());
+    CHECK_FALSE (f.window->songView()->selected (SelectionKind::marker).has_value());
 
     // Selecting a Clip clears the Marker's selection, and selecting a Marker clears the Clip's.
     click (flagOf (strip, markerId));
     const auto clipId = f.trackNamed ("Band Mix").clips.front().id;
     run (f, SongIntent { intent::SelectClip { clipId } });
-    CHECK_FALSE (f.window->songView()->selectedMarker().has_value());
+    CHECK_FALSE (f.window->songView()->selected (SelectionKind::marker).has_value());
     click (flagOf (strip, markerId));
-    CHECK_FALSE (f.window->songView()->editPage.timeline.selectedClip().has_value());
+    CHECK_FALSE (f.window->songView()->selected (SelectionKind::clip).has_value());
     // Backspace now deletes the Marker, not the Clip.
     pressKey (f, juce::KeyPress::backspaceKey);
     CHECK (f.song().markers.empty());
@@ -337,7 +337,7 @@ TEST_CASE ("clicking a Marker seeks to it; in Record that moves the record point
     click (flagOf (strip, markerId));
     CHECK (f.openSong->position() == 24000);
     // Record mode selects nothing: backspace there deletes nothing.
-    CHECK_FALSE (f.window->songView()->selectedMarker().has_value());
+    CHECK_FALSE (f.window->songView()->selected (SelectionKind::marker).has_value());
 
     SECTION ("R records a Pass from the Marker")
     {
@@ -382,7 +382,7 @@ TEST_CASE ("Transcribe mode's left column lists the Markers in time order, and c
 
     click (*list.rows[2]);
     CHECK (f.openSong->position() == 30000);
-    CHECK (f.window->songView()->selectedMarker() == late);
+    CHECK (f.window->songView()->selected (SelectionKind::marker) == late);
 
     // Moving a Marker before the others moves its row to the top.
     run (f, SongIntent { intent::Edit { intent::MoveMarker { late, 0 } } });

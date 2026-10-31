@@ -147,10 +147,10 @@ json viewSection (const ui::MainComponent& window)
     if (songView == nullptr)
         return view;
     const auto& editPage = songView->editPage;
-    view["selected_clip"] = orNull (editPage.timeline.selectedClip());
-    view["selected_video_take"] = orNull (editPage.timeline.selectedVideoTake());
-    view["selected_marker"] = orNull (songView->selectedMarker());
-    view["selected_loop"] = orNull (songView->selectedLoop());
+    view["selected_clip"] = orNull (songView->selected (ui::SelectionKind::clip));
+    view["selected_video_take"] = orNull (songView->selected (ui::SelectionKind::videoTake));
+    view["selected_marker"] = orNull (songView->selected (ui::SelectionKind::marker));
+    view["selected_loop"] = orNull (songView->selected (ui::SelectionKind::loop));
     const auto pending = songView->loopStartPending();
     view["loop_start_pending"] = pending.has_value() ? json (*pending) : json (nullptr);
     view["timeline"] = timelineView (*songView);

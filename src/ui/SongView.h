@@ -11,6 +11,7 @@
 #include "ui/PluginWindows.h"
 #include "ui/RecordPage.h"
 #include "ui/RunDialog.h"
+#include "ui/Selection.h"
 #include "ui/SongEdits.h"
 #include "ui/TopBar.h"
 #include "ui/TranscribePage.h"
@@ -91,16 +92,11 @@ public:
     void showRun (RunDialog& dialog) const;
     // True while the Export sheet shows (show_export). It is modal: it takes every click and key.
     bool isExportSheetShown() const { return exportSheetShown; }
-    // The Marker select_marker selected (issue #227), while the Song has it; none in Record mode's
-    // eyes too (MainComponent passes it to backspace only outside Record mode). Selecting a Clip or
-    // a Video Take clears it, and selecting a Marker clears theirs.
-    std::optional<song::Id> selectedMarker() const;
-    // The Loop select_loop selected in Edit mode (issue #228), while the Song has it. Selecting a
-    // Clip, a Video Take or a Marker clears it, and selecting it clears theirs.
-    std::optional<song::Id> selectedLoop() const;
-    // What backspace deletes when no Marker is selected: the active Loop in Transcribe mode, the
-    // selected one in Edit; none in Record.
-    std::optional<song::Id> loopToDelete() const;
+    // The Selection's id when it is of this kind and the Song has it (ui/Selection.h, issue #259):
+    // the select_* ops, split_selected_clip, take_lane_click and add_loop set it.
+    std::optional<song::Id> selected (SelectionKind kind) const;
+    // What backspace deletes in the window's mode (ui::deleteTarget).
+    std::optional<Selection> deleteTarget() const;
     // The Loop start [ marked at the playhead, until ] makes the Loop or Esc cancels it.
     std::optional<song::SampleCount> loopStartPending() const { return pendingLoopStart; }
 
@@ -165,8 +161,9 @@ private:
     IntentResult setPracticeSpeed (int speedPercent);
     // "Marker N" at the playhead, one undo step, without stopping playback (issue #227).
     IntentResult addMarker();
-    // Seeks to the Marker; outside Record mode it also becomes the selected Marker. None clears
-    // the selection. Errors: song.marker_not_found (quiet), seek's refusals.
+    // Seeks to the Marker; outside Record mode it also becomes the Selection. None (the empty
+    // strip) clears a selected Marker or Loop. Errors: song.marker_not_found (quiet), seek's
+    // refusals.
     IntentResult selectMarker (const std::optional<song::Id>& markerId);
     // "Loop N" over the range, one undo step, without stopping playback; then selectLoop on it.
     // Errors: song.loop_empty (presented), refusals.
@@ -218,10 +215,13 @@ private:
     void handleErrors (const std::vector<core::Error>& errors);
     void takeKeyboardFocus();
 
+    // The Selection after picking `picked` of this kind in the window's mode (ui::selectionAfterPick).
+    void pick (SelectionKind kind, const std::optional<song::Id>& picked);
+
     // A slot whose editor opens once its plugin is ready (just added, or clicked while loading).
     std::optional<song::Id> pendingEditorSlot;
-    std::optional<song::Id> selectedMarkerId;
-    std::optional<song::Id> selectedLoopId;
+    // Held by id: read through ui::resolvedSelection against the Song as it is now.
+    std::optional<Selection> selection;
     std::optional<song::SampleCount> pendingLoopStart;
     bool exportSheetShown = false;
     engine::MeterPeaks shownPeaks;

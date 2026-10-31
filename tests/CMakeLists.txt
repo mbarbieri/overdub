@@ -131,6 +131,7 @@ target_sources(overdub_tests PRIVATE
     ui/RecordAgainTest.cpp
     ui/RecordPageTest.cpp
     ui/RecordViewTest.cpp
+    ui/SelectionTest.cpp
     ui/SeparateTest.cpp
     ui/SnapshotTest.cpp
     ui/SongFilesTest.cpp

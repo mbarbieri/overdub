@@ -283,7 +283,6 @@ EditPage::EditPage (PeaksLookup peaksFor)
         if (onDeleteTrack)
             onDeleteTrack (trackId);
     };
-    timeline.onSelectionChanged = [this] { showToolbar(); };
 
     passesButton.setButtonText (juce::String::fromUTF8 ("Passes \xE2\x96\xBE"));
     passesButton.setWantsKeyboardFocus (false);
@@ -347,9 +346,9 @@ void EditPage::bringBackPass (const song::Id& passId)
 
 void EditPage::showToolbar()
 {
-    const auto& videoTake = timeline.selectedVideoTake();
+    const auto videoTake = idOf (current.selection, SelectionKind::videoTake);
     const auto state = videoTake.has_value() ? videoTakeToolbarStateFor (current.song, current.videoTakes, *videoTake, current.editable)
-                                             : clipToolbarStateFor (current.song, timeline.selectedClip(), current.playhead, current.editable);
+                                             : clipToolbarStateFor (current.song, idOf (current.selection, SelectionKind::clip), current.playhead, current.editable);
     toolbar.show (state, mixerVisible);
 }
 
@@ -370,7 +369,7 @@ VideoScreen* EditPage::shownPlayback()
 
 void EditPage::editSelectedClip (const std::function<std::optional<intent::Edit> (const song::Id& clipId)>& editFor)
 {
-    const auto& clipId = timeline.selectedClip();
+    const auto clipId = idOf (current.selection, SelectionKind::clip);
     const auto edit = clipId.has_value() && current.editable ? editFor (*clipId) : std::nullopt;
     if (edit.has_value())
     {

@@ -136,7 +136,7 @@ TEST_CASE ("dragging on an empty part of the strip makes Loop N over that range 
     CHECK (strip.bars[0]->getX() == stripX (stripScaleFor (mode == Mode::edit ? f.window->songView()->editPage.timeline.view() : f.window->songView()->transcribePage.view()), loop.start));
     CHECK (strip.bars[0]->isActive());
     if (mode == Mode::edit)
-        CHECK (f.window->songView()->selectedLoop() == loop.id);
+        CHECK (f.window->songView()->selected (SelectionKind::loop) == loop.id);
 
     // Right to left makes the same range; a second Loop takes the next number.
     drag (strip, { 140, strip.getHeight() / 2 }, { 100, strip.getHeight() / 2 });
@@ -275,7 +275,7 @@ TEST_CASE ("dragging a Loop's edge resizes it, double-clicking renames it and De
     // Delete: in Transcribe the active Loop, in Edit the selected one (a click selects it).
     if (mode == Mode::edit)
         click (barOf (strip, loopId));
-    CHECK (f.window->songView()->loopToDelete() == loopId);
+    CHECK (f.window->songView()->deleteTarget() == Selection { SelectionKind::loop, loopId });
     pressKey (f, juce::KeyPress::backspaceKey);
     CHECK (f.song().loops.empty());
     CHECK (f.openSong->package().undoLabel() == song::deleteLoopLabel);
@@ -457,8 +457,8 @@ TEST_CASE ("Record and Edit never loop; in Record a click on a Loop moves the re
 
     if (mode == Mode::record)
     {
-        CHECK_FALSE (f.window->songView()->selectedLoop().has_value());
-        CHECK_FALSE (f.window->songView()->loopToDelete().has_value());
+        CHECK_FALSE (f.window->songView()->selected (SelectionKind::loop).has_value());
+        CHECK_FALSE (f.window->songView()->deleteTarget().has_value());
         run (f, SongIntent { intent::Seek { 0 } });
         click (barOf (stripOf (f, mode), loopId));
         REQUIRE (f.openSong->position() == 24000);
@@ -471,7 +471,7 @@ TEST_CASE ("Record and Edit never loop; in Record a click on a Loop moves the re
     }
     else
     {
-        CHECK (f.window->songView()->selectedLoop() == loopId);
+        CHECK (f.window->songView()->selected (SelectionKind::loop) == loopId);
     }
 
     showMode (f, Mode::transcribe);

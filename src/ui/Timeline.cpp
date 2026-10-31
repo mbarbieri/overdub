@@ -5,7 +5,6 @@
 #include "core/Log.h"
 #include "song/ClipEdits.h"
 #include "song/TakeEdits.h"
-#include "song/VideoTakeEdits.h"
 #include "ui/Colours.h"
 #include "ui/MuteSoloButtons.h"
 
@@ -193,7 +192,7 @@ void Timeline::show (const TimelineState& state)
 {
     const auto songChanged = state.song != current.song;
     const auto changed = songChanged || state.playhead != current.playhead || state.playing != current.playing || state.editable != current.editable
-                      || state.tracksDeletable != current.tracksDeletable || state.videoTakes != current.videoTakes;
+                      || state.tracksDeletable != current.tracksDeletable || state.videoTakes != current.videoTakes || state.selection != current.selection;
     std::vector<song::Id> previousTrackIds;
     if (songChanged)
         for (const auto& track : current.song.tracks)
@@ -209,10 +208,6 @@ void Timeline::show (const TimelineState& state)
 
     if (songChanged)
     {
-        const auto clipId = selectedClip();
-        const auto videoTakeId = selectedVideoTake();
-        if ((clipId.has_value() && song::findClip (current.song, *clipId) == nullptr) || (videoTakeId.has_value() && song::findVideoTake (current.song, *videoTakeId) == nullptr))
-            setSelection (std::monostate {});
         // A Clip drag carries on over a Song changed by anything else, unless its Clip is gone.
         if (auto* clipDrag = std::get_if<ClipDragGesture> (&gesture))
         {
@@ -386,51 +381,16 @@ void Timeline::showMarkerStrip()
         .loops = current.song.loops,
         .scale = stripScaleFor (timelineView),
         .editable = current.editable && current.markersEditable,
-        .selectedMarker = current.selectedMarker,
-        .selectedLoop = current.selectedLoop,
+        .selectedMarker = idOf (current.selection, SelectionKind::marker),
+        .selectedLoop = idOf (current.selection, SelectionKind::loop),
         .activeLoop = current.song.settings.activeLoopId,
         .pendingLoopStart = current.pendingLoopStart,
     });
 }
 
-std::optional<song::Id> Timeline::selectedClip() const
+bool Timeline::showsSelected (SelectionKind kind, const song::Id& id) const
 {
-    if (const auto* clip = std::get_if<ClipSelection> (&selection))
-        return clip->clipId;
-    return std::nullopt;
-}
-
-std::optional<song::Id> Timeline::selectedVideoTake() const
-{
-    if (const auto* videoTake = std::get_if<VideoTakeSelection> (&selection))
-        return videoTake->videoTakeId;
-    return std::nullopt;
-}
-
-void Timeline::selectClip (std::optional<song::Id> clipId)
-{
-    setSelection (clipId.has_value() ? Selection { ClipSelection { std::move (*clipId) } } : Selection {});
-}
-
-void Timeline::selectVideoTake (std::optional<song::Id> videoTakeId)
-{
-    setSelection (videoTakeId.has_value() ? Selection { VideoTakeSelection { std::move (*videoTakeId) } } : Selection {});
-}
-
-bool Timeline::isSelectedClip (const song::Id& clipId) const
-{
-    const auto* clip = std::get_if<ClipSelection> (&selection);
-    return clip != nullptr && clip->clipId == clipId;
-}
-
-void Timeline::setSelection (Selection next)
-{
-    if (next == selection)
-        return;
-    selection = std::move (next);
-    repaint();
-    if (onSelectionChanged)
-        onSelectionChanged();
+    return current.selection == Selection { kind, id };
 }
 
 std::optional<juce::Colour> Timeline::clipColour (const song::Id& clipId) const
@@ -680,7 +640,7 @@ void Timeline::paintCameraLane (juce::Graphics& g) const
         const auto block = videoTakeBounds (span.videoTakeId);
         if (block.isEmpty())
             continue;
-        const auto isSelected = selectedVideoTake() == span.videoTakeId;
+        const auto isSelected = showsSelected (SelectionKind::videoTake, span.videoTakeId);
         g.setColour (span.readable ? colours::videoTake : colours::videoTake.withAlpha (0.4f));
         g.fillRoundedRectangle (block.toFloat(), 4.0f);
         g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.4f));
@@ -718,7 +678,7 @@ void Timeline::paintLane (juce::Graphics& g, const song::Track& track, juce::Rec
 void Timeline::paintClip (juce::Graphics& g, const song::Clip& clip, juce::Colour body, juce::Rectangle<int> clipArea) const
 {
     const auto& song = shownSong();
-    const auto isSelected = isSelectedClip (clip.id);
+    const auto isSelected = showsSelected (SelectionKind::clip, clip.id);
     const auto area = clipArea.toFloat();
     g.setColour (body);
     g.fillRoundedRectangle (area, 4.0f);
@@ -785,7 +745,7 @@ void Timeline::paintFadesAndGain (juce::Graphics& g, const song::Clip& clip, juc
         g.drawLine (fadeOutStart, area.getY(), area.getRight(), area.getBottom(), 1.0f);
 
     const auto handles = clipHandleBounds (timelineView, clip, clipArea.getY());
-    const auto isSelected = isSelectedClip (clip.id);
+    const auto isSelected = showsSelected (SelectionKind::clip, clip.id);
     g.setColour (juce::Colours::white.withAlpha (isSelected ? 0.95f : 0.55f));
     for (const auto& handle : { handles.fadeIn, handles.fadeOut })
         g.fillRoundedRectangle (toRectangle (handle).toFloat(), 2.0f);

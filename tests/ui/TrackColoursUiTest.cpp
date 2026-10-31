@@ -130,7 +130,7 @@ TEST_CASE ("snapshots of Track colours on the Record and Edit pages", "[ui][colo
     REQUIRE (pressKey (window, '2'));
     auto& timeline = window.songView()->editPage.timeline;
     timeline.setTakeLanesUnfolded (f.trackNamed ("Guitar").id, true);
-    timeline.selectClip (f.trackNamed ("Vocals").clips.at (0).id);
+    REQUIRE (window.run (overdub::ui::SongIntent { overdub::ui::intent::SelectClip { f.trackNamed ("Vocals").clips.at (0).id } }, overdub::ui::Origin::control).has_value());
     window.tick();
     CHECK (writeSnapshot (window, "issue-137", "edit-page").existsAsFile());
 }

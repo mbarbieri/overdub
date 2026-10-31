@@ -57,7 +57,7 @@ struct TranscribePageState
     bool canSetTranscribeMix = false;
     // An octave-shift render of the Focus Track runs (OpenSong::isOctaveRendering).
     bool octaveRendering = false;
-    // The selected Marker (SongView::selectedMarker), and whether the strip edits Markers.
+    // The selected Marker (SongView::selected (SelectionKind::marker)), and whether the strip edits Markers.
     std::optional<song::Id> selectedMarker;
     bool markersEditable = false;
     // The pending Loop start ([), issue #228.

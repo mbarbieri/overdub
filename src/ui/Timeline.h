@@ -6,6 +6,7 @@
 #include "ui/Layout.h"
 #include "ui/MarkerStrip.h"
 #include "ui/PeaksLookup.h"
+#include "ui/Selection.h"
 #include "ui/TakeLanes.h"
 #include "ui/TimelineGeometry.h"
 #include "ui/TrackDrag.h"
@@ -34,20 +35,20 @@
 // Each Clip shows its fades (shaded, with a line from silence to full level), a fade handle at each
 // fade's inner end in its top row, and its gain as a dB tag in its top-right corner (issue #29).
 //
-// Gestures (thin over ui/TimelineGeometry.h): clicking a Clip selects it, dragging its body moves
+// Gestures (thin over ui/TimelineGeometry.h): clicking a Clip selects it (select_clip), dragging its body moves
 // it, dragging an edge trims it, dragging a fade handle sets that fade, dragging the dB tag up or
 // down sets the gain; the drag is previewed and reported once, on mouse up, as its plain edit
 // (intentForDrag). Clicking a Video Take's block in the Camera lane selects it (issue #128; it
-// cannot be dragged). Clicking empty lane space clears the selection; clicking or dragging in the
+// cannot be dragged). Clicking empty lane space clears the Selection; clicking or dragging in the
 // ruler moves the playhead. The scroll bars and the mouse wheel scroll, and a trackpad pinch zooms
-// around the pointer (issue #164, pinchZoomed). Selection and the view are transient UI state,
-// never in the Song.
+// around the pointer (issue #164, pinchZoomed). The view is transient UI state, never in the Song;
+// the Selection is ui::SongView's, shown here from TimelineState.
 //
 // Every gesture that changes state is reported as an Intent through onIntent (ADR 0008), which
 // runs it: select_clip, select_video_take, seek, set_timeline_view, set_vertical_scroll,
 // set_take_lanes_unfolded, take_lane_click, move_track, import_files, set_armed, set_camera_armed, the Track
 // header's mute and solo, and a drag's plain edit. The Timeline changes what it shows only when
-// the Intent's handler calls back (selectClip, setView, ...); gesture phases (a drag's preview,
+// the Intent's handler calls back (show, setView, ...); gesture phases (a drag's preview,
 // the pinch's pending levels, Esc) stay here.
 //
 // Vertical scrolling (issue #127): when the Track rows are taller than the space under the Camera
@@ -62,7 +63,7 @@
 // recorded span as a block, the spans where it is heard now filled in, and its heard status in
 // the lane's header. Clicking a lane at a point swaps the top Clip there to that Take, or brings
 // the whole Take back on top (laneEditAt), reported as take_lane_click, whose handler selects the
-// swapped or added Clip. Which Tracks are unfolded is transient UI state, like selection.
+// swapped or added Clip. Which Tracks are unfolded is transient UI state, like the view.
 //
 // Dropping files (issue #123): a drag holding at least one importable audio file (ui/FileDrop.h)
 // is accepted while canImportFiles says so, highlights the Timeline while it hovers, and on drop
@@ -91,11 +92,12 @@ struct TimelineState
     bool tracksDeletable = true; // false while a Pass, a Separation or an Export runs
     std::vector<video::VideoTakeSpan> videoTakes; // the Camera lane's blocks (video::videoTakeSpans)
     bool canArmCamera = true; // the Camera lane header's A: as Record mode's camera arm, and not refused
-    // The Loop/Marker strip (issue #227): the selected Marker, and whether the strip edits Markers.
-    std::optional<song::Id> selectedMarker;
+    // The Selection (ui/Selection.h, issue #259), as the Song has it: a selected Clip or Video Take
+    // is drawn selected, a selected Marker or Loop on the Loop/Marker strip.
+    std::optional<Selection> selection;
+    // Whether the Loop/Marker strip edits Markers and Loops (issue #227), and the pending Loop start
+    // ([), issue #228.
     bool markersEditable = true;
-    // The Loop selected in Edit mode and the pending Loop start ([), issue #228.
-    std::optional<song::Id> selectedLoop;
     std::optional<song::SampleCount> pendingLoopStart;
 };
 
@@ -155,13 +157,6 @@ public:
     // Shows the Song from this sample at this zoom (clamped to the limits).
     void setView (song::SampleCount firstSample, song::SampleCount samplesPerPixel);
 
-    // Selection is single: at most one Clip or one Video Take. Selecting either clears the other;
-    // selectClip (std::nullopt) clears both.
-    std::optional<song::Id> selectedClip() const;
-    void selectClip (std::optional<song::Id> clipId);
-    std::optional<song::Id> selectedVideoTake() const;
-    void selectVideoTake (std::optional<song::Id> videoTakeId);
-
     // Where a Clip of the shown Song is drawn, in this Component's coordinates (cut to its lane);
     // empty when it is not on screen.
     juce::Rectangle<int> clipBounds (const song::Id& clipId) const;
@@ -199,7 +194,6 @@ public:
     IntentSink onIntent;
     // The × in a Track's header was clicked (the window asks before deleting).
     std::function<void (const song::Id& trackId)> onDeleteTrack;
-    std::function<void()> onSelectionChanged;
     // Whether a drop would be imported now (false while the Song is locked); no callback = never.
     std::function<bool()> canImportFiles;
 
@@ -236,18 +230,6 @@ public:
     MarkerStrip markerStrip; // above the ruler, at the timeline's view (issue #227)
 
 private:
-    struct ClipSelection
-    {
-        song::Id clipId;
-        bool operator== (const ClipSelection&) const = default;
-    };
-    struct VideoTakeSelection
-    {
-        song::Id videoTakeId;
-        bool operator== (const VideoTakeSelection&) const = default;
-    };
-    using Selection = std::variant<std::monostate, ClipSelection, VideoTakeSelection>;
-
     struct ClipDragGesture
     {
         ClipDrag drag;
@@ -266,8 +248,7 @@ private:
 
     void scrollBarMoved (juce::ScrollBar* bar, double newRangeStart) override;
     void emit (Intent intent) const;
-    void setSelection (Selection next);
-    bool isSelectedClip (const song::Id& clipId) const;
+    bool showsSelected (SelectionKind kind, const song::Id& id) const;
     // A Clip's rectangle in its lane: its columns, inset 3 pixels from the lane's top and bottom.
     static juce::Rectangle<int> clipRectangle (juce::Rectangle<int> lane, ClipColumns columns);
     // The Video Take whose block is at this point, the one drawn on top where blocks overlap.
@@ -310,7 +291,6 @@ private:
     bool scrollBarReporting = false;
     TimelineLayout layout;
     juce::Component trackHeaderColumn; // the tracks viewport's header column: cuts off scrolled headers
-    Selection selection;
     std::set<song::Id> unfoldedTracks;
     std::vector<std::vector<TakeLaneRow>> takeLanes; // per Track of the shown Song; empty when folded
 

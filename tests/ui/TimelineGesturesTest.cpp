@@ -124,7 +124,7 @@ TEST_CASE ("Esc during a Clip drag drops its preview and reports nothing", "[ui]
 
     CHECK (f.song() == songBefore);
     CHECK (f.openSong->package().undoLabel() == labelBefore);
-    CHECK (f.timeline().selectedClip() == f.bandMixClipId());
+    CHECK (f.window->songView()->selected (SelectionKind::clip) == f.bandMixClipId());
     const auto cancelled = core::testing::firstEvent (capture, "ui.timeline_gesture_cancelled");
     CHECK (cancelled.at ("gesture") == "clip_drag");
     CHECK (cancelled.at ("reason") == "escape");
@@ -186,7 +186,7 @@ TEST_CASE ("a mouse down on the Timeline during a grip drag starts nothing, and 
     f.mouseDrag (clip, clip.translated (50, 0));
     CHECK (f.timeline().clipBounds (f.bandMixClipId()) == before);
     f.mouseUp (clip, clip.translated (50, 0));
-    CHECK_FALSE (f.timeline().selectedClip().has_value());
+    CHECK_FALSE (f.window->songView()->selected (SelectionKind::clip).has_value());
     const auto ruler = f.timeline().rulerBounds();
     f.mouseDown ({ ruler.getX() + 100, ruler.getCentreY() });
     CHECK (f.openSong->position() == position);
@@ -215,7 +215,7 @@ TEST_CASE ("a grip drag whose Track is deleted ends, and a mouse down on a Clip 
     CHECK (cancelled.at ("reason") == "track_removed");
 
     f.mouseDown (f.bandMixBounds().getCentre());
-    CHECK (f.timeline().selectedClip() == f.bandMixClipId());
+    CHECK (f.window->songView()->selected (SelectionKind::clip) == f.bandMixClipId());
 }
 
 TEST_CASE ("a grip press during a Clip drag starts no grip drag, and the Clip drag carries on", "[ui][timeline][gesture][track_reorder]")
