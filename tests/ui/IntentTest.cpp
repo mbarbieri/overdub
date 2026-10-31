@@ -260,13 +260,13 @@ TEST_CASE ("H sets half speed or back to 100%, and - and = step the Practice Spe
     }
 }
 
-TEST_CASE ("K adds a Marker, and backspace or forward delete deletes the selected Marker while one is selected", "[ui][intent][keys][markers]")
+TEST_CASE ("K adds a Marker, and backspace or forward delete deletes the Marker when it is the delete target", "[ui][intent][keys][markers]")
 {
     CHECK (keyRuns (KeyChord { 'k' }) == songIntent (intent::AddMarker {}));
     CHECK (keyRuns (KeyChord { 'K' }) == songIntent (intent::AddMarker {}));
     CHECK (keyRuns (KeyChord { 'k', true }) == std::nullopt);
 
-    const KeyContext selected { .selectedMarker = song::Id ("marker-1") };
+    const KeyContext selected { .deleteTarget = Selection { SelectionKind::marker, "marker-1" } };
     for (const auto character : { backspaceCharacter, forwardDeleteCharacter })
     {
         const auto intent = intentForKey (KeyChord { character }, selected);
@@ -275,7 +275,7 @@ TEST_CASE ("K adds a Marker, and backspace or forward delete deletes the selecte
     }
 }
 
-TEST_CASE ("the bracket keys mark a Loop, Esc cancels a pending start, L toggles looping, option-arrows and option-1..9 select a Loop, and backspace deletes the Loop to delete", "[ui][intent][keys][loops]")
+TEST_CASE ("the bracket keys mark a Loop, Esc cancels a pending start, L toggles looping, option-arrows and option-1..9 select a Loop, and backspace deletes the Loop when it is the delete target", "[ui][intent][keys][loops]")
 {
     const auto runs = [] (KeyChord key, const KeyContext& context) -> std::optional<nlohmann::json> {
         const auto intent = intentForKey (key, context);
@@ -303,9 +303,9 @@ TEST_CASE ("the bracket keys mark a Loop, Esc cancels a pending start, L toggles
     // Option-1 is no mode key, and 1 alone still is.
     CHECK (keyRuns (KeyChord { '1' }) == windowIntent (intent::ShowMode { Mode::record }));
 
-    const KeyContext toDelete { .loopToDelete = song::Id ("loop-a") };
+    const KeyContext toDelete { .deleteTarget = Selection { SelectionKind::loop, "loop-a" } };
     CHECK (runs (KeyChord { backspaceCharacter }, toDelete) == songIntent (intent::Edit { intent::DeleteLoop { "loop-a" } }));
-    // A selected Marker goes first.
-    CHECK (runs (KeyChord { forwardDeleteCharacter }, KeyContext { .selectedMarker = song::Id ("m"), .loopToDelete = song::Id ("loop-a") })
-           == songIntent (intent::Edit { intent::DeleteMarker { "m" } }));
+    // A Clip or Video Take target, or none, is delete_selection's, which reads the Selection itself.
+    CHECK (runs (KeyChord { forwardDeleteCharacter }, KeyContext { .deleteTarget = Selection { SelectionKind::clip, "clip-a" } }) == songIntent (intent::DeleteSelection {}));
+    CHECK (runs (KeyChord { backspaceCharacter }, KeyContext {}) == songIntent (intent::DeleteSelection {}));
 }

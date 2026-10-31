@@ -33,17 +33,6 @@ template <typename Leaf>
 concept LeafRunsPerFrame = Leaf::runsPerFrame;
 } // namespace
 
-const char* modeName (Mode mode)
-{
-    switch (mode)
-    {
-        case Mode::record: return "record";
-        case Mode::edit: return "edit";
-        case Mode::transcribe: return "transcribe";
-    }
-    return "unknown";
-}
-
 const char* originName (Origin origin)
 {
     switch (origin)
@@ -122,10 +111,10 @@ std::optional<Intent> intentForKey (KeyChord key, KeyContext context)
         case U's': return SongIntent { intent::SplitSelectedClip {} };
         case backspaceCharacter:
         case forwardDeleteCharacter:
-            if (context.selectedMarker.has_value())
-                return SongIntent { intent::Edit { intent::DeleteMarker { *context.selectedMarker } } };
-            if (context.loopToDelete.has_value())
-                return SongIntent { intent::Edit { intent::DeleteLoop { *context.loopToDelete } } };
+            if (const auto markerId = idOf (context.deleteTarget, SelectionKind::marker))
+                return SongIntent { intent::Edit { intent::DeleteMarker { *markerId } } };
+            if (const auto loopId = idOf (context.deleteTarget, SelectionKind::loop))
+                return SongIntent { intent::Edit { intent::DeleteLoop { *loopId } } };
             return SongIntent { intent::DeleteSelection {} };
         case leftArrowCharacter: return SongIntent { intent::Nudge { Direction::back } };
         case rightArrowCharacter: return SongIntent { intent::Nudge { Direction::forward } };

@@ -119,7 +119,7 @@ TEST_CASE ("a click on a Clip selects it without changing the Song", "[ui][edit]
     const auto before = f.song();
     clickAt (f.timeline(), f.bandMixBounds().getCentre());
 
-    CHECK (f.timeline().selectedClip() == f.bandMixClip().id);
+    CHECK (f.window->songView()->selected (SelectionKind::clip) == f.bandMixClip().id);
     CHECK (f.song() == before);
     CHECK (f.openSong->package().undoLabel() == "Add Tracks");
     CHECK (f.window->songView()->editPage.toolbar.deleteButton.isEnabled());
@@ -127,7 +127,7 @@ TEST_CASE ("a click on a Clip selects it without changing the Song", "[ui][edit]
 
     // Empty lane space clears the selection.
     clickAt (f.timeline(), { f.bandMixBounds().getRight() + 100, f.bandMixBounds().getCentreY() });
-    CHECK (! f.timeline().selectedClip().has_value());
+    CHECK (! f.window->songView()->selected (SelectionKind::clip).has_value());
     CHECK (! f.window->songView()->editPage.toolbar.deleteButton.isEnabled());
 }
 
@@ -149,7 +149,7 @@ TEST_CASE ("S splits the selected Clip at the playhead, as one Split Clip step",
     CHECK (clips[1].timelineStart == 30000);
     CHECK (clips[1].sourceOffset == 30000);
     CHECK (clips[1].length == bandMixLength - 30000);
-    CHECK (f.timeline().selectedClip() == clips[1].id);
+    CHECK (f.window->songView()->selected (SelectionKind::clip) == clips[1].id);
     CHECK (f.openSong->package().undoLabel() == "Split Clip");
     f.undoRestores (before);
 }
@@ -164,7 +164,7 @@ TEST_CASE ("backspace deletes the selected Clip, as one Delete Clip step", "[ui]
 
     CHECK (f.trackNamed ("Band Mix").clips.empty());
     CHECK (f.song().backingTracks == before.backingTracks);
-    CHECK (! f.timeline().selectedClip().has_value());
+    CHECK (! f.window->songView()->selected (SelectionKind::clip).has_value());
     CHECK (f.openSong->package().undoLabel() == "Delete Clip");
     f.undoRestores (before);
 }
@@ -451,7 +451,7 @@ TEST_CASE ("dragging a Clip's dB tag up raises its gain, as one Clip Gain step",
     CHECK (std::abs (f.bandMixClip().gainDb - 2.5) < 1e-9);
     CHECK (f.bandMixClip().timelineStart == 0);
     CHECK (f.openSong->package().undoLabel() == "Clip Gain");
-    CHECK (f.timeline().selectedClip() == f.bandMixClip().id);
+    CHECK (f.window->songView()->selected (SelectionKind::clip) == f.bandMixClip().id);
     f.undoRestores (before);
 }
 

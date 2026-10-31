@@ -137,7 +137,7 @@ TEST_CASE ("clicking an older Take's lane where a newer Clip sounds swaps that C
     CHECK (clips[0] == before.tracks[1].clips[0]);
     CHECK (f.openSong->package().undoLabel() == "Use Pass 1 on Guitar");
     CHECK (f.window->topBar.undoButton.getButtonText() == "Undo Use Pass 1 on Guitar");
-    CHECK (f.timeline().selectedClip() == topClip.id);
+    CHECK (f.window->songView()->selected (SelectionKind::clip) == topClip.id);
     // The lanes redraw: Pass 2 is no longer heard.
     CHECK (f.timeline().takeLanesShown (f.trackNamed ("Guitar").id)[0].status == song::HeardStatus::notHeard);
     f.undoRestores (before);
@@ -172,7 +172,7 @@ TEST_CASE ("clicking a lane where no Take Clip sounds brings the whole Take back
     REQUIRE (expected.has_value());
     CHECK (clips[1] == *expected);
     CHECK (f.openSong->package().undoLabel() == "Bring back Pass 1 on Guitar");
-    CHECK (f.timeline().selectedClip() == clips[1].id);
+    CHECK (f.window->songView()->selected (SelectionKind::clip) == clips[1].id);
     f.undoRestores (before);
 }
 

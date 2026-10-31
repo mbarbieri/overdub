@@ -5,6 +5,8 @@
 #include "export/ExportFormat.h"
 #include "export/MovieSpan.h"
 #include "song/Song.h"
+#include "ui/Mode.h"
+#include "ui/Selection.h"
 
 #include <cstddef>
 #include <functional>
@@ -39,24 +41,13 @@
 // Space plays or stops, command-Z / shift-command-Z undo and redo, command-E opens the Export sheet,
 // I shows or hides the Transcribe column, K adds a Marker at the playhead (issue #227), and S,
 // backspace (or forward delete) and the left and right arrows split, delete and nudge, which their
-// handlers refuse outside Edit mode (and ui/Availability.h refuses in Transcribe mode). While a
-// Marker is selected, backspace and forward delete delete it instead (delete_marker), or else the
-// Loop to delete (delete_loop). Loops (issue #228): [ marks a Loop start at the playhead, ] makes
+// handlers refuse outside Edit mode (and ui/Availability.h refuses in Transcribe mode). When the
+// delete target (ui/Selection.h) is a Marker or a Loop, backspace and forward delete delete it
+// instead (delete_marker, delete_loop). Loops (issue #228): [ marks a Loop start at the playhead, ] makes
 // the Loop up to the playhead, Esc cancels a pending start, L toggles looping, option-left and
 // option-right select the previous and next Loop, option-1..option-9 the n-th.
 namespace overdub::ui
 {
-enum class Mode
-{
-    record,
-    edit,
-    transcribe
-};
-inline constexpr std::pair<Mode, std::string_view> modeNames[] { { Mode::record, "record" }, { Mode::edit, "edit" }, { Mode::transcribe, "transcribe" } };
-
-// "record", "edit" or "transcribe": the name in ui.* event fields and in the Intent's JSON.
-const char* modeName (Mode mode);
-
 enum class Direction
 {
     back,
@@ -1070,15 +1061,14 @@ struct KeyChord
 };
 
 // What the window shows that a key's Intent depends on: I sets the Transcribe column to the
-// opposite of what it is, backspace deletes the selected Marker, when there is one, or else the
-// Loop to delete (SongView::loopToDelete), L sets looping to the opposite of what it is, option-n
+// opposite of what it is, backspace deletes the delete target (ui::deleteTarget) when it is a
+// Marker or a Loop and runs delete_selection otherwise, L sets looping to the opposite of what it is, option-n
 // selects the n-th Loop in time order, Esc cancels a pending Loop start, and H, - and = set the
 // Practice Speed from the one wanted now (OpenSong::practiceSpeed).
 struct KeyContext
 {
     bool transcribeColumnVisible = true;
-    std::optional<song::Id> selectedMarker;
-    std::optional<song::Id> loopToDelete;
+    std::optional<Selection> deleteTarget;
     bool looping = false;
     std::vector<song::Id> loopIds; // in time order
     bool loopStartPending = false;

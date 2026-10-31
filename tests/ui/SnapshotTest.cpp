@@ -62,7 +62,7 @@ TEST_CASE ("snapshots of the Edit timeline with overlapping Clips, zoomed in and
 
     REQUIRE (pressKey (window, '2'));
     auto& timeline = window.songView()->editPage.timeline;
-    timeline.selectClip (f.trackNamed ("Guitar").clips[1].id);
+    REQUIRE (window.run (overdub::ui::SongIntent { overdub::ui::intent::SelectClip { f.trackNamed ("Guitar").clips[1].id } }, overdub::ui::Origin::control).has_value());
     f.openSong->seek (72000);
     f.runBlocks (0);
 
@@ -106,7 +106,7 @@ TEST_CASE ("snapshots of Clips with fades and non-zero gain", "[ui][snapshot][cl
     timeline.setView (0, 512);
     window.tick();
 
-    timeline.selectClip (f.trackNamed ("Band Mix").clips[0].id);
+    REQUIRE (window.run (overdub::ui::SongIntent { overdub::ui::intent::SelectClip { f.trackNamed ("Band Mix").clips[0].id } }, overdub::ui::Origin::control).has_value());
     page.toolbar.fadeInField.setText ("1.5", juce::sendNotificationSync);
     page.toolbar.fadeOutField.setText ("2", juce::sendNotificationSync);
     page.toolbar.gainField.setText ("-6", juce::sendNotificationSync);

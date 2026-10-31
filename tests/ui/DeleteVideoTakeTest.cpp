@@ -54,7 +54,7 @@ struct VideoTakeFixture : MainWindowFixture
     void selectOlderTake()
     {
         clickAt (timeline(), olderTakePoint());
-        REQUIRE (timeline().selectedVideoTake() == olderTake);
+        REQUIRE (window->songView()->selected (SelectionKind::videoTake) == olderTake);
     }
 
     juce::Rectangle<int> bandMixBounds()
@@ -106,32 +106,32 @@ TEST_CASE ("clicking a Video Take selects it; selecting a Clip or empty lane spa
 
     // A Clip, then the Video Take: the Clip's selection goes.
     clickAt (f.timeline(), f.bandMixBounds().getCentre());
-    REQUIRE (f.timeline().selectedClip().has_value());
+    REQUIRE (f.window->songView()->selected (SelectionKind::clip).has_value());
     clickAt (f.timeline(), f.olderTakePoint());
-    CHECK (f.timeline().selectedVideoTake() == f.olderTake);
-    CHECK (! f.timeline().selectedClip().has_value());
+    CHECK (f.window->songView()->selected (SelectionKind::videoTake) == f.olderTake);
+    CHECK (! f.window->songView()->selected (SelectionKind::clip).has_value());
     CHECK (f.song() == before);
 
     // Where the blocks overlap, the newer one (drawn on top) is picked.
     clickAt (f.timeline(), f.timeline().videoTakeBounds (f.newerTake).getCentre());
-    CHECK (f.timeline().selectedVideoTake() == f.newerTake);
+    CHECK (f.window->songView()->selected (SelectionKind::videoTake) == f.newerTake);
 
     // A Clip clears the Video Take.
     clickAt (f.timeline(), f.bandMixBounds().getCentre());
-    CHECK (f.timeline().selectedClip().has_value());
-    CHECK (! f.timeline().selectedVideoTake().has_value());
+    CHECK (f.window->songView()->selected (SelectionKind::clip).has_value());
+    CHECK (! f.window->songView()->selected (SelectionKind::videoTake).has_value());
 
     // Empty Camera lane space clears both.
     f.selectOlderTake();
     const auto lane = f.timeline().cameraLaneBounds();
     clickAt (f.timeline(), { lane.getX() + 10, lane.getCentreY() }); // before 1 s: no block
-    CHECK (! f.timeline().selectedVideoTake().has_value());
-    CHECK (! f.timeline().selectedClip().has_value());
+    CHECK (! f.window->songView()->selected (SelectionKind::videoTake).has_value());
+    CHECK (! f.window->songView()->selected (SelectionKind::clip).has_value());
 
     // Empty Track lane space clears it too.
     f.selectOlderTake();
     clickAt (f.timeline(), { f.bandMixBounds().getRight() + 300, f.bandMixBounds().getCentreY() });
-    CHECK (! f.timeline().selectedVideoTake().has_value());
+    CHECK (! f.window->songView()->selected (SelectionKind::videoTake).has_value());
     CHECK (f.song() == before);
 }
 
@@ -174,7 +174,7 @@ TEST_CASE ("backspace, forward delete and the Delete button each delete the sele
     CHECK (f.song().passes == before.passes);
     CHECK (f.song().takes == before.takes);
     CHECK (f.openSong->package().undoLabel() == "Delete Video Take");
-    CHECK (! f.timeline().selectedVideoTake().has_value());
+    CHECK (! f.window->songView()->selected (SelectionKind::videoTake).has_value());
     CHECK (f.timeline().videoTakeBounds (f.olderTake).isEmpty());
     CHECK (f.movieOf (f.olderTake).existsAsFile()); // media is never deleted
 

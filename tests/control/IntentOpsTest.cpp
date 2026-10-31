@@ -550,9 +550,9 @@ TEST_CASE ("add_marker replies with the new Marker's id, select_marker seeks to 
     REQUIRE (socket.request (R"({"id":6,"op":"seek","sample":0})").at ("ok") == true);
     CHECK (socket.request (R"({"id":7,"op":"select_marker","marker_id":")" + markerId + R"("})").at ("ok") == true);
     CHECK (socket.f.openSong->position() == 9600);
-    CHECK (socket.f.window->songView()->selectedMarker() == markerId);
+    CHECK (socket.f.window->songView()->selected (ui::SelectionKind::marker) == markerId);
     CHECK (socket.request (R"({"id":8,"op":"select_marker"})").at ("ok") == true);
-    CHECK_FALSE (socket.f.window->songView()->selectedMarker().has_value());
+    CHECK_FALSE (socket.f.window->songView()->selected (ui::SelectionKind::marker).has_value());
 
     CHECK (socket.request (R"({"id":9,"op":"delete_marker","marker_id":")" + markerId + R"("})").at ("ok") == true);
     CHECK (socket.f.song().markers.empty());

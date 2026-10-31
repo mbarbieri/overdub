@@ -140,7 +140,7 @@ TEST_CASE ("deleting a Track clears a selection on it and stops its Monitoring",
     MainWindowFixture f;
     REQUIRE (pressKey (*f.window, '2'));
     const auto bandMixClip = f.trackNamed ("Band Mix").clips.at (0).id;
-    f.window->songView()->editPage.timeline.selectClip (bandMixClip);
+    REQUIRE (f.window->run (SongIntent { intent::SelectClip { bandMixClip } }, Origin::control).has_value());
     const auto guitarId = f.trackNamed ("Guitar").id;
     f.openSong->setMonitoring (guitarId, true);
     REQUIRE (f.openSong->isMonitoring (guitarId));
@@ -148,7 +148,7 @@ TEST_CASE ("deleting a Track clears a selection on it and stops its Monitoring",
     deleteTrackNamed (f, "Band Mix");
     deleteTrackNamed (f, "Guitar");
 
-    CHECK_FALSE (f.window->songView()->editPage.timeline.selectedClip().has_value());
+    CHECK_FALSE (f.window->songView()->selected (SelectionKind::clip).has_value());
     CHECK_FALSE (f.openSong->isMonitoring (guitarId));
     REQUIRE (pressKey (*f.window, 'z', juce::ModifierKeys::commandModifier));
     CHECK_FALSE (f.openSong->isMonitoring (guitarId));

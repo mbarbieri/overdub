@@ -43,6 +43,7 @@ target_sources(overdub_ui PRIVATE
     SongEdits.cpp
     SongFiles.cpp
     SongOverview.cpp
+    Selection.cpp
     SongView.cpp
     TakeLanes.cpp
     ThinProgressBar.cpp

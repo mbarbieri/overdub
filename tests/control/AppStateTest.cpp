@@ -166,6 +166,29 @@ TEST_CASE ("the app state has every section, each with its keys, over a Song wit
     CHECK (state["refused"]["new_song_at"] == nullptr);
 }
 
+TEST_CASE ("view names at most one selected thing, and undoing the selected Clip's delete selects it again", "[control][app_state][selection]")
+{
+    SongWithPassSelectionAndNotice fixture;
+    auto& f = fixture.f;
+    const auto selectedIn = [&f] {
+        const auto view = appState (f.content, *f.workspace)["view"];
+        return json { view["selected_clip"], view["selected_video_take"], view["selected_marker"], view["selected_loop"] };
+    };
+    run (f, ui::WindowIntent { ShowMode { ui::Mode::edit } });
+    run (f, ui::SongIntent { AddMarker {} });
+    const auto markerId = f.song().song().markers.front().id;
+
+    run (f, ui::SongIntent { SelectMarker { markerId } });
+    CHECK (selectedIn() == json { nullptr, nullptr, markerId, nullptr });
+    run (f, ui::SongIntent { SelectClip { fixture.bandClip } });
+    CHECK (selectedIn() == json { fixture.bandClip, nullptr, nullptr, nullptr });
+
+    run (f, ui::SongIntent { DeleteSelection {} });
+    CHECK (selectedIn() == json { nullptr, nullptr, nullptr, nullptr });
+    run (f, ui::SongIntent { Undo {} });
+    CHECK (selectedIn() == json { fixture.bandClip, nullptr, nullptr, nullptr });
+}
+
 TEST_CASE ("the app state with no Song open has null Song sections and the mode", "[control][app_state]")
 {
     WorkspaceFixture f;

@@ -169,7 +169,7 @@ TEST_CASE ("dragging a Clip on a scrolled lane moves the Clip drawn under the po
 
     CHECK (f.trackNamed ("Bass").clips[0].timelineStart == 20 * f.timeline().view().samplesPerPixel);
     CHECK (f.trackNamed ("Drums").clips[0] == drumsBefore);
-    CHECK (f.timeline().selectedClip() == f.trackNamed ("Bass").clips[0].id);
+    CHECK (f.window->songView()->selected (SelectionKind::clip) == f.trackNamed ("Bass").clips[0].id);
 }
 
 TEST_CASE ("trimming a Clip and dragging its dB tag on a scrolled lane edit the Clip drawn under the pointer", "[ui][edit][vertical_scroll]")
@@ -211,9 +211,9 @@ TEST_CASE ("a Track scrolled up under the Camera lane is cut off there, and a cl
 
     // Where Band Mix's Clip would be drawn without the cut, inside the Camera lane.
     const auto songBefore = f.song();
-    f.timeline().selectClip (std::nullopt);
+    REQUIRE (f.window->run (SongIntent { intent::SelectClip { std::nullopt } }, Origin::control).has_value());
     clickAt (f.timeline(), { bandMix.getCentreX(), f.timeline().cameraLaneBounds().getCentreY() });
-    CHECK_FALSE (f.timeline().selectedClip().has_value());
+    CHECK_FALSE (f.window->songView()->selected (SelectionKind::clip).has_value());
     CHECK (f.song() == songBefore);
 }
 
@@ -241,7 +241,7 @@ TEST_CASE ("unfolding Take Lanes and selecting a Clip leave the vertical scroll 
     const auto drums = f.clipOf ("Drums");
     REQUIRE (viewportShows (f.timeline(), drums));
     clickAt (f.timeline(), drums.getCentre());
-    REQUIRE (f.timeline().selectedClip() == f.trackNamed ("Drums").clips[0].id);
+    REQUIRE (f.window->songView()->selected (SelectionKind::clip) == f.trackNamed ("Drums").clips[0].id);
     CHECK (f.timeline().verticalScroll() == 30);
 
     // Folding them again at the bottom clamps the scroll: the last Track ends at the rows' bottom.

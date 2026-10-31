@@ -90,6 +90,10 @@ _Avoid_: Cue, flag, locator, section
 A named range of the Song, saved with it and shown in every mode, that plays over and over in Transcribe mode. A Song can have any number of Loops, and one is active at a time. Each Loop remembers the Practice Speed it is drilled at.
 _Avoid_: Cycle, region, section, repeat
 
+**Selection**:
+The one Clip, Video Take, Marker or Loop the user has picked to act on, kept while the Song is open but not saved with it. Selecting one clears the others. Record mode acts on none of them, and Transcribe mode only on a Marker. It is not the active Loop, which is what plays.
+_Avoid_: Current, highlighted, focus (the Focus Track is another thing)
+
 ### Signal flow
 
 **Insert Chain**:
