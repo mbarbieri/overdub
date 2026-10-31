@@ -15,7 +15,6 @@ target_sources(overdub_ui PRIVATE
     DeviceSettingsPanel.cpp
     DoubleClickInterval.mm
     EditPage.cpp
-    ExportSettings.cpp
     ExportSheet.cpp
     ExportRun.cpp
     FileDrop.cpp
@@ -25,7 +24,6 @@ target_sources(overdub_ui PRIVATE
     Layout.cpp
     Listening.cpp
     ListeningRenders.cpp
-    ListeningSettings.cpp
     LookAheadStrip.cpp
     LoopViews.cpp
     MarkerStrip.cpp
@@ -41,6 +39,7 @@ target_sources(overdub_ui PRIVATE
     RecordView.cpp
     RunDialog.cpp
     SongEdits.cpp
+    SongSettings.cpp
     SongFiles.cpp
     SongOverview.cpp
     Selection.cpp

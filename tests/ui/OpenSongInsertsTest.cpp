@@ -7,7 +7,7 @@
 #include "song/InsertEdits.h"
 #include "song/MixEdits.h"
 #include "song/SongJson.h"
-#include "ui/TrackRowEdits.h"
+#include "ui/SongSettings.h"
 
 #include <AudioToolbox/AudioToolbox.h>
 
@@ -385,8 +385,8 @@ TEST_CASE ("a plugin that crashes during a Pass does not stop it: the Pass keeps
     const auto guitarId = f.trackNamed ("Guitar").id;
     REQUIRE (f.openSong->addInsert (guitarId, testPlugin).has_value());
     auto* plugin = fake.succeed (0, 64);
-    f.openSong->changeSettings (overdub::ui::withArmed (f.openSong->song(), guitarId, true));
-    f.openSong->changeSettings (overdub::ui::withInputChannels (f.openSong->song(), guitarId, { 0 }));
+    f.openSong->changeSettings (overdub::ui::withSongSetting (f.openSong->song(), overdub::ui::intent::SetArmed { guitarId, true }));
+    f.openSong->changeSettings (overdub::ui::withSongSetting (f.openSong->song(), overdub::ui::intent::SetInputChannels { guitarId, { 0 } }));
     f.openSong->poll();
     const auto takesBefore = f.openSong->song().takes.size();
 

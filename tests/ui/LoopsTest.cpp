@@ -477,3 +477,23 @@ TEST_CASE ("Record and Edit never loop; in Record a click on a Loop moves the re
     showMode (f, Mode::transcribe);
     CHECK (f.openSong->heard().loop == engine::LoopRange { 24000, 30000 });
 }
+
+TEST_CASE ("set_looping logs ui.looping_set only when it changes looping", "[ui][loops][transcribe]")
+{
+    MainWindowFixture f;
+    showMode (f, Mode::transcribe);
+    addLoop (f, 24000, 30000);
+    run (f, SongIntent { intent::SetLooping { false } });
+    core::ScopedLogCapture capture;
+
+    run (f, SongIntent { intent::SetLooping { false } });
+    run (f, SongIntent { intent::SetLooping { true } });
+    run (f, SongIntent { intent::SetLooping { true } });
+
+    const auto events = capture.events();
+    const auto logged = std::ranges::count_if (events, [] (const auto& event) { return event.at ("event") == "ui.looping_set"; });
+    CHECK (logged == 1);
+    const auto set = std::ranges::find_if (events, [] (const auto& event) { return event.at ("event") == "ui.looping_set"; });
+    REQUIRE (set != events.end());
+    CHECK (set->at ("looping") == true);
+}

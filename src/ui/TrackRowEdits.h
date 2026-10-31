@@ -7,10 +7,9 @@
 #include <string>
 #include <vector>
 
-// What a Record mode Track row's gestures do to the Song (issue #27), as pure functions the row
-// Components call: arm, pick an input, and which Tracks the engine lets you hear live.
-// Arm and input are outside undo history (ADR 0004): the caller applies them with
-// SongPackage::changeWithoutHistory.
+// What a Record mode Track row offers (issue #27), as pure functions the row Components call: its
+// input picker's choices, the number of the Pass it records into and its menu. Arming and picking an input are Song settings outside
+// history (ui/SongSettings.h).
 namespace overdub::ui
 {
 // One entry of a Track row's input picker: the device input channels it records (0-based) and
@@ -30,12 +29,6 @@ std::vector<InputChoice> inputChoices (const std::vector<std::string>& inputChan
 // The index of the choice recording exactly these channels; nullopt when none does (a channel
 // this device does not have, or a pair that is not offered).
 std::optional<std::size_t> choiceIndexFor (const std::vector<InputChoice>& choices, const std::vector<int>& channels);
-
-// The Song with that Track's Armed flag / input channels set. An unknown Track id changes nothing.
-song::Song withArmed (song::Song song, const song::Id& trackId, bool armed);
-song::Song withInputChannels (song::Song song, const song::Id& trackId, std::vector<int> inputChannels);
-// The Song with the Record page's pre-roll set.
-song::Song withPreRoll (song::Song song, song::PreRoll preRoll);
 
 // One item of a Track row's menu (right-click, issue #114).
 enum class TrackMenuAction

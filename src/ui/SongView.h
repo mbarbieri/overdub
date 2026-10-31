@@ -2,7 +2,6 @@
 
 #include "core/Error.h"
 #include "ui/EditPage.h"
-#include "ui/ExportSettings.h"
 #include "ui/ExportSheet.h"
 #include "ui/InsertChain.h"
 #include "ui/Intent.h"
@@ -140,18 +139,16 @@ private:
     void askToDeleteTrack (const song::Id& trackId);
     IntentResult deleteTrack (const song::Id& trackId);
     IntentResult moveTrack (const song::Id& trackId, std::size_t toIndex);
-    IntentResult setArmed (const song::Id& trackId, bool armed);
-    IntentResult setInputChannels (const song::Id& trackId, std::vector<int> channels);
     IntentResult setMonitoring (const song::Id& trackId, bool on);
-    IntentResult setPreRoll (song::PreRoll preRoll);
-    // A Transcribe listening setting (ui/ListeningSettings.h), outside history; logs
-    // logListeningSet's event when it changes the Song.
-    IntentResult changeListening (const intent::ListeningSetting& setting);
+    // A Song setting outside history (ui/SongSettings.h); logs logSongSettingSet's event when it
+    // changes the Song. set_input_channels takes only a choice the device's inputs offer
+    // (ui.input_channels_unavailable, quiet, otherwise). Errors: withSongSetting's, presented;
+    // nothing is stored.
+    IntentResult changeSetting (const intent::SongSetting& setting);
     // The active Loop and looping, outside history (song/LoopEdits.h). Logs ui.active_loop_set
-    // (info: loop_id, "" for none, looping) and ui.looping_set (info: looping). Errors:
-    // song.loop_not_found, song.no_active_loop (presented).
+    // (info: loop_id, "" for none, looping). Errors: song.loop_not_found, song.no_active_loop
+    // (presented).
     IntentResult setActiveLoop (const std::optional<song::Id>& loopId, bool looping);
-    IntentResult setLooping (bool looping);
     // One undo step "Transpose +3" (or "Transpose +3 −20 ct"); the same value again changes
     // nothing. Errors: song.transpose_out_of_range, song.transpose_cents_out_of_range (presented),
     // refusals.
@@ -195,8 +192,6 @@ private:
     // What Export writes now, from the Song's choices (exportRequestFor, exportDestinationFor).
     exporting::ExportRequest exportRequest() const;
     IntentResult exportSong();
-    // Errors: withExportSetting's, presented; nothing is stored.
-    IntentResult changeExportSetting (const intent::ExportSetting& setting);
     // Cancels the running export (issue #202): the ui.export_cancelled Notice; when the export had
     // written its file already, the ui.export_finished Notice; when its render had failed, that
     // Error, presented and returned.

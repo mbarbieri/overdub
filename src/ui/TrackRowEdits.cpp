@@ -59,26 +59,6 @@ std::optional<std::size_t> choiceIndexFor (const std::vector<InputChoice>& choic
     return (std::size_t) std::distance (choices.begin(), found);
 }
 
-song::Song withArmed (song::Song song, const song::Id& trackId, bool armed)
-{
-    if (auto* track = song::findTrack (song, trackId))
-        track->settings.armed = armed;
-    return song;
-}
-
-song::Song withInputChannels (song::Song song, const song::Id& trackId, std::vector<int> inputChannels)
-{
-    if (auto* track = song::findTrack (song, trackId))
-        track->settings.inputChannels = std::move (inputChannels);
-    return song;
-}
-
-song::Song withPreRoll (song::Song song, song::PreRoll preRoll)
-{
-    song.settings.preRoll = preRoll;
-    return song;
-}
-
 int nextPassNumber (const song::Song& song)
 {
     return (int) song.passes.size() + 1;

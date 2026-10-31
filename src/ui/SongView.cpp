@@ -13,8 +13,8 @@
 #include "song/Transpose.h"
 #include "song/VideoTakeEdits.h"
 
-#include "ui/ListeningSettings.h"
 #include "ui/MainComponent.h"
+#include "ui/SongSettings.h"
 #include "ui/TakeLanes.h"
 #include "ui/TrackRowEdits.h"
 #include "ui/TransportText.h"
@@ -90,14 +90,12 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const ImportFiles& i) { return importFiles (i.files); },
             [this] (const DeleteTrack& i) { return deleteTrack (i.trackId); },
             [this] (const MoveTrack& i) { return moveTrack (i.trackId, i.toIndex); },
-            [this] (const SetArmed& i) { return setArmed (i.trackId, i.armed); },
-            [this] (const SetInputChannels& i) { return setInputChannels (i.trackId, i.channels); },
+            [this] (const SongSetting& i) { return changeSetting (i); },
             [this] (const SetMonitoring& i) { return setMonitoring (i.trackId, i.on); },
             [this] (const StartSeparation& i) { return startSeparation (i.trackId); },
             [this] (const CancelRun&) { return cancelRun(); },
             [this] (const SetTranspose& i) { return setTranspose ({ .semitones = i.semitones, .cents = i.cents.value_or (0) }); },
             [this] (const SetPracticeSpeed& i) { return setPracticeSpeed (i.speedPercent); },
-            [this] (const ListeningSetting& i) { return changeListening (i); },
             [this] (const AddMarker&) { return addMarker(); },
             [this] (const SelectMarker& i) { return selectMarker (i.markerId); },
             [this] (const AddLoop& i) { return addLoop (i.start, i.end); },
@@ -106,8 +104,6 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const CancelLoopStart&) -> IntentResult { pendingLoopStart.reset(); window.refresh(); return IntentDone {}; },
             [this] (const SelectLoop& i) { return selectLoop (i.loopId); },
             [this] (const SelectAdjacentLoop& i) { return selectAdjacentLoop (i.direction); },
-            [this] (const SetLooping& i) { return setLooping (i.looping); },
-            [this] (const SetPreRoll& i) { return setPreRoll (i.preRoll); },
             [this] (const SetCameraArmed& i) { return armCamera (i.armed); },
             [this] (const SetCameraDevice& i) { return setCameraDevice (i.cameraId); },
             [this] (const SplitSelectedClip&) { return splitSelectedClip(); },
@@ -118,7 +114,6 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const OpenInsertEditor& i) { return openInsertEditor (i.slotId); },
             [this] (const ClosePluginWindow& i) { return closePluginWindow (i.slotId); },
             [this] (const ShowExport& i) { return showExport (i.shown); },
-            [this] (const ExportSetting& i) { return changeExportSetting (i); },
             [this] (const Export&) { return exportSong(); },
             [this] (const CancelExport&) { return cancelExport(); },
             [this] (const RevealExport&) { return revealExport(); },
@@ -243,24 +238,22 @@ core::Error SongView::handleOperationError (const core::Error& error)
     return error;
 }
 
-IntentResult SongView::setArmed (const song::Id& trackId, bool armed)
+IntentResult SongView::changeSetting (const intent::SongSetting& setting)
 {
-    auto result = presented (openSong.changeSettings (withArmed (openSong.song(), trackId, armed)));
-    window.refresh();
-    return result;
-}
-
-IntentResult SongView::setInputChannels (const song::Id& trackId, std::vector<int> channels)
-{
+    const auto* inputs = std::get_if<intent::SetInputChannels> (&setting);
     // The input picker offers only inputChoices, so only the socket can name anything else.
     const auto& inputNames = openSong.audio().inputChannelNames;
-    if (! std::ranges::contains (inputChoices (inputNames), channels, &InputChoice::channels))
+    if (inputs != nullptr && ! std::ranges::contains (inputChoices (inputNames), inputs->channels, &InputChoice::channels))
         return window.quietError (quiet ("ui.input_channels_unavailable",
                                          "the audio device offers no such input",
-                                         { { "track_id", trackId }, { "channels", channels }, { "input_count", inputNames.size() } }));
-    auto result = presented (openSong.changeSettings (withInputChannels (openSong.song(), trackId, std::move (channels))));
-    window.refresh();
-    takeKeyboardFocus();
+                                         { { "track_id", inputs->trackId }, { "channels", inputs->channels }, { "input_count", inputNames.size() } }));
+    auto changed = withSongSetting (openSong.song(), setting);
+    const auto differs = changed.has_value() && *changed != openSong.song();
+    auto result = presented (openSong.changeSettings (std::move (changed)));
+    if (differs)
+        logSongSettingSet (setting);
+    if (inputs != nullptr)
+        takeKeyboardFocus();
     return result;
 }
 
@@ -271,36 +264,11 @@ IntentResult SongView::setMonitoring (const song::Id& trackId, bool on)
     return IntentDone {};
 }
 
-IntentResult SongView::setPreRoll (song::PreRoll preRoll)
-{
-    auto result = presented (openSong.changeSettings (withPreRoll (openSong.song(), preRoll)));
-    window.refresh();
-    return result;
-}
-
-IntentResult SongView::changeListening (const intent::ListeningSetting& setting)
-{
-    auto changed = withListeningSetting (openSong.song(), setting);
-    const auto differs = changed.has_value() && *changed != openSong.song();
-    auto result = presented (openSong.changeSettings (std::move (changed)));
-    if (differs)
-        logListeningSet (setting);
-    return result;
-}
-
 IntentResult SongView::setActiveLoop (const std::optional<song::Id>& loopId, bool looping)
 {
     auto result = presented (openSong.changeSettings (song::setActiveLoop (openSong.song(), loopId, looping)));
     if (result.has_value())
         core::logEvent (core::Level::info, "ui.active_loop_set", { { "loop_id", loopId.value_or ("") }, { "looping", openSong.song().settings.looping } });
-    return result;
-}
-
-IntentResult SongView::setLooping (bool looping)
-{
-    auto result = presented (openSong.changeSettings (song::setLooping (openSong.song(), looping)));
-    if (result.has_value())
-        core::logEvent (core::Level::info, "ui.looping_set", { { "looping", looping } });
     return result;
 }
 
@@ -695,13 +663,6 @@ IntentResult SongView::exportSong()
         setExportSheetShown (false);
     window.refresh();
     return started;
-}
-
-IntentResult SongView::changeExportSetting (const intent::ExportSetting& setting)
-{
-    auto changed = presented (openSong.changeSettings (withExportSetting (openSong.song(), setting)));
-    window.refresh();
-    return changed;
 }
 
 IntentResult SongView::cancelExport()
