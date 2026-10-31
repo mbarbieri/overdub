@@ -280,14 +280,12 @@ public:
     // The file the last export wrote, once it finished; none before (or after one failed).
     const std::optional<juce::File>& lastExportedFile() const { return lastExport; }
 
-    // Stores a change of the Song's settings outside history (song.json, no undo step), from one of
-    // their pure functions: the Export sheet's choices (ui/ExportSettings.h), the Transcribe
-    // listening settings (ui/ListeningSettings.h), the active Loop and looping (song/LoopEdits.h),
-    // a Track's arm and inputs (ui/TrackRowEdits.h) and pre-roll. Then plays at the heard Loop's
-    // Practice Speed, when it may change (issue #230), and the engine follows what is heard
-    // (hearChange): nothing when that is unchanged, Engine::setMix when only its mix changed, else
-    // a plan rebuild. Nothing is stored when the Song is unchanged; the change's Error changes
-    // nothing.
+    // Stores a change of the Song's settings outside history (song.json, no undo step), from
+    // ui::withSongSetting (ui/SongSettings.h) or song::setActiveLoop (song/LoopEdits.h). Then plays
+    // at the heard Loop's Practice Speed, when it may change (issue #230), and the engine follows
+    // what is heard (hearChange): nothing when that is unchanged, Engine::setMix when only its mix
+    // changed, else a plan rebuild. Nothing is stored when the Song is unchanged; the change's
+    // Error changes nothing.
     core::Expected<void> changeSettings (core::Expected<song::Song> changed);
 
     // Transcribe mode (issue #226, ADR 0010). While transcribing, the engine plays the Transcribe

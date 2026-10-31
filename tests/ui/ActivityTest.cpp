@@ -143,9 +143,9 @@ std::vector<GestureCase> gestureCases()
         { "export", [] (ActivityFixture&) { return Export {}; }, pass, allowed },
         { "start_separation", [] (ActivityFixture& a) { return StartSeparation { a.bandMixId() }; }, pass, exportRunning },
         { "set_practice_speed", [] (ActivityFixture&) { return SetPracticeSpeed { 80 }; }, pass, allowed },
-        { "set_focus_track", [] (ActivityFixture& a) { return SongIntent { ListeningSetting { SetFocusTrack { a.guitarId() } } }; }, pass, allowed },
-        { "set_transcribe_mute", [] (ActivityFixture& a) { return SongIntent { ListeningSetting { SetTranscribeMute { a.guitarId(), true } } }; }, pass, allowed },
-        { "set_transcribe_solo", [] (ActivityFixture& a) { return SongIntent { ListeningSetting { SetTranscribeSolo { a.guitarId(), true } } }; }, pass, allowed },
+        { "set_focus_track", [] (ActivityFixture& a) { return SongIntent { SongSetting { SetFocusTrack { a.guitarId() } } }; }, pass, allowed },
+        { "set_transcribe_mute", [] (ActivityFixture& a) { return SongIntent { SongSetting { SetTranscribeMute { a.guitarId(), true } } }; }, pass, allowed },
+        { "set_transcribe_solo", [] (ActivityFixture& a) { return SongIntent { SongSetting { SetTranscribeSolo { a.guitarId(), true } } }; }, pass, allowed },
     };
 }
 

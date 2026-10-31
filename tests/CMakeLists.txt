@@ -97,8 +97,6 @@ target_sources(overdub_tests PRIVATE
     ui/ExportMp4SheetTest.cpp
     ui/ExportChoicesTest.cpp
     ui/ExportLoopTest.cpp
-    ui/ExportSettingsTest.cpp
-    ui/ListeningSettingsTest.cpp
     ui/ExportSheetTest.cpp
     ui/CancelExportTest.cpp
     ui/ExportRunTest.cpp
@@ -135,6 +133,7 @@ target_sources(overdub_tests PRIVATE
     ui/SeparateTest.cpp
     ui/SnapshotTest.cpp
     ui/SongFilesTest.cpp
+    ui/SongSettingsTest.cpp
     ui/SongViewTest.cpp
     ui/TakeLanesTest.cpp
     ui/TakeLanesUiTest.cpp

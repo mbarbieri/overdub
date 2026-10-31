@@ -3,7 +3,7 @@
 #include "song/MixEdits.h"
 #include "ui/MainWindowFixture.h"
 #include "ui/MixerGeometry.h"
-#include "ui/TrackRowEdits.h"
+#include "ui/SongSettings.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -78,13 +78,13 @@ TEST_CASE ("an Armed Track's Record meter follows its input whatever its fader; 
     const auto inputPeak = peakOf (onInput);
 
     // Disarmed, stopped and not monitored: the Track outputs nothing, whatever is on its input.
-    f.openSong->changeSettings (withArmed (f.openSong->song(), guitar, false));
+    f.openSong->changeSettings (withSongSetting (f.openSong->song(), intent::SetArmed { guitar, false }));
     f.feed (guitarInput, onInput);
     f.runBlocks (2);
     CHECK_THAT (row.meter.level(), WithinULP (0.0f, 0));
 
     // Armed and turned down: the meter reads the raw input; the Mixer meter still reads the strip.
-    f.openSong->changeSettings (withArmed (f.openSong->song(), guitar, true));
+    f.openSong->changeSettings (withSongSetting (f.openSong->song(), intent::SetArmed { guitar, true }));
     auto quieter = overdub::song::setTrackVolume (f.song(), guitar, -20.0);
     REQUIRE (quieter.has_value());
     REQUIRE (f.openSong->edit (std::move (*quieter), "Guitar Volume").has_value());
@@ -94,7 +94,7 @@ TEST_CASE ("an Armed Track's Record meter follows its input whatever its fader; 
     CHECK_THAT (strip.meter.level(), WithinULP (0.0f, 0));
 
     // Disarmed again: the input no longer moves it, so it falls back from the input peak.
-    f.openSong->changeSettings (withArmed (f.openSong->song(), guitar, false));
+    f.openSong->changeSettings (withSongSetting (f.openSong->song(), intent::SetArmed { guitar, false }));
     f.feed (guitarInput, onInput);
     f.runBlocks (2);
     CHECK_THAT (row.meter.level(), WithinULP (inputPeak * meterFallPerPoll, 0));

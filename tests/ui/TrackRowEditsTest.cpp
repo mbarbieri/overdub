@@ -48,21 +48,6 @@ TEST_CASE ("input choices list every mono input, then every stereo pair, after N
     CHECK (choiceIndexFor (choices, { 9 }) == std::nullopt);
 }
 
-TEST_CASE ("arming and picking an input change only that Track", "[ui][inputs]")
-{
-    const auto song = twoTrackSong();
-
-    const auto armed = withArmed (song, "guitar", true);
-    CHECK (armed.tracks[0].settings.armed);
-    CHECK (armed.tracks[1] == song.tracks[1]);
-
-    const auto stereo = withInputChannels (song, "vocals", { 2, 3 });
-    CHECK (stereo.tracks[1].settings.inputChannels == std::vector<int> { 2, 3 });
-    CHECK (stereo.tracks[0] == song.tracks[0]);
-
-    CHECK (withArmed (song, "missing", true) == song);
-}
-
 TEST_CASE ("the Pass being recorded is numbered after the Song's Passes", "[ui][inputs]")
 {
     auto song = twoTrackSong();

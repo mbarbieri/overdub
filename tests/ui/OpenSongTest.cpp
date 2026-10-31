@@ -2,8 +2,7 @@
 
 #include "engine/EngineFixture.h"
 #include "song/FixtureSongBuilder.h"
-#include "ui/ListeningSettings.h"
-#include "ui/TrackRowEdits.h"
+#include "ui/SongSettings.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -107,8 +106,8 @@ TEST_CASE ("recording with nothing Armed, or without an audio device, is refused
     SECTION ("nothing Armed")
     {
         OpenSongFixture f;
-        f.openSong->changeSettings (overdub::ui::withArmed (f.openSong->song(), f.trackNamed ("Guitar").id, false));
-        f.openSong->changeSettings (overdub::ui::withArmed (f.openSong->song(), f.trackNamed ("Vocals").id, false));
+        f.openSong->changeSettings (overdub::ui::withSongSetting (f.openSong->song(), overdub::ui::intent::SetArmed { f.trackNamed ("Guitar").id, false }));
+        f.openSong->changeSettings (overdub::ui::withSongSetting (f.openSong->song(), overdub::ui::intent::SetArmed { f.trackNamed ("Vocals").id, false }));
         const auto started = f.openSong->record();
         REQUIRE (! started.has_value());
         CHECK (started.error().code == "capture.nothing_armed");
@@ -130,8 +129,8 @@ TEST_CASE ("arm, input and Monitoring change the Song without a history step", "
     const auto stepBefore = f.openSong->package().undoLabel();
     const auto guitar = f.trackNamed ("Guitar").id;
 
-    f.openSong->changeSettings (overdub::ui::withArmed (f.openSong->song(), guitar, false));
-    f.openSong->changeSettings (overdub::ui::withInputChannels (f.openSong->song(), guitar, { 0, 1 }));
+    f.openSong->changeSettings (overdub::ui::withSongSetting (f.openSong->song(), overdub::ui::intent::SetArmed { guitar, false }));
+    f.openSong->changeSettings (overdub::ui::withSongSetting (f.openSong->song(), overdub::ui::intent::SetInputChannels { guitar, { 0, 1 } }));
     f.openSong->setMonitoring (guitar, true);
 
     CHECK (! f.trackNamed ("Guitar").settings.armed);
@@ -146,7 +145,7 @@ TEST_CASE ("Monitoring lets an Armed Track's live input through to the outputs",
     OpenSongFixture f;
     const auto guitar = f.trackNamed ("Guitar").id;
     const auto vocals = f.trackNamed ("Vocals").id;
-    f.openSong->changeSettings (overdub::ui::withArmed (f.openSong->song(), vocals, false));
+    f.openSong->changeSettings (overdub::ui::withSongSetting (f.openSong->song(), overdub::ui::intent::SetArmed { vocals, false }));
     // One impulse on input 1 while Monitoring is off, one after it is on. The second one's echo
     // through the fake loop (512 samples later) comes after the last block.
     constexpr std::int64_t heardAt = 6 * blockSize + 10;
@@ -337,7 +336,7 @@ TEST_CASE ("a setting outside history leaves the engine alone unless what is hea
     f.device.run (f.engine, 4);
     ScopedLogCapture capture;
 
-    REQUIRE (f.openSong->changeSettings (overdub::ui::withPreRoll (f.song(), overdub::song::PreRoll::twoSeconds)).has_value());
+    REQUIRE (f.openSong->changeSettings (overdub::ui::withSongSetting (f.song(), overdub::ui::intent::SetPreRoll { overdub::song::PreRoll::twoSeconds })).has_value());
     auto exportChoice = f.song();
     exportChoice.settings.exportDestination = f.openSong->package().location().getSiblingFile ("Mix.wav").getFullPathName().toStdString();
     REQUIRE (f.openSong->changeSettings (exportChoice).has_value());
@@ -346,11 +345,11 @@ TEST_CASE ("a setting outside history leaves the engine alone unless what is hea
     CHECK (eventsCalled (capture, "engine.plan_built") == 0);
     CHECK (eventsCalled (capture, "engine.mix_applied") == 0);
 
-    REQUIRE (f.openSong->changeSettings (overdub::ui::withListeningSetting (f.song(), overdub::ui::intent::SetTranscribeMute { bandMix, true })).has_value());
+    REQUIRE (f.openSong->changeSettings (overdub::ui::withSongSetting (f.song(), overdub::ui::intent::SetTranscribeMute { bandMix, true })).has_value());
     CHECK (eventsCalled (capture, "engine.plan_built") == 0);
     CHECK (eventsCalled (capture, "engine.mix_applied") == 1);
 
-    REQUIRE (f.openSong->changeSettings (overdub::ui::withArmed (f.song(), guitar, ! f.trackNamed ("Guitar").settings.armed)).has_value());
+    REQUIRE (f.openSong->changeSettings (overdub::ui::withSongSetting (f.song(), overdub::ui::intent::SetArmed { guitar, ! f.trackNamed ("Guitar").settings.armed })).has_value());
     CHECK (eventsCalled (capture, "engine.plan_built") == 1);
 }
 

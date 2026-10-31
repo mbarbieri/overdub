@@ -32,8 +32,7 @@
 // The three groups are the three owners: AppIntent (the app's File and settings operations),
 // WindowIntent (ui::MainComponent) and SongIntent (ui::SongView, refused with ui.no_song_open while
 // no Song is open). SongIntent nests intent::Edit, the plain one-undo-step edits (ui/SongEdits.h),
-// intent::ListeningSetting, Transcribe mode's listening settings (ui/ListeningSettings.h), and
-// intent::ExportSetting, the Export sheet's choices (ui/ExportSettings.h).
+// and intent::SongSetting, the Song settings outside history (ui/SongSettings.h).
 // Each owner visits its group with core::visitExhaustively, so an alternative without a handler does
 // not compile, and a struct without `op` and `fields` cannot be an alternative.
 //
@@ -630,9 +629,6 @@ struct SetBandFilter
                                                 field ("high_hz", &SetBandFilter::highHz) };
 };
 
-// Transcribe mode's listening settings: Song settings outside history (ui/ListeningSettings.h).
-using ListeningSetting = std::variant<SetFocusTrack, SetTranscribeMute, SetTranscribeSolo, SetOctaveShift, SetBandFilter>;
-
 //==============================================================================
 // Song: Markers (issue #227, ADR 0010). Moving, renaming and deleting one are plain edits
 // (intent::Edit); Record mode refuses all four (ui/Availability.h).
@@ -856,8 +852,11 @@ struct SetExportVideoTake // stored in the Song, outside history
     static constexpr auto fields = std::tuple { field ("video_take_id", &SetExportVideoTake::videoTakeId) };
 };
 
-// The Export sheet's choices: Song settings outside history (ui/ExportSettings.h).
-using ExportSetting = std::variant<SetExportFormat, SetExportLength, SetExportDestination, SetExportVideoTake>;
+// The Song settings outside history (ui/SongSettings.h): a Track's arm and inputs, pre-roll,
+// looping, Transcribe mode's listening settings and the Export sheet's choices.
+using SongSetting = std::variant<SetArmed, SetInputChannels, SetPreRoll, SetLooping,
+                                 SetFocusTrack, SetTranscribeMute, SetTranscribeSolo, SetOctaveShift, SetBandFilter,
+                                 SetExportFormat, SetExportLength, SetExportDestination, SetExportVideoTake>;
 
 struct Export
 {
@@ -984,16 +983,15 @@ using SongIntent = std::variant<intent::Edit,
                                 intent::Record, intent::RecordAgain, intent::PlayOrStop, intent::Rewind, intent::Undo, intent::Redo,
                                 intent::Seek, intent::JumpToPass, intent::Nudge,
                                 intent::AddTrack, intent::ImportFiles, intent::DeleteTrack, intent::MoveTrack,
-                                intent::SetArmed, intent::SetInputChannels, intent::SetMonitoring,
+                                intent::SongSetting, intent::SetMonitoring,
                                 intent::StartSeparation, intent::CancelRun, intent::SetTranspose, intent::SetPracticeSpeed,
-                                intent::ListeningSetting,
                                 intent::AddMarker, intent::SelectMarker,
                                 intent::AddLoop, intent::MarkLoopStart, intent::MarkLoopEnd, intent::CancelLoopStart,
-                                intent::SelectLoop, intent::SelectAdjacentLoop, intent::SetLooping,
-                                intent::SetPreRoll, intent::SetCameraArmed, intent::SetCameraDevice,
+                                intent::SelectLoop, intent::SelectAdjacentLoop,
+                                intent::SetCameraArmed, intent::SetCameraDevice,
                                 intent::SplitSelectedClip, intent::DeleteSelection, intent::TakeLaneClick, intent::PreviewMix,
                                 intent::AddInsert, intent::OpenInsertEditor, intent::ClosePluginWindow,
-                                intent::ShowExport, intent::ExportSetting, intent::Export, intent::CancelExport, intent::RevealExport,
+                                intent::ShowExport, intent::Export, intent::CancelExport, intent::RevealExport,
                                 intent::SelectClip, intent::SelectVideoTake, intent::SetTimelineView, intent::SetTranscribeView,
                                 intent::SetVerticalScroll, intent::SetTakeLanesUnfolded, intent::SetMixerVisible,
                                 intent::SetMixerHeight, intent::SetPassesPanelOpen, intent::ClearClipIndicator>;
