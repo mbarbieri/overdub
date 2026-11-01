@@ -45,3 +45,8 @@ target_link_libraries(overdub_song
     PRIVATE
         overdub_signalsmith_stretch
         juce::juce_recommended_warning_flags)
+
+# Signalsmith Stretch is header-only and this is its one includer. At -O0 the render tests ran 6 to
+# 12 times slower and missed their waits in the full Debug suite (issue #263), so Debug optimises it
+# too. Release keeps its own -O3.
+set_source_files_properties(TransposeRender.cpp PROPERTIES COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
