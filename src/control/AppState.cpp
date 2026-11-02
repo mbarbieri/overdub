@@ -124,6 +124,7 @@ json timelineView (const ui::SongView& view)
         { "samples_per_pixel", timeline.view().samplesPerPixel },
         { "vertical_scroll", timeline.verticalScroll() },
         { "take_lanes_unfolded", std::move (unfolded) },
+        { "follow_paused", timeline.isFollowPaused() },
     };
 }
 
@@ -155,7 +156,9 @@ json viewSection (const ui::MainComponent& window)
     view["loop_start_pending"] = pending.has_value() ? json (*pending) : json (nullptr);
     view["timeline"] = timelineView (*songView);
     const auto transcribe = songView->transcribePage.view();
-    view["transcribe"] = { { "first_sample", transcribe.firstSample }, { "samples_per_pixel", transcribe.samplesPerPixel } };
+    view["transcribe"] = { { "first_sample", transcribe.firstSample },
+                           { "samples_per_pixel", transcribe.samplesPerPixel },
+                           { "follow_paused", songView->transcribePage.isFollowPaused() } };
     view["mixer_visible"] = editPage.isMixerVisible();
     view["mixer_height"] = editPage.mixerHeight();
     view["passes_panel_open"] = editPage.isPassesPanelOpen();

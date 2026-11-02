@@ -38,7 +38,9 @@ class Workspace;
 //                "selected_marker" (issue #227), "selected_loop" and "loop_start_pending" (a Song
 //                sample or null, issue #228),
 //                "timeline" {"first_sample", "samples_per_pixel", "vertical_scroll",
-//                "take_lanes_unfolded": [track ids]}, "mixer_visible", "mixer_height",
+//                "take_lanes_unfolded": [track ids], "follow_paused" (issue #266)},
+//                "transcribe" {"first_sample", "samples_per_pixel", "follow_paused"},
+//                "mixer_visible", "mixer_height",
 //                "passes_panel_open", "export_sheet_shown", "export_form" {"format", "length",
 //                "destination", "video_take", "loop" (the Loop id whose range is written, null for
 //                the whole Song), "replaces_existing"}

@@ -225,10 +225,8 @@ void Timeline::show (const TimelineState& state)
     }
     showHeaders();
 
-    // While playing, page forward when the playhead leaves the visible lanes.
-    const auto lanes = lanesArea();
-    if (current.playing && ! lanes.isEmpty() && xForSample (timelineView, current.playhead) >= lanes.getRight())
-        timelineView.firstSample = current.playhead;
+    if (layout.ruler.getWidth() > 0)
+        timelineView.firstSample = follow.firstSample (timelineView.firstSample, followedFirstSample (current.playhead), current.playing);
 
     updateScrollBar();
     repaint();
@@ -362,6 +360,11 @@ void Timeline::setVerticalScroll (int pixels)
     verticalScrollPixels = pixels;
     layOutRows();
     repaint();
+}
+
+song::SampleCount Timeline::followedFirstSample (song::SampleCount playhead) const
+{
+    return editFollowFirstSample (timelineView, layout.ruler.getWidth(), playhead);
 }
 
 void Timeline::setView (song::SampleCount firstSample, song::SampleCount samplesPerPixel)

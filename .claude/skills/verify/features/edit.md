@@ -10,6 +10,7 @@ In Edit mode the user selects a Clip, splits it at the playhead, moves it, trims
 - `edit-trim`: dragging either edge trims the Clip's start or end.
 - `edit-fades`: the fade handles set the fade-in and fade-out lengths.
 - `edit-undo-redo`: command-Z and shift-command-Z, or the Edit menu.
+- `edit-follow` (issue #266): while the Song plays, Follow pages the lanes when the playhead is outside them, either side, putting it a tenth of their width in. A `set_timeline_view` that leaves the playhead out of the lanes pauses it (`/view/timeline/follow_paused`, `ui.follow_paused`); the next play, a seek, or the playhead back in the lanes resumes it. Driven by hand through the socket; `journey-edit.sh` doesn't cover it.
 
 ## How to get to it (user POV)
 

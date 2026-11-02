@@ -129,9 +129,11 @@ TEST_CASE ("the app state has every section, each with its keys, over a Song wit
     CHECK (view["selected_video_take"] == nullptr);
     CHECK (view["selected_loop"] == nullptr);
     CHECK (view["loop_start_pending"] == nullptr);
-    CHECK (keysOf (view["timeline"]) == std::set<std::string> { "first_sample", "samples_per_pixel", "vertical_scroll", "take_lanes_unfolded" });
+    CHECK (keysOf (view["timeline"]) == std::set<std::string> { "first_sample", "samples_per_pixel", "vertical_scroll", "take_lanes_unfolded", "follow_paused" });
     CHECK (view["timeline"]["take_lanes_unfolded"] == json::array());
-    CHECK (keysOf (view["transcribe"]) == std::set<std::string> { "first_sample", "samples_per_pixel" });
+    CHECK (view["timeline"]["follow_paused"] == false);
+    CHECK (keysOf (view["transcribe"]) == std::set<std::string> { "first_sample", "samples_per_pixel", "follow_paused" });
+    CHECK (view["transcribe"]["follow_paused"] == false);
     CHECK (view["transcribe_column_visible"] == true);
     CHECK (view["mixer_visible"] == true);
     CHECK (view["passes_panel_open"] == false);
@@ -187,6 +189,19 @@ TEST_CASE ("view names at most one selected thing, and undoing the selected Clip
     CHECK (selectedIn() == json { nullptr, nullptr, nullptr, nullptr });
     run (f, ui::SongIntent { Undo {} });
     CHECK (selectedIn() == json { fixture.bandClip, nullptr, nullptr, nullptr });
+}
+
+TEST_CASE ("view reports Edit's Follow paused by a view set away from the playhead, until a seek", "[control][app_state][follow]")
+{
+    WorkspaceFixture f;
+    f.launch();
+    f.openSong();
+    run (f, ui::WindowIntent { ShowMode { ui::Mode::edit } });
+    run (f, ui::SongIntent { SetTimelineView { 480'000, 16 } });
+    CHECK (stateOf (f, { "view" })["view"]["timeline"]["follow_paused"] == true);
+
+    run (f, ui::SongIntent { Seek { 480'000 } });
+    CHECK (stateOf (f, { "view" })["view"]["timeline"]["follow_paused"] == false);
 }
 
 TEST_CASE ("the app state with no Song open has null Song sections and the mode", "[control][app_state]")

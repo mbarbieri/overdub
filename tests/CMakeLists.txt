@@ -139,6 +139,8 @@ target_sources(overdub_tests PRIVATE
     ui/TakeLanesUiTest.cpp
     ui/TimelineGesturesTest.cpp
     ui/TimelineScrollTest.cpp
+    ui/FollowTest.cpp
+    ui/FollowUiTest.cpp
     ui/TimelineGeometryTest.cpp
     ui/TopBarTransposeTest.cpp
     ui/TopBarPracticeSpeedTest.cpp
