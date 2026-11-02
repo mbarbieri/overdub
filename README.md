@@ -5,7 +5,7 @@
 <h1 align="center">Overdub</h1>
 
 <p align="center">
-  Record a song one part at a time over a backing track, with the camera rolling if you want it.
+  Learn a part by ear, then record it one part at a time over a backing track, with the camera rolling if you want it.
 </p>
 
 <p align="center">
@@ -18,6 +18,8 @@
 ---
 
 Overdub is a small macOS recorder for musicians who play along with existing songs. Import a backing track, arm a track, press record, and play your part. Then do it again for the next part. Every pass is kept, so you can go back to an earlier take at any point. If a camera is armed, the video is recorded with the audio and stays in sync through export.
+
+Before you record a part, Transcribe mode helps you work it out by ear: loop a passage, slow it down, solo the instrument you are learning, drop it an octave or filter it out of the mix. None of that changes the Song you record over.
 
 It is not a DAW. It has no tempo, no bars, no MIDI and no sequencer: time is measured in seconds, and everything you hear is either an audio file you imported or something you played.
 
@@ -35,6 +37,15 @@ It is not a DAW. It has no tempo, no bars, no MIDI and no sequencer: time is mea
 - Pinch to zoom, drag to reorder tracks, and a pastel colour per track.
 - Every change is saved as you go, and the full history persists with the Song.
 
+**Transcribing**
+- **Transcribe mode** (key `3`, beside Record and Edit) shows the Song as one tall, zoomable waveform under an overview of the whole Song. It never changes a Clip.
+- Pick a **Focus Track** to solo it in Transcribe mode's own **Transcribe Mix**, with its own mute and solo per track. Your recording mix and your Export stay as they are.
+- Hear the Focus Track an octave down or up to two octaves up, and through a band filter with low and high cuts. Each track remembers its own settings.
+- **Markers** label points in the Song, and **Loops** play a named range over and over. Each Loop remembers the Practice Speed you drill it at. Both are shown in every mode, saved with the Song and undoable.
+- **Practice Speed** slows the whole Song down or speeds it up without changing pitch. It is for rehearsal only: a Pass or an Export always plays at 100%.
+- **Transpose** shifts every backing track by semitones plus a fine tune of up to 50 cents. Takes are recorded in the key you hear, and Export plays it as heard.
+- Every listening setting is saved with the Song, so you can pick up where you left off.
+
 **Mixing and effects**
 - A mixer with volume, pan, mute and solo per track, plus a Master.
 - Insert Chains of Audio Unit effects (AUv2 and AUv3) on each track and on the Master, with automatic delay compensation.
@@ -45,11 +56,12 @@ It is not a DAW. It has no tempo, no bars, no MIDI and no sequencer: time is mea
 - A synced Video Preview beside the Mixer while the camera is armed, and a camera lane on the timeline.
 
 **Separation**
-- Split a backing track into six new ones (vocals, drums, bass, guitar, piano, other) with the BS-RoFormer SW model, running locally in a helper process.
+- Split a backing track into six new ones (vocals, drums, bass, guitar, piano, other) with the BS-RoFormer SW model, running locally in a helper process. Then make the part you are learning the Focus Track.
 
 **Export**
 - Mix down to WAV or M4A.
 - Export MP4 video with the mix, either trimmed to the takes or as the full Song.
+- Export one Loop's range in any format instead of the whole Song.
 
 **Control socket**
 - The running app listens on a local socket at `~/Library/Application Support/Overdub/control/control.sock`. A script or an AI agent can run every operation the window offers, read the app state as JSON, wait for a state or log event, and stream the log, one JSON line per request.
@@ -96,12 +108,12 @@ Always use the presets. `make test` runs the same build and the full suite.
 
 The test suite is headless: it drives the engine through `Engine::process(...)` with fake buffers and asserts computed expectations from synthetic signals (impulses, sines, null tests), with no golden files and no audio hardware.
 
-To check a change in the real app, the `verify` skill (`.claude/skills/verify/`) launches the debug build with its own control socket. It drives the record, edit, export and Separation journeys with `overdub-ctl` and checks the app state, logs and written files at each step.
+To check a change in the real app, the `verify` skill (`.claude/skills/verify/`) launches the debug build with its own control socket. It drives the record, edit, export, Separation, Transpose and Practice Speed journeys with `overdub-ctl` and checks the app state, logs and written files at each step.
 
 | Path | What lives there |
 | --- | --- |
-| `src/engine/` | Headless audio engine: transport, render graph, mixer, delay compensation |
-| `src/song/` | Song model, on-disk package, history, import |
+| `src/engine/` | Headless audio engine: transport, render graph, mixer, delay compensation, Loop playback, the band filter |
+| `src/song/` | Song model, on-disk package, history, import, Transpose and Practice Speed renders |
 | `src/capture/` | Recording passes, camera capture, latency calibration |
 | `src/plugin/` | Out-of-process Audio Unit hosting |
 | `src/video/` | Video preview and placement |
@@ -114,7 +126,7 @@ To check a change in the real app, the `verify` skill (`.claude/skills/verify/`)
 
 More reading:
 - [`docs/building.md`](docs/building.md): build, layout, logs, the JUCE patch and signing.
-- [`docs/adr/`](docs/adr/): the architecture decisions, from the stack choice to Separation and the control socket.
+- [`docs/adr/`](docs/adr/): the architecture decisions, from the stack choice to Separation, the control socket, Transpose and Practice Speed, and Transcribe mode.
 - [`CLAUDE.md`](CLAUDE.md): conventions for the AI agents that write this code.
 
 Overdub's code is written by AI agents (Claude Code) working from GitHub issues, with decisions recorded as ADRs.
@@ -123,4 +135,4 @@ Overdub's code is written by AI agents (Claude Code) working from GitHub issues,
 
 Overdub's own source code is released under the [MIT License](LICENSE).
 
-It builds on third-party software with its own licences, in particular [JUCE](https://juce.com/get-juce/) (AGPLv3 or a commercial JUCE licence), [ONNX Runtime](https://github.com/microsoft/onnxruntime) (MIT), [pocketfft](https://github.com/mreineck/pocketfft) (BSD-3-Clause), [nlohmann/json](https://github.com/nlohmann/json) (MIT) and [Catch2](https://github.com/catchorg/Catch2) (BSL-1.0). A built `Overdub.app` includes JUCE, so distributing it is subject to JUCE's terms. The Separation model is not part of Overdub and is not covered by this licence.
+It builds on third-party software with its own licences, in particular [JUCE](https://juce.com/get-juce/) (AGPLv3 or a commercial JUCE licence), [ONNX Runtime](https://github.com/microsoft/onnxruntime) (MIT), [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) and [Linear](https://github.com/Signalsmith-Audio/linear) (MIT), [pocketfft](https://github.com/mreineck/pocketfft) (BSD-3-Clause), [nlohmann/json](https://github.com/nlohmann/json) (MIT) and [Catch2](https://github.com/catchorg/Catch2) (BSL-1.0). A built `Overdub.app` includes JUCE, so distributing it is subject to JUCE's terms. The Separation model is not part of Overdub and is not covered by this licence.
