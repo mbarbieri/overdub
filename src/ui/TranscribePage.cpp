@@ -1,6 +1,7 @@
 #include "ui/TranscribePage.h"
 
 #include "engine/MixLaw.h"
+#include "song/LoopEdits.h"
 #include "song/PracticeSpeed.h"
 #include "song/TranscribeMix.h"
 #include "song/Transpose.h"
@@ -561,11 +562,29 @@ void TranscribePage::setView (song::SampleCount firstSample, song::SampleCount s
     showViews();
 }
 
+song::SampleCount TranscribePage::followedFirstSample (song::SampleCount playhead) const
+{
+    const auto& settings = shown.song.settings;
+    const auto* loop = settings.looping && settings.activeLoopId.has_value() ? song::findLoop (shown.song, *settings.activeLoopId) : nullptr;
+    return transcribeFollowFirstSample (view(), waveformWidth(), songLength(), playhead, loop);
+}
+
+void TranscribePage::followPlayhead()
+{
+    const auto current = view();
+    const auto firstSample = follow.firstSample (current.firstSample, followedFirstSample (shown.playhead), shown.playing);
+    if (firstSample == current.firstSample)
+        return;
+    requested = current;
+    requested.firstSample = firstSample;
+}
+
 void TranscribePage::show (const TranscribePageState& state)
 {
     const auto columnChanged = state.columnVisible != shown.columnVisible;
     shown = state;
     column.show (state);
+    followPlayhead();
     if (columnChanged)
         resized(); // calls showViews
     else

@@ -2,6 +2,7 @@
 
 #include "song/Peaks.h"
 #include "song/Song.h"
+#include "ui/Follow.h"
 #include "ui/Intent.h"
 #include "ui/Layout.h"
 #include "ui/MarkerStrip.h"
@@ -39,13 +40,15 @@
 // set_transcribe_solo. The Loop/Marker strip over the ruler (ui/MarkerStrip.h) runs the Marker and
 // Loop gestures (issues #227, #228); the left column's Loop cards (ui/LoopViews.h) run select_loop
 // and its Markers list below them select_marker. The view is
-// transient UI state, never in the Song; the page changes it only when the handler calls setView.
+// transient UI state, never in the Song; the page changes it only when the handler calls setView,
+// and while playing when Follow scrolls it (issue #266).
 namespace overdub::ui
 {
 struct TranscribePageState
 {
     song::Song song;
     song::SampleCount playhead = 0;
+    bool playing = false;
     bool columnVisible = true;
     int practiceSpeed = 100;
     bool practiceRendering = false;
@@ -216,6 +219,13 @@ public:
     void setView (song::SampleCount firstSample, song::SampleCount samplesPerPixel);
     // The view as shown: what setView asked for, clamped to the current Song and width.
     TimelineView view() const;
+    // Follow (issue #266, ui/Follow.h): while playing, the waveform holds the playhead a fifth of
+    // its width in. A hand-made view change (set_transcribe_view) calls viewSetByHand with the
+    // playhead now, which pauses Follow when it would move the view; resumeFollow is the next play
+    // or a seek, and show resumes it once Follow would leave the view where it is.
+    void viewSetByHand (song::SampleCount playhead) { follow.viewSetByHand (view().firstSample, followedFirstSample (playhead)); }
+    void resumeFollow (FollowResume reason) { follow.resume (reason); }
+    bool isFollowPaused() const { return follow.isPaused(); }
     bool isColumnVisible() const { return shown.columnVisible; }
     // The heard mix's columns the waveform draws, one per pixel of its width.
     const std::vector<song::PeakRange>& waveformColumns() const { return waveColumns; }
@@ -236,6 +246,11 @@ public:
 private:
     void emit (const Intent& intent) const;
     void showViews();
+    // Where Follow would start the view for this playhead (transcribeFollowFirstSample, with the
+    // active Loop while looping).
+    song::SampleCount followedFirstSample (song::SampleCount playhead) const;
+    // Moves the requested view with the playhead, unless Follow is paused or the Song is stopped.
+    void followPlayhead();
     song::SampleCount songLength() const;
     int waveformWidth() const;
 
@@ -243,6 +258,7 @@ private:
     TranscribePageState shown;
     // What setView last asked for; view() clamps it.
     TimelineView requested { 0, defaultSamplesPerPixel, 0 };
+    Follow follow { Mode::transcribe };
     double pinchPendingLevels = 0.0;
     std::vector<song::PeakRange> waveColumns;
     std::vector<song::PeakRange> overviewColumns;

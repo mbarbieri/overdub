@@ -18,6 +18,7 @@ target_sources(overdub_ui PRIVATE
     ExportSheet.cpp
     ExportRun.cpp
     FileDrop.cpp
+    Follow.cpp
     InsertChain.cpp
     Intent.cpp
     LastSong.cpp

@@ -129,6 +129,8 @@ private:
     IntentResult undo();
     IntentResult redo();
     IntentResult seek (song::SampleCount sample);
+    // Resumes Follow on the Edit and Transcribe pages alike (issue #266).
+    void resumeFollow (FollowResume reason);
     IntentResult jumpToPass (const song::Id& passId);
     IntentResult nudgePlayhead (Direction direction);
     // Adds an empty Track, Armed on the first input, as one undo step (issue #109).
@@ -218,6 +220,9 @@ private:
     // Held by id: read through ui::resolvedSelection against the Song as it is now.
     std::optional<Selection> selection;
     std::optional<song::SampleCount> pendingLoopStart;
+    // Whether the last refresh saw the Song playing: Follow resumes when playback starts. The engine
+    // publishes playing from the audio thread, so a refresh is where a start shows.
+    bool wasPlaying = false;
     bool exportSheetShown = false;
     engine::MeterPeaks shownPeaks;
     // Record mode's double-Space: the last Space that may be the first of two, and when a single

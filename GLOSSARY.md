@@ -94,6 +94,10 @@ _Avoid_: Cycle, region, section, repeat
 The one Clip, Video Take, Marker or Loop the user has picked to act on, kept while the Song is open but not saved with it. Selecting one clears the others. Record mode acts on none of them, and Transcribe mode only on a Marker. It is not the active Loop, which is what plays.
 _Avoid_: Current, highlighted, focus (the Focus Track is another thing)
 
+**Follow**:
+The Edit timeline or Transcribe waveform moving with the playhead while the Song plays, so the playhead stays in view. Scrolling or zooming by hand stops it until the next play, a seek, or the playhead coming back to where Follow keeps it.
+_Avoid_: Auto-scroll, catch, chase, scroll with playback
+
 ### Signal flow
 
 **Insert Chain**:

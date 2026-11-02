@@ -2,6 +2,7 @@
 
 #include "song/Peaks.h"
 #include "song/Song.h"
+#include "ui/Follow.h"
 #include "ui/Intent.h"
 #include "ui/Layout.h"
 #include "ui/MarkerStrip.h"
@@ -156,6 +157,13 @@ public:
     const TimelineView& view() const { return timelineView; }
     // Shows the Song from this sample at this zoom (clamped to the limits).
     void setView (song::SampleCount firstSample, song::SampleCount samplesPerPixel);
+    // Follow (issue #266, ui/Follow.h): while playing, the lanes page to the playhead. A hand-made
+    // view change (set_timeline_view) calls viewSetByHand with the playhead now, which pauses Follow
+    // while the lanes don't show it; resumeFollow is the next play or a seek, and show resumes it
+    // once the lanes show the playhead again.
+    void viewSetByHand (song::SampleCount playhead) { follow.viewSetByHand (timelineView.firstSample, followedFirstSample (playhead)); }
+    void resumeFollow (FollowResume reason) { follow.resume (reason); }
+    bool isFollowPaused() const { return follow.isPaused(); }
 
     // Where a Clip of the shown Song is drawn, in this Component's coordinates (cut to its lane);
     // empty when it is not on screen.
@@ -247,6 +255,8 @@ private:
     using Gesture = std::variant<std::monostate, ClipDragGesture, SeekGesture, TrackDrag, FileDragHover>;
 
     void scrollBarMoved (juce::ScrollBar* bar, double newRangeStart) override;
+    // Where Follow would page the lanes for this playhead (editFollowFirstSample).
+    song::SampleCount followedFirstSample (song::SampleCount playhead) const;
     void emit (Intent intent) const;
     bool showsSelected (SelectionKind kind, const song::Id& id) const;
     // A Clip's rectangle in its lane: its columns, inset 3 pixels from the lane's top and bottom.
@@ -283,6 +293,7 @@ private:
     TimelineState current;
     Gesture gesture;
     TimelineView timelineView;
+    Follow follow { Mode::edit };
     int verticalScrollPixels = 0;
     double pinchPendingLevels = 0.0; // PinchZoom::pendingLevels between pinch events
     // True while the horizontal scroll bar reports a move: it already shows that range, and its

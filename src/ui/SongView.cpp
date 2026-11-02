@@ -119,8 +119,8 @@ IntentResult SongView::run (const SongIntent& songIntent)
             [this] (const RevealExport&) { return revealExport(); },
             [this] (const SelectClip& i) -> IntentResult { pick (SelectionKind::clip, i.clipId); return IntentDone {}; },
             [this] (const SelectVideoTake& i) -> IntentResult { pick (SelectionKind::videoTake, i.videoTakeId); return IntentDone {}; },
-            [this] (const SetTimelineView& i) -> IntentResult { editPage.timeline.setView (i.firstSample, i.samplesPerPixel); return IntentDone {}; },
-            [this] (const SetTranscribeView& i) -> IntentResult { transcribePage.setView (i.firstSample, i.samplesPerPixel); return IntentDone {}; },
+            [this] (const SetTimelineView& i) -> IntentResult { editPage.timeline.setView (i.firstSample, i.samplesPerPixel); editPage.timeline.viewSetByHand (openSong.position()); return IntentDone {}; },
+            [this] (const SetTranscribeView& i) -> IntentResult { transcribePage.setView (i.firstSample, i.samplesPerPixel); transcribePage.viewSetByHand (openSong.position()); return IntentDone {}; },
             [this] (const SetVerticalScroll& i) -> IntentResult { editPage.timeline.setVerticalScroll (i.pixels); return IntentDone {}; },
             [this] (const SetTakeLanesUnfolded& i) -> IntentResult { editPage.timeline.setTakeLanesUnfolded (i.trackId, i.unfolded); return IntentDone {}; },
             [this] (const SetMixerVisible& i) -> IntentResult { editPage.setMixerVisible (i.visible); return IntentDone {}; },
@@ -172,9 +172,16 @@ IntentResult SongView::redo()
     return presented (openSong.redo());
 }
 
+void SongView::resumeFollow (FollowResume reason)
+{
+    editPage.timeline.resumeFollow (reason);
+    transcribePage.resumeFollow (reason);
+}
+
 IntentResult SongView::seek (song::SampleCount sample)
 {
     openSong.seek (sample);
+    resumeFollow (FollowResume::seek);
     window.refresh();
     return IntentDone {};
 }
@@ -808,6 +815,9 @@ void SongView::refresh (TopBarState& state)
     const auto recording = openSong.isRecording();
     state.songOpen = true;
     state.playing = openSong.isPlaying();
+    if (state.playing && ! wasPlaying)
+        resumeFollow (FollowResume::play);
+    wasPlaying = state.playing;
     const auto saving = openSong.isSavingPass();
     state.recording = recording && ! saving; // the top bar reads REC only while capturing
     const auto recordPoint = openSong.preRollRecordPoint();
@@ -884,6 +894,7 @@ void SongView::refresh (TopBarState& state)
         transcribePage.show (TranscribePageState {
             .song = song,
             .playhead = position,
+            .playing = state.playing,
             .columnVisible = window.isTranscribeColumnVisible(),
             .practiceSpeed = state.practiceSpeed,
             .practiceRendering = state.practiceRendering,
