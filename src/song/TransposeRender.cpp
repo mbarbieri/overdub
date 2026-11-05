@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <thread>
 #include <vector>
 
 namespace overdub::song
@@ -177,19 +178,32 @@ core::Expected<void> renderAtPracticeSpeed (const juce::File& source,
 
 //==============================================================================
 
+int transposeRendersAtOnce (int cores)
+{
+    return std::clamp (cores - 1, 1, 4);
+}
+
 std::unique_ptr<TransposeRun> TransposeRun::start (int sampleRate, Transpose shift, std::vector<TransposeRenderJob> jobs, Clock::time_point now)
 {
+    const auto render = [sampleRate, shift] (const TransposeRenderJob& job, std::stop_token stop) { return renderTransposed (job.source, job.destination, sampleRate, shift, stop); };
+    return start (shift, std::move (jobs), now, transposeRendersAtOnce ((int) std::thread::hardware_concurrency()), render);
+}
+
+std::unique_ptr<TransposeRun> TransposeRun::start (Transpose shift, std::vector<TransposeRenderJob> jobs, Clock::time_point now, int rendersAtOnce, RenderJob render)
+{
     std::unique_ptr<TransposeRun> run (new TransposeRun (shift, std::move (jobs), now));
-    core::logEvent (core::Level::info, "song.transpose_started", run->fields());
+    auto started = run->fields();
+    started["max_renders_at_once"] = rendersAtOnce;
+    core::logEvent (core::Level::info, "song.transpose_started", started);
     std::vector<RenderWorker::Render> renders;
     for (const auto& job : run->jobs)
-        renders.push_back ([job, sampleRate, shift] (std::stop_token stop) -> core::Expected<void> {
-            auto rendered = renderTransposed (job.source, job.destination, sampleRate, shift, stop);
+        renders.push_back ([job, render] (std::stop_token stop) -> core::Expected<void> {
+            auto rendered = render (job, stop);
             if (! rendered.has_value())
                 rendered.error().fields["backing_track_id"] = job.backingTrackId;
             return rendered;
         });
-    run->worker = std::make_unique<RenderWorker> (std::move (renders));
+    run->worker = std::make_unique<RenderWorker> (std::move (renders), rendersAtOnce);
     return run;
 }
 

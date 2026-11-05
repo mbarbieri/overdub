@@ -1,41 +1,54 @@
 #include "song/RenderWorker.h"
 
+#include <algorithm>
+
 namespace overdub::song
 {
-RenderWorker::RenderWorker (std::vector<Render> toRender)
+RenderWorker::RenderWorker (std::vector<Render> toRender, int rendersAtOnce)
     : renders (std::move (toRender))
 {
-    worker = std::jthread ([this] (std::stop_token stop) {
-        core::Expected<void> result;
-        for (const auto& render : renders)
-        {
-            result = render (stop);
-            if (! result.has_value())
-                break;
+    OVERDUB_CHECK (rendersAtOnce >= 1, "song.render_worker_without_workers", { "renders_at_once", rendersAtOnce });
+    const auto workerCount = std::min (std::max (rendersAtOnce, 1), (int) renders.size());
+    workersLeft.store (workerCount);
+    for (int i = 0; i < workerCount; ++i)
+        workers.emplace_back ([this] { renderUntilDoneOrStopped(); });
+}
+
+void RenderWorker::renderUntilDoneOrStopped()
+{
+    const auto stop = stopSource.get_token();
+    while (! stop.stop_requested())
+    {
+        const auto index = nextRender.fetch_add (1);
+        if (index >= renders.size())
+            break;
+        auto result = renders[index](stop);
+        if (result.has_value())
             ++done;
-        }
-        outcome = std::move (result);
-        finished.store (true, std::memory_order_release);
-    });
+        else if (stopSource.request_stop()) // true only for the first request: anything returned after it is dropped
+            failure = std::move (result.error());
+    }
+    workersLeft.fetch_sub (1, std::memory_order_release);
 }
 
 std::optional<core::Expected<void>> RenderWorker::take()
 {
-    if (over || ! finished.load (std::memory_order_acquire))
+    if (over || workersLeft.load (std::memory_order_acquire) != 0)
         return std::nullopt;
-    worker.join();
+    workers.clear();
     over = true;
-    return std::move (*outcome);
+    if (failure.has_value())
+        return core::Expected<void> (std::unexpected (std::move (*failure)));
+    return core::Expected<void> {};
 }
 
 bool RenderWorker::stop()
 {
     if (over)
         return false;
-    worker.request_stop();
-    worker.join();
+    stopSource.request_stop();
+    workers.clear();
     over = true;
-    const auto everyRenderWritten = finished.load (std::memory_order_acquire) && outcome.has_value() && outcome->has_value();
-    return ! everyRenderWritten;
+    return done.load() != (int) renders.size();
 }
 } // namespace overdub::song

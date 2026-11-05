@@ -147,6 +147,9 @@ int deletePracticeRendersExcept (const juce::File& folder, const Song& song, Pra
 
 //==============================================================================
 
+// One after another (ADR 0009): the active Loop renders first, in its own run.
+constexpr int rendersAtOnce = 1;
+
 std::unique_ptr<PracticeSpeedRun> PracticeSpeedRun::start (int sampleRate, PracticeRenderKey key, std::optional<SampleRange> loopWindow, std::vector<PracticeRenderJob> jobs, Clock::time_point now)
 {
     std::unique_ptr<PracticeSpeedRun> run (new PracticeSpeedRun (key, loopWindow, std::move (jobs), now));
@@ -164,7 +167,7 @@ std::unique_ptr<PracticeSpeedRun> PracticeSpeedRun::start (int sampleRate, Pract
             }
             return rendered;
         });
-    run->worker = std::make_unique<RenderWorker> (std::move (renders));
+    run->worker = std::make_unique<RenderWorker> (std::move (renders), rendersAtOnce);
     return run;
 }
 
