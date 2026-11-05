@@ -8,6 +8,7 @@
 #include <juce_core/juce_core.h>
 
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stop_token>
@@ -43,22 +44,33 @@ core::Expected<void> renderAtPracticeSpeed (const juce::File& source,
                                             std::stop_token stop,
                                             std::optional<SampleRange> sourceRange = std::nullopt);
 
-// The renders of one Transpose (missingTransposeRenders' jobs), made one after another by
-// renderTransposed on a worker thread; advance() (message thread) hands back how it ended. It
-// reads and writes only the jobs' files, so the Song may change while it runs: the owner decides
-// what the renders are still good for. Logs song.transpose_started (info: semitones, cents, renders)
-// and, when every render is written, song.transpose_rendered (info: semitones, cents, renders,
-// duration_ms).
-// The first failed render ends the run; the renders written before it stay. cancel() stops the
-// worker after its current block and, unless every render was written already, logs
-// song.transpose_cancelled (info: semitones, cents, renders_done, renders, duration_ms); how the run ended
-// is dropped. Destroying a running run cancels it.
+// How many renders of a Transpose run at once on a machine of `cores` logical cores (0 when
+// unknown): min (cores - 1, 4), at least 1. Each render holds its whole input and output in memory,
+// about 230 MB for a 5-minute stereo Backing Track, so a Song with many must not use gigabytes.
+int transposeRendersAtOnce (int cores);
+
+// The renders of one Transpose (missingTransposeRenders' jobs), made by renderTransposed on worker
+// threads, up to transposeRendersAtOnce at once and taken in order; advance() (message thread) hands
+// back how it ended. It reads and writes only the jobs' files, so the Song may change while it runs:
+// the owner decides what the renders are still good for. Logs song.transpose_started (info:
+// semitones, cents, renders, max_renders_at_once) and, when every render is written,
+// song.transpose_rendered (info: semitones, cents, renders, duration_ms).
+// The first failed render ends the run and stops the others; the renders written before they stop
+// stay. A second render failing beside it is dropped: it is still missing, so the next run meets
+// it. cancel() stops every render after its current block and, unless every render was written
+// already, logs song.transpose_cancelled (info: semitones, cents, renders_done, renders,
+// duration_ms); how the run ended is dropped. Destroying a running run cancels it.
 class TransposeRun
 {
 public:
     using Clock = std::chrono::steady_clock;
 
+    // Makes one job's render, on a worker thread. It must hear `stop` as renderTransposed does.
+    using RenderJob = std::function<core::Expected<void> (const TransposeRenderJob&, std::stop_token)>;
+
     static std::unique_ptr<TransposeRun> start (int sampleRate, Transpose shift, std::vector<TransposeRenderJob> jobs, Clock::time_point now);
+    // The same run with its cap and its render chosen by the caller: the seam tests observe it at.
+    static std::unique_ptr<TransposeRun> start (Transpose shift, std::vector<TransposeRenderJob> jobs, Clock::time_point now, int rendersAtOnce, RenderJob render);
 
     ~TransposeRun();
 
@@ -68,12 +80,12 @@ public:
     Transpose transpose() const { return target; }
     const std::vector<TransposeRenderJob>& renderJobs() const { return jobs; }
 
-    // Once the worker is done: none on success, or the failed render's Error
-    // (song.transpose_render_failed, with its backing_track_id). Nothing while it runs. The run is
+    // Once every worker is done: none on success, or the first failed render's Error
+    // (song.transpose_render_failed, with its backing_track_id). Nothing while one runs. The run is
     // over once it returns.
     std::optional<core::Expected<void>> advance (Clock::time_point now);
 
-    // Stops the worker and waits for it. Nothing once the run is over.
+    // Stops the workers and waits for them. Nothing once the run is over.
     void cancel (Clock::time_point now);
 
 private:
